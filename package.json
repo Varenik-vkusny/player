@@ -7,7 +7,8 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
+    "check": "pnpm run typecheck && pnpm run test:unit && pnpm run build:player && pnpm run test:e2e",
+    "build:player": "vite build --config packages/player/vite.config.ts",
     "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/player/tsconfig.json --noEmit && tsc -p apps/playground/tsconfig.json --noEmit",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",

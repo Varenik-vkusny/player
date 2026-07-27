@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>Голый HTML — проверка инварианта №9</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #07090c; color: #e6edf5;
+               font: 15px system-ui, sans-serif; }
+  #host { position: fixed; inset: 0 0 56px 0; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; height: 56px;
+         display: flex; align-items: center; gap: 12px; padding: 0 16px;
+         border-top: 1px solid #1c242f; background: #0b0f14; }
+  button { font: inherit; padding: 8px 14px; border-radius: 10px; cursor: pointer;
+           border: 1px solid #2c3a4d; background: #1b2430; color: inherit; }
+</style>
+</head>
+<body>
+<!--
+  Этот файл — проверка инварианта №9: плеер обязан открываться в голом HTML
+  без сборщика, карты импортов и любой другой обвязки. Ниже обычный
+  <script type="module"> и один относительный путь к бандлу. Больше ничего.
+-->
+<div id="host"></div>
+<div id="bar">
+  <button id="play">Играть</button>
+  <span id="state">—</span>
+  <code id="clock">0.00</code>
+</div>
+
+<script type="module">
+import { Player, loadProject } from './bundle/player.js';
+
+const host = document.getElementById('host');
+const stateLabel = document.getElementById('state');
+const clockLabel = document.getElementById('clock');
+const playButton = document.getElementById('play');
+
+// Проект берём тем же способом, что и настоящий продукт, — по сети.
+const response = await fetch('/fixtures/demo.json');
+if (!response.ok) throw new Error(`Не удалось загрузить проект: HTTP ${response.status}`);
+// Валидация обязательна и здесь: битый проект не открывается нигде.
+const project = loadProject(await response.json());
+
+const player = new Player(host, project, {
+  onStateChange: (state) => { stateLabel.textContent = state; },
+  onFrame: (position) => { clockLabel.textContent = position.toFixed(2); },
+  onGateOpen: (gate) => { stateLabel.textContent = `гейт: ${gate.id}`; },
+});
+
+await player.load();
+playButton.addEventListener('click', () => { player.play(); });
+
+window.__player = player;
+document.documentElement.dataset.ready = '1';
+</script>
+</body>
+</html>

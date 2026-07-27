@@ -42,6 +42,28 @@ describe('инвариант №6: направление зависимосте
     expect(offenders).toEqual([]);
   });
 
+  it('player не импортирует editor', () => {
+    const playerDir = join(ROOT, 'packages', 'player');
+    const offenders: string[] = [];
+    for (const file of sourceFiles(playerDir)) {
+      const text = readFileSync(file, 'utf8');
+      if (/from\s+['"]@player\/editor/.test(text) || /from\s+['"][^'"]*\.\.\/editor\//.test(text)) {
+        offenders.push(file.replace(ROOT, ''));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('player не импортирует React: он собирается без фреймворка', () => {
+    const offenders: string[] = [];
+    for (const file of sourceFiles(join(ROOT, 'packages', 'player'))) {
+      if (/from\s+['"]react/.test(readFileSync(file, 'utf8'))) {
+        offenders.push(file.replace(ROOT, ''));
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   it('core не знает про DOM и React', () => {
     const offenders: string[] = [];
     for (const file of sourceFiles(join(ROOT, 'packages', 'core'))) {

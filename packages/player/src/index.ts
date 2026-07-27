@@ -4,6 +4,11 @@
  * Инвариант №6: этот пакет импортирует core и не знает про editor.
  * Инвариант №9: собирается в самостоятельный ESM-бандл без фреймворка.
  */
+// Загрузка с валидацией переэкспортируется наружу намеренно: плеер —
+// публичная поверхность для встраивания, и принимать непроверенный проект
+// он не должен ни в одном сценарии, включая голый HTML без сборщика.
+export { loadProject, ProjectLoadError, type Project } from '@player/core';
+
 export { AudioClock, loadTrack, type ClockDiagnostics, type TrackLoad } from './clock.js';
 export {
   applyFit,
