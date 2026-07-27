@@ -29,15 +29,36 @@ importers:
       typescript:
         specifier: ^7.0.2
         version: 7.0.2
+      vite:
+        specifier: ^8.1.5
+        version: 8.1.5
       vitest:
         specifier: ^4.1.10
         version: 4.1.10(vite@8.1.5)
+
+  apps/playground:
+    dependencies:
+      '@player/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@player/player':
+        specifier: workspace:*
+        version: link:../../packages/player
 
   packages/core:
     dependencies:
       zod:
         specifier: ^4.4.3
         version: 4.4.3
+
+  packages/player:
+    dependencies:
+      '@player/core':
+        specifier: workspace:*
+        version: link:../core
+      animejs:
+        specifier: ^4.5.0
+        version: 4.5.0
 
 packages:
 

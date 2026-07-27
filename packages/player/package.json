@@ -1,0 +1,13 @@
+{
+  "name": "@player/player",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@player/core": "workspace:*",
+    "animejs": "^4.5.0"
+  }
+}

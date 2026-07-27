@@ -7,10 +7,12 @@
     "node": ">=22"
   },
   "scripts": {
-    "check": "pnpm run typecheck && pnpm run test:unit",
-    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit",
+    "check": "pnpm run typecheck && pnpm run test:unit && pnpm run test:e2e",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit && tsc -p packages/player/tsconfig.json --noEmit && tsc -p apps/playground/tsconfig.json --noEmit",
     "test:unit": "vitest run",
     "test:unit:watch": "vitest",
+    "test:e2e": "playwright test",
+    "dev": "pnpm --filter @player/playground dev",
     "spikes:serve": "node spikes/serve.mjs 5180",
     "spike:clocks": "node spikes/run-clocks.mjs",
     "spike:timeline": "node spikes/run-timeline.mjs",
@@ -26,6 +28,7 @@
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "typescript": "^7.0.2",
+    "vite": "^8.1.5",
     "vitest": "^4.1.10"
   }
 }

@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    // Путь только ВНИЗ по направлению зависимостей. Обратного отображения
+    // не существует ни здесь, ни в core — значит `@player/editor` отсюда
+    // не разрешится, а `@player/player` не разрешится из core.
+    "paths": {
+      "@player/core": ["../core/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}
