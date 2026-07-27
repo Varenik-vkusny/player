@@ -1,0 +1,29 @@
+# CI запускает РОВНО ту же команду, что и разработчик локально.
+# Второй команды «для CI» быть не должно: расхождению неоткуда взяться,
+# только если ему негде появиться (ADR-006).
+
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm check
