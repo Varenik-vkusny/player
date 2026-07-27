@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "meta": { "title": "Граничные случаи", "stageWidth": 1920, "stageHeight": 1080 },
+  "audio": {
+    "src": "audio/edge-cases.mp3",
+    "duration": 12,
+    "words": [
+      { "text": "Сразу", "start": 0, "end": 0.4, "source": "tts" },
+      { "text": "и", "start": 0.45, "end": 0.5, "source": "tts" },
+      { "text": "в", "start": 0.55, "end": 0.6, "source": "tts" },
+      { "text": "конце", "start": 11.4, "end": 12, "source": "tts" }
+    ]
+  },
+  "scene": {
+    "elements": [
+      {
+        "id": "static",
+        "type": "shape",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "rotation": 0,
+        "zIndex": 0,
+        "style": { "background": "#11141a" },
+        "content": ""
+      },
+      {
+        "id": "never-animated",
+        "type": "text",
+        "x": 100,
+        "y": 100,
+        "width": 600,
+        "height": 80,
+        "rotation": 0,
+        "zIndex": 1,
+        "style": { "color": "#6d7f95", "font-size": "32px" },
+        "content": "Элемент без единой анимации"
+      },
+      {
+        "id": "rotated",
+        "type": "shape",
+        "x": 1500,
+        "y": 800,
+        "width": 200,
+        "height": 200,
+        "rotation": 45,
+        "zIndex": 2,
+        "style": { "background": "#e4572e", "border-radius": "16px" },
+        "content": ""
+      }
+    ],
+    "cues": [
+      {
+        "id": "cue-at-zero",
+        "at": { "kind": "seconds", "t": 0 },
+        "targetId": "rotated",
+        "animation": { "property": "scale", "from": 0, "to": 1, "duration": 300, "ease": "outQuad" }
+      }
+    ],
+    "gates": [
+      {
+        "id": "gate-at-zero",
+        "at": { "kind": "seconds", "t": 0 },
+        "config": { "kind": "continue", "label": "Начать" },
+        "onWrong": "continue",
+        "maxAttempts": null
+      },
+      {
+        "id": "gate-at-end",
+        "at": { "kind": "word", "wordIndex": 3, "offset": 0, "anchor": { "text": "конце", "before": "в", "after": "" } },
+        "config": { "kind": "continue", "label": "Закончить" },
+        "onWrong": "continue",
+        "maxAttempts": null
+      }
+    ]
+  }
+}

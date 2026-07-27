@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S7 — хост плеера (без фреймворка)</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #host { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="host"><div id="stage"></div></div>
+<script type="module">
+import { renderScene, applyFit } from '../lib/render.mjs';
+import { SCENE } from './scene.mjs';
+
+const host = document.getElementById('host');
+const stage = document.getElementById('stage');
+
+renderScene(stage, SCENE);
+applyFit(stage, host.clientWidth, host.clientHeight, SCENE);
+
+// Метка готовности: снимок делается только после того, как сцена построена.
+document.documentElement.dataset.ready = '1';
+</script>
+</body>
+</html>

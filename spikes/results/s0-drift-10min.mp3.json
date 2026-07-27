@@ -1,0 +1,14 @@
+{
+  "file": "drift-10min.mp3",
+  "seconds": 600,
+  "samples": 35961,
+  "driftMedianMs": 0.00033333333249174757,
+  "driftP95Ms": 2.2733333333349037,
+  "driftMaxMs": 10.666333333233524,
+  "slopeMsPerMin": -0.007756860094730014,
+  "outputLatencyMs": 40,
+  "audioStepMedianMs": 18.665999999996075,
+  "audioStepCount": 35754,
+  "ctxStepMedianMs": 18.666666666661058,
+  "ctxStepCount": 35611
+}

@@ -1,0 +1,42 @@
+# секреты — никогда не в репозиторий
+.env
+.env.*
+!.env.example
+
+# зависимости
+node_modules/
+.pnpm-store/
+.venv/
+
+# оснастка спайков: выравниватель и его окружение, ставится локально
+tools/
+.mfa/
+MFA/
+
+# сборка
+dist/
+build/
+*.tsbuildinfo
+
+# артефакты тестов
+test-results/
+playwright-report/
+blob-report/
+coverage/
+
+# крупные артефакты спайков: аудио и записи генерируются локально.
+# JSON с результатами измерений НЕ игнорируется — это доказательная база.
+spikes/**/*.mp3
+spikes/**/*.wav
+spikes/**/*.webm
+spikes/**/*.TextGrid
+spikes/lib/anime.esm.min.js
+
+# артефакты браузерной инспекции
+.playwright-mcp/
+
+# ос и редакторы
+Thumbs.db
+.DS_Store
+debug.log
+.idea/

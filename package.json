@@ -1,0 +1,31 @@
+{
+  "name": "player-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.29.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "check": "pnpm run typecheck && pnpm run test:unit",
+    "typecheck": "tsc -p packages/core/tsconfig.json --noEmit",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
+    "spikes:serve": "node spikes/serve.mjs 5180",
+    "spike:clocks": "node spikes/run-clocks.mjs",
+    "spike:timeline": "node spikes/run-timeline.mjs",
+    "spike:gate-lock": "node spikes/run-gate-lock.mjs",
+    "spike:parity": "node spikes/run-parity.mjs",
+    "spike:perf": "node spikes/run-perf.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.0",
+    "animejs": "^4.5.0",
+    "pixelmatch": "^7.2.0",
+    "pngjs": "^7.0.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

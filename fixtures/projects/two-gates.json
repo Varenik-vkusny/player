@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "meta": { "title": "Два гейта", "stageWidth": 1920, "stageHeight": 1080 },
+  "audio": {
+    "src": "audio/two-gates.mp3",
+    "duration": 20,
+    "words": [
+      { "text": "Выбери", "start": 1, "end": 1.6, "source": "alignment", "confidence": 0.96 },
+      { "text": "правильный", "start": 1.65, "end": 2.4, "source": "alignment", "confidence": 0.94 },
+      { "text": "ответ", "start": 2.45, "end": 3, "source": "alignment", "confidence": 0.97 },
+      { "text": "Теперь", "start": 9, "end": 9.5, "source": "alignment", "confidence": 0.95 },
+      { "text": "впиши", "start": 9.55, "end": 10.1, "source": "alignment", "confidence": 0.93 },
+      { "text": "слово", "start": 10.15, "end": 10.7, "source": "alignment", "confidence": 0.98 }
+    ]
+  },
+  "scene": {
+    "elements": [
+      {
+        "id": "question",
+        "type": "text",
+        "x": 160,
+        "y": 240,
+        "width": 1400,
+        "height": 200,
+        "rotation": 0,
+        "zIndex": 2,
+        "style": { "color": "#f5f7fa", "font-size": "56px" },
+        "content": "Что является часами проекта?"
+      },
+      {
+        "id": "card",
+        "type": "shape",
+        "x": 160,
+        "y": 520,
+        "width": 1600,
+        "height": 320,
+        "rotation": 0,
+        "zIndex": 1,
+        "style": { "background": "#1b2430", "border-radius": "24px" },
+        "content": ""
+      }
+    ],
+    "cues": [
+      {
+        "id": "cue-question",
+        "at": { "kind": "word", "wordIndex": 0, "offset": 0, "anchor": { "text": "выбери", "before": "", "after": "правильный" } },
+        "targetId": "question",
+        "animation": { "property": "y", "from": 40, "to": 0, "duration": 600, "ease": "outQuad" }
+      },
+      {
+        "id": "cue-card",
+        "at": { "kind": "seconds", "t": 8 },
+        "targetId": "card",
+        "animation": { "property": "opacity", "from": 0, "to": 1, "duration": 500, "ease": "inOutQuad" }
+      }
+    ],
+    "gates": [
+      {
+        "id": "gate-choice",
+        "at": { "kind": "word", "wordIndex": 2, "offset": 0.2, "anchor": { "text": "ответ", "before": "правильный", "after": "теперь" } },
+        "config": {
+          "kind": "choice",
+          "prompt": "Что является часами проекта?",
+          "options": [
+            { "id": "opt-audio", "label": "Позиция в аудио" },
+            { "id": "opt-timer", "label": "Отдельный таймер" },
+            { "id": "opt-frames", "label": "Счётчик кадров" }
+          ],
+          "correctId": "opt-audio"
+        },
+        "onWrong": "retry",
+        "maxAttempts": 3
+      },
+      {
+        "id": "gate-input",
+        "at": { "kind": "word", "wordIndex": 5, "offset": 0.3, "anchor": { "text": "слово", "before": "впиши", "after": "" } },
+        "config": {
+          "kind": "input",
+          "prompt": "Как называется точка остановки?",
+          "accept": ["гейт", "gate"],
+          "caseSensitive": false
+        },
+        "onWrong": "reveal",
+        "maxAttempts": null
+      }
+    ]
+  }
+}

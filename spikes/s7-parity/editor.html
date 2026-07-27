@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S7 — хост редактора (React)</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; }
+  #host { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="host"></div>
+<script type="module">
+// React берётся с esm.sh: спайку нужен НАСТОЯЩИЙ React, а не его подобие,
+// но собирать бандл ради одного измерения незачем. В продукте он будет
+// собран обычным способом — на предмет измерения это не влияет.
+import React from 'https://esm.sh/react@19.2.8';
+import { createRoot } from 'https://esm.sh/react-dom@19.2.8/client';
+
+import { renderScene, applyFit } from '../lib/render.mjs';
+import { SCENE } from './scene.mjs';
+
+const { useRef, useLayoutEffect, createElement } = React;
+
+/**
+ * Компонент редактора. Он НЕ рисует сцену сам — он отдаёт свой узел
+ * той же функции renderScene, что и плеер. Второй реализации рендера здесь
+ * физически некуда взяться: React владеет только контейнером.
+ */
+function StagePreview({ scene }) {
+  const stageRef = useRef(null);
+
+  useLayoutEffect(() => {
+    const stage = stageRef.current;
+    const host = stage.parentElement;
+    renderScene(stage, scene);
+    applyFit(stage, host.clientWidth, host.clientHeight, scene);
+    document.documentElement.dataset.ready = '1';
+  }, [scene]);
+
+  return createElement('div', { ref: stageRef });
+}
+
+createRoot(document.getElementById('host')).render(
+  createElement(StagePreview, { scene: SCENE })
+);
+</script>
+</body>
+</html>

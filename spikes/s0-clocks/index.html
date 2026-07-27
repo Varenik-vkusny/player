@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S0b — сравнение кандидатов на роль часов</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; max-width: 900px; }
+  h1 { font-size: 20px; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; margin-top: 16px; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+  th { background: #f2f2f2; }
+  code { background: #f2f2f2; padding: 1px 4px; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  #log { white-space: pre-wrap; background: #111; color: #eee; padding: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<h1>S0b — какой источник времени не врёт</h1>
+
+<p>Сравниваем двух кандидатов на роль часов проекта на одном и том же
+воспроизведении:</p>
+<ol>
+  <li><strong>A:</strong> <code>&lt;audio&gt;.currentTime</code> — позиция, которую сообщает медиаэлемент.</li>
+  <li><strong>B:</strong> позиция, вычисленная от <code>AudioContext.currentTime</code>
+      по формуле <code>a₀ + (ctx.currentTime − ctx₀)</code>.</li>
+</ol>
+<p>Если оба кандидата описывают одно и то же воспроизведение, расхождение между
+ними обязано быть около нуля и <strong>не расти</strong>. Растущее расхождение
+означает, что как минимум один из них не является часами.</p>
+
+<p>
+  <label>Длительность прогона, с:
+    <input id="duration" type="number" value="20" min="5" max="900" step="5">
+  </label>
+</p>
+
+<p>
+  <button id="run-wav">Прогон на WAV</button>
+  <button id="run-mp3">Прогон на MP3</button>
+  <button id="export" disabled>Скачать сырые отсчёты (CSV)</button>
+</p>
+
+<div id="env"></div>
+<div id="result"></div>
+<pre id="log"></pre>
+
+<script type="module">
+const $ = (id) => document.getElementById(id);
+const log = (msg) => { $('log').textContent += msg + '\n'; console.log('[s0]', msg); };
+
+/** Линейная регрессия y по x. Возвращает наклон и свободный член. */
+function regression(xs, ys) {
+  const n = xs.length;
+  if (n < 2) throw new Error('Для регрессии нужно минимум две точки');
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) {
+    num += (xs[i] - mx) * (ys[i] - my);
+    den += (xs[i] - mx) ** 2;
+  }
+  if (den === 0) throw new Error('Нулевая дисперсия по x — регрессия неопределена');
+  const slope = num / den;
+  return { slope, intercept: my - slope * mx };
+}
+
+function describe(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))];
+  return {
+    min: sorted[0],
+    max: sorted[sorted.length - 1],
+    median: at(0.5),
+    p95: at(0.95),
+    mean: values.reduce((a, b) => a + b, 0) / values.length,
+  };
+}
+
+/** Шаг обновления currentTime: сколько РАЗНЫХ значений мы увидели и какой между ними интервал. */
+function stepStats(times) {
+  const steps = [];
+  for (let i = 1; i < times.length; i++) {
+    const d = times[i] - times[i - 1];
+    if (d > 0) steps.push(d);
+  }
+  return { distinctSteps: steps.length, ...(steps.length ? describe(steps) : {}) };
+}
+
+let lastSamples = null;
+
+async function run(file) {
+  $('run-wav').disabled = $('run-mp3').disabled = true;
+  const seconds = Number($('duration').value);
+  log(`\n=== прогон ${file}, ${seconds} с ===`);
+
+  // AudioContext создаём внутри обработчика клика: без пользовательского жеста
+  // он окажется в состоянии suspended и часы просто не пойдут.
+  const ctx = new AudioContext();
+  await ctx.resume();
+  log(`AudioContext: state=${ctx.state} sampleRate=${ctx.sampleRate}`);
+  log(`baseLatency=${(ctx.baseLatency * 1000).toFixed(2)} мс, outputLatency=${(ctx.outputLatency * 1000).toFixed(2)} мс`);
+
+  const el = new Audio(`../assets/${file}`);
+  el.preload = 'auto';
+  await new Promise((resolve, reject) => {
+    el.addEventListener('canplaythrough', resolve, { once: true });
+    el.addEventListener('error', () => reject(new Error(`Не удалось загрузить ${file}: ${el.error?.message ?? el.error?.code}`)), { once: true });
+  });
+  log(`загружен, duration=${el.duration.toFixed(6)} с`);
+
+  const source = ctx.createMediaElementSource(el);
+  source.connect(ctx.destination);
+
+  await el.play();
+
+  // Опорная точка: одновременный снимок обоих часов сразу после старта.
+  const ctx0 = ctx.currentTime;
+  const a0 = el.currentTime;
+  const perf0 = performance.now();
+  log(`опорная точка: audio=${a0.toFixed(6)} ctx=${ctx0.toFixed(6)}`);
+
+  const samples = [];
+  await new Promise((resolve) => {
+    const tick = () => {
+      const perf = performance.now();
+      samples.push({
+        perfMs: perf - perf0,
+        audioTime: el.currentTime,
+        ctxTime: ctx.currentTime,
+        ctxPosition: a0 + (ctx.currentTime - ctx0),
+      });
+      if (perf - perf0 >= seconds * 1000) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  el.pause();
+  const measuredOutputLatency = ctx.outputLatency;
+  await ctx.close();
+
+  // Расхождение кандидатов между собой, в миллисекундах.
+  const driftMs = samples.map((s) => (s.ctxPosition - s.audioTime) * 1000);
+  const minutes = samples.map((s) => s.perfMs / 60000);
+  const { slope } = regression(minutes, driftMs);
+  const stats = describe(driftMs.map(Math.abs));
+
+  const audioSteps = stepStats(samples.map((s) => s.audioTime));
+  const ctxSteps = stepStats(samples.map((s) => s.ctxTime));
+
+  lastSamples = { file, samples };
+  $('export').disabled = false;
+
+  const row = (k, v) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`;
+  $('result').innerHTML += `
+    <h2>${file}</h2>
+    <table>
+      ${row('отсчётов', samples.length)}
+      ${row('|расхождение A и B|, медиана, мс', stats.median.toFixed(2))}
+      ${row('|расхождение A и B|, p95, мс', stats.p95.toFixed(2))}
+      ${row('|расхождение A и B|, максимум, мс', stats.max.toFixed(2))}
+      ${row('<b>наклон расхождения, мс за минуту</b>', slope.toFixed(2))}
+      ${row('outputLatency в конце прогона, мс', (measuredOutputLatency * 1000).toFixed(2))}
+      ${row('шаг audio.currentTime: медиана, мс', ((audioSteps.median ?? 0) * 1000).toFixed(2))}
+      ${row('шаг audio.currentTime: различных изменений', audioSteps.distinctSteps)}
+      ${row('шаг ctx.currentTime: медиана, мс', ((ctxSteps.median ?? 0) * 1000).toFixed(2))}
+      ${row('шаг ctx.currentTime: различных изменений', ctxSteps.distinctSteps)}
+    </table>`;
+
+  log(`расхождение: медиана ${stats.median.toFixed(2)} мс, максимум ${stats.max.toFixed(2)} мс, наклон ${slope.toFixed(2)} мс/мин`);
+
+  window.__s0 = window.__s0 ?? {};
+  window.__s0[file] = {
+    samples: samples.length,
+    driftMedianMs: stats.median,
+    driftP95Ms: stats.p95,
+    driftMaxMs: stats.max,
+    slopeMsPerMin: slope,
+    outputLatencyMs: measuredOutputLatency * 1000,
+    audioStepMedianMs: (audioSteps.median ?? 0) * 1000,
+    audioStepCount: audioSteps.distinctSteps,
+    ctxStepMedianMs: (ctxSteps.median ?? 0) * 1000,
+    ctxStepCount: ctxSteps.distinctSteps,
+  };
+
+  $('run-wav').disabled = $('run-mp3').disabled = false;
+}
+
+$('run-wav').addEventListener('click', () => run('drift-10min.wav'));
+$('run-mp3').addEventListener('click', () => run('drift-10min.mp3'));
+
+$('export').addEventListener('click', () => {
+  const { file, samples } = lastSamples;
+  const csv = ['perf_ms,audio_time,ctx_time,ctx_position']
+    .concat(samples.map((s) => `${s.perfMs},${s.audioTime},${s.ctxTime},${s.ctxPosition}`))
+    .join('\n');
+  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  Object.assign(document.createElement('a'), { href: url, download: `s0-${file}.csv` }).click();
+});
+
+// Что вообще умеет этот браузер — фиксируем до всякого воспроизведения.
+{
+  const probe = new AudioContext();
+  $('env').innerHTML = `<table>
+    <tr><th>userAgent</th><td>${navigator.userAgent}</td></tr>
+    <tr><th>AudioContext.state до жеста</th><td>${probe.state}</td></tr>
+    <tr><th>sampleRate</th><td class="num">${probe.sampleRate}</td></tr>
+    <tr><th>baseLatency, мс</th><td class="num">${(probe.baseLatency * 1000).toFixed(2)}</td></tr>
+    <tr><th>devicePixelRatio</th><td class="num">${devicePixelRatio}</td></tr>
+  </table>`;
+  probe.close();
+}
+</script>
+</body>
+</html>

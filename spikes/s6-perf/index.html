@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>S6 — 15 элементов, узкий экран, слабый процессор</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; }
+  #host { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="host"><div id="stage"></div></div>
+<script type="module">
+import { createTimeline, engine } from '../lib/anime.esm.min.js';
+import { renderScene, applyFit, STAGE_WIDTH, STAGE_HEIGHT } from '../lib/render.mjs';
+import { AudioClock, loadTrack } from '../lib/audio-clock.mjs';
+
+engine.useDefaultMainLoop = false;
+
+const PALETTE = ['#e4572e', '#29335c', '#f3a712', '#a8c686', '#669bbc'];
+
+// 15 элементов: 12 фигур и 3 текстовых. Текст нужен обязательно —
+// именно на нём проверяется, что раскладка не поехала при масштабировании.
+const SCENE = {
+  width: STAGE_WIDTH, height: STAGE_HEIGHT, background: '#11141a',
+  elements: [
+    ...Array.from({ length: 12 }, (_, i) => ({
+      id: `shape-${i}`, type: 'shape',
+      x: 80 + (i % 4) * 460, y: 80 + Math.floor(i / 4) * 240,
+      width: 180, height: 180, zIndex: 1,
+      style: { background: PALETTE[i % PALETTE.length], 'border-radius': '24px' },
+    })),
+    {
+      id: 'text-1', type: 'text', x: 80, y: 800, width: 820, height: 200, zIndex: 2,
+      content: 'Раскладка обязана быть идентичной на любом экране, потому что transform '
+             + 'не влияет на поток содержимого и переносы строк считаются один раз.',
+      style: { color: '#f5f7fa', 'font-family': 'system-ui, sans-serif', 'font-size': '34px', 'line-height': '1.4' },
+    },
+    {
+      id: 'text-2', type: 'text', x: 960, y: 800, width: 820, height: 120, zIndex: 2,
+      content: 'Анимируем только transform, opacity и filter.',
+      style: { color: '#9fb0c4', 'font-family': 'Georgia, serif', 'font-size': '40px' },
+    },
+    {
+      id: 'text-3', type: 'text', x: 960, y: 940, width: 820, height: 80, zIndex: 2,
+      content: 'Всё остальное уводит с композитора.',
+      style: { color: '#6d7f95', 'font-family': 'system-ui, sans-serif', 'font-size': '28px' },
+    },
+  ],
+};
+
+const host = document.getElementById('host');
+const stage = document.getElementById('stage');
+const nodes = renderScene(stage, SCENE);
+applyFit(stage, host.clientWidth, host.clientHeight, SCENE);
+
+// Инвариант №8: список анимируемых свойств задан явно и проверяется тестом.
+const ALLOWED = ['x', 'y', 'scale', 'rotate', 'opacity', 'filter', 'translateX', 'translateY'];
+window.__animatedProps = new Set();
+
+/**
+ * Собирает таймлайн. Флаг withBlur нужен, чтобы измерить цену filter: blur()
+ * отдельно: инвариант №8 разрешает filter наравне с transform и opacity,
+ * и это утверждение подлежит проверке, а не вере.
+ */
+function buildTimeline(withBlur) {
+  window.__animatedProps = new Set();
+  const tl = createTimeline({ autoplay: false, defaults: { ease: 'inOutSine' } });
+  SCENE.elements.forEach((element, i) => {
+    const node = nodes.get(element.id);
+    node.style.filter = '';
+    const props = i % 3 === 0
+      ? { x: 120, opacity: [0.4, 1] }
+      : i % 3 === 1
+        ? { scale: [1, 1.25], rotate: 8 }
+        : withBlur
+          ? { y: -60, filter: ['blur(0px)', 'blur(3px)'] }
+          : { y: -60, opacity: [0.5, 1] };
+    Object.keys(props).forEach((p) => window.__animatedProps.add(p));
+    tl.add(node, { ...props, duration: 3000, loop: true, alternate: true }, (i % 5) * 200);
+  });
+  window.__illegalProps = [...window.__animatedProps].filter((p) => !ALLOWED.includes(p));
+  return tl;
+}
+
+let tl = buildTimeline(true);
+
+/** Число строчных боксов у текста: если раскладка поехала, оно изменится. */
+window.__lineBoxes = (scale) => {
+  applyFit(stage, STAGE_WIDTH * scale, STAGE_HEIGHT * scale, SCENE);
+  return ['text-1', 'text-2', 'text-3'].map((id) => ({
+    id, rects: nodes.get(id).getClientRects().length,
+  }));
+};
+
+window.__measure = async (seconds = 10, withBlur = true) => {
+  tl = buildTimeline(withBlur);
+  const ctx = new AudioContext();
+  await ctx.resume();
+  const track = await loadTrack(ctx, '../assets/tone-120s.wav');
+  const clock = new AudioClock(ctx, track.buffer);
+  clock.start(0);
+
+  const frames = [];
+  let previous = performance.now();
+  await new Promise((resolve) => {
+    const frame = () => {
+      const now = performance.now();
+      frames.push(now - previous);
+      previous = now;
+      tl.currentTime = (clock.position * 1000) % tl.duration;
+      if (clock.position >= seconds) resolve();
+      else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  clock.stop();
+  await ctx.close();
+
+  const intervals = frames.slice(2).sort((a, b) => a - b);
+  const at = (p) => intervals[Math.min(intervals.length - 1, Math.floor(p * intervals.length))];
+  const fps = (ms) => 1000 / ms;
+  return {
+    кадров: intervals.length,
+    'fps медиана': +fps(at(0.5)).toFixed(1),
+    'fps p5 (худшие кадры)': +fps(at(0.95)).toFixed(1),
+    'fps минимум': +fps(intervals[intervals.length - 1]).toFixed(1),
+    'самый длинный кадр, мс': +intervals[intervals.length - 1].toFixed(2),
+    'кадров длиннее 18.2 мс (ниже 55 fps)': intervals.filter((v) => v > 18.2).length,
+  };
+};
+
+document.documentElement.dataset.ready = '1';
+</script>
+</body>
+</html>

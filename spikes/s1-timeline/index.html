@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S1 / S2 / S3 — ведомый таймлайн, гейт, пауза</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 20px; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; margin-top: 12px; }
+  th, td { border: 1px solid #ccc; padding: 5px 9px; }
+  th { background: #f2f2f2; text-align: left; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  #stage { position: relative; width: 960px; height: 240px; background: #16181d; overflow: hidden; margin-top: 12px; }
+  .box { position: absolute; width: 90px; height: 90px; border-radius: 10px; top: 70px; will-change: transform, opacity; }
+  #log { white-space: pre-wrap; background: #111; color: #eee; padding: 10px; margin-top: 12px; max-height: 240px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>S1 / S2 / S3</h1>
+<p>Одна оснастка на три измерения: часы от аудио, ведомый таймлайн anime.js,
+гейт через <code>ctx.suspend()</code>. Таймлайн создаётся в паузе, собственный
+тикер движка выключен — двигать сцену может только аудио.</p>
+
+<p>
+  <button id="s1">S1: дрейф</button>
+  <button id="s2">S2: гейт, 50 прогонов</button>
+  <button id="s3">S3: 20 пауз</button>
+  <label>секунд для S1: <input id="dur" type="number" value="600" min="10" max="900" step="10" style="width:5em"></label>
+</p>
+
+<div id="stage"></div>
+<div id="out"></div>
+<pre id="log"></pre>
+
+<script type="module">
+import { createTimeline, engine } from '../lib/anime.esm.min.js';
+import { AudioClock, loadTrack } from '../lib/audio-clock.mjs';
+
+const $ = (id) => document.getElementById(id);
+const log = (m) => { $('log').textContent += m + '\n'; $('log').scrollTop = 1e9; console.log('[s1]', m); };
+
+// Инвариант №2: таймлайн не имеет права играть сам. Глушим главный цикл
+// движка — после этого он физически не может двигать время.
+engine.useDefaultMainLoop = false;
+
+const GATE_TIME = 6.0;
+const BOXES = 5;
+const COLORS = ['#e4572e', '#29335c', '#f3a712', '#a8c686', '#669bbc'];
+
+function buildScene() {
+  const stage = $('stage');
+  stage.innerHTML = '';
+  return Array.from({ length: BOXES }, (_, i) => {
+    const el = document.createElement('div');
+    el.className = 'box';
+    el.style.background = COLORS[i];
+    el.style.left = `${20 + i * 180}px`;
+    stage.appendChild(el);
+    return el;
+  });
+}
+
+/**
+ * Ведомый таймлайн. Ключевое: autoplay false — он создаётся стоящим.
+ * Анимация на 6.000 с заканчивается ровно в момент гейта: это нужно, чтобы
+ * проверить, что при остановке элемент оказался ТОЧНО в финале, а не «почти».
+ */
+function buildTimeline(boxes, spanMs = 0) {
+  const tl = createTimeline({ autoplay: false, defaults: { ease: 'inOutQuad' } });
+  tl.add(boxes[0], { x: 400, duration: 6000 }, 0);
+  tl.add(boxes[1], { opacity: [0, 1], duration: 2000 }, 500);
+  tl.add(boxes[2], { scale: [1, 1.6], duration: 3000 }, 1500);
+  tl.add(boxes[3], { x: 300, rotate: 180, duration: 6000 }, 0);
+  tl.add(boxes[4], { y: [0, -50], duration: 4000 }, 2000);
+
+  // Таймлайн ОБЯЗАН покрывать всю дорожку. Выставленное время за пределами
+  // длительности прижимается к концу: время таймлайна тихо замрёт, пока
+  // аудио продолжает идти, и никакой ошибки при этом не будет.
+  if (spanMs > tl.duration) {
+    tl.add(boxes[0], { opacity: [1, 1], duration: spanMs }, 0);
+  }
+  return tl;
+}
+
+function regression(xs, ys) {
+  const n = xs.length;
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+  if (den === 0) throw new Error('Нулевая дисперсия по x');
+  return num / den;
+}
+
+const q = (arr, p) => { const s = [...arr].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+
+function table(title, rows) {
+  $('out').innerHTML += `<h2>${title}</h2><table>` +
+    rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`).join('') + '</table>';
+}
+
+async function makeClock(file = 'drift-10min.wav') {
+  const ctx = new AudioContext();
+  await ctx.resume();
+  const track = await loadTrack(ctx, `../assets/${file}`);
+  log(`${file}: декод ${track.decodeMs.toFixed(0)} мс, ` +
+      `в памяти ${(track.decodedBytes / 1048576).toFixed(1)} МБ, ` +
+      `скачано ${(track.bytesDownloaded / 1048576).toFixed(1)} МБ`);
+  const clock = new AudioClock(ctx, track.buffer);
+  log(`getOutputTimestamp пригоден: ${clock.usesOutputTimestamp}`);
+  return clock;
+}
+
+// ---------------------------------------------------------------- S1
+async function runS1() {
+  $('s1').disabled = true;
+  const seconds = Number($('dur').value);
+  log(`\n=== S1: дрейф таймлайна за ${seconds} с ===`);
+
+  const boxes = buildScene();
+  const tl = buildTimeline(boxes, seconds * 1000);
+  const clock = await makeClock();
+  log(`длительность таймлайна: ${(tl.duration / 1000).toFixed(1)} с`);
+  clock.start(0);
+
+  const samples = [];
+  let lastLogged = -1;
+  await new Promise((resolve) => {
+    const frame = () => {
+      const position = clock.position;
+      // Инвариант №2 в одной строке: время таймлайна = время аудио.
+      tl.currentTime = position * 1000;
+
+      const whole = Math.floor(position);
+      if (whole !== lastLogged) {
+        lastLogged = whole;
+        samples.push({ position, driftMs: tl.currentTime - position * 1000 });
+      }
+      if (position >= seconds || position >= clock.duration - 0.05) resolve();
+      else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  clock.stop();
+
+  const drift = samples.map((s) => Math.abs(s.driftMs));
+  const slope = regression(samples.map((s) => s.position / 60), samples.map((s) => s.driftMs));
+  const result = {
+    отсчётов: samples.length,
+    медиана_мс: +q(drift, 0.5).toFixed(4),
+    p95_мс: +q(drift, 0.95).toFixed(4),
+    максимум_мс: +Math.max(...drift).toFixed(4),
+    наклон_мс_в_минуту: +slope.toFixed(4),
+  };
+  table('S1 — дрейф таймлайна относительно аудио', Object.entries(result));
+  log(`S1: максимум ${result.максимум_мс} мс, наклон ${result.наклон_мс_в_минуту} мс/мин`);
+  window.__s1 = result;
+  $('s1').disabled = false;
+}
+
+// ---------------------------------------------------------------- S2
+async function runS2() {
+  $('s2').disabled = true;
+  const RUNS = 50;
+  log(`\n=== S2: гейт на ${GATE_TIME.toFixed(3)} с, ${RUNS} прогонов ===`);
+
+  const boxes = buildScene();
+  const tl = buildTimeline(boxes);
+  const clock = await makeClock();
+
+  const detected = [];   // где мы ЗАМЕТИЛИ пересечение гейта (ограничено кадром)
+  const frozen = [];     // где время реально встало (должно быть ровно на гейте)
+  const finals = [];     // насколько элемент не доехал до финала, в пикселях
+
+  for (let run = 0; run < RUNS; run++) {
+    // Стартуем незадолго до гейта: механизм тот же, ждать в 12 раз меньше.
+    clock.start(GATE_TIME - 0.5);
+    const at = await new Promise((resolve) => {
+      const frame = () => {
+        const position = clock.position;
+        tl.currentTime = position * 1000;
+        if (position >= GATE_TIME) resolve(position);
+        else requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+
+    await clock.freezeAt(GATE_TIME);
+    tl.currentTime = GATE_TIME * 1000;
+
+    detected.push((at - GATE_TIME) * 1000);
+    frozen.push((clock.position - GATE_TIME) * 1000);
+
+    // Первый элемент едет x: 0 -> 400 за ровно 6000 мс. На гейте обязан быть на 400.
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(boxes[0]).transform);
+    finals.push(Math.abs(matrix.m41 - 400));
+
+    await clock.context.resume();
+    clock.stop();
+  }
+  await clock.context.close();
+
+  const result = {
+    прогонов: RUNS,
+    'перелёт кадра, медиана, мс': +q(detected, 0.5).toFixed(2),
+    'перелёт кадра, p95, мс': +q(detected, 0.95).toFixed(2),
+    'перелёт кадра, максимум, мс': +Math.max(...detected).toFixed(2),
+    'позиция после остановки, максимум, мс': +Math.max(...frozen.map(Math.abs)).toFixed(4),
+    'недоезд элемента, максимум, px': +Math.max(...finals).toFixed(4),
+    'прогонов с недоездом больше 0.5px': finals.filter((v) => v > 0.5).length,
+  };
+  table('S2 — точность остановки на гейте', Object.entries(result));
+  log(`S2: перелёт кадра до ${result['перелёт кадра, максимум, мс']} мс, ` +
+      `позиция после остановки ${result['позиция после остановки, максимум, мс']} мс, ` +
+      `недоезд ${result['недоезд элемента, максимум, px']} px`);
+  window.__s2 = result;
+  $('s2').disabled = false;
+}
+
+// ---------------------------------------------------------------- S3
+async function runS3() {
+  $('s3').disabled = true;
+  const CYCLES = 20;
+  log(`\n=== S3: ${CYCLES} циклов пауза/возобновление ===`);
+
+  const boxes = buildScene();
+  const tl = buildTimeline(boxes);
+
+  const ctx = new AudioContext();
+  await ctx.resume();
+  const track = await loadTrack(ctx, '../assets/tone-120s.wav');
+  const clock = new AudioClock(ctx, track.buffer);
+
+  // Пишем выход на аудиопотоке, а не на главном: ScriptProcessor роняет буферы
+  // под нагрузкой и сам создаёт разрывы, которые мы приняли бы за щелчки.
+  // Куски помечаем временем: во время паузы обработка стоит, и без меток
+  // склеенная запись даёт ступеньку на месте паузы — разрыв, которого
+  // в реальном звуке нет.
+  const workletSource = `
+    class Tap extends AudioWorkletProcessor {
+      process(inputs) {
+        const ch = inputs[0]?.[0];
+        if (ch) this.port.postMessage({ data: ch.slice(0), time: currentTime });
+        return true;
+      }
+    }
+    registerProcessor('tap', Tap);
+  `;
+  await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([workletSource], { type: 'text/javascript' })));
+  const tap = new AudioWorkletNode(ctx, 'tap');
+  const chunks = [];
+  tap.port.onmessage = (e) => chunks.push(e.data);
+  clock.connectTap(tap);
+
+  clock.start(0);
+  const positions = [];
+  let running = true;
+  const frame = () => {
+    if (!running) return;
+    const position = clock.position;
+    tl.currentTime = position * 1000;
+    positions.push(position);
+    requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
+
+  const jumps = [];
+  for (let cycle = 0; cycle < CYCLES; cycle++) {
+    const wait = 400 + Math.random() * 900;   // случайные моменты, как просило ТЗ
+    await new Promise((r) => setTimeout(r, wait));
+    const before = clock.position;
+    await clock.freezeAt(before);
+    await new Promise((r) => setTimeout(r, 150));
+    await clock.resumeFromFreeze();
+    jumps.push(Math.abs(clock.position - before) * 1000);
+  }
+  running = false;
+  clock.stop();
+
+  // Разбиваем запись на непрерывные участки: соседние куски считаются
+  // непрерывными, только если между ними ровно один квант обработки.
+  const quantum = 128 / ctx.sampleRate;
+  const runs = [];
+  let current = [];
+  for (let i = 0; i < chunks.length; i++) {
+    if (i > 0) {
+      const gap = chunks[i].time - chunks[i - 1].time;
+      if (gap > quantum * 1.5) { runs.push(current); current = []; }
+    }
+    current.push(chunks[i].data);
+  }
+  if (current.length) runs.push(current);
+
+  // Внутри участка ищем скачок сигнала: |x[n] - x[n-1]| резко больше типичного.
+  const allDeltas = [];
+  let totalSamples = 0;
+  const runSignals = runs.map((run) => {
+    const size = run.reduce((n, c) => n + c.length, 0);
+    const signal = new Float32Array(size);
+    let offset = 0;
+    for (const c of run) { signal.set(c, offset); offset += c.length; }
+    totalSamples += size;
+    for (let i = 1; i < size; i++) allDeltas.push(Math.abs(signal[i] - signal[i - 1]));
+    return signal;
+  });
+
+  const sorted = [...allDeltas].sort((a, b) => a - b);
+  const typical = sorted[Math.floor(sorted.length * 0.5)] || 1e-9;
+  const limit = Math.max(typical * 20, 0.05);
+  const clicks = allDeltas.reduce((n, d) => n + (d > limit ? 1 : 0), 0);
+
+  // Отдельная проверка возобновления: сразу после паузы сигнал обязан
+  // подниматься от нуля. Если нарастание работает, первый сэмпл участка мал.
+  const firstSamples = runSignals.slice(1).map((s) => Math.abs(s[0]));
+
+  await ctx.close();
+
+  const result = {
+    циклов: CYCLES,
+    'непрерывных участков записи': runs.length,
+    'записано сэмплов': totalSamples,
+    'типичный шаг сигнала': +typical.toFixed(6),
+    'порог щелчка': +limit.toFixed(6),
+    'разрывов внутри участков': clicks,
+    'громкость первого сэмпла после паузы, максимум': firstSamples.length
+      ? +Math.max(...firstSamples).toFixed(6) : null,
+    'скачок позиции при возобновлении, максимум, мс': +Math.max(...jumps).toFixed(3),
+  };
+  table('S3 — пауза и возобновление', Object.entries(result));
+  log(`S3: разрывов ${clicks}, максимальный скачок позиции ${result['скачок позиции при возобновлении, максимум, мс']} мс`);
+  window.__s3 = result;
+  $('s3').disabled = false;
+}
+
+$('s1').addEventListener('click', () => runS1().catch((e) => { log('ОШИБКА: ' + e.message); throw e; }));
+$('s2').addEventListener('click', () => runS2().catch((e) => { log('ОШИБКА: ' + e.message); throw e; }));
+$('s3').addEventListener('click', () => runS3().catch((e) => { log('ОШИБКА: ' + e.message); throw e; }));
+</script>
+</body>
+</html>

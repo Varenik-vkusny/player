@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S4 — вне гейта кликнуть физически нельзя</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 20px; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; cursor: pointer; }
+
+  /* Инвариант №3. Не «мы не вешаем обработчик», а физически недоступно.
+     Обработчики висят ВСЕГДА и на всех элементах — именно это и проверяется:
+     что они не срабатывают не из-за нашей аккуратности, а из-за браузера. */
+  #stage { position: relative; width: 900px; height: 300px; background: #16181d; }
+  #stage[data-gate="closed"] { pointer-events: none; }
+
+  .item {
+    position: absolute; width: 120px; height: 70px; border-radius: 8px;
+    display: grid; place-items: center; color: #fff; font-weight: 600;
+    background: #29335c; cursor: pointer;
+  }
+  .item.answer { background: #e4572e; }
+  #status { margin-top: 10px; font-weight: 600; }
+  #clicks { background: #111; color: #eee; padding: 10px; margin-top: 10px; min-height: 3em; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>S4 — блокировка взаимодействия вне гейта</h1>
+<p>Обработчики кликов висят на всех элементах постоянно. Разница только в
+<code>pointer-events</code> у сцены. Если вне гейта хоть один клик дойдёт до
+обработчика — инвариант №3 нарушен.</p>
+
+<p>
+  <button id="open">Открыть гейт</button>
+  <button id="close">Закрыть гейт</button>
+</p>
+
+<div id="stage" data-gate="closed"></div>
+<div id="status"></div>
+<pre id="clicks"></pre>
+
+<script type="module">
+const stage = document.getElementById('stage');
+const status = document.getElementById('status');
+const output = document.getElementById('clicks');
+
+window.__clicks = [];
+
+const ITEMS = [
+  { id: 'a', label: 'Вариант А', answer: true },
+  { id: 'b', label: 'Вариант Б', answer: true },
+  { id: 'c', label: 'Вариант В', answer: true },
+  { id: 'text', label: 'Текст' },
+  { id: 'image', label: 'Картинка' },
+  { id: 'shape', label: 'Фигура' },
+];
+
+ITEMS.forEach((item, i) => {
+  const el = document.createElement('div');
+  el.className = `item${item.answer ? ' answer' : ''}`;
+  el.id = `item-${item.id}`;
+  el.textContent = item.label;
+  el.style.left = `${20 + (i % 3) * 150}px`;
+  el.style.top = `${30 + Math.floor(i / 3) * 120}px`;
+  // Обработчик вешается один раз и НИКОГДА не снимается.
+  el.addEventListener('click', () => {
+    window.__clicks.push({ id: item.id, gate: stage.dataset.gate, at: performance.now() });
+    render();
+  });
+  stage.appendChild(el);
+});
+
+function render() {
+  status.textContent = `гейт: ${stage.dataset.gate} · зафиксировано кликов: ${window.__clicks.length}`;
+  output.textContent = window.__clicks.map((c) => `${c.id} (гейт был ${c.gate})`).join('\n') || 'кликов не было';
+}
+
+document.getElementById('open').addEventListener('click', () => { stage.dataset.gate = 'open'; render(); });
+document.getElementById('close').addEventListener('click', () => { stage.dataset.gate = 'closed'; render(); });
+
+window.__resetClicks = () => { window.__clicks = []; render(); };
+window.__setGate = (state) => { stage.dataset.gate = state; render(); };
+
+render();
+</script>
+</body>
+</html>

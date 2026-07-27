@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "meta": { "title": "Минимальный проект", "stageWidth": 1920, "stageHeight": 1080 },
+  "audio": {
+    "src": "audio/minimal.mp3",
+    "duration": 4,
+    "words": [
+      { "text": "Смотри", "start": 0.2, "end": 0.7, "source": "alignment", "confidence": 0.97 },
+      { "text": "как", "start": 0.75, "end": 0.95, "source": "alignment", "confidence": 0.95 },
+      { "text": "это", "start": 1, "end": 1.2, "source": "alignment", "confidence": 0.96 },
+      { "text": "работает", "start": 1.25, "end": 1.9, "source": "alignment", "confidence": 0.98 }
+    ]
+  },
+  "scene": {
+    "elements": [
+      {
+        "id": "title",
+        "type": "text",
+        "x": 120,
+        "y": 400,
+        "width": 1200,
+        "height": 160,
+        "rotation": 0,
+        "zIndex": 1,
+        "style": { "color": "#f5f7fa", "font-size": "72px" },
+        "content": "Как это работает"
+      }
+    ],
+    "cues": [
+      {
+        "id": "cue-title",
+        "at": { "kind": "word", "wordIndex": 3, "offset": 0, "anchor": { "text": "работает", "before": "это", "after": "" } },
+        "targetId": "title",
+        "animation": { "property": "opacity", "from": 0, "to": 1, "duration": 400, "ease": "inOutQuad" }
+      }
+    ],
+    "gates": []
+  }
+}
