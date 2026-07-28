@@ -12,6 +12,15 @@
  */
 import type { Cue, Element, Gate, Project, TimeRef } from '@player/core';
 
+import { removeElement as removeElementFromScene } from './elements.js';
+
+/**
+ * `freeId` живёт в `elements.ts` — это модуль про элементы, а не про весь
+ * проект. Реэкспорт здесь нужен ради обратной совместимости: редактор
+ * (`Editor.tsx`) уже импортирует `freeId` из этого файла для `addCue`/`addGate`.
+ */
+export { freeId } from './elements.js';
+
 export interface EditorState {
   readonly project: Project;
   /** Выделенный элемент. undefined — выделения нет. */
@@ -21,6 +30,8 @@ export interface EditorState {
 export type EditorAction =
   | { readonly type: 'select'; readonly id: string | undefined }
   | { readonly type: 'replaceElement'; readonly element: Element }
+  | { readonly type: 'addElement'; readonly element: Element }
+  | { readonly type: 'removeElement'; readonly id: string }
   | { readonly type: 'addCue'; readonly cue: Cue }
   | { readonly type: 'addGate'; readonly gate: Gate }
   | { readonly type: 'moveMark'; readonly kind: MarkKind; readonly id: string; readonly at: TimeRef }
@@ -57,6 +68,26 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const next = elements.slice();
       next[index] = action.element;
       return withScene(state, { elements: next });
+    }
+
+    case 'addElement': {
+      if (state.project.scene.elements.some((element) => element.id === action.element.id)) {
+        throw new Error(`Элемент «${action.element.id}» уже есть: идентификаторы обязаны быть уникальны`);
+      }
+      // Новый элемент сразу выделен: автор только что его создал и,
+      // скорее всего, тут же начнёт править — незачем кликать по нему заново.
+      const next = withScene(state, { elements: [...state.project.scene.elements, action.element] });
+      return { ...next, selectedId: action.element.id };
+    }
+
+    case 'removeElement': {
+      // Каскад по cues и сохранение ссылки на неизменившиеся массивы —
+      // забота elements.ts, а не редьюсера.
+      const { scene } = removeElementFromScene(state.project.scene, action.id);
+      const next = withScene(state, scene);
+      if (state.selectedId !== action.id) return next;
+      // Удалили то, что было выделено, — выделять больше нечего.
+      return { ...next, selectedId: undefined };
     }
 
     case 'addCue': {
@@ -138,18 +169,4 @@ function replaceAt<T extends { id: string }>(
 
 function hasElement(project: Project, id: string): boolean {
   return project.scene.elements.some((element) => element.id === id);
-}
-
-/**
- * Свободный идентификатор вида «gate-3».
- *
- * Не случайный: одинаковый проект и одинаковые действия обязаны давать
- * одинаковый файл, иначе сравнить два сохранения глазами невозможно.
- */
-export function freeId(prefix: string, taken: readonly { id: string }[]): string {
-  const used = new Set(taken.map((item) => item.id));
-  for (let index = 1; ; index += 1) {
-    const candidate = `${prefix}-${index}`;
-    if (!used.has(candidate)) return candidate;
-  }
 }
