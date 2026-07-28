@@ -3,9 +3,13 @@
   "compilerOptions": {
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": [],
+    // Стенд тянет редактор, а тот на React: без этого флага tsc не разберёт
+    // его .tsx, дойдя до них по paths.
+    "jsx": "react-jsx",
     "paths": {
       "@player/core": ["../../packages/core/src/index.ts"],
-      "@player/player": ["../../packages/player/src/index.ts"]
+      "@player/player": ["../../packages/player/src/index.ts"],
+      "@player/editor": ["../../packages/editor/src/index.ts"]
     }
   },
   "include": ["src/**/*.ts"]

@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    // Автоматический рантайм: JSX превращается в импорт из react/jsx-runtime,
+    // отдельный `import React` не нужен. Vite читает этот флаг и настраивает
+    // esbuild сам, поэтому @vitejs/plugin-react не требуется — он нужен ради
+    // Fast Refresh, а не ради сборки.
+    "jsx": "react-jsx",
+    // Путь только ВНИЗ по направлению зависимостей: editor → player → core.
+    // Обратного отображения нет ни здесь, ни ниже, поэтому обратный импорт
+    // не скомпилируется (инвариант №6).
+    "paths": {
+      "@player/core": ["../core/src/index.ts"],
+      "@player/player": ["../player/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"]
+}

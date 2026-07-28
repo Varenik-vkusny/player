@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<title>Предпросмотр сцены — оснастка скриншотных тестов</title>
+<!--
+  Свой шрифт вместо системного. Без него набор шрифтов Windows против набора
+  Ubuntu делает эталоны недетерминированными по причине, не имеющей отношения
+  к коду: фикстуры просят Georgia и system-ui, а на CI нет ни того, ни другого
+  (ADR-006). Файл подменяет оба семейства на одно самохостящееся.
+-->
+<link rel="stylesheet" href="/fonts/test-fonts.css">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #07090c; overflow: hidden; }
+  /* Контейнер занимает вьюпорт целиком: снимок делается по нему, поэтому его
+     размер обязан зависеть только от вьюпорта, а не от содержимого. */
+  #stage-host { position: fixed; inset: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="stage-host"></div>
+<script type="module" src="/src/preview.ts"></script>
+</body>
+</html>

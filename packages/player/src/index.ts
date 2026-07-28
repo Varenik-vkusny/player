@@ -11,6 +11,7 @@ export { loadProject, ProjectLoadError, type Project } from '@player/core';
 
 export { AudioClock, loadTrack, type ClockDiagnostics, type TrackLoad } from './clock.js';
 export {
+  applyElement,
   applyFit,
   fitStage,
   renderScene,
@@ -19,6 +20,7 @@ export {
   type Fit,
   type StageSize,
 } from './render.js';
+export { ScenePreview, segmentOf, type Segment } from './preview.js';
 export {
   buildTimeline,
   disableEngineMainLoop,

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:,">
+<title>Редактор</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #07090c; }
+  /* Редактор раскладывается сам и занимает контейнер целиком. */
+  #editor-host { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="editor-host"></div>
+<script type="module" src="/src/editor.ts"></script>
+</body>
+</html>

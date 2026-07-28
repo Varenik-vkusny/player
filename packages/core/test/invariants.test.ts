@@ -78,6 +78,53 @@ describe('инвариант №6: направление зависимосте
   });
 });
 
+describe('инвариант №6: редактор снаружи никому не виден', () => {
+  // Только исходники. Тестам импортировать vitest положено, и включать
+  // их в проверку значило бы либо держать список исключений, либо ослабить
+  // саму проверку.
+  const EDITOR_DIR = join(ROOT, 'packages', 'editor', 'src');
+
+  it('редактор существует: иначе следующие проверки зелены впустую', () => {
+    // Тест, который проходит из-за отсутствия предмета проверки, хуже
+    // отсутствующего теста: он создаёт ощущение охраны.
+    expect(sourceFiles(EDITOR_DIR).length).toBeGreaterThan(0);
+  });
+
+  it('редактор не тянет ничего, кроме плеера, ядра и React', () => {
+    // Список закрыт намеренно. Он охраняет сразу два закона: направление
+    // зависимостей (№6) и единственность рендера (№5). Вторая реализация
+    // отрисовки сцены не может появиться из воздуха — она придёт вместе
+    // с зависимостью вроде konva или moveable, и тогда этот тест покраснеет
+    // раньше, чем кто-нибудь заметит расхождение картинок.
+    const allowed = new Set(['@player/core', '@player/player', 'react', 'react-dom/client']);
+    const offenders: string[] = [];
+
+    for (const file of sourceFiles(EDITOR_DIR)) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+        const source = match[1]!;
+        // Относительные пути внутри пакета никого не волнуют.
+        if (source.startsWith('.')) continue;
+        if (!allowed.has(source)) offenders.push(`${file.replace(ROOT, '')}: ${source}`);
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
+describe('инвариант №4: перемотки у зрителя не существует', () => {
+  it('у Player нет ни seek, ни pause', () => {
+    // Гарантия построена на том, что перематывать нечем. AudioClock перемотку
+    // умеет — она нужна редактору, — но наружу через Player она попасть
+    // не должна: иначе возобновление после гейта перестанет быть
+    // единственным способом продолжить.
+    const text = readFileSync(join(ROOT, 'packages', 'player', 'src', 'player.ts'), 'utf8');
+    const found = [...text.matchAll(/^\s{2}(?:async\s+)?(seek|pause)\s*\(/gm)].map((m) => m[1]);
+    expect(found).toEqual([]);
+  });
+});
+
 describe('инвариант №7: версия схемы и миграции', () => {
   it('для каждой версии ниже текущей есть миграция', () => {
     const missing: number[] = [];

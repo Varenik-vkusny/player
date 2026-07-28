@@ -1,0 +1,20 @@
+{
+  // Юнит-тесты тоже проверяются типами.
+  //
+  // Отдельный конфиг, а не расширение include у пакетов: у core в tsconfig
+  // намеренно стоит `types: []` и lib без DOM, потому что инвариант №6
+  // запрещает ему знать про браузер. Тестам же нужен node:fs — тест
+  // инвариантов читает исходники с диска. Смешать эти два набора в одном
+  // конфиге значило бы открыть core доступ к тому, что ему запрещено.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "paths": {
+      "@player/core": ["./packages/core/src/index.ts"],
+      "@player/player": ["./packages/player/src/index.ts"],
+      "@player/editor": ["./packages/editor/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/test/**/*.ts", "packages/*/test/**/*.tsx"]
+}

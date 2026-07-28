@@ -43,7 +43,20 @@ export function fitStage(hostWidth: number, hostHeight: number, stage: StageSize
   };
 }
 
-function applyElement(node: HTMLElement, element: Element): void {
+/**
+ * Переносит описание элемента в inline-стиль узла.
+ *
+ * Публичная намеренно, и это усиление инварианта №5, а не послабление.
+ * Редактору нужно двигать один элемент за жест, а `renderScene` пересобирает
+ * контейнер целиком. Без этой функции наружу редактор был бы вынужден завести
+ * собственное преобразование «Element → CSS» — то есть вторую реализацию
+ * рендера. Здесь она остаётся одна на оба хоста.
+ *
+ * Узел приводится к состоянию, описанному схемой. Значения, накрученные
+ * поверх анимациями (transform, opacity, filter), при этом стираются:
+ * вызывающий обязан заново выставить время таймлайна. См. ScenePreview.
+ */
+export function applyElement(node: HTMLElement, element: Element): void {
   node.className = `scene-el scene-${element.type}`;
   node.dataset['id'] = element.id;
 

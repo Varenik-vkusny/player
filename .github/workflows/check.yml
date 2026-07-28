@@ -26,4 +26,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Браузеры Playwright ставятся отдельным шагом, а не постустановочным
+      # скриптом: pnpm 10 по умолчанию их не выполняет. Без этой строки
+      # pnpm check падал бы на e2e с «browser not found» — то есть по причине
+      # окружения, которую легко списать на продукт.
+      - run: pnpm exec playwright install --with-deps chromium
+
       - run: pnpm check
