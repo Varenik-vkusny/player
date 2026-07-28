@@ -198,6 +198,48 @@ export class AudioClock {
     this.start(at);
   }
 
+  /**
+   * Перемотка на произвольную позицию.
+   *
+   * Существует ради редактора: автор таскает головку по дорожке, и без этого
+   * ему пришлось бы заводить второй транспорт рядом с нашим — ровно та
+   * причина, по которой отвергнут wavesurfer.js (docs/research/audio.md).
+   * Реализация одна, здесь, с той же симметричной рампой: собственная
+   * перемотка в редакторе вернула бы щелчок, разобранный в S3.
+   *
+   * У ЗРИТЕЛЯ перемотки не существует, и это не забыто: класс Player этот
+   * метод не вызывает, а тест инвариантов следит, чтобы у Player не появилось
+   * ни seek, ни pause. Возобновление после гейта по-прежнему идёт через
+   * resumeFromFreeze с записанной позиции.
+   */
+  seek(position: number): void {
+    if (!(position >= 0 && position <= this.#buffer.duration)) {
+      throw new RangeError(`Позиция ${position} вне дорожки [0, ${this.#buffer.duration}]`);
+    }
+
+    const wasRunning = this.isRunning;
+    if (this.#source) {
+      this.#source.stop();
+      this.#source.disconnect();
+      this.#source = null;
+    }
+
+    if (wasRunning) {
+      // Новый источник и новый якорь: одноразовость AudioBufferSourceNode
+      // здесь не ограничение, а то, что делает перемотку точной.
+      this.#anchor = null;
+      this.#frozenPosition = null;
+      this.start(position);
+      return;
+    }
+
+    // Стоим — значит достаточно переписать замороженную позицию. Контекст
+    // при этом не трогаем: он может быть усыплён паузой, и будить его,
+    // чтобы просто передвинуть головку, незачем.
+    this.#anchor = null;
+    this.#frozenPosition = position;
+  }
+
   stop(): void {
     if (this.#source) {
       this.#source.stop();

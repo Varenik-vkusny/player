@@ -3506,6 +3506,15 @@ var To = class {
 		let e = this.#o;
 		await this.#e.resume(), this.#o = null, this.start(e);
 	}
+	seek(e) {
+		if (!(e >= 0 && e <= this.#t.duration)) throw RangeError(`Позиция ${e} вне дорожки [0, ${this.#t.duration}]`);
+		let t = this.isRunning;
+		if (this.#i &&= (this.#i.stop(), this.#i.disconnect(), null), t) {
+			this.#a = null, this.#o = null, this.start(e);
+			return;
+		}
+		this.#a = null, this.#o = e;
+	}
 	stop() {
 		this.#i &&= (this.#i.stop(), this.#i.disconnect(), null), this.#a = null, this.#o = null;
 	}
@@ -4790,6 +4799,7 @@ function gl(e, t, n, r) {
 //#region packages/player/src/preview.ts
 function _l(e) {
 	return {
+		src: e.audio.src,
 		words: e.audio.words,
 		duration: e.audio.duration,
 		scene: e.scene,

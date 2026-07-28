@@ -1,23 +1,32 @@
 /**
- * Корень редактора.
+ * Корень редактора: раскладка и состояние.
  *
- * Держит редактируемый проект, выделение и момент, на котором показана сцена.
- * Всё остальное — производное от этих трёх величин.
+ * Держит редактируемый проект и выделение. Всё остальное — производное:
+ * момент на дорожке приходит от транспорта, геометрия элементов от жестов,
+ * картинка от предпросмотра из плеера.
+ *
+ * Компоненты ниже — только вид. Логика живёт в модулях, которые про React
+ * не знают: state/project (редьюсер), stage/geometry и stage/transform
+ * (координаты и жесты), track/transport (звук), track/peaks (волна).
+ * Каждый из них покрыт юнитами. Переписать интерфейс — значит заменить
+ * компоненты и styles.ts, не трогая ни одной проверенной строчки.
  */
 import {
   useCallback,
   useLayoutEffect,
   useMemo,
   useReducer,
-  useState,
   type ReactElement,
 } from 'react';
 
 import type { Element, Project } from '@player/core';
 import { segmentOf, type ScenePreview } from '@player/player';
 
+import { Inspector } from './panels/Inspector.js';
 import { editorReducer, initialState } from './state/project.js';
 import { StageView } from './stage/StageView.js';
+import { TrackView } from './track/TrackView.js';
+import { useTransport } from './track/useTransport.js';
 
 export interface EditorProps {
   project: Project;
@@ -27,16 +36,18 @@ export interface EditorProps {
 
 export function Editor({ project, onReady }: EditorProps): ReactElement {
   const [state, dispatch] = useReducer(editorReducer, project, initialState);
-  const [positionSeconds, setPositionSeconds] = useState(0);
 
   // Единственная точка, через которую редактор видит дорожку и сцену.
   // Когда проект станет графом сегментов, поменяется segmentOf, а не это
   // место и не всё, что ниже (docs/planning.md §5а).
   const segment = useMemo(() => segmentOf(state.project), [state.project]);
 
-  const selected = state.selectedId === undefined
-    ? undefined
-    : segment.scene.elements.find((element) => element.id === state.selectedId);
+  const transport = useTransport(segment.src, segment.duration);
+
+  const selected =
+    state.selectedId === undefined
+      ? undefined
+      : segment.scene.elements.find((element) => element.id === state.selectedId);
 
   const handleSelect = useCallback((id: string | undefined) => {
     dispatch({ type: 'select', id });
@@ -68,7 +79,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   return (
     <div className="ed-root">
       <header className="ed-header">
-        <strong>{state.project.meta.title}</strong>
+        <strong className="ed-title">{state.project.meta.title}</strong>
         <span className="ed-muted">
           {segment.scene.elements.length} элементов · {segment.scene.cues.length} анимаций ·{' '}
           {segment.scene.gates.length} гейтов
@@ -80,32 +91,21 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         </span>
       </header>
 
-      <StageView
-        segment={segment}
-        positionSeconds={positionSeconds}
-        selectedId={state.selectedId}
-        onSelect={handleSelect}
-        onElementChange={handleElementChange}
-        onReady={handleReady}
-      />
-
-      {/*
-        Временная перемотка на время слоя взаимодействия. Настоящая дорожка
-        со звуком и волной приходит следующим срезом и заменит этот ввод.
-      */}
-      <footer className="ed-footer">
-        <input
-          className="ed-seek"
-          type="range"
-          min={0}
-          max={segment.duration}
-          step={0.01}
-          value={positionSeconds}
-          aria-label="Момент на дорожке"
-          onChange={(event) => setPositionSeconds(Number(event.target.value))}
+      <div className="ed-main">
+        <StageView
+          segment={segment}
+          positionSeconds={transport.positionSeconds}
+          selectedId={state.selectedId}
+          onSelect={handleSelect}
+          onElementChange={handleElementChange}
+          onReady={handleReady}
         />
-        <code className="ed-time">{positionSeconds.toFixed(2)}</code>
-      </footer>
+        <aside className="ed-inspector" aria-label="Свойства элемента">
+          <Inspector element={selected} onChange={handleElementChange} />
+        </aside>
+      </div>
+
+      <TrackView transport={transport} words={segment.words} />
     </div>
   );
 }

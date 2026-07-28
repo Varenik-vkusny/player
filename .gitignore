@@ -46,3 +46,4 @@ scripts/playground-smoke.png
 
 # логи дев-сервера, запущенного вручную
 vite*.log
+.gstack/

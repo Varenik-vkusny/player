@@ -33,6 +33,8 @@ import { buildTimeline, disableEngineMainLoop, type DrivenTimeline } from './tim
  * а не всё, что стоит выше.
  */
 export interface Segment {
+  /** Путь к озвучке этого отрезка. */
+  readonly src: string;
   readonly words: readonly Word[];
   readonly duration: number;
   readonly scene: Scene;
@@ -48,6 +50,7 @@ export interface Segment {
  */
 export function segmentOf(project: Project): Segment {
   return {
+    src: project.audio.src,
     words: project.audio.words,
     duration: project.audio.duration,
     scene: project.scene,

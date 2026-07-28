@@ -21,20 +21,42 @@ export const EDITOR_STYLES = `
   user-select: none;
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* Редактор занимает окно и не прокручивается целиком: прокрутка есть
+     внутри панелей, а сама раскладка обязана оставаться на месте.
+     Без этого длинное сообщение об ошибке на дорожке раздвигало сетку
+     шире окна — у детей grid и flex минимальный размер по умолчанию
+     равен содержимому, — и сцена уезжала за край вместе с масштабом. */
+  overflow: hidden;
   background: #07090c;
   color: #e6edf5;
   font: 14px/1.5 system-ui, sans-serif;
 }
 
+/* Шапка обязана иметь ПОСТОЯННУЮ высоту.
+   Иначе при выделении элемента в ней появляется строка с координатами,
+   переносится на вторую строку на узком окне, шапка вырастает — и сцена
+   уезжает вниз ровно в тот момент, когда автор взялся за элемент.
+   Замерено: сдвиг 21 px на экране, то есть 119 пикселей сцены при
+   масштабе 0.177. Элемент прыгает под курсором. */
 .ed-header {
   display: flex;
   align-items: baseline;
+  flex-wrap: nowrap;
   gap: 16px;
   padding: 10px 16px;
   border-bottom: 1px solid #1c242f;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
-.ed-muted { color: #7d8fa5; }
+/* Сжимаются подписи, а не заголовок: имя проекта важнее счётчиков. */
+.ed-title { flex: 0 0 auto; }
+.ed-muted {
+  color: #7d8fa5;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* Сцена вписывается в эту область. Overflow скрыт, потому что летербокс
    считается от размеров именно этого узла. */
@@ -85,20 +107,251 @@ export const EDITOR_STYLES = `
   margin-left: auto;
   color: #7d8fa5;
   font-variant-numeric: tabular-nums;
+  /* Тот же закон, что и у шапки: показания выделения не имеют права
+     менять раскладку. Полный текст остаётся в разметке для теста
+     и экранного диктора. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Жест не должен превращаться в прокрутку или зум страницы. */
 .ed-stage-host { touch-action: none; }
 
-.ed-footer {
+/* Середина: сцена и панель свойств. Панель фиксированной ширины, сцена
+   забирает остальное. min-height: 0 обязателен — без него содержимое
+   не даёт грид-строке сжаться, и дорожка уезжает за нижний край окна. */
+.ed-main {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  min-height: 0;
+  min-width: 0;
+  border-bottom: 1px solid #1c242f;
+}
+
+.ed-inspector { border-left: 1px solid #1c242f; }
+
+/* Дорожка. */
+.ed-track {
+  display: grid;
+  gap: 8px;
+  padding: 10px 16px 12px;
+  background: #0b0f14;
+  min-width: 0;
+}
+
+.ed-transport {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 10px 16px;
-  border-top: 1px solid #1c242f;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ed-play {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #2c3a4d;
+  border-radius: 8px;
+  background: #1b2430;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.ed-play:hover:not(:disabled) { border-color: #4c8dff; }
+.ed-play:disabled { opacity: 0.4; cursor: default; }
+
+.ed-clock { color: #7d8fa5; font-variant-numeric: tabular-nums; }
+
+/* Сообщение об ошибке не имеет права двигать раскладку. Оно длинное
+   и содержит путь к файлу, а флекс-строка по умолчанию расширяется
+   под содержимое ребёнка. Обрезаем многоточием — полный текст всё равно
+   остаётся в разметке и доступен тесту и экранному диктору. */
+.ed-failure {
+  color: #ff8a6b;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Полоса с волной. Всё внутри позиционируется от неё, поэтому relative
+   здесь несущий, а не косметический. */
+.ed-lane {
+  position: relative;
+  height: 72px;
+  cursor: pointer;
+  /* Жест перемотки не должен превращаться в прокрутку страницы. */
+  touch-action: none;
+}
+
+.ed-ticks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ed-tick {
+  position: absolute;
+  top: 2px;
+  padding-left: 4px;
+  border-left: 1px solid #2c3a4d;
+  font-size: 10px;
+  color: #55637a;
+  font-variant-numeric: tabular-nums;
+  /* Подпись не должна ловить курсор: под ней перемотка. */
+  pointer-events: none;
+}
+
+/* Головка. Ширина в один пиксель и сдвиг на полпикселя влево, чтобы линия
+   стояла ровно на своей секунде, а не правее её. */
+.ed-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  margin-left: -0.5px;
+  background: #e4572e;
+  pointer-events: none;
+}
+
+/* Строка транскрипта. Одна строка с прокруткой: расти в высоту она
+   не имеет права — иначе дорожка съест сцену. */
+.ed-words {
+  margin: 0;
+  max-height: 3.4em;
+  overflow: auto;
+  color: #55637a;
+  font-size: 12px;
+  line-height: 1.7;
+  user-select: text;
+}
+
+.ed-word-active {
+  color: #e6edf5;
+  background: #1b2430;
+  border-radius: 3px;
+}
+
+/* Волна.
+
+   display: block убирает щель под канвой: по умолчанию она inline и стоит
+   на базовой линии строки, поэтому под ней остаётся место под нижние
+   выносные элементы — полоса выглядит смещённой вверх без единой причины
+   в разметке.
+
+   Фон в CSS, а не заливкой по канве: он не меняется от кадра к кадру,
+   а перерисовка идёт каждый кадр воспроизведения.
+
+   Размер здесь не задаётся вовсе. Он приходит компоненту пропсами и в тех
+   же числах уходит в размер битмапа; правило в CSS стало бы вторым хозяином
+   ширины, и волна расползлась бы относительно собственной картинки. */
+.ed-waveform {
+  display: block;
   background: #0b0f14;
 }
 
-.ed-seek { flex: 1; }
-.ed-time { font-variant-numeric: tabular-nums; color: #7d8fa5; }
+/* Панель свойств.
+
+   Своего места в раскладке не занимает и не назначает: где стоит панель,
+   решает тот, кто её вставляет. Здесь только внутреннее устройство. */
+.ed-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 14px;
+  background: #0b0f14;
+  /* Прокручивается сама. Длинный текст элемента не имеет права растягивать
+     редактор и выдавливать сцену. */
+  overflow: auto;
+  min-height: 0;
+}
+
+.ed-insp-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7d8fa5;
+}
+
+.ed-insp-body { display: grid; gap: 14px; }
+
+/* Одна колонка: идентификатор, тип, содержимое. */
+.ed-insp-block { display: grid; gap: 8px; }
+
+/* Две колонки: x/y, ширина/высота, поворот/слой встают парами — так видно,
+   что это пары, и панель не растёт в высоту на ровном месте. */
+.ed-insp-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 10px;
+}
+
+/* min-width: 0 обязателен: без него поле в колонке 1fr не сжимается ниже
+   своей ширины по умолчанию и выдавливает соседнее за край панели. */
+.ed-insp-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ed-insp-label { font-size: 11px; color: #7d8fa5; }
+
+.ed-insp-input,
+.ed-insp-area {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid #1c242f;
+  border-radius: 4px;
+  background: #07090c;
+  color: #e6edf5;
+  font: inherit;
+  /* Моноширинные цифры: иначе числа дёргаются по ширине на каждой правке
+     и на каждом кадре перетаскивания элемента мышью. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Поля правятся текстом, в отличие от остального редактора, где выделение
+   мешает жестам. */
+.ed-insp-input,
+.ed-insp-area { user-select: text; }
+
+/* Обводку фокуса браузер рисует свою, и мы её не убираем: по панели ходят
+   с клавиатуры, а потерянный фокус дороже выигрыша в виде. */
+.ed-insp-input:focus,
+.ed-insp-area:focus { border-color: #4c8dff; }
+
+/* Значение не разобралось в число или не проходит по схеме — наружу не ушло
+   ничего. Это обязано быть видно: молчание автор примет за успешную правку.
+   Единственный цвет вне палитры редактора, и ровно потому, что ошибка не
+   должна читаться как обычное состояние. */
+.ed-insp-input[aria-invalid='true'] { border-color: #ff6b6b; }
+
+/* readonly, а не disabled: значение остаётся фокусируемым и копируемым. */
+.ed-insp-input[readonly] {
+  background: transparent;
+  color: #7d8fa5;
+  cursor: default;
+}
+
+.ed-insp-area {
+  min-height: 76px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.ed-insp-note {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #7d8fa5;
+}
+
+.ed-insp-empty {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
 `;

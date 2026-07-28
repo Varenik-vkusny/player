@@ -94,6 +94,20 @@ async function inlineGeometry(page: Page, id: string): Promise<Record<string, st
   }, id);
 }
 
+/**
+ * Перемотка так, как это делает человек: нажатием по дорожке.
+ *
+ * Через дорожку, а не подстановкой значения в состояние: перевод «пиксель
+ * по дорожке → секунда» — часть продукта, и проверять его надо тем же
+ * способом, которым им пользуются.
+ */
+async function seekTrack(page: Page, seconds: number, duration: number): Promise<void> {
+  const lane = page.getByTestId('track-lane');
+  const box = await lane.boundingBox();
+  if (!box) throw new Error('дорожка не видна');
+  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2);
+}
+
 async function drag(page: Page, from: { x: number; y: number }, dx: number, dy: number): Promise<void> {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -141,7 +155,9 @@ test.describe('редактор: выделение и перетаскиван�
     // карточке выделял невидимую точку — геометрия про прозрачность
     // не знает, а знать обязан слой выделения.
     await openEditor(page, 'demo');
-    await page.locator('.ed-seek').fill('24');
+    // Длительность demo.json — 48.6 с; на 24-й секунде карточка уже
+    // проявилась, а точка ещё нет.
+    await seekTrack(page, 24, 48.6);
 
     const visible = await page.evaluate(() => {
       const dot = document.querySelector<HTMLElement>('[data-id="dot"]');
