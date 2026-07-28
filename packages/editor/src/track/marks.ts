@@ -1,0 +1,195 @@
+/**
+ * Привязка меток дорожки к словам транскрипта.
+ *
+ * Инвариант №10: метки времени привязаны к словам, а не к миллисекундам;
+ * секунды — только там, где слова нет. Смысл продуктовый (ADR-008): автор
+ * ставит анимацию на слово «энергия», потом правит соседнее предложение или
+ * перегенерирует озвучку другим голосом. Метка обязана остаться на слове,
+ * а не уехать вместе со сдвигом дорожки.
+ *
+ * Здесь принимается ровно одно решение: чем становится жест «поставить метку
+ * на секунде t» — ссылкой на слово или ссылкой на секунду. Дальше метка живёт
+ * как `TimeRef`, и обратно в секунды её переводит только `core`.
+ *
+ * Модуль чистый: ни DOM, ни React. Секунду вызывающий добывает из дорожки сам
+ * (`TrackView` переводит `clientX` в время), а сюда отдаёт готовое число —
+ * поэтому правила привязки проверяются в node без браузера.
+ */
+import { buildAnchor, resolveTimeRef } from '@player/core';
+import type { TimeRef, Word } from '@player/core';
+
+/** Куда попала метка, поставленная на секунду t. */
+export type MarkTarget =
+  | { readonly kind: 'word'; readonly wordIndex: number; readonly offset: number }
+  | { readonly kind: 'seconds' };
+
+/**
+ * Насколько далеко от слова метка всё ещё считается «на слове», секунды.
+ *
+ * Нижняя граница задана измерением, а не вкусом. S5: MFA даёт p95 ошибки
+ * границы слова 30–90 мс, а тайминги `edge-tts` систематически опережают
+ * реальный звук на 43–95 мс. То есть сохранённая граница слова и то, что автор
+ * слышит, расходятся на величину порядка 0.1 с — при пороге в те же 0.1 с
+ * попадание «на слово» стало бы делом везения.
+ *
+ * Вторая нижняя граница — то, что авторы делают руками: в `demo.json` гейты
+ * стоят за 0.15 и 0.2 с до начала слова, то есть срабатывают чуть раньше, чем
+ * оно прозвучит. Порог обязан быть строго больше самого крупного осмысленного
+ * смещения: ровно 0.2 не годится ещё и арифметически — 44.388 − 44.188 даёт
+ * 0.20000000000000284, и порог 0.2 отверг бы ровно тот случай, ради которого
+ * он выбран.
+ *
+ * Верхнюю границу задают настоящие паузы. В `demo.json` межфразовые паузы —
+ * 0.84–0.90 с; при 0.25 с с каждой стороны в середине любой из них остаётся
+ * не меньше 0.34 с, где метка честно останется секундной. Щели короче 0.5 с
+ * (запятые и вдохи, 0.10–0.31 с в той же фикстуре) притягиваются целиком —
+ * и это правильно: там нет паузы, на которую автор мог бы целиться.
+ */
+export const DEFAULT_SNAP_SECONDS = 0.25;
+
+/**
+ * Слово, внутри которого лежит секунда, или −1.
+ *
+ * Интервал полуоткрытый: `start <= t < end`. Поэтому граница двух соседних
+ * слов принадлежит следующему, а не предыдущему, и на стыке метка получает
+ * `offset` 0, а не длину предыдущего слова.
+ */
+export function wordAt(words: readonly Word[], seconds: number): number {
+  assertSeconds(seconds, 'Секунда метки');
+  // Линейный поиск: сотня слов на дорожку, и ровно так же ищет слово под
+  // головкой TrackView. Бинарный поиск потребовал бы гарантии сортировки,
+  // которой у схемы нет.
+  return words.findIndex((word) => seconds >= word.start && seconds < word.end);
+}
+
+/**
+ * Решает, к чему привязать метку, поставленную на секунду t.
+ *
+ * Порядок правил не переставляется: попадание внутрь слова сильнее притяжения.
+ * Иначе метка, поставленная в конце длинного слова, уезжала бы на начало
+ * следующего — соседнее слово там ближе, чем начало собственного.
+ */
+export function chooseTarget(
+  words: readonly Word[],
+  seconds: number,
+  snapSeconds: number = DEFAULT_SNAP_SECONDS,
+): MarkTarget {
+  assertSeconds(seconds, 'Секунда метки');
+  assertSnap(snapSeconds);
+
+  const insideIndex = wordAt(words, seconds);
+  const inside = insideIndex >= 0 ? words[insideIndex] : undefined;
+  if (inside) {
+    return { kind: 'word', wordIndex: insideIndex, offset: seconds - inside.start };
+  }
+
+  const nearest = nearestWord(words, seconds);
+  // Пустой транскрипт: привязываться не к чему. Схема (ADR-008) объявляет
+  // `kind: 'word'` при пустом `words` невалидным, поэтому построить такую
+  // ссылку должно быть невозможно, а не «поймается валидацией потом».
+  if (!nearest) return { kind: 'seconds' };
+  // Далеко от любого слова — например длинная пауза между фразами. Секунды
+  // здесь не запасной вариант, а точный ответ: слова в этом месте нет.
+  if (nearest.distance > snapSeconds) return { kind: 'seconds' };
+
+  // Смещение считается от начала слова и может быть отрицательным: метка
+  // перед словом — это «сработать чуть раньше, чем оно прозвучит», а не
+  // «привязаться к предыдущему».
+  return { kind: 'word', wordIndex: nearest.index, offset: seconds - nearest.word.start };
+}
+
+/** Строит готовый `TimeRef` для метки на секунде t. */
+export function timeRefAt(
+  words: readonly Word[],
+  seconds: number,
+  snapSeconds: number = DEFAULT_SNAP_SECONDS,
+): TimeRef {
+  const target = chooseTarget(words, seconds, snapSeconds);
+  if (target.kind === 'seconds') return { kind: 'seconds', t: seconds };
+
+  return {
+    kind: 'word',
+    wordIndex: target.wordIndex,
+    offset: target.offset,
+    // Якорь только через core. Собранный здесь руками разошёлся бы
+    // с нормализацией (строчные, ё → е, без пунктуации), и `resolveTimeRef`
+    // отверг бы собственную же метку с требованием перепривязки.
+    anchor: buildAnchor(words, target.wordIndex),
+  };
+}
+
+/**
+ * Позиция метки на дорожке в секундах.
+ *
+ * Тонкая обёртка над `resolveTimeRef`: переводить ссылку в секунды разрешено
+ * только в core, и вся дорожка ходит туда через эту дверь. Обёртка добавляет
+ * ровно одно — проверку самой ссылки. Без неё `wordIndex: 1.5` дал бы от core
+ * сообщение «слово №1.5 отсутствует», то есть обвинение транскрипта в том,
+ * что испорчена метка.
+ *
+ * Ссылка на несуществующее или подменившееся слово падает `TimeRefError`
+ * из core — это не вырожденный вход, а состояние «нужна перепривязка»,
+ * и гасить его здесь нельзя.
+ */
+export function markSeconds(ref: TimeRef, words: readonly Word[]): number {
+  if (ref.kind === 'seconds') {
+    assertSeconds(ref.t, 'Секунда метки');
+  } else {
+    if (!Number.isInteger(ref.wordIndex) || ref.wordIndex < 0) {
+      throw new RangeError(
+        `Индекс слова должен быть целым неотрицательным числом, получено ${String(ref.wordIndex)}`,
+      );
+    }
+    if (!Number.isFinite(ref.offset)) {
+      throw new RangeError(`Смещение метки должно быть конечным числом, получено ${String(ref.offset)}`);
+    }
+  }
+
+  // `resolveTimeRef` обрезает результат снизу нулём. Здесь эта обрезка никогда
+  // не срабатывает: секунда метки неотрицательна по проверке выше, а смещение
+  // строилось как `seconds - word.start`, поэтому сумма возвращает ту же
+  // секунду. Круговой перевод точен, а не «почти точен».
+  return resolveTimeRef(ref, words);
+}
+
+/** Ближайшее к секунде слово вместе с расстоянием до него. `undefined` — слов нет. */
+function nearestWord(
+  words: readonly Word[],
+  seconds: number,
+): { index: number; word: Word; distance: number } | undefined {
+  let best: { index: number; word: Word; distance: number } | undefined;
+  for (const [index, word] of words.entries()) {
+    const distance = distanceTo(word, seconds);
+    // Сравнение нестрогое намеренно: ровно посередине щели побеждает слово,
+    // которое идёт позже. Это то же правило, что и на стыке двух слов, и оно
+    // совпадает с намерением автора — метка в паузе ставится в ожидании
+    // следующего слова, а не вдогонку предыдущему.
+    if (best === undefined || distance <= best.distance) best = { index, word, distance };
+  }
+  return best;
+}
+
+/** Расстояние от секунды до слова: ноль внутри, иначе до ближайшей границы. */
+function distanceTo(word: Word, seconds: number): number {
+  if (seconds < word.start) return word.start - seconds;
+  if (seconds > word.end) return seconds - word.end;
+  return 0;
+}
+
+function assertSeconds(seconds: number, what: string): void {
+  // `Number.isFinite` не приводит типы, поэтому строка '1.2' сюда не пролезет.
+  if (!Number.isFinite(seconds)) {
+    throw new RangeError(`${what} должна быть конечным числом, получено ${String(seconds)}`);
+  }
+  if (seconds < 0) {
+    throw new RangeError(`${what} не может быть отрицательной, получено ${String(seconds)}`);
+  }
+}
+
+function assertSnap(snapSeconds: number): void {
+  if (!Number.isFinite(snapSeconds) || snapSeconds < 0) {
+    throw new RangeError(
+      `Порог притяжения должен быть конечным неотрицательным числом, получено ${String(snapSeconds)}`,
+    );
+  }
+}

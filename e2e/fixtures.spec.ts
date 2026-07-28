@@ -82,7 +82,10 @@ async function openMoment(page: Page, fixture: string, at: string): Promise<void
     if (message.type() === 'error') errors.push(`console: ${message.text()}`);
   });
 
-  await page.goto(`/preview.html?fixture=${fixture}&t=${at}`, { waitUntil: 'load' });
+  // fonts=test включает подмену шрифтов. Она нужна именно здесь, где эталон
+  // хранится: иначе набор шрифтов Windows против набора Ubuntu сделает его
+  // недетерминированным по причине, не связанной с кодом (ADR-006).
+  await page.goto(`/preview.html?fixture=${fixture}&t=${at}&fonts=test`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
     timeout: 30_000,
   });

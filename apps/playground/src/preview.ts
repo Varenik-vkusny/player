@@ -23,6 +23,14 @@ const rawTime = params.get('t') ?? '0';
 const time = Number(rawTime);
 if (!Number.isFinite(time) || time < 0) throw new Error(`Недопустимый момент: ${rawTime}`);
 
+// Подмена шрифтов только по требованию: см. пояснение в preview.html.
+if (params.get('fonts') === 'test') {
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = '/fonts/test-fonts.css';
+  document.head.appendChild(link);
+}
+
 const host = document.getElementById('stage-host');
 if (!(host instanceof HTMLElement)) throw new Error('В разметке нет #stage-host');
 

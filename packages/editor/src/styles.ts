@@ -103,8 +103,22 @@ export const EDITOR_STYLES = `
   cursor: grab;
 }
 
+.ed-actions { display: flex; gap: 8px; flex: 0 0 auto; margin-left: auto; }
+
+.ed-action {
+  padding: 4px 10px;
+  border: 1px solid #2c3a4d;
+  border-radius: 6px;
+  background: #1b2430;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ed-action:hover { border-color: #4c8dff; }
+
 .ed-selection {
-  margin-left: auto;
   color: #7d8fa5;
   font-variant-numeric: tabular-nums;
   /* Тот же закон, что и у шапки: показания выделения не имеют права
@@ -213,6 +227,57 @@ export const EDITOR_STYLES = `
   background: #e4572e;
   pointer-events: none;
 }
+
+/* Кнопки добавления метки прижаты вправо: слева транспорт, справа правки. */
+.ed-add { margin-left: auto; display: flex; gap: 8px; flex: 0 0 auto; }
+
+.ed-add-mark {
+  padding: 5px 10px;
+  border: 1px solid #2c3a4d;
+  border-radius: 6px;
+  background: #1b2430;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ed-add-mark:hover:not(:disabled) { border-color: #4c8dff; }
+.ed-add-mark:disabled { opacity: 0.4; cursor: default; }
+
+/* Полоса меток. Отдельной строкой под волной: лежи метки поверх неё,
+   они отбирали бы у перемотки половину нажатий. */
+.ed-marks {
+  position: relative;
+  height: 22px;
+  border-top: 1px solid #1c242f;
+}
+
+.ed-mark {
+  position: absolute;
+  top: 2px;
+  /* Половина ширины влево: метка стоит НА своей секунде, а не правее её. */
+  margin-left: -9px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #7d8fa5;
+  font-size: 11px;
+  line-height: 1;
+  cursor: grab;
+  touch-action: none;
+}
+.ed-mark:hover { color: #e6edf5; }
+.ed-mark-selected { border-color: #4c8dff; color: #e6edf5; }
+
+/* Привязка к слову — не украшение, а то, что автор обязан видеть без
+   раскрытия свойств: от неё зависит, переживёт ли метка замену озвучки. */
+.ed-mark-word { color: #a8c686; }
+.ed-mark-gate { color: #e4572e; }
+.ed-mark-gate.ed-mark-word { color: #a8c686; }
 
 /* Строка транскрипта. Одна строка с прокруткой: расти в высоту она
    не имеет права — иначе дорожка съест сцену. */

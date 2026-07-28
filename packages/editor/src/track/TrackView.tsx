@@ -17,12 +17,24 @@ import {
 
 import type { Word } from '@player/core';
 
+import type { MarkKind } from '../state/project.js';
+import { MarksLane, type Mark } from './MarksLane.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
 
 export interface TrackViewProps {
   transport: TransportApi;
   words: readonly Word[];
+  marks: readonly Mark[];
+  selectedMark: { kind: MarkKind; id: string } | undefined;
+  onSelectMark: (kind: MarkKind, id: string) => void;
+  onMoveMark: (kind: MarkKind, id: string, seconds: number) => void;
+  /** Добавляет анимацию выделенному элементу на текущей позиции. */
+  onAddCue: () => void;
+  /** Добавляет гейт на текущей позиции. */
+  onAddGate: () => void;
+  /** Анимацию некуда вешать, пока элемент не выделен. */
+  canAddCue: boolean;
 }
 
 /** Секунды в вид 01:23.4 — так короче и читается быстрее голых секунд. */
@@ -41,7 +53,17 @@ function tickStep(duration: number, width: number): number {
   return candidates.find((step) => step >= wanted) ?? candidates[candidates.length - 1]!;
 }
 
-export function TrackView({ transport, words }: TrackViewProps): ReactElement {
+export function TrackView({
+  transport,
+  words,
+  marks,
+  selectedMark,
+  onSelectMark,
+  onMoveMark,
+  onAddCue,
+  onAddGate,
+  canAddCue,
+}: TrackViewProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
   const draggingRef = useRef(false);
@@ -132,6 +154,28 @@ export function TrackView({ transport, words }: TrackViewProps): ReactElement {
             Дорожка не загрузилась: {failure}
           </span>
         ) : null}
+
+        <span className="ed-add">
+          <button
+            type="button"
+            className="ed-add-mark"
+            onClick={onAddCue}
+            disabled={!canAddCue}
+            // Причина недоступности обязана быть видна: иначе автор жмёт
+            // на серую кнопку и не понимает, чего от него хотят.
+            title={canAddCue ? 'Анимация на этой секунде' : 'Сначала выделите элемент на сцене'}
+          >
+            ◆ анимация
+          </button>
+          <button
+            type="button"
+            className="ed-add-mark"
+            onClick={onAddGate}
+            title="Гейт на этой секунде"
+          >
+            ▮ гейт
+          </button>
+        </span>
       </div>
 
       <div
@@ -159,6 +203,14 @@ export function TrackView({ transport, words }: TrackViewProps): ReactElement {
           style={{ left: `${progress * 100}%` }}
         />
       </div>
+
+      <MarksLane
+        marks={marks}
+        durationSeconds={durationSeconds}
+        selected={selectedMark}
+        onSelect={onSelectMark}
+        onMove={onMoveMark}
+      />
 
       <p className="ed-words" data-testid="track-words">
         {words.length === 0

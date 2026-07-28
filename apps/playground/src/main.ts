@@ -28,12 +28,36 @@ const requested = new URLSearchParams(location.search).get('fixture') ?? 'demo';
 if (!/^[\w-]+$/.test(requested)) throw new Error(`Недопустимое имя фикстуры: ${requested}`);
 const FIXTURE = `/fixtures/${requested}.json`;
 
-async function main(): Promise<void> {
+/** Ключ, по которому редактор передаёт проект на предпросмотр. */
+const PREVIEW_KEY = 'player:preview-project';
+
+/**
+ * Откуда взять проект.
+ *
+ * По умолчанию — эталонная фикстура. С `?from=editor` — то, что редактор
+ * положил в sessionStorage: бэкенда в этой сессии нет, а проект с настоящей
+ * озвучкой в адресную строку не помещается.
+ */
+async function readProject(): Promise<unknown> {
+  if (new URLSearchParams(location.search).get('from') === 'editor') {
+    // localStorage, а не sessionStorage: у открытой вкладки собственное
+    // sessionStorage, и редактор в него дописаться не может.
+    const saved = localStorage.getItem(PREVIEW_KEY);
+    // Пустое хранилище — это открытая напрямую ссылка, а не штатный случай.
+    // Молча показать демо значило бы соврать про то, что играет.
+    if (!saved) throw new Error('Редактор не передал проект: нечего показывать');
+    return JSON.parse(saved);
+  }
   const response = await fetch(FIXTURE);
   if (!response.ok) throw new Error(`Не удалось загрузить ${FIXTURE}: HTTP ${response.status}`);
+  return response.json();
+}
 
+async function main(): Promise<void> {
   // Валидация обязательна и падает громко: битый проект не открывается.
-  const project = loadProject(await response.json());
+  // Для проекта из редактора это ещё и проверка того, что редактор
+  // не испортил его правками.
+  const project = loadProject(await readProject());
   const duration = project.audio.duration;
 
   const player = new Player(host, project, {

@@ -16,15 +16,19 @@ import {
   useLayoutEffect,
   useMemo,
   useReducer,
+  useState,
   type ReactElement,
 } from 'react';
 
-import type { Element, Project } from '@player/core';
+import type { Cue, Element, Gate, Project } from '@player/core';
 import { segmentOf, type ScenePreview } from '@player/player';
 
 import { Inspector } from './panels/Inspector.js';
-import { editorReducer, initialState } from './state/project.js';
+import { editorReducer, freeId, initialState, type MarkKind } from './state/project.js';
+import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView } from './stage/StageView.js';
+import { markSeconds, timeRefAt } from './track/marks.js';
+import type { Mark } from './track/MarksLane.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
 
@@ -57,6 +61,77 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'replaceElement', element });
   }, []);
 
+  // Выделение метки — состояние вида, а не проекта: в файл оно не попадает
+  // и переписку интерфейса переживать не обязано.
+  const [selectedMark, setSelectedMark] = useState<{ kind: MarkKind; id: string } | undefined>(
+    undefined,
+  );
+
+  /**
+   * Метки на дорожке.
+   *
+   * Секунды считаются из TimeRef здесь, а не хранятся: инвариант №10 требует,
+   * чтобы в проекте лежала ссылка на слово, а не результат её разрешения.
+   * Разрешение падает громко, если якорь разошёлся со словом, — и это
+   * правильно: тихо показать метку не там, где она сработает, хуже.
+   */
+  const marks = useMemo((): Mark[] => {
+    const words = segment.words;
+    const fromCues = segment.scene.cues.map((cue): Mark => ({
+      kind: 'cue',
+      id: cue.id,
+      seconds: markSeconds(cue.at, words),
+      onWord: cue.at.kind === 'word',
+      title: `Анимация «${cue.id}»: ${cue.animation.property} у «${cue.targetId}»`,
+    }));
+    const fromGates = segment.scene.gates.map((gate): Mark => ({
+      kind: 'gate',
+      id: gate.id,
+      seconds: markSeconds(gate.at, words),
+      onWord: gate.at.kind === 'word',
+      title: `Гейт «${gate.id}»: ${gate.config.kind}`,
+    }));
+    return [...fromCues, ...fromGates];
+  }, [segment]);
+
+  const handleMoveMark = useCallback(
+    (kind: MarkKind, id: string, seconds: number) => {
+      // Привязка к слову решается здесь, в чистой функции, а не в компоненте:
+      // это правило продукта, а не свойство интерфейса.
+      dispatch({ type: 'moveMark', kind, id, at: timeRefAt(segment.words, seconds) });
+    },
+    [segment.words],
+  );
+
+  const handleAddCue = useCallback(() => {
+    if (!selected) throw new Error('Анимацию некуда вешать: элемент не выделен');
+    const cue: Cue = {
+      id: freeId('cue', segment.scene.cues),
+      at: timeRefAt(segment.words, transport.positionSeconds),
+      targetId: selected.id,
+      // Проявление — самая частая анимация и самая понятная по умолчанию.
+      // Автор поменяет свойство в панели; выдумывать выбор в момент
+      // создания значит спрашивать до того, как есть что спрашивать.
+      animation: { property: 'opacity', from: 0, to: 1, duration: 400, ease: 'outQuad' },
+    };
+    dispatch({ type: 'addCue', cue });
+    setSelectedMark({ kind: 'cue', id: cue.id });
+  }, [selected, segment.scene.cues, segment.words, transport.positionSeconds]);
+
+  const handleAddGate = useCallback(() => {
+    const gate: Gate = {
+      id: freeId('gate', segment.scene.gates),
+      at: timeRefAt(segment.words, transport.positionSeconds),
+      // «Дальше» — гейт без вопроса. Он останавливает и ждёт, и это
+      // единственный вид, который осмыслен без дополнительной настройки.
+      config: { kind: 'continue', label: 'Дальше' },
+      onWrong: 'retry',
+      maxAttempts: null,
+    };
+    dispatch({ type: 'addGate', gate });
+    setSelectedMark({ kind: 'gate', id: gate.id });
+  }, [segment.scene.gates, segment.words, transport.positionSeconds]);
+
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
   // на каждый рендер и пересобирал сцену по десять раз в секунду.
   const handleReady = useCallback(
@@ -84,6 +159,18 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           {segment.scene.elements.length} элементов · {segment.scene.cues.length} анимаций ·{' '}
           {segment.scene.gates.length} гейтов
         </span>
+        <span className="ed-actions">
+          <button
+            type="button"
+            className="ed-action"
+            onClick={() => downloadProject(state.project)}
+          >
+            Сохранить
+          </button>
+          <button type="button" className="ed-action" onClick={() => openInPlayer(state.project)}>
+            Открыть в плеере
+          </button>
+        </span>
         <span className="ed-selection" data-testid="selection-readout">
           {selected
             ? `${selected.id}: ${selected.x} × ${selected.y}, ${selected.width}×${selected.height}, ${selected.rotation}°`
@@ -105,7 +192,17 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         </aside>
       </div>
 
-      <TrackView transport={transport} words={segment.words} />
+      <TrackView
+        transport={transport}
+        words={segment.words}
+        marks={marks}
+        selectedMark={selectedMark}
+        onSelectMark={(kind, id) => setSelectedMark({ kind, id })}
+        onMoveMark={handleMoveMark}
+        onAddCue={handleAddCue}
+        onAddGate={handleAddGate}
+        canAddCue={selected !== undefined}
+      />
     </div>
   );
 }
