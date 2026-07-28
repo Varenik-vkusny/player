@@ -21,6 +21,19 @@ import { useId, useState, type ReactElement } from 'react';
 
 import type { Element } from '@player/core';
 
+import {
+  getStyleValue,
+  setStyleValue,
+  styleFieldsFor,
+  type ElementStyle,
+  type LengthOrPercent,
+  type StyleChoice,
+  type StyleFieldDef,
+  type StyleFieldKey,
+  type StyleReadResult,
+} from '../state/style.js';
+import { composeLengthOrPercent, parseStyleDraft } from './styleDraft.js';
+
 export interface InspectorProps {
   /** undefined — ничего не выделено. */
   element: Element | undefined;
@@ -112,6 +125,8 @@ function ElementFields({ element, onChange }: ElementFieldsProps): ReactElement 
         />
       </div>
 
+      <StyleSection element={element} onStyleChange={(style) => replace({ style })} />
+
       {/*
         Содержимое есть не у всякого типа. У фигуры его показывать нечего,
         у группы — тем более: пустое поле «Текст» под прямоугольником
@@ -137,6 +152,123 @@ function ElementFields({ element, onChange }: ElementFieldsProps): ReactElement 
       )}
     </div>
   );
+}
+
+interface StyleSectionProps {
+  element: Element;
+  onStyleChange: (style: ElementStyle) => void;
+}
+
+/**
+ * Секция «Вид»: по виджету на каждое применимое поле стиля.
+ *
+ * Список полей, подписи, типы значений и умолчания идут из `styleFieldsFor`
+ * и `STYLE_FIELDS` (`state/style.ts`, ADR-012) — здесь их нет ни одного
+ * захардкоженным. Причина не стиль кода: вид редактора перепишут в отдельной
+ * сессии (ADR-010), и пережить переписку обязано описание полей, а не эта
+ * разметка. Добавь кто-нибудь девятое поле в модуль — эта секция покажет его
+ * без единой правки, потому что `.map` идёт по `styleFieldsFor`, а не по
+ * перечисленным здесь ключам.
+ *
+ * У элемента без применимых полей (`group`) секция не рисует ничего — пустой
+ * блок с одним заголовком выглядел бы как баг, а не как «полей нет».
+ */
+function StyleSection({ element, onStyleChange }: StyleSectionProps): ReactElement | null {
+  const fields = styleFieldsFor(element.type);
+  if (fields.length === 0) return null;
+
+  const commit = (key: StyleFieldKey, value: string | number | LengthOrPercent): void => {
+    const next = setStyleValue(element.style, key, value);
+    // Ссылочная целостность setStyleValue: значение не изменилось — тот же
+    // объект по ссылке. Дёргать onStyleChange в этом случае бессмысленно:
+    // это породило бы шаг истории (срез 2) без настоящей правки.
+    if (next === element.style) return;
+    onStyleChange(next);
+  };
+
+  return (
+    <div className="ed-insp-block">
+      <h3 className="ed-insp-title">Вид</h3>
+      {fields.map((field) => (
+        <StyleFieldWidget
+          key={field.key}
+          field={field}
+          read={getStyleValue(element.style, field.key)}
+          onCommit={(value) => commit(field.key, value)}
+        />
+      ))}
+    </div>
+  );
+}
+
+interface StyleFieldWidgetProps {
+  field: StyleFieldDef;
+  read: StyleReadResult;
+  onCommit: (value: string | number | LengthOrPercent) => void;
+}
+
+/**
+ * Виджет одного поля стиля — выбирается по `valueType`, не по ключу поля:
+ * ключей восемь и они могут вырасти, типов значений закрыто пять
+ * (`StyleValueType` в state/style.ts), и именно они определяют разметку.
+ *
+ * Значение, которое `style.ts` не смог разобрать (`kind: 'raw'`), этим
+ * виджетом не редактируется — только показывается через `ReadonlyField`, тот
+ * же компонент, что и для идентификатора элемента: видно, выделяемо
+ * и копируемо, но не потеряно и не заменено угадыванием. Разобрать «2em»
+ * в px/% переключатель значило бы выдумать единицу, которой автор не писал, —
+ * тот же класс дефекта, что и падение `markSeconds` из S2: одно непонятное
+ * значение не имеет права ронять или тихо портить всю панель.
+ */
+function StyleFieldWidget({ field, read, onCommit }: StyleFieldWidgetProps): ReactElement {
+  if (read.kind === 'raw') {
+    return <ReadonlyField label={`${field.label} (не распознано)`} value={read.text} />;
+  }
+
+  switch (field.valueType) {
+    case 'color':
+      return <ColorField label={field.label} value={read.value as string} onCommit={onCommit} />;
+    case 'length':
+      return (
+        <NumberField
+          label={`${field.label}, px`}
+          value={read.value as number}
+          accepts={ANY_NUMBER}
+          onCommit={onCommit}
+        />
+      );
+    case 'number':
+      return (
+        <NumberField
+          label={field.label}
+          value={read.value as number}
+          accepts={ANY_NUMBER}
+          onCommit={onCommit}
+        />
+      );
+    case 'choice':
+      return (
+        <ChoiceField
+          label={field.label}
+          value={read.value as string}
+          choices={field.choices ?? []}
+          onCommit={onCommit}
+        />
+      );
+    case 'length-or-percent':
+      return (
+        <LengthOrPercentField
+          label={field.label}
+          value={read.value as LengthOrPercent}
+          onCommit={onCommit}
+        />
+      );
+    default:
+      // StyleValueType закрыт пятью значениями. Шестое здесь — баг
+      // конфигурации модуля (кто-то расширил тип и забыл про виджет),
+      // а не данные с диска, поэтому падаем громко, а не молчим.
+      throw new Error(`Секция «Вид»: неизвестный тип значения поля «${String(field.valueType)}»`);
+  }
 }
 
 /** Что считать пригодным для отправки наружу. Разбор уже отсеял всё, что не число. */
@@ -287,6 +419,149 @@ function ReadonlyField({ label, value }: { label: string; value: string }): Reac
         {label}
       </label>
       <input id={id} className="ed-insp-input" type="text" value={value} readOnly />
+    </div>
+  );
+}
+
+interface ColorFieldProps {
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+}
+
+/**
+ * Цвет — системный color picker браузера.
+ *
+ * `<input type="color">` умеет показывать только 6-значный hex. Все цвета
+ * в фикстурах и фабриках элементов (`state/elements.ts`) заданы им же, так
+ * что для утверждённого набора полей этого достаточно. Значение в другом
+ * формате (например, `red`) браузер не покажет верно на самом свотче, но
+ * это не портит данные: `onCommit` вызывается только жестом автора по
+ * пикеру, а не при простом открытии панели, поэтому непонятое значение
+ * стоит на месте, пока автор сам не выберет новый цвет.
+ */
+function ColorField({ label, value, onCommit }: ColorFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="ed-insp-input"
+        type="color"
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      />
+    </div>
+  );
+}
+
+interface ChoiceFieldProps {
+  label: string;
+  value: string;
+  choices: readonly StyleChoice[];
+  onCommit: (value: string) => void;
+}
+
+/**
+ * Выбор из закрытого списка (шрифт, насыщенность, выравнивание).
+ *
+ * Черновика здесь не нужно, в отличие от `NumberField`: `<select>` физически
+ * не может вернуть значение вне своих `<option>`, поэтому всё, что приходит
+ * в `onChange`, уже входит в список и `setStyleValue` его не отвергнет.
+ */
+function ChoiceField({ label, value, choices, onCommit }: ChoiceFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        className="ed-insp-input"
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      >
+        {choices.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+interface LengthOrPercentFieldProps {
+  label: string;
+  value: LengthOrPercent;
+  onCommit: (value: LengthOrPercent) => void;
+}
+
+/**
+ * Число плюс единица (сейчас единственное такое поле — `border-radius`).
+ *
+ * Единица — часть смысла значения, а не оформление (`state/style.ts`:
+ * `50%` и `50px` значат разное), поэтому у неё отдельный переключатель,
+ * а не текст с подставленным суффиксом, как у `length`.
+ *
+ * Число набирается тем же паттерном черновика, что и `NumberField` геометрии:
+ * строка живёт в компоненте, наружу уходит только то, что `parseStyleDraft`
+ * разобрал в конечное число. Единица меняется отдельным `<select>` и
+ * коммитится сразу — там нет промежуточных состояний ввода, как у текста.
+ *
+ * Оба поля стоят друг под другом внутри одного `.ed-insp-field` (`display:
+ * grid`), а не в ряд: строчный контейнер для пары «число + единица» —
+ * это правка `styles.ts`, а этот файл его не трогает (см. отчёт сессии).
+ */
+function LengthOrPercentField({ label, value, onCommit }: LengthOrPercentFieldProps): ReactElement {
+  const amountId = useId();
+  const unitId = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const text = draft ?? String(value.amount);
+  const parsedAmount = draft === null ? value.amount : parseStyleDraft(draft);
+  const invalid = draft !== null && parsedAmount === undefined;
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={amountId}>
+        {label}
+      </label>
+      <input
+        id={amountId}
+        className="ed-insp-input"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        spellCheck={false}
+        value={text}
+        aria-invalid={invalid}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const composed = composeLengthOrPercent(next, value.unit);
+          if (composed) onCommit(composed);
+        }}
+        onBlur={() => setDraft(null)}
+      />
+      <label className="ed-insp-label" htmlFor={unitId}>
+        {label}: единица
+      </label>
+      <select
+        id={unitId}
+        className="ed-insp-input"
+        value={value.unit}
+        onChange={(event) => onCommit({ amount: value.amount, unit: event.target.value as 'px' | '%' })}
+      >
+        <option value="px">px</option>
+        <option value="%">%</option>
+      </select>
     </div>
   );
 }

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S8 — квота localStorage на этом origin</title>
+</head>
+<body>
+<h1>S8 — квота localStorage</h1>
+<p>Вся логика измерения — в <code>run-quota.mjs</code>, эта страница только даёт
+настоящий http-origin, на котором вообще существует localStorage и IndexedDB.
+File:// и data: URL дают особые случаи хранилища, которые ничего не говорят
+про реальный origin плеера.</p>
+</body>
+</html>

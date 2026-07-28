@@ -19,7 +19,8 @@
     "spike:timeline": "node spikes/run-timeline.mjs",
     "spike:gate-lock": "node spikes/run-gate-lock.mjs",
     "spike:parity": "node spikes/run-parity.mjs",
-    "spike:perf": "node spikes/run-perf.mjs"
+    "spike:perf": "node spikes/run-perf.mjs",
+    "spike:quota": "node spikes/run-quota.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",

@@ -34,4 +34,5 @@ export {
   type GateAttempt,
   type PlayerEvents,
   type PlayerState,
+  type UnboundOption,
 } from './player.js';

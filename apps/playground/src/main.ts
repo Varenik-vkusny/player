@@ -5,7 +5,7 @@
  * он сообщает, что гейт открыт, и принимает ответ.
  */
 import { loadProject, resolveTimeRef, type Gate } from '@player/core';
-import { Player, type GateAttempt } from '@player/player';
+import { Player, type GateAttempt, type UnboundOption } from '@player/player';
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -28,21 +28,66 @@ const requested = new URLSearchParams(location.search).get('fixture') ?? 'demo';
 if (!/^[\w-]+$/.test(requested)) throw new Error(`Недопустимое имя фикстуры: ${requested}`);
 const FIXTURE = `/fixtures/${requested}.json`;
 
-/** Ключ, по которому редактор передаёт проект на предпросмотр. */
-const PREVIEW_KEY = 'player:preview-project';
+/**
+ * Канал предпросмотра «редактор → плеер» — IndexedDB, а не localStorage.
+ *
+ * Смена задокументирована в `packages/editor/src/state/save.ts` и измерена
+ * спайком `spikes/s8-quota`: у localStorage квота ровно 5 МБ символов на
+ * origin, и с вшитыми картинками проект её превышает. Здесь имена базы,
+ * хранилища и ключа обязаны буквально совпадать с тем, что пишет редактор, —
+ * общего модуля между пакетами editor и playground нет (инвариант №6
+ * ограничивает импорты редактора), поэтому контракт живёт как согласованная
+ * константа по обе стороны, как и раньше жил `PREVIEW_KEY`.
+ */
+const PREVIEW_DB = 'player-preview';
+const PREVIEW_DB_VERSION = 1;
+const PREVIEW_STORE = 'projects';
+const PREVIEW_KEY = 'current';
+
+function openPreviewDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') {
+      reject(new Error('IndexedDB недоступен в этой вкладке'));
+      return;
+    }
+    const request = indexedDB.open(PREVIEW_DB, PREVIEW_DB_VERSION);
+    // Плеер может открыться раньше редактора (например, по прямой ссылке
+    // без записи) — база тогда ещё не существует, и создать хранилище
+    // обязан тот, кто открыл её первым, а не только редактор.
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(PREVIEW_STORE);
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => {
+      reject(request.error ?? new Error('indexedDB.open не сообщил причину отказа'));
+    };
+  });
+}
+
+async function readPreview(): Promise<string | undefined> {
+  const db = await openPreviewDb();
+  try {
+    return await new Promise<string | undefined>((resolve, reject) => {
+      const tx = db.transaction(PREVIEW_STORE, 'readonly');
+      const request = tx.objectStore(PREVIEW_STORE).get(PREVIEW_KEY);
+      request.onsuccess = () => resolve(request.result as string | undefined);
+      request.onerror = () => reject(request.error ?? new Error('чтение IndexedDB не сообщило причину'));
+    });
+  } finally {
+    db.close();
+  }
+}
 
 /**
  * Откуда взять проект.
  *
  * По умолчанию — эталонная фикстура. С `?from=editor` — то, что редактор
- * положил в sessionStorage: бэкенда в этой сессии нет, а проект с настоящей
- * озвучкой в адресную строку не помещается.
+ * положил в IndexedDB: бэкенда в этой сессии нет, а проект с настоящей
+ * озвучкой (и тем более с вшитыми картинками) в адресную строку не помещается.
  */
 async function readProject(): Promise<unknown> {
   if (new URLSearchParams(location.search).get('from') === 'editor') {
-    // localStorage, а не sessionStorage: у открытой вкладки собственное
-    // sessionStorage, и редактор в него дописаться не может.
-    const saved = localStorage.getItem(PREVIEW_KEY);
+    const saved = await readPreview();
     // Пустое хранилище — это открытая напрямую ссылка, а не штатный случай.
     // Молча показать демо значило бы соврать про то, что играет.
     if (!saved) throw new Error('Редактор не передал проект: нечего показывать');
@@ -66,7 +111,7 @@ async function main(): Promise<void> {
       clockLabel.textContent = position.toFixed(2);
       played.style.width = `${(position / duration) * 100}%`;
     },
-    onGateOpen: (gate) => showGate(gate),
+    onGateOpen: (gate, unboundOptions) => showGate(gate, unboundOptions),
     onGateResolved: (attempt) => showResult(attempt),
   });
 
@@ -93,11 +138,20 @@ async function main(): Promise<void> {
     panel.textContent = '';
   }
 
-  function showGate(gate: Gate): void {
+  function showGate(gate: Gate, unboundOptions: readonly UnboundOption[]): void {
+    const config = gate.config;
+
+    // Гибрид (ADR-011): у choice-гейта, где КАЖДЫЙ вариант нашёл себе
+    // элемент на сцене, дублирующая кнопка не нужна вовсе — отвечают
+    // прямым кликом по сцене, которую в этом случае незачем гасить.
+    if (config.kind === 'choice' && unboundOptions.length === 0) {
+      closeOverlay();
+      return;
+    }
+
     overlay.dataset['open'] = '1';
     panel.textContent = '';
 
-    const config = gate.config;
     const title = document.createElement('h2');
     title.textContent = config.kind === 'continue' ? config.label : config.prompt;
     panel.appendChild(title);
@@ -108,7 +162,9 @@ async function main(): Promise<void> {
     if (config.kind === 'choice') {
       const list = document.createElement('div');
       list.className = 'options';
-      for (const option of config.options) {
+      // Кнопкой рисуются только варианты БЕЗ элемента на сцене — у остальных
+      // роль кнопки уже играет сам элемент, нарисованный автором.
+      for (const option of unboundOptions) {
         const button = document.createElement('button');
         button.textContent = option.label;
         button.dataset['optionId'] = option.id;

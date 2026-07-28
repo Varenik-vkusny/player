@@ -1,0 +1,721 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "title": "Гейт: вариант — сам элемент сцены",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "audio": {
+    "src": "/audio/demo.mp3",
+    "duration": 48.6,
+    "words": [
+      {
+        "text": "Представь",
+        "start": 0.1,
+        "end": 0.7,
+        "source": "tts"
+      },
+      {
+        "text": "что",
+        "start": 0.85,
+        "end": 1.063,
+        "source": "tts"
+      },
+      {
+        "text": "ты",
+        "start": 1.063,
+        "end": 1.175,
+        "source": "tts"
+      },
+      {
+        "text": "смотришь",
+        "start": 1.175,
+        "end": 1.613,
+        "source": "tts"
+      },
+      {
+        "text": "объяснение",
+        "start": 1.613,
+        "end": 2.362,
+        "source": "tts"
+      },
+      {
+        "text": "и",
+        "start": 2.362,
+        "end": 2.462,
+        "source": "tts"
+      },
+      {
+        "text": "в",
+        "start": 2.462,
+        "end": 2.5,
+        "source": "tts"
+      },
+      {
+        "text": "какой-то",
+        "start": 2.5,
+        "end": 2.938,
+        "source": "tts"
+      },
+      {
+        "text": "момент",
+        "start": 2.938,
+        "end": 3.475,
+        "source": "tts"
+      },
+      {
+        "text": "оно",
+        "start": 3.475,
+        "end": 3.712,
+        "source": "tts"
+      },
+      {
+        "text": "останавливается",
+        "start": 3.712,
+        "end": 4.775,
+        "source": "tts"
+      },
+      {
+        "text": "Не",
+        "start": 5.638,
+        "end": 5.862,
+        "source": "tts"
+      },
+      {
+        "text": "потому",
+        "start": 5.862,
+        "end": 6.175,
+        "source": "tts"
+      },
+      {
+        "text": "что",
+        "start": 6.175,
+        "end": 6.338,
+        "source": "tts"
+      },
+      {
+        "text": "закончилось",
+        "start": 6.338,
+        "end": 7.088,
+        "source": "tts"
+      },
+      {
+        "text": "а",
+        "start": 7.225,
+        "end": 7.313,
+        "source": "tts"
+      },
+      {
+        "text": "потому",
+        "start": 7.313,
+        "end": 7.612,
+        "source": "tts"
+      },
+      {
+        "text": "что",
+        "start": 7.612,
+        "end": 7.85,
+        "source": "tts"
+      },
+      {
+        "text": "автор",
+        "start": 7.85,
+        "end": 8.2,
+        "source": "tts"
+      },
+      {
+        "text": "поставил",
+        "start": 8.2,
+        "end": 8.7,
+        "source": "tts"
+      },
+      {
+        "text": "здесь",
+        "start": 8.7,
+        "end": 8.988,
+        "source": "tts"
+      },
+      {
+        "text": "вопрос",
+        "start": 8.988,
+        "end": 9.575,
+        "source": "tts"
+      },
+      {
+        "text": "Пока",
+        "start": 10.425,
+        "end": 10.75,
+        "source": "tts"
+      },
+      {
+        "text": "ты",
+        "start": 10.75,
+        "end": 10.863,
+        "source": "tts"
+      },
+      {
+        "text": "не",
+        "start": 10.863,
+        "end": 10.975,
+        "source": "tts"
+      },
+      {
+        "text": "ответишь",
+        "start": 10.975,
+        "end": 11.575,
+        "source": "tts"
+      },
+      {
+        "text": "дальше",
+        "start": 11.738,
+        "end": 12.15,
+        "source": "tts"
+      },
+      {
+        "text": "не",
+        "start": 12.15,
+        "end": 12.25,
+        "source": "tts"
+      },
+      {
+        "text": "поедет",
+        "start": 12.25,
+        "end": 12.925,
+        "source": "tts"
+      },
+      {
+        "text": "Это",
+        "start": 13.787,
+        "end": 14.175,
+        "source": "tts"
+      },
+      {
+        "text": "и",
+        "start": 14.175,
+        "end": 14.25,
+        "source": "tts"
+      },
+      {
+        "text": "есть",
+        "start": 14.25,
+        "end": 14.537,
+        "source": "tts"
+      },
+      {
+        "text": "главная",
+        "start": 14.537,
+        "end": 15.1,
+        "source": "tts"
+      },
+      {
+        "text": "идея",
+        "start": 15.1,
+        "end": 15.438,
+        "source": "tts"
+      },
+      {
+        "text": "нашего",
+        "start": 15.438,
+        "end": 15.8,
+        "source": "tts"
+      },
+      {
+        "text": "формата",
+        "start": 15.8,
+        "end": 16.462,
+        "source": "tts"
+      },
+      {
+        "text": "Обычное",
+        "start": 17.337,
+        "end": 17.975,
+        "source": "tts"
+      },
+      {
+        "text": "видео",
+        "start": 17.975,
+        "end": 18.313,
+        "source": "tts"
+      },
+      {
+        "text": "течёт",
+        "start": 18.313,
+        "end": 18.688,
+        "source": "tts"
+      },
+      {
+        "text": "мимо",
+        "start": 18.688,
+        "end": 18.938,
+        "source": "tts"
+      },
+      {
+        "text": "зрителя",
+        "start": 18.938,
+        "end": 19.337,
+        "source": "tts"
+      },
+      {
+        "text": "ровным",
+        "start": 19.337,
+        "end": 19.65,
+        "source": "tts"
+      },
+      {
+        "text": "потоком",
+        "start": 19.65,
+        "end": 20.163,
+        "source": "tts"
+      },
+      {
+        "text": "и",
+        "start": 20.45,
+        "end": 20.55,
+        "source": "tts"
+      },
+      {
+        "text": "проверить",
+        "start": 20.55,
+        "end": 21.038,
+        "source": "tts"
+      },
+      {
+        "text": "понимание",
+        "start": 21.038,
+        "end": 21.613,
+        "source": "tts"
+      },
+      {
+        "text": "негде",
+        "start": 21.613,
+        "end": 22.087,
+        "source": "tts"
+      },
+      {
+        "text": "Здесь",
+        "start": 22.925,
+        "end": 23.325,
+        "source": "tts"
+      },
+      {
+        "text": "же",
+        "start": 23.325,
+        "end": 23.438,
+        "source": "tts"
+      },
+      {
+        "text": "остановка",
+        "start": 23.438,
+        "end": 24,
+        "source": "tts"
+      },
+      {
+        "text": "встроена",
+        "start": 24,
+        "end": 24.413,
+        "source": "tts"
+      },
+      {
+        "text": "в",
+        "start": 24.413,
+        "end": 24.45,
+        "source": "tts"
+      },
+      {
+        "text": "саму",
+        "start": 24.45,
+        "end": 24.725,
+        "source": "tts"
+      },
+      {
+        "text": "дорожку",
+        "start": 24.725,
+        "end": 25.238,
+        "source": "tts"
+      },
+      {
+        "text": "а",
+        "start": 25.462,
+        "end": 25.587,
+        "source": "tts"
+      },
+      {
+        "text": "не",
+        "start": 25.587,
+        "end": 25.688,
+        "source": "tts"
+      },
+      {
+        "text": "приклеена",
+        "start": 25.688,
+        "end": 26.212,
+        "source": "tts"
+      },
+      {
+        "text": "сверху",
+        "start": 26.212,
+        "end": 26.775,
+        "source": "tts"
+      },
+      {
+        "text": "Звук",
+        "start": 27.675,
+        "end": 28.075,
+        "source": "tts"
+      },
+      {
+        "text": "замирает",
+        "start": 28.075,
+        "end": 28.7,
+        "source": "tts"
+      },
+      {
+        "text": "картинка",
+        "start": 28.8,
+        "end": 29.313,
+        "source": "tts"
+      },
+      {
+        "text": "ждёт",
+        "start": 29.313,
+        "end": 29.712,
+        "source": "tts"
+      },
+      {
+        "text": "и",
+        "start": 30.025,
+        "end": 30.087,
+        "source": "tts"
+      },
+      {
+        "text": "внимание",
+        "start": 30.087,
+        "end": 30.55,
+        "source": "tts"
+      },
+      {
+        "text": "возвращается",
+        "start": 30.55,
+        "end": 31.2,
+        "source": "tts"
+      },
+      {
+        "text": "к",
+        "start": 31.2,
+        "end": 31.25,
+        "source": "tts"
+      },
+      {
+        "text": "тому",
+        "start": 31.25,
+        "end": 31.575,
+        "source": "tts"
+      },
+      {
+        "text": "что",
+        "start": 31.813,
+        "end": 31.975,
+        "source": "tts"
+      },
+      {
+        "text": "происходит",
+        "start": 31.975,
+        "end": 32.563,
+        "source": "tts"
+      },
+      {
+        "text": "на",
+        "start": 32.563,
+        "end": 32.663,
+        "source": "tts"
+      },
+      {
+        "text": "экране",
+        "start": 32.663,
+        "end": 33.188,
+        "source": "tts"
+      },
+      {
+        "text": "Когда",
+        "start": 34.038,
+        "end": 34.45,
+        "source": "tts"
+      },
+      {
+        "text": "ответ",
+        "start": 34.45,
+        "end": 34.813,
+        "source": "tts"
+      },
+      {
+        "text": "дан",
+        "start": 34.813,
+        "end": 35.125,
+        "source": "tts"
+      },
+      {
+        "text": "воспроизведение",
+        "start": 35.25,
+        "end": 36.138,
+        "source": "tts"
+      },
+      {
+        "text": "продолжается",
+        "start": 36.138,
+        "end": 36.8,
+        "source": "tts"
+      },
+      {
+        "text": "ровно",
+        "start": 36.8,
+        "end": 37.063,
+        "source": "tts"
+      },
+      {
+        "text": "с",
+        "start": 37.063,
+        "end": 37.125,
+        "source": "tts"
+      },
+      {
+        "text": "той",
+        "start": 37.125,
+        "end": 37.263,
+        "source": "tts"
+      },
+      {
+        "text": "секунды",
+        "start": 37.263,
+        "end": 37.813,
+        "source": "tts"
+      },
+      {
+        "text": "на",
+        "start": 38.063,
+        "end": 38.15,
+        "source": "tts"
+      },
+      {
+        "text": "которой",
+        "start": 38.15,
+        "end": 38.525,
+        "source": "tts"
+      },
+      {
+        "text": "прервалось",
+        "start": 38.525,
+        "end": 39.212,
+        "source": "tts"
+      },
+      {
+        "text": "Никакой",
+        "start": 40.063,
+        "end": 40.638,
+        "source": "tts"
+      },
+      {
+        "text": "перемотки",
+        "start": 40.638,
+        "end": 41.25,
+        "source": "tts"
+      },
+      {
+        "text": "никакого",
+        "start": 41.4,
+        "end": 41.862,
+        "source": "tts"
+      },
+      {
+        "text": "повторения",
+        "start": 41.862,
+        "end": 42.487,
+        "source": "tts"
+      },
+      {
+        "text": "последней",
+        "start": 42.487,
+        "end": 42.987,
+        "source": "tts"
+      },
+      {
+        "text": "фразы",
+        "start": 42.987,
+        "end": 43.487,
+        "source": "tts"
+      },
+      {
+        "text": "Энергия",
+        "start": 44.388,
+        "end": 44.95,
+        "source": "tts"
+      },
+      {
+        "text": "зрителя",
+        "start": 44.95,
+        "end": 45.362,
+        "source": "tts"
+      },
+      {
+        "text": "тратится",
+        "start": 45.362,
+        "end": 45.8,
+        "source": "tts"
+      },
+      {
+        "text": "на",
+        "start": 45.8,
+        "end": 45.9,
+        "source": "tts"
+      },
+      {
+        "text": "смысл",
+        "start": 45.9,
+        "end": 46.362,
+        "source": "tts"
+      },
+      {
+        "text": "а",
+        "start": 46.625,
+        "end": 46.7,
+        "source": "tts"
+      },
+      {
+        "text": "не",
+        "start": 46.7,
+        "end": 46.788,
+        "source": "tts"
+      },
+      {
+        "text": "на",
+        "start": 46.788,
+        "end": 46.875,
+        "source": "tts"
+      },
+      {
+        "text": "борьбу",
+        "start": 46.875,
+        "end": 47.237,
+        "source": "tts"
+      },
+      {
+        "text": "с",
+        "start": 47.237,
+        "end": 47.325,
+        "source": "tts"
+      },
+      {
+        "text": "интерфейсом",
+        "start": 47.325,
+        "end": 48.1,
+        "source": "tts"
+      }
+    ]
+  },
+  "scene": {
+    "elements": [
+      {
+        "id": "bg",
+        "type": "shape",
+        "x": 0,
+        "y": 0,
+        "width": 1920,
+        "height": 1080,
+        "rotation": 0,
+        "zIndex": 0,
+        "style": {
+          "background": "#11141a"
+        },
+        "content": ""
+      },
+      {
+        "id": "prompt",
+        "type": "text",
+        "x": 140,
+        "y": 160,
+        "width": 1640,
+        "height": 160,
+        "rotation": 0,
+        "zIndex": 1,
+        "style": {
+          "color": "#f5f7fa",
+          "font-family": "system-ui, sans-serif",
+          "font-size": "56px",
+          "font-weight": "700",
+          "text-align": "center"
+        },
+        "content": "Что является часами проекта?"
+      },
+      {
+        "id": "opt-audio",
+        "type": "text",
+        "x": 140,
+        "y": 460,
+        "width": 760,
+        "height": 160,
+        "rotation": 0,
+        "zIndex": 1,
+        "style": {
+          "background": "#1b2430",
+          "border-radius": "20px",
+          "color": "#f5f7fa",
+          "font-family": "system-ui, sans-serif",
+          "font-size": "40px",
+          "text-align": "center"
+        },
+        "content": "Позиция в аудио"
+      },
+      {
+        "id": "opt-timer",
+        "type": "text",
+        "x": 1020,
+        "y": 460,
+        "width": 760,
+        "height": 160,
+        "rotation": 0,
+        "zIndex": 1,
+        "style": {
+          "background": "#1b2430",
+          "border-radius": "20px",
+          "color": "#f5f7fa",
+          "font-family": "system-ui, sans-serif",
+          "font-size": "40px",
+          "text-align": "center"
+        },
+        "content": "Отдельный таймер"
+      }
+    ],
+    "cues": [],
+    "gates": [
+      {
+        "id": "gate-scene",
+        "at": {
+          "kind": "word",
+          "wordIndex": 3,
+          "offset": 0,
+          "anchor": {
+            "text": "смотришь",
+            "before": "ты",
+            "after": "объяснение"
+          }
+        },
+        "config": {
+          "kind": "choice",
+          "prompt": "Что является часами проекта?",
+          "options": [
+            {
+              "id": "opt-audio",
+              "label": "Позиция в аудио"
+            },
+            {
+              "id": "opt-timer",
+              "label": "Отдельный таймер"
+            }
+          ],
+          "correctId": "opt-audio"
+        },
+        "onWrong": "retry",
+        "maxAttempts": 3
+      }
+    ]
+  }
+}

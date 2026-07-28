@@ -112,6 +112,118 @@ test.describe('круг: правка в редакторе — просмотр
     await expect(player.locator('#state')).toHaveText('playing', { timeout: 20_000 });
   });
 
+  test('проект с крупной вшитой картинкой доезжает из редактора в плеер целиком', async ({
+    page,
+    context,
+  }) => {
+    // Канал предпросмотра — IndexedDB, а не localStorage (packages/editor/src/state/save.ts).
+    // Причина измерена спайком spikes/s8-quota: на этом origin localStorage
+    // рвётся ровно на 5 242 869 символах (10 485 738 байт UTF-16), а data-URI
+    // одной вшитой картинки уходит за эту границу сам по себе. Здесь строится
+    // проект заведомо больше измеренной границы и проверяется, что он всё
+    // равно доезжает целиком, а не обрубается молча.
+    const base: { scene: { elements: unknown[] } } = JSON.parse(
+      readFileSync(new URL('../fixtures/projects/empty.json', import.meta.url), 'utf8'),
+    );
+
+    const LOCAL_STORAGE_BOUNDARY_CHARS = 5_242_869; // spikes/results/s8.json
+    const HUGE_IMAGE = `data:image/png;base64,${'A'.repeat(8 * 1024 * 1024)}`;
+
+    const project = {
+      ...base,
+      scene: { ...base.scene, elements: [
+        {
+          id: 'huge-image',
+          type: 'image',
+          x: 0,
+          y: 0,
+          width: 1920,
+          height: 1080,
+          rotation: 0,
+          zIndex: 0,
+          style: {},
+          content: HUGE_IMAGE,
+        },
+      ] },
+    };
+
+    const projectText = JSON.stringify(project);
+    expect(projectText.length).toBeGreaterThan(LOCAL_STORAGE_BOUNDARY_CHARS);
+
+    // Своя фикстура не пишется на диск: page.route подменяет ответ на лету,
+    // не трогая fixtures/projects (эталоны неприкосновенны, а эта фикстура
+    // существует только ради размера).
+    await page.route('**/fixtures/big-image.json', (route) =>
+      route.fulfill({ contentType: 'application/json; charset=utf-8', body: projectText }),
+    );
+
+    await openEditor(page, 'big-image');
+
+    const [player] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByRole('button', { name: 'Открыть в плеере' }).click(),
+    ]);
+    await player.waitForLoadState('load');
+
+    // Старый канал (localStorage) бросил бы QuotaExceededError ещё внутри
+    // редактора, до открытия этой вкладки. Дошли до ready — значит канал
+    // перенёс проект целиком.
+    await expect(player.locator('#state')).toHaveText('ready', { timeout: 30_000 });
+    await expect(player.locator('.player-stage > *')).toHaveCount(1);
+
+    // Считать элементы недостаточно: пустая строка тоже дала бы один div.
+    // Длина того, что реально легло в background-image, доказывает, что
+    // строка не обрублена на полпути.
+    const backgroundImageLength = await player.evaluate(() => {
+      const node = document.querySelector<HTMLElement>('[data-id="huge-image"]');
+      if (!node) throw new Error('на сцене плеера нет элемента huge-image');
+      return getComputedStyle(node).backgroundImage.length;
+    });
+    expect(backgroundImageLength).toBeGreaterThan(HUGE_IMAGE.length);
+  });
+
+  test('сбой канала предпросмотра виден в редакторе сразу и по-русски', async ({
+    page,
+    context,
+  }) => {
+    // Настоящее исчерпание квоты IndexedDB непрактично гонять в каждом
+    // прогоне (десятки-сотни МБ, spikes/s8-quota). Здесь проверяется не
+    // квота, а требование CLAUDE.md «падать громко»: ЛЮБОЙ сбой канала
+    // обязан всплыть в редакторе немедленно, а не привести к открытой
+    // вслепую вкладке плеера, которая сообщит о беде не там, где она возникла.
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'indexedDB', {
+        configurable: true,
+        value: {
+          open(): never {
+            throw new Error('искусственный сбой IndexedDB для теста');
+          },
+        },
+      });
+    });
+
+    await openEditor(page);
+
+    // Обработчик, а не waitForEvent параллельно с click(): window.alert
+    // синхронно замораживает JS страницы, и click() не вернётся, пока диалог
+    // не закрыт, — значит закрывать его нужно из обработчика событий, а не
+    // из кода теста, ожидающего оба промиса разом (это и есть тупик,
+    // пойманный при первом прогоне).
+    let dialogMessage: string | undefined;
+    page.once('dialog', (dialog) => {
+      dialogMessage = dialog.message();
+      void dialog.accept();
+    });
+
+    await page.getByRole('button', { name: 'Открыть в плеере' }).click();
+    await expect.poll(() => dialogMessage).toContain('Не удалось передать проект в плеер');
+
+    // И никакая вторая вкладка при этом не открылась: при сбое канала
+    // открывать плеер нечем и незачем — категорически недопустимый исход,
+    // которого это и проверяет.
+    expect(context.pages()).toHaveLength(1);
+  });
+
   test('инвариант №5: сцена в редакторе и в ванильном хосте совпадает', async ({ page }) => {
     await openEditor(page);
     await page.evaluate((at) => {
@@ -150,5 +262,31 @@ test.describe('круг: правка в редакторе — просмотр
       (different / total) * 100,
       `различается ${different} пикселей из ${total}`,
     ).toBeLessThan(0.1);
+  });
+
+  test('область сцены получает целые размеры', async ({ page }) => {
+    // Не про сглаживание текста и не про инвариант №5 сам по себе — про то,
+    // что раскладка НАД сценой не имеет права протаскивать дробный пиксель
+    // в .ed-stage-host. applyFit считает масштаб от округлённых
+    // clientWidth/clientHeight, поэтому дробный getBoundingClientRect —
+    // не косметика: это сигнал, что где-то выше сидит CSS-величина,
+    // не представимая в сетке 1/64 px, которой Chrome меряет layout
+    // (например, `em`-размер, дающий на выходе X.Y8 или X.Y2). Тест
+    // сравнивает целые числа, поэтому не зависит от сглаживания шрифтов
+    // и не мигает — в отличие от побитового сравнения снимков выше.
+    await openEditor(page);
+
+    const rect = await page.evaluate(() => {
+      const host = document.querySelector<HTMLElement>('.ed-stage-host');
+      if (!host) throw new Error('нет области сцены');
+      return host.getBoundingClientRect();
+    });
+
+    expect(rect.width, `ширина области сцены дробная: ${rect.width}`).toBe(
+      Math.round(rect.width),
+    );
+    expect(rect.height, `высота области сцены дробная: ${rect.height}`).toBe(
+      Math.round(rect.height),
+    );
   });
 });

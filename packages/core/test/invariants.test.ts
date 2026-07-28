@@ -78,6 +78,34 @@ describe('инвариант №6: направление зависимосте
   });
 });
 
+/** Что редактору разрешено импортировать за пределами своего пакета. */
+const ALLOWED_EDITOR_IMPORTS = new Set([
+  '@player/core',
+  '@player/player',
+  'react',
+  'react-dom/client',
+]);
+
+/**
+ * Внешние источники, из которых импортирует файл.
+ *
+ * Блочные комментарии вырезаются до поиска: пояснение, цитирующее строку
+ * импорта, — не импорт. Строчные комментарии остаются, и это осознанно:
+ * вырезать их надёжно нельзя, не разбирая строковые литералы, а охраннику
+ * положено ошибаться в сторону строгости.
+ */
+function externalImportsOf(text: string): string[] {
+  const code = text.replace(/\/\*[\s\S]*?\*\//g, '');
+  const sources: string[] = [];
+  for (const match of code.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
+    const source = match[1]!;
+    // Относительные пути внутри пакета никого не волнуют.
+    if (source.startsWith('.')) continue;
+    sources.push(source);
+  }
+  return sources;
+}
+
 describe('инвариант №6: редактор снаружи никому не виден', () => {
   // Только исходники. Тестам импортировать vitest положено, и включать
   // их в проверку значило бы либо держать список исключений, либо ослабить
@@ -96,20 +124,45 @@ describe('инвариант №6: редактор снаружи никому 
     // отрисовки сцены не может появиться из воздуха — она придёт вместе
     // с зависимостью вроде konva или moveable, и тогда этот тест покраснеет
     // раньше, чем кто-нибудь заметит расхождение картинок.
-    const allowed = new Set(['@player/core', '@player/player', 'react', 'react-dom/client']);
     const offenders: string[] = [];
 
     for (const file of sourceFiles(EDITOR_DIR)) {
-      const text = readFileSync(file, 'utf8');
-      for (const match of text.matchAll(/from\s+['"]([^'"]+)['"]/g)) {
-        const source = match[1]!;
-        // Относительные пути внутри пакета никого не волнуют.
-        if (source.startsWith('.')) continue;
-        if (!allowed.has(source)) offenders.push(`${file.replace(ROOT, '')}: ${source}`);
+      for (const source of externalImportsOf(readFileSync(file, 'utf8'))) {
+        if (!ALLOWED_EDITOR_IMPORTS.has(source)) {
+          offenders.push(`${file.replace(ROOT, '')}: ${source}`);
+        }
       }
     }
 
     expect(offenders).toEqual([]);
+  });
+
+  it('охранник ловит запрещённый импорт, а не только молчит', () => {
+    // Проверка самого охранника. Тест, который зелен потому, что ничего
+    // не проверяет, хуже отсутствующего — это правило записано парой строк
+    // выше про сам редактор, и к охраннику оно относится ровно так же.
+    expect(externalImportsOf(`import { a } from 'konva';`)).toEqual(['konva']);
+    expect(externalImportsOf(`export { b } from "moveable";`)).toEqual(['moveable']);
+    expect(externalImportsOf(`import { c } from './local.js';`)).toEqual([]);
+  });
+
+  it('упоминание импорта в пояснении не считается импортом', () => {
+    // Охранник читает исходник текстом, а не разбирает его. Пока он смотрел
+    // и на комментарии, честное пояснение вида «список сверен с `eases`
+    // фактического пакета» роняло инвариант: в нём процитирована строка
+    // импорта, которой в коде нет. Обратная сторона — комментарий стал бы
+    // способом спрятать настоящую зависимость от проверки, поэтому из текста
+    // вырезаются только блочные комментарии: именно в них живут пояснения,
+    // где цитировать импорт естественно. Строчные остаются под подозрением —
+    // охраннику положено ошибаться в сторону строгости, потому что лишнее
+    // срабатывание приводит человека посмотреть, а пропуск — нет.
+    const text = [
+      '/**',
+      " * Список сверен с `import { eases } from 'animejs'` установленного пакета.",
+      ' */',
+      "import { ANIMATABLE } from '@player/core';",
+    ].join('\n');
+    expect(externalImportsOf(text)).toEqual(['@player/core']);
   });
 });
 

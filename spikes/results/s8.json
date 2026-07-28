@@ -1,0 +1,36 @@
+{
+  "origin": "http://localhost:5180",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36",
+  "границаLocalStorage": {
+    "максимумСимволовКоторыйПрошёл": 5242869,
+    "минимумСимволовКоторыйУпал": 5242870,
+    "байтУтф16КоторыйПрошёл": 10485738,
+    "мбУтф16КоторыйПрошёл": 10,
+    "исключениеНаГранице": {
+      "name": "QuotaExceededError",
+      "message": "Failed to execute 'setItem' on 'Storage': Setting the value of 'quota-probe' exceeded the quota.",
+      "isDOMException": true,
+      "code": 22
+    }
+  },
+  "сценарийВкладкиЧитателя": {
+    "setItemБросил": true,
+    "чтоБросил": {
+      "name": "QuotaExceededError",
+      "message": "Failed to execute 'setItem' on 'Storage': Setting the value of 'player:preview-project' exceeded the quota."
+    },
+    "значениеДоПопытки": "{\"marker\":\"предыдущий успешный проект\",\"size\":\"маленький\"}",
+    "значениеПослеПровалившейсяПопытки": "{\"marker\":\"предыдущий успешный проект\",\"size\":\"маленький\"}",
+    "старыйПроектВыжилНетронутым": true
+  },
+  "контрольIndexedDb": {
+    "целевыхБайт": 31457214,
+    "целевыхМб": 30,
+    "успех": true,
+    "ошибка": null,
+    "символовЗаписаноПрочитано": 15728607,
+    "совпалоСОжидаемым": true,
+    "времяМс": 59
+  },
+  "вердикт": "ПРОШЁЛ"
+}

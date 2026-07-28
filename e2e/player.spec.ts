@@ -10,10 +10,10 @@ import { expect, test, type Page } from '@playwright/test';
 /** Гейты в фикстуре e2e стоят на словах «смотришь» (1.175 с) и «момент» (2.938 с). */
 const FIRST_GATE_AT = 1.175;
 
-async function openPlayground(page: Page): Promise<void> {
+async function openPlayground(page: Page, fixture = 'e2e'): Promise<void> {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  await page.goto('/?fixture=e2e', { waitUntil: 'load' });
+  await page.goto(`/?fixture=${fixture}`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1');
   expect(errors, 'на странице не должно быть ошибок').toEqual([]);
 }
@@ -122,5 +122,69 @@ test.describe('плеер: сквозной сценарий', () => {
 
     await expect(page.locator('#overlay[data-open="1"]')).toBeHidden();
     await expect.poll(() => stateOf(page)).toBe('playing');
+  });
+});
+
+test.describe('плеер: интерактив внутри сцены (ADR-011)', () => {
+  /**
+   * fixtures/projects/scene-gate.json: гейт-выбор на слове «смотришь»
+   * (1.175 с), оба option.id совпадают с id элементов сцены — вариантом
+   * ответа служит сам элемент, нарисованный автором.
+   */
+  test('вариант, привязанный к элементу, нажимается прямо на сцене', async ({ page }) => {
+    await openPlayground(page, 'scene-gate');
+    await page.getByRole('button', { name: 'Играть' }).click();
+
+    // Плашки нет (проверяется отдельным тестом ниже), поэтому ждём открытия
+    // гейта по состоянию, а не по видимости оверлея.
+    await expect.poll(() => stateOf(page)).toBe('at-gate');
+
+    // Неверный вариант нажат КЛИКОМ ПО СЦЕНЕ, а не вызовом answer() напрямую:
+    // проверка «вызвался ли обработчик» была бы зелена и при сломанной
+    // раскладке, и при перехваченном клике (CLAUDE.md, ADR-011).
+    await page.locator('[data-id="opt-timer"]').click();
+    expect(await stateOf(page), 'неверный ответ не пропускает дальше').toBe('at-gate');
+
+    // Верный вариант — тоже клик по видимому элементу сцены.
+    await page.locator('[data-id="opt-audio"]').click();
+    await expect.poll(() => stateOf(page), 'верный ответ пропускает дальше').toBe('playing');
+  });
+
+  test('сцена не гаснет и плашки нет, когда все варианты — элементы сцены', async ({ page }) => {
+    await openPlayground(page, 'scene-gate');
+    await page.getByRole('button', { name: 'Играть' }).click();
+    await expect.poll(() => stateOf(page)).toBe('at-gate');
+
+    await expect(page.locator('#overlay[data-open="1"]')).toBeHidden();
+    await expect(page.locator('#panel')).toBeEmpty();
+  });
+
+  test('вне гейта элемент-вариант сцены клики не получает', async ({ page }) => {
+    await openPlayground(page, 'scene-gate');
+
+    // Тот же ход, что и в общем тесте инварианта №3, но на новом пути —
+    // на элементе, который в открытом гейте станет кликабельным ответом.
+    const pointerEvents = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('.player-stage')!).pointerEvents);
+    expect(pointerEvents).toBe('none');
+
+    const hit = await page.evaluate(() => {
+      const node = document.querySelector('[data-id="opt-audio"]')!;
+      const box = node.getBoundingClientRect();
+      const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return top?.getAttribute('data-id') ?? top?.tagName.toLowerCase() ?? null;
+    });
+    expect(hit, 'в точке варианта не должно быть самого элемента').not.toBe('opt-audio');
+  });
+
+  test('гейт, у которого варианты без элементов, по-прежнему рисуется плашкой', async ({ page }) => {
+    // Фикстура e2e: ни один option.id ('opt-audio', 'opt-timer') не совпадает
+    // с id элемента сцены — старое поведение обязано остаться нетронутым.
+    await openPlayground(page);
+    await page.getByRole('button', { name: 'Играть' }).click();
+
+    await expect(page.locator('#overlay[data-open="1"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Позиция в аудио' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Отдельный таймер' })).toBeVisible();
   });
 });
