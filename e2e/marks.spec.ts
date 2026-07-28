@@ -132,6 +132,27 @@ test.describe('метки на дорожке', () => {
     expect(added.at.t).toBeCloseTo(gapAt, 1);
   });
 
+  test('добавление метки не отматывает сцену в начало', async ({ page }) => {
+    // Найдено глазами: добавление гейта пересобирает сцену, а свежий
+    // предпросмотр стоит на нуле. Эффект перемотки при этом не срабатывает —
+    // момент не менялся. Автор видел, как всё, что он настроил, исчезает
+    // в ответ на нажатие кнопки.
+    await openEditor(page);
+    await seekTrack(page, 24);
+
+    const before = await page.evaluate(
+      () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,
+    );
+    expect(Number(before), 'на 24-й секунде заголовок обязан быть виден').toBeGreaterThan(0.9);
+
+    await page.getByRole('button', { name: /гейт/ }).click();
+
+    const after = await page.evaluate(
+      () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,
+    );
+    expect(Number(after), 'сцена отмоталась в начало после добавления метки').toBeGreaterThan(0.9);
+  });
+
   test('анимацию нельзя добавить, пока элемент не выделен', async ({ page }) => {
     await openEditor(page);
     await expect(page.getByRole('button', { name: /анимация/ })).toBeDisabled();
