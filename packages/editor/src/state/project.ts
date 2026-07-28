@@ -29,13 +29,29 @@ export interface EditorState {
 
 export type EditorAction =
   | { readonly type: 'select'; readonly id: string | undefined }
-  | { readonly type: 'replaceElement'; readonly element: Element }
+  // `commit` — не про то, ЧТО меняется, а про то, стал ли этот вызов
+  // отдельным шагом истории. Отсутствие (undefined) значит «да, как обычно» —
+  // так ведут себя все существующие вызыватели (клавиатура, охранник
+  // целостности в тестах) без единой правки. `commit: false` — сигнал
+  // редьюсеру истории (`state/editorHistory.ts`), что это ОДНО из многих
+  // событий одного жеста (перетаскивание, набор в числовом поле) и его нельзя
+  // класть в историю отдельным шагом. Сам `editorReducer` этого поля не
+  // читает — оно адресовано исключительно обёртке над историей.
+  | { readonly type: 'replaceElement'; readonly element: Element; readonly commit?: boolean }
   | { readonly type: 'addElement'; readonly element: Element }
   | { readonly type: 'removeElement'; readonly id: string }
   | { readonly type: 'addCue'; readonly cue: Cue }
   | { readonly type: 'addGate'; readonly gate: Gate }
-  | { readonly type: 'moveMark'; readonly kind: MarkKind; readonly id: string; readonly at: TimeRef }
-  | { readonly type: 'removeMark'; readonly kind: MarkKind; readonly id: string };
+  | {
+      readonly type: 'moveMark';
+      readonly kind: MarkKind;
+      readonly id: string;
+      readonly at: TimeRef;
+      readonly commit?: boolean;
+    }
+  | { readonly type: 'removeMark'; readonly kind: MarkKind; readonly id: string }
+  | { readonly type: 'updateGate'; readonly gate: Gate }
+  | { readonly type: 'updateCue'; readonly cue: Cue };
 
 /** Метки на дорожке бывают двух родов, и хранятся они в разных массивах. */
 export type MarkKind = 'cue' | 'gate';
@@ -137,6 +153,40 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         throw new Error(`Нечего удалять: гейта «${action.id}» нет`);
       }
       return withScene(state, { gates });
+    }
+
+    case 'updateGate': {
+      // Панель выделенной метки (срез 3) собирает новый Gate через чистые
+      // функции state/gates.ts и присылает готовый объект — редьюсер лишь
+      // кладёт его на место по id, как replaceElement для элементов.
+      const gates = state.project.scene.gates;
+      const index = gates.findIndex((gate) => gate.id === action.gate.id);
+      if (index < 0) {
+        throw new Error(`Нельзя обновить гейт «${action.gate.id}»: его нет в проекте`);
+      }
+      if (gates[index] === action.gate) return state;
+      const next = gates.slice();
+      next[index] = action.gate;
+      return withScene(state, { gates: next });
+    }
+
+    case 'updateCue': {
+      // В отличие от гейтов, у Cue есть структурная ссылка на элемент
+      // (targetId) — панель анимации умеет менять цель, и её обязана
+      // проверить схема (ProjectSchema.superRefine), а не только загрузка
+      // на диске: та же логика, что и у addCue.
+      if (!hasElement(state.project, action.cue.targetId)) {
+        throw new Error(`Анимация ссылается на элемент «${action.cue.targetId}», которого нет`);
+      }
+      const cues = state.project.scene.cues;
+      const index = cues.findIndex((cue) => cue.id === action.cue.id);
+      if (index < 0) {
+        throw new Error(`Нельзя обновить анимацию «${action.cue.id}»: её нет в проекте`);
+      }
+      if (cues[index] === action.cue) return state;
+      const next = cues.slice();
+      next[index] = action.cue;
+      return withScene(state, { cues: next });
     }
   }
 }

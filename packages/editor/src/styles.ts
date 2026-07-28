@@ -132,18 +132,121 @@ export const EDITOR_STYLES = `
 /* Жест не должен превращаться в прокрутку или зум страницы. */
 .ed-stage-host { touch-action: none; }
 
-/* Середина: сцена и панель свойств. Панель фиксированной ширины, сцена
-   забирает остальное. min-height: 0 обязателен — без него содержимое
-   не даёт грид-строке сжаться, и дорожка уезжает за нижний край окна. */
+/* Середина: сцена, список элементов и панель свойств. Обе боковые колонки
+   фиксированной ширины, сцена забирает остальное. min-height: 0 обязателен —
+   без него содержимое не даёт грид-строке сжаться, и дорожка уезжает
+   за нижний край окна. */
 .ed-main {
   display: grid;
-  grid-template-columns: 1fr 260px;
+  grid-template-columns: 1fr 220px 260px;
   min-height: 0;
   min-width: 0;
   border-bottom: 1px solid #1c242f;
 }
 
 .ed-inspector { border-left: 1px solid #1c242f; }
+
+/* Панель элементов: вставка и удаление сверху, список — снизу и растягивается.
+   flex-column, а не grid с фиксированным числом строк: сообщение об ошибке
+   вставки картинки — условный ребёнок, и число строк грида «поехало» бы
+   в его отсутствие. Список получает flex: 1 1 auto и забирает весь остаток
+   высоты независимо от того, сколько соседей сейчас отрисовано. */
+.ed-elements-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  background: #0b0f14;
+  border-left: 1px solid #1c242f;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ed-insert { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
+
+.ed-delete-row {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Сообщение о каскадном удалении не имеет права раздвинуть панель шире
+   отведённой колонки — тот же закон, что и у .ed-failure на дорожке. */
+.ed-delete-msg {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7d8fa5;
+  font-size: 11px;
+}
+
+.ed-elements {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  gap: 8px;
+  min-height: 0;
+}
+
+.ed-elements-empty { margin: 0; color: #7d8fa5; font-size: 12px; }
+
+.ed-elements-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  min-height: 0;
+}
+
+/* Настоящая кнопка, а не строка со своим обработчиком клика: Tab обходит
+   список без отдельной клавиатурной машинерии (см. срез 6 плана). */
+.ed-element-row {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.ed-element-row:hover { border-color: #2c3a4d; }
+.ed-element-row-selected { border-color: #4c8dff; background: #111a24; }
+
+.ed-element-type {
+  flex: 0 0 auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #7d8fa5;
+}
+
+.ed-element-id { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
+
+/* min-width: 0 обязателен: без него содержимое элемента (в том числе
+   длинный текст) не даёт строке сжаться и раздвигает панель. */
+.ed-element-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #7d8fa5;
+}
 
 /* Дорожка. */
 .ed-track {
@@ -280,14 +383,23 @@ export const EDITOR_STYLES = `
 .ed-mark-gate.ed-mark-word { color: #a8c686; }
 
 /* Строка транскрипта. Одна строка с прокруткой: расти в высоту она
-   не имеет права — иначе дорожка съест сцену. */
+   не имеет права — иначе дорожка съест сцену.
+
+   line-height и max-height заданы в px, а не em/безразмерным множителем.
+   3.4em при font-size:12px даёт 40.8px — величину, не представимую в сетке
+   1/64 px, которой Chrome меряет раскладку (40.8×64 = 2611.2). Браузер
+   округляет до 40.796875px, и эта дробность поднимается по дереву до
+   .ed-track → .ed-main → .ed-stage-host, оставляя область сцены с дробной
+   высотой (измерено: 534.203125px вместо 534px). Автор из-за этого видит
+   сцену на дробной позиции — источник именно ЗДЕСЬ, а не в самой области
+   сцены, и чинить нужно источник. */
 .ed-words {
   margin: 0;
-  max-height: 3.4em;
+  max-height: 40px;
   overflow: auto;
   color: #55637a;
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 20px;
   user-select: text;
 }
 

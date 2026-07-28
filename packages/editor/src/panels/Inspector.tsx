@@ -16,18 +16,39 @@
  * в сохранённый проект, и тот перестал бы загружаться (инвариант №7): ошибка
  * всплыла бы через сессию и далеко от места, где её сделали. Поэтому такое
  * значение наружу не уходит вовсе.
+ *
+ * Отмена и повтор (срез 2). Числовые поля этой панели набираются посимвольно,
+ * и каждая распознанная цифра — самостоятельный вызов `onCommit` (см.
+ * `NumberField` в `fields.tsx`) — то есть набор «120» без дополнительных мер
+ * дал бы три шага истории на одну осознанную правку. Коммит-точка здесь
+ * ровно там же, где и раньше был черновик: `onLiveChange` шлёт каждую
+ * распознанную цифру как «живое» событие уже идущего жеста
+ * (`state/editorHistory.ts`, `commit: false`), а `onCommitHistory` — на потере
+ * фокусом поля — закрывает жест одним шагом. Поля без набора текста (цвет,
+ * выбор из списка) коммитят через обычный `onChange` немедленно: там нет
+ * промежуточных состояний одного жеста, которые стоило бы склеивать.
  */
 import { useId, useState, type ReactElement } from 'react';
 
 import type { Element } from '@player/core';
 
 import {
+  ANY_NUMBER,
+  INTEGER,
+  MultilineField,
+  NumberField,
+  POSITIVE,
+  ReadonlyField,
+  StringField,
+  ColorField,
+  ChoiceField,
+} from './fields.js';
+import {
   getStyleValue,
   setStyleValue,
   styleFieldsFor,
   type ElementStyle,
   type LengthOrPercent,
-  type StyleChoice,
   type StyleFieldDef,
   type StyleFieldKey,
   type StyleReadResult,
@@ -37,11 +58,16 @@ import { composeLengthOrPercent, parseStyleDraft } from './styleDraft.js';
 export interface InspectorProps {
   /** undefined — ничего не выделено. */
   element: Element | undefined;
+  /** Одношаговая правка — например, смена цвета в системном пикере. */
   onChange: (element: Element) => void;
+  /** Живое событие уже идущего жеста набора числа — см. комментарий модуля. */
+  onLiveChange: (element: Element) => void;
+  /** Завершает жест, открытый через `onLiveChange` (потеря фокуса поля). */
+  onCommitHistory: () => void;
 }
 
 export function Inspector(props: InspectorProps): ReactElement {
-  const { element, onChange } = props;
+  const { element, onChange, onLiveChange, onCommitHistory } = props;
 
   return (
     <aside className="ed-inspector" data-testid="inspector">
@@ -55,7 +81,13 @@ export function Inspector(props: InspectorProps): ReactElement {
         // key по идентификатору: при смене выделения поля пересоздаются.
         // Иначе недописанный черновик («-», «1.») пережил бы переход
         // на другой элемент и был бы отправлен уже ему.
-        <ElementFields key={element.id} element={element} onChange={onChange} />
+        <ElementFields
+          key={element.id}
+          element={element}
+          onChange={onChange}
+          onLiveChange={onLiveChange}
+          onCommitHistory={onCommitHistory}
+        />
       )}
     </aside>
   );
@@ -64,9 +96,11 @@ export function Inspector(props: InspectorProps): ReactElement {
 interface ElementFieldsProps {
   element: Element;
   onChange: (element: Element) => void;
+  onLiveChange: (element: Element) => void;
+  onCommitHistory: () => void;
 }
 
-function ElementFields({ element, onChange }: ElementFieldsProps): ReactElement {
+function ElementFields({ element, onChange, onLiveChange, onCommitHistory }: ElementFieldsProps): ReactElement {
   /**
    * Отдать наружу элемент с одним изменённым полем.
    *
@@ -74,6 +108,7 @@ function ElementFields({ element, onChange }: ElementFieldsProps): ReactElement 
    * показывает (`style`): панель не вправе терять то, чего не знает.
    */
   const replace = (part: Partial<Element>): void => onChange({ ...element, ...part });
+  const replaceLive = (part: Partial<Element>): void => onLiveChange({ ...element, ...part });
 
   return (
     <div className="ed-insp-body">
@@ -91,41 +126,52 @@ function ElementFields({ element, onChange }: ElementFieldsProps): ReactElement 
           label="X, px"
           value={element.x}
           accepts={ANY_NUMBER}
-          onCommit={(x) => replace({ x })}
+          onCommit={(x) => replaceLive({ x })}
+          onBlurCommit={onCommitHistory}
         />
         <NumberField
           label="Y, px"
           value={element.y}
           accepts={ANY_NUMBER}
-          onCommit={(y) => replace({ y })}
+          onCommit={(y) => replaceLive({ y })}
+          onBlurCommit={onCommitHistory}
         />
         <NumberField
           label="Ширина, px"
           value={element.width}
           accepts={POSITIVE}
-          onCommit={(width) => replace({ width })}
+          onCommit={(width) => replaceLive({ width })}
+          onBlurCommit={onCommitHistory}
         />
         <NumberField
           label="Высота, px"
           value={element.height}
           accepts={POSITIVE}
-          onCommit={(height) => replace({ height })}
+          onCommit={(height) => replaceLive({ height })}
+          onBlurCommit={onCommitHistory}
         />
         <NumberField
           label="Поворот, °"
           value={element.rotation}
           accepts={ANY_NUMBER}
-          onCommit={(rotation) => replace({ rotation })}
+          onCommit={(rotation) => replaceLive({ rotation })}
+          onBlurCommit={onCommitHistory}
         />
         <NumberField
           label="Слой (z-index)"
           value={element.zIndex}
           accepts={INTEGER}
-          onCommit={(zIndex) => replace({ zIndex })}
+          onCommit={(zIndex) => replaceLive({ zIndex })}
+          onBlurCommit={onCommitHistory}
         />
       </div>
 
-      <StyleSection element={element} onStyleChange={(style) => replace({ style })} />
+      <StyleSection
+        element={element}
+        onStyleChange={(style) => replace({ style })}
+        onStyleChangeLive={(style) => replaceLive({ style })}
+        onCommitHistory={onCommitHistory}
+      />
 
       {/*
         Содержимое есть не у всякого типа. У фигуры его показывать нечего,
@@ -157,6 +203,8 @@ function ElementFields({ element, onChange }: ElementFieldsProps): ReactElement 
 interface StyleSectionProps {
   element: Element;
   onStyleChange: (style: ElementStyle) => void;
+  onStyleChangeLive: (style: ElementStyle) => void;
+  onCommitHistory: () => void;
 }
 
 /**
@@ -173,7 +221,12 @@ interface StyleSectionProps {
  * У элемента без применимых полей (`group`) секция не рисует ничего — пустой
  * блок с одним заголовком выглядел бы как баг, а не как «полей нет».
  */
-function StyleSection({ element, onStyleChange }: StyleSectionProps): ReactElement | null {
+function StyleSection({
+  element,
+  onStyleChange,
+  onStyleChangeLive,
+  onCommitHistory,
+}: StyleSectionProps): ReactElement | null {
   const fields = styleFieldsFor(element.type);
   if (fields.length === 0) return null;
 
@@ -186,6 +239,12 @@ function StyleSection({ element, onStyleChange }: StyleSectionProps): ReactEleme
     onStyleChange(next);
   };
 
+  const commitLive = (key: StyleFieldKey, value: string | number | LengthOrPercent): void => {
+    const next = setStyleValue(element.style, key, value);
+    if (next === element.style) return;
+    onStyleChangeLive(next);
+  };
+
   return (
     <div className="ed-insp-block">
       <h3 className="ed-insp-title">Вид</h3>
@@ -195,6 +254,8 @@ function StyleSection({ element, onStyleChange }: StyleSectionProps): ReactEleme
           field={field}
           read={getStyleValue(element.style, field.key)}
           onCommit={(value) => commit(field.key, value)}
+          onLiveCommit={(value) => commitLive(field.key, value)}
+          onCommitHistory={onCommitHistory}
         />
       ))}
     </div>
@@ -205,6 +266,9 @@ interface StyleFieldWidgetProps {
   field: StyleFieldDef;
   read: StyleReadResult;
   onCommit: (value: string | number | LengthOrPercent) => void;
+  /** Живое событие набора числа — см. комментарий модуля Inspector.tsx. */
+  onLiveCommit: (value: string | number | LengthOrPercent) => void;
+  onCommitHistory: () => void;
 }
 
 /**
@@ -219,8 +283,19 @@ interface StyleFieldWidgetProps {
  * в px/% переключатель значило бы выдумать единицу, которой автор не писал, —
  * тот же класс дефекта, что и падение `markSeconds` из S2: одно непонятное
  * значение не имеет права ронять или тихо портить всю панель.
+ *
+ * `length`/`number`/`length-or-percent` набираются посимвольно — те же поля
+ * коммитят «живыми» событиями через `onLiveCommit` и закрывают жест на
+ * `onCommitHistory` (потеря фокуса). `color`/`choice` меняются целиком одним
+ * действием (выбор из пикера или списка) — им живой коммит не нужен.
  */
-function StyleFieldWidget({ field, read, onCommit }: StyleFieldWidgetProps): ReactElement {
+function StyleFieldWidget({
+  field,
+  read,
+  onCommit,
+  onLiveCommit,
+  onCommitHistory,
+}: StyleFieldWidgetProps): ReactElement {
   if (read.kind === 'raw') {
     return <ReadonlyField label={`${field.label} (не распознано)`} value={read.text} />;
   }
@@ -234,7 +309,8 @@ function StyleFieldWidget({ field, read, onCommit }: StyleFieldWidgetProps): Rea
           label={`${field.label}, px`}
           value={read.value as number}
           accepts={ANY_NUMBER}
-          onCommit={onCommit}
+          onCommit={onLiveCommit}
+          onBlurCommit={onCommitHistory}
         />
       );
     case 'number':
@@ -243,7 +319,8 @@ function StyleFieldWidget({ field, read, onCommit }: StyleFieldWidgetProps): Rea
           label={field.label}
           value={read.value as number}
           accepts={ANY_NUMBER}
-          onCommit={onCommit}
+          onCommit={onLiveCommit}
+          onBlurCommit={onCommitHistory}
         />
       );
     case 'choice':
@@ -261,6 +338,8 @@ function StyleFieldWidget({ field, read, onCommit }: StyleFieldWidgetProps): Rea
           label={field.label}
           value={read.value as LengthOrPercent}
           onCommit={onCommit}
+          onLiveCommit={onLiveCommit}
+          onCommitHistory={onCommitHistory}
         />
       );
     default:
@@ -271,236 +350,12 @@ function StyleFieldWidget({ field, read, onCommit }: StyleFieldWidgetProps): Rea
   }
 }
 
-/** Что считать пригодным для отправки наружу. Разбор уже отсеял всё, что не число. */
-type Accepts = (value: number) => boolean;
-
-const ANY_NUMBER: Accepts = () => true;
-/** `width` и `height` в схеме — `positive()`: ноль и отрицательные не загрузятся. */
-const POSITIVE: Accepts = (value) => value > 0;
-/** `zIndex` в схеме — `int()`. */
-const INTEGER: Accepts = (value) => Number.isInteger(value);
-
-interface NumberFieldProps {
-  label: string;
-  value: number;
-  accepts: Accepts;
-  onCommit: (value: number) => void;
-}
-
-/**
- * Числовое поле.
- *
- * Наивная реализация — `onChange={(e) => onCommit(Number(e.target.value))}` —
- * делает поле нередактируемым, и каждый способ поломки выглядит по-своему:
- * стёртое поле даёт `Number('') === 0`, и элемент прыгает в угол сцены;
- * начатое с минуса даёт NaN; «1.» на пути к «1.5» тоже разбирается не в то,
- * что автор набирает. Причина одна: пока строка набирается, она проходит
- * через состояния, которые числом не являются, а поле обязано их показывать.
- *
- * Поэтому набираемая строка живёт здесь, а наружу уходит только то, что
- * разобралось в конечное число и прошло по ограничению схемы. Не разобралось —
- * не уходит ничего, и поле помечается как ошибочное: молчание вместо правки
- * автор принял бы за успешную правку.
- *
- * `draft === null` означает «поле показывает пропс». Черновик появляется
- * с первым нажатием клавиши и исчезает на потере фокуса — этим и решается
- * второе требование: пока поле не правят, числа едут за элементом, который
- * тащат мышью по сцене. Отдельная синхронизация для этого не нужна, а с ней
- * поле пришлось бы «догонять» пропс и решать, чьё значение новее.
- *
- * `type="text"`, а не `type="number"`: у числового поля браузер отдаёт пустую
- * строку на любой недобор («-», «1e»), то есть ровно те состояния, ради
- * которых черновик и заведён, до нас не доходят вовсе.
- */
-function NumberField({ label, value, accepts, onCommit }: NumberFieldProps): ReactElement {
-  const id = useId();
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const text = draft ?? String(value);
-  const parsed = draft === null ? undefined : parseNumber(draft);
-  const invalid = draft !== null && (parsed === undefined || !accepts(parsed));
-
-  return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="ed-insp-input"
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        spellCheck={false}
-        value={text}
-        aria-invalid={invalid}
-        onChange={(event) => {
-          const next = event.target.value;
-          setDraft(next);
-          const number = parseNumber(next);
-          if (number !== undefined && accepts(number)) onCommit(number);
-        }}
-        // Черновик снимается — поле показывает то, что на самом деле лежит
-        // в элементе. Незавершённый или отвергнутый ввод исчезает вместе с ним.
-        onBlur={() => setDraft(null)}
-      />
-    </div>
-  );
-}
-
-interface StringFieldProps {
-  label: string;
-  value: string;
-  onCommit: (value: string) => void;
-}
-
-/**
- * Однострочное текстовое поле.
- *
- * Черновика здесь нет и не нужно: у строки нет промежуточных состояний,
- * которые нельзя отдать наружу. Пустая строка — законное значение
- * (`content` в схеме — `z.string().default('')`), а не «ещё не дописано».
- */
-function StringField({ label, value, onCommit }: StringFieldProps): ReactElement {
-  const id = useId();
-
-  return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="ed-insp-input"
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        value={value}
-        onChange={(event) => onCommit(event.target.value)}
-      />
-    </div>
-  );
-}
-
-/** Многострочное поле. Текст на сцене бывает в несколько строк, и переносы значимы. */
-function MultilineField({ label, value, onCommit }: StringFieldProps): ReactElement {
-  const id = useId();
-
-  return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <textarea
-        id={id}
-        className="ed-insp-area"
-        spellCheck={false}
-        value={value}
-        onChange={(event) => onCommit(event.target.value)}
-      />
-    </div>
-  );
-}
-
-/**
- * Поле только для чтения.
- *
- * Поле, а не подпись с текстом: значение должно оставаться выделяемым
- * и копируемым — идентификатор набирают в ссылках анимаций и гейтов.
- * `readOnly`, а не `disabled`, по той же причине: отключённое поле
- * недоступно ни фокусу, ни выделению.
- */
-function ReadonlyField({ label, value }: { label: string; value: string }): ReactElement {
-  const id = useId();
-
-  return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <input id={id} className="ed-insp-input" type="text" value={value} readOnly />
-    </div>
-  );
-}
-
-interface ColorFieldProps {
-  label: string;
-  value: string;
-  onCommit: (value: string) => void;
-}
-
-/**
- * Цвет — системный color picker браузера.
- *
- * `<input type="color">` умеет показывать только 6-значный hex. Все цвета
- * в фикстурах и фабриках элементов (`state/elements.ts`) заданы им же, так
- * что для утверждённого набора полей этого достаточно. Значение в другом
- * формате (например, `red`) браузер не покажет верно на самом свотче, но
- * это не портит данные: `onCommit` вызывается только жестом автора по
- * пикеру, а не при простом открытии панели, поэтому непонятое значение
- * стоит на месте, пока автор сам не выберет новый цвет.
- */
-function ColorField({ label, value, onCommit }: ColorFieldProps): ReactElement {
-  const id = useId();
-
-  return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="ed-insp-input"
-        type="color"
-        value={value}
-        onChange={(event) => onCommit(event.target.value)}
-      />
-    </div>
-  );
-}
-
-interface ChoiceFieldProps {
-  label: string;
-  value: string;
-  choices: readonly StyleChoice[];
-  onCommit: (value: string) => void;
-}
-
-/**
- * Выбор из закрытого списка (шрифт, насыщенность, выравнивание).
- *
- * Черновика здесь не нужно, в отличие от `NumberField`: `<select>` физически
- * не может вернуть значение вне своих `<option>`, поэтому всё, что приходит
- * в `onChange`, уже входит в список и `setStyleValue` его не отвергнет.
- */
-function ChoiceField({ label, value, choices, onCommit }: ChoiceFieldProps): ReactElement {
-  const id = useId();
-
-  return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <select
-        id={id}
-        className="ed-insp-input"
-        value={value}
-        onChange={(event) => onCommit(event.target.value)}
-      >
-        {choices.map((choice) => (
-          <option key={choice.value} value={choice.value}>
-            {choice.label}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 interface LengthOrPercentFieldProps {
   label: string;
   value: LengthOrPercent;
   onCommit: (value: LengthOrPercent) => void;
+  onLiveCommit: (value: LengthOrPercent) => void;
+  onCommitHistory: () => void;
 }
 
 /**
@@ -510,16 +365,23 @@ interface LengthOrPercentFieldProps {
  * `50%` и `50px` значат разное), поэтому у неё отдельный переключатель,
  * а не текст с подставленным суффиксом, как у `length`.
  *
- * Число набирается тем же паттерном черновика, что и `NumberField` геометрии:
- * строка живёт в компоненте, наружу уходит только то, что `parseStyleDraft`
- * разобрал в конечное число. Единица меняется отдельным `<select>` и
- * коммитится сразу — там нет промежуточных состояний ввода, как у текста.
+ * Число набирается тем же паттерном черновика, что и `NumberField` геометрии,
+ * и тем же способом коммитит историю: `onLiveCommit` на каждую распознанную
+ * цифру, `onCommitHistory` на потере фокуса. Единица меняется отдельным
+ * `<select>` и коммитится сразу через `onCommit` — там нет промежуточных
+ * состояний ввода, как у текста.
  *
  * Оба поля стоят друг под другом внутри одного `.ed-insp-field` (`display:
  * grid`), а не в ряд: строчный контейнер для пары «число + единица» —
  * это правка `styles.ts`, а этот файл его не трогает (см. отчёт сессии).
  */
-function LengthOrPercentField({ label, value, onCommit }: LengthOrPercentFieldProps): ReactElement {
+function LengthOrPercentField({
+  label,
+  value,
+  onCommit,
+  onLiveCommit,
+  onCommitHistory,
+}: LengthOrPercentFieldProps): ReactElement {
   const amountId = useId();
   const unitId = useId();
   const [draft, setDraft] = useState<string | null>(null);
@@ -546,9 +408,12 @@ function LengthOrPercentField({ label, value, onCommit }: LengthOrPercentFieldPr
           const next = event.target.value;
           setDraft(next);
           const composed = composeLengthOrPercent(next, value.unit);
-          if (composed) onCommit(composed);
+          if (composed) onLiveCommit(composed);
         }}
-        onBlur={() => setDraft(null)}
+        onBlur={() => {
+          setDraft(null);
+          onCommitHistory();
+        }}
       />
       <label className="ed-insp-label" htmlFor={unitId}>
         {label}: единица
@@ -564,17 +429,4 @@ function LengthOrPercentField({ label, value, onCommit }: LengthOrPercentFieldPr
       </select>
     </div>
   );
-}
-
-/**
- * Строка в число, если она уже целое число, а не шаг на пути к нему.
- *
- * `Number` сам по себе для этого не годится: `Number('')` и `Number(' ')`
- * дают ноль — правдоподобное значение, которого автор не вводил.
- */
-function parseNumber(text: string): number | undefined {
-  const trimmed = text.trim();
-  if (trimmed === '') return undefined;
-  const value = Number(trimmed);
-  return Number.isFinite(value) ? value : undefined;
 }

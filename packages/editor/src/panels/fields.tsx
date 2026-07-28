@@ -1,0 +1,264 @@
+/**
+ * Мелкие поля ввода, общие для панели свойств элемента (`Inspector.tsx`)
+ * и панели выделенной метки (`MarkPanel.tsx`).
+ *
+ * Вынесены в отдельный файл по ADR-010 ровно потому, что ничего в них не
+ * знает про то, чьё значение они правят — элемент, гейт или анимацию.
+ * Дублировать эти компоненты в двух файлах значило бы дважды чинить
+ * один и тот же класс дефектов раскладки (см. `NumberField` ниже).
+ *
+ * Чисто презентационные: значение приходит пропсом, наружу уходит только
+ * то, что успешно разобралось. Ни один из них не читает и не пишет проект —
+ * это делает вызывающий компонент через колбэки.
+ */
+import { useId, useState, type ReactElement } from 'react';
+
+/** Что считать пригодным для отправки наружу. Разбор уже отсеял всё, что не число. */
+export type Accepts = (value: number) => boolean;
+
+export const ANY_NUMBER: Accepts = () => true;
+/** `width`/`height`/`duration` в схеме — `positive()`. */
+export const POSITIVE: Accepts = (value) => value > 0;
+/** `zIndex` в схеме — `int()`. */
+export const INTEGER: Accepts = (value) => Number.isInteger(value);
+/** `maxAttempts` в схеме — `int().positive()`. */
+export const POSITIVE_INTEGER: Accepts = (value) => Number.isInteger(value) && value > 0;
+
+/**
+ * Строка в число, если она уже целое число, а не шаг на пути к нему.
+ *
+ * `Number` сам по себе для этого не годится: `Number('')` и `Number(' ')`
+ * дают ноль — правдоподобное значение, которого автор не вводил.
+ */
+export function parseNumber(text: string): number | undefined {
+  const trimmed = text.trim();
+  if (trimmed === '') return undefined;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : undefined;
+}
+
+interface NumberFieldProps {
+  label: string;
+  value: number;
+  accepts: Accepts;
+  onCommit: (value: number) => void;
+  /**
+   * Потеря фокуса поля — точка коммита истории для «живых» правок
+   * (`state/editorHistory.ts`): набор числа шлёт `onCommit` на каждую
+   * распознанную цифру (десятки живых событий одного жеста), а сюда
+   * зовут ровно один раз в его конце. Необязательна: поле, которому
+   * коммит-точка не нужна (правки, не участвующие в отдельном жесте —
+   * например, редко печатаемое число вроде количества попыток гейта),
+   * просто её не передаёт, и тогда каждая цифра остаётся самостоятельным
+   * шагом — тоже корректное, просто более мелкое зерно истории.
+   */
+  onBlurCommit?: () => void;
+}
+
+/**
+ * Числовое поле.
+ *
+ * Наивная реализация — `onChange={(e) => onCommit(Number(e.target.value))}` —
+ * делает поле нередактируемым, и каждый способ поломки выглядит по-своему:
+ * стёртое поле даёт `Number('') === 0`, и элемент прыгает в угол сцены;
+ * начатое с минуса даёт NaN; «1.» на пути к «1.5» тоже разбирается не в то,
+ * что автор набирает. Причина одна: пока строка набирается, она проходит
+ * через состояния, которые числом не являются, а поле обязано их показывать.
+ *
+ * Поэтому набираемая строка живёт здесь, а наружу уходит только то, что
+ * разобралось в конечное число и прошло по ограничению схемы. Не разобралось —
+ * не уходит ничего, и поле помечается как ошибочное: молчание вместо правки
+ * автор принял бы за успешную правку.
+ *
+ * `draft === null` означает «поле показывает пропс». Черновик появляется
+ * с первым нажатием клавиши и исчезает на потере фокуса — этим и решается
+ * второе требование: пока поле не правят, числа едут за элементом, который
+ * тащат мышью по сцене. Отдельная синхронизация для этого не нужна, а с ней
+ * поле пришлось бы «догонять» пропс и решать, чьё значение новее.
+ *
+ * `type="text"`, а не `type="number"`: у числового поля браузер отдаёт пустую
+ * строку на любой недобор («-», «1e»), то есть ровно те состояния, ради
+ * которых черновик и заведён, до нас не доходят вовсе.
+ */
+export function NumberField({ label, value, accepts, onCommit, onBlurCommit }: NumberFieldProps): ReactElement {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const text = draft ?? String(value);
+  const parsed = draft === null ? undefined : parseNumber(draft);
+  const invalid = draft !== null && (parsed === undefined || !accepts(parsed));
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="ed-insp-input"
+        type="text"
+        inputMode="decimal"
+        autoComplete="off"
+        spellCheck={false}
+        value={text}
+        aria-invalid={invalid}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const number = parseNumber(next);
+          if (number !== undefined && accepts(number)) onCommit(number);
+        }}
+        // Черновик снимается — поле показывает то, что на самом деле лежит
+        // в источнике. Незавершённый или отвергнутый ввод исчезает вместе
+        // с ним, и жест (если он был) считается законченным.
+        onBlur={() => {
+          setDraft(null);
+          onBlurCommit?.();
+        }}
+      />
+    </div>
+  );
+}
+
+interface StringFieldProps {
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+}
+
+/**
+ * Однострочное текстовое поле.
+ *
+ * Черновика здесь нет и не нужно: у строки нет промежуточных состояний,
+ * которые нельзя отдать наружу. Пустая строка — законное значение.
+ */
+export function StringField({ label, value, onCommit }: StringFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="ed-insp-input"
+        type="text"
+        autoComplete="off"
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      />
+    </div>
+  );
+}
+
+/** Многострочное поле. */
+export function MultilineField({ label, value, onCommit }: StringFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        className="ed-insp-area"
+        spellCheck={false}
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      />
+    </div>
+  );
+}
+
+/**
+ * Поле только для чтения.
+ *
+ * Поле, а не подпись с текстом: значение должно оставаться выделяемым
+ * и копируемым — идентификаторы набирают в ссылках анимаций и гейтов.
+ * `readOnly`, а не `disabled`, по той же причине: отключённое поле
+ * недоступно ни фокусу, ни выделению.
+ */
+export function ReadonlyField({ label, value }: { label: string; value: string }): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input id={id} className="ed-insp-input" type="text" value={value} readOnly />
+    </div>
+  );
+}
+
+interface ColorFieldProps {
+  label: string;
+  value: string;
+  onCommit: (value: string) => void;
+}
+
+/** Цвет — системный color picker браузера. См. Inspector.tsx для разбора формата. */
+export function ColorField({ label, value, onCommit }: ColorFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="ed-insp-input"
+        type="color"
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      />
+    </div>
+  );
+}
+
+export interface Choice {
+  readonly value: string;
+  readonly label: string;
+}
+
+interface ChoiceFieldProps {
+  label: string;
+  value: string;
+  choices: readonly Choice[];
+  onCommit: (value: string) => void;
+}
+
+/**
+ * Выбор из закрытого списка.
+ *
+ * Черновика здесь не нужно: `<select>` физически не может вернуть значение
+ * вне своих `<option>`, поэтому всё, что приходит в `onChange`, уже входит
+ * в список.
+ */
+export function ChoiceField({ label, value, choices, onCommit }: ChoiceFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <select
+        id={id}
+        className="ed-insp-input"
+        value={value}
+        onChange={(event) => onCommit(event.target.value)}
+      >
+        {choices.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}

@@ -4868,17 +4868,19 @@ var vl = class {
 	#r;
 	#i = null;
 	#a = null;
-	#o = [];
-	#s = 0;
-	#c = /* @__PURE__ */ new Map();
-	#l = "idle";
-	#u = null;
+	#o = /* @__PURE__ */ new Map();
+	#s = [];
+	#c = 0;
+	#l = /* @__PURE__ */ new Map();
+	#u = "idle";
 	#d = null;
+	#f = null;
+	#p = [];
 	constructor(e, t, n = {}) {
-		this.#e = e, this.#n = t, this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", e.appendChild(this.#t);
+		this.#e = e, this.#n = _l(t), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#g), e.appendChild(this.#t);
 	}
 	get state() {
-		return this.#l;
+		return this.#u;
 	}
 	get stageElement() {
 		return this.#t;
@@ -4887,77 +4889,98 @@ var vl = class {
 		return this.#i?.position ?? 0;
 	}
 	get currentGate() {
-		return this.#l === "at-gate" ? this.#o[this.#s]?.gate : void 0;
-	}
-	#f(e) {
-		this.#l !== e && (this.#l = e, this.#r.onStateChange?.(e));
-	}
-	async load() {
-		this.#f("loading"), hl();
-		let e = {
-			width: this.#n.meta.stageWidth,
-			height: this.#n.meta.stageHeight
-		}, t = jo(this.#t, this.#n.scene, e);
-		this.#p(), this.#d = new ResizeObserver(() => this.#p()), this.#d.observe(this.#e);
-		let n = new AudioContext(), r = await wo(n, this.#n.audio.src);
-		this.#i = new To(n, r.buffer), this.#a = gl(this.#n.scene.cues, t, this.#n.audio.words, { audioDuration: r.buffer.duration }), this.#o = this.#n.scene.gates.map((e) => ({
-			gate: e,
-			at: vo(e.at, this.#n.audio.words)
-		})).sort((e, t) => e.at - t.at), this.#s = 0, this.#a.seekSeconds(0), this.#f("ready");
-	}
-	#p() {
-		Mo(this.#t, this.#e.clientWidth, this.#e.clientHeight, {
-			width: this.#n.meta.stageWidth,
-			height: this.#n.meta.stageHeight
-		});
-	}
-	async play() {
-		let e = this.#x();
-		if (this.#l !== "playing") {
-			if (this.#l === "at-gate") throw Error("Нельзя продолжить, пока гейт не пройден");
-			if (await e.context.resume(), this.#m(0)) {
-				this.#_();
-				return;
-			}
-			e.start(this.#l === "ended" ? 0 : e.position), this.#l === "ended" && (this.#s = 0), this.#f("playing"), this.#h();
-		}
+		return this.#u === "at-gate" ? this.#s[this.#c]?.gate : void 0;
 	}
 	#m(e) {
-		let t = this.#o[this.#s];
-		return t !== void 0 && e >= t.at;
+		this.#u !== e && (this.#u = e, this.#r.onStateChange?.(e));
+	}
+	async load() {
+		this.#m("loading"), hl(), this.#o = jo(this.#t, this.#n.scene, this.#n.stage), this.#h(), this.#f = new ResizeObserver(() => this.#h()), this.#f.observe(this.#e);
+		let e = new AudioContext(), t = await wo(e, this.#n.src);
+		this.#i = new To(e, t.buffer), this.#a = gl(this.#n.scene.cues, this.#o, this.#n.words, { audioDuration: t.buffer.duration }), this.#s = this.#n.scene.gates.map((e) => ({
+			gate: e,
+			at: vo(e.at, this.#n.words)
+		})).sort((e, t) => e.at - t.at), this.#c = 0, this.#a.seekSeconds(0), this.#m("ready");
 	}
 	#h() {
-		let e = this.#x(), t = this.#S(), n = () => {
-			if (this.#l !== "playing") return;
+		Mo(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#n.stage);
+	}
+	#g = (e) => {
+		if (this.#u !== "at-gate") return;
+		let t = this.currentGate;
+		if (!t || t.config.kind !== "choice") return;
+		let n = e.target, r = (n instanceof HTMLElement ? n.closest("[data-id]") : null)?.dataset.id;
+		r !== void 0 && t.config.options.some((e) => e.id === r) && this.answer(r);
+	};
+	#_(e) {
+		if (e.config.kind !== "choice") return [];
+		let t = [];
+		for (let n of e.config.options) {
+			let e = this.#o.get(n.id);
+			if (!e) {
+				t.push(n);
+				continue;
+			}
+			e.dataset.answerOption = "1", e.style.cursor = "pointer", this.#p.push(n.id);
+		}
+		return t;
+	}
+	#v() {
+		for (let e of this.#p) {
+			let t = this.#o.get(e);
+			t && (delete t.dataset.answerOption, t.style.cursor = "");
+		}
+		this.#p = [];
+	}
+	async play() {
+		let e = this.#E();
+		if (this.#u !== "playing") {
+			if (this.#u === "at-gate") throw Error("Нельзя продолжить, пока гейт не пройден");
+			if (await e.context.resume(), this.#y(0)) {
+				this.#S();
+				return;
+			}
+			e.start(this.#u === "ended" ? 0 : e.position), this.#u === "ended" && (this.#c = 0), this.#m("playing"), this.#b();
+		}
+	}
+	#y(e) {
+		let t = this.#s[this.#c];
+		return t !== void 0 && e >= t.at;
+	}
+	#b() {
+		let e = this.#E(), t = this.#D(), n = () => {
+			if (this.#u !== "playing") return;
 			let r = e.position;
-			if (t.seekSeconds(r), this.#r.onFrame?.(r), this.#m(r)) {
-				this.#g();
+			if (t.seekSeconds(r), this.#r.onFrame?.(r), this.#y(r)) {
+				this.#x();
 				return;
 			}
 			if (r >= e.duration - .02) {
-				this.#y();
+				this.#w();
 				return;
 			}
-			this.#u = requestAnimationFrame(n);
+			this.#d = requestAnimationFrame(n);
 		};
-		this.#u = requestAnimationFrame(n);
+		this.#d = requestAnimationFrame(n);
 	}
-	async #g() {
-		let e = this.#x(), t = this.#S(), n = this.#o[this.#s];
+	async #x() {
+		let e = this.#E(), t = this.#D(), n = this.#s[this.#c];
 		if (!n) throw Error("Гейт исчез между проверкой и остановкой");
-		await e.freezeAt(n.at), t.seekSeconds(n.at), this.#_();
+		await e.freezeAt(n.at), t.seekSeconds(n.at), this.#S();
 	}
-	#_() {
-		let e = this.#o[this.#s];
+	#S() {
+		let e = this.#s[this.#c];
 		if (!e) throw Error("Нет гейта для открытия");
-		this.#b(), this.#t.style.pointerEvents = "auto", this.#f("at-gate"), this.#r.onGateOpen?.(e.gate);
+		this.#T(), this.#t.style.pointerEvents = "auto", this.#m("at-gate");
+		let t = this.#_(e.gate);
+		this.#r.onGateOpen?.(e.gate, t);
 	}
 	async answer(e) {
-		if (this.#l !== "at-gate") throw Error(`Ответ вне гейта: состояние ${this.#l}`);
-		let t = this.#o[this.#s];
+		if (this.#u !== "at-gate") throw Error(`Ответ вне гейта: состояние ${this.#u}`);
+		let t = this.#s[this.#c];
 		if (!t) throw Error("Нет открытого гейта");
-		let { gate: n } = t, r = (this.#c.get(n.id) ?? 0) + 1;
-		this.#c.set(n.id, r);
+		let { gate: n } = t, r = (this.#l.get(n.id) ?? 0) + 1;
+		this.#l.set(n.id, r);
 		let i = bl(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
 		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "reveal" || a ? "reveal" : "retry";
 		let s = {
@@ -4966,30 +4989,30 @@ var vl = class {
 			attemptsUsed: r,
 			outcome: o
 		};
-		return this.#r.onGateResolved?.(s), o === "continue" && await this.#v(), s;
+		return this.#r.onGateResolved?.(s), o === "continue" && await this.#C(), s;
 	}
 	async continueAfterReveal() {
-		if (this.#l !== "at-gate") throw Error("Нет открытого гейта");
-		await this.#v();
+		if (this.#u !== "at-gate") throw Error("Нет открытого гейта");
+		await this.#C();
 	}
-	async #v() {
-		let e = this.#x();
-		this.#t.style.pointerEvents = "none", this.#s += 1, await e.resumeFromFreeze(), this.#f("playing"), this.#h();
+	async #C() {
+		let e = this.#E();
+		this.#v(), this.#t.style.pointerEvents = "none", this.#c += 1, await e.resumeFromFreeze(), this.#m("playing"), this.#b();
 	}
-	#y() {
-		this.#b(), this.#i?.stop(), this.#f("ended");
+	#w() {
+		this.#T(), this.#i?.stop(), this.#m("ended");
 	}
-	#b() {
-		this.#u !== null && (cancelAnimationFrame(this.#u), this.#u = null);
+	#T() {
+		this.#d !== null && (cancelAnimationFrame(this.#d), this.#d = null);
 	}
 	destroy() {
-		this.#b(), this.#d?.disconnect(), this.#i?.stop(), this.#i?.context.close(), this.#t.remove(), this.#f("idle");
+		this.#T(), this.#f?.disconnect(), this.#i?.stop(), this.#i?.context.close(), this.#t.remove(), this.#m("idle");
 	}
-	#x() {
+	#E() {
 		if (!this.#i) throw Error("Плеер не загружен: сначала load()");
 		return this.#i;
 	}
-	#S() {
+	#D() {
 		if (!this.#a) throw Error("Плеер не загружен: сначала load()");
 		return this.#a;
 	}

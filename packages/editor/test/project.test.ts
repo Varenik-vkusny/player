@@ -298,6 +298,79 @@ describe('removeElement', () => {
   });
 });
 
+describe('updateGate', () => {
+  it('заменяет гейт по id; elements и cues остаются теми же массивами по ссылке', () => {
+    const state = baseState();
+    const updated: Gate = { ...gate('gate-1'), onWrong: 'reveal', maxAttempts: 2 };
+
+    const next = editorReducer(state, { type: 'updateGate', gate: updated });
+
+    expect(next.project.scene.gates[0]).toBe(updated);
+    expect(next.project.scene.gates).not.toBe(state.project.scene.gates);
+    expect(next.project.scene.elements).toBe(state.project.scene.elements);
+    expect(next.project.scene.cues).toBe(state.project.scene.cues);
+  });
+
+  it('замена тем же объектом — no-op, состояние то же по ссылке', () => {
+    const state = baseState();
+    const same = state.project.scene.gates[0]!;
+    const next = editorReducer(state, { type: 'updateGate', gate: same });
+    expect(next).toBe(state);
+  });
+
+  it('обновление несуществующего гейта бросает ошибку', () => {
+    expect(() =>
+      editorReducer(baseState(), { type: 'updateGate', gate: gate('ghost') }),
+    ).toThrow(/ghost/);
+  });
+});
+
+describe('updateCue', () => {
+  it('заменяет cue по id; elements и gates остаются теми же массивами по ссылке', () => {
+    const state = baseState();
+    const updated: Cue = {
+      ...cue('cue-1', 'title'),
+      animation: { property: 'opacity', from: 0, to: 1, duration: 999, ease: 'outQuad' },
+    };
+
+    const next = editorReducer(state, { type: 'updateCue', cue: updated });
+
+    expect(next.project.scene.cues[0]).toBe(updated);
+    expect(next.project.scene.cues).not.toBe(state.project.scene.cues);
+    expect(next.project.scene.elements).toBe(state.project.scene.elements);
+    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+  });
+
+  it('смена цели (targetId) на существующий элемент — разрешена', () => {
+    const state = baseState();
+    const retargeted: Cue = { ...cue('cue-1', 'subtitle') };
+
+    const next = editorReducer(state, { type: 'updateCue', cue: retargeted });
+
+    expect(next.project.scene.cues[0]!.targetId).toBe('subtitle');
+  });
+
+  it('смена цели на несуществующий элемент бросает ошибку — та же проверка, что и у addCue', () => {
+    const state = baseState();
+    expect(() =>
+      editorReducer(state, { type: 'updateCue', cue: cue('cue-1', 'ghost') }),
+    ).toThrow(/ghost/);
+  });
+
+  it('замена тем же объектом — no-op, состояние то же по ссылке', () => {
+    const state = baseState();
+    const same = state.project.scene.cues[0]!;
+    const next = editorReducer(state, { type: 'updateCue', cue: same });
+    expect(next).toBe(state);
+  });
+
+  it('обновление несуществующей анимации бросает ошибку', () => {
+    expect(() =>
+      editorReducer(baseState(), { type: 'updateCue', cue: cue('ghost', 'title') }),
+    ).toThrow(/ghost/);
+  });
+});
+
 describe('охранник целостности: серия правок остаётся валидным проектом', () => {
   // fileURLToPath, а не .pathname.slice(1) из marks.test.ts: последнее
   // работает на Windows случайно и разваливается на POSIX-путях без диска.

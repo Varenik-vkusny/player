@@ -7,7 +7,17 @@
 <style>
   html, body { margin: 0; height: 100%; background: #07090c; color: #e6edf5;
                font: 15px system-ui, sans-serif; }
-  #host { position: fixed; inset: 0 0 56px 0; }
+  /*
+    Свой непрозрачный фон обязателен, а не унаследован от body.
+    Chromium выбирает режим сглаживания текста по тому, известен ли слою
+    гарантированно непрозрачный фон: при просвечивании он считает фон
+    неизвестным и откатывается с субпиксельного сглаживания на серое.
+    Измерено: без этой строки те же буквы того же шрифта расходились
+    с редактором на 524 пикселя из 360 800, с ней — на 0.
+    Это не косметика: инвариант №5 обещает, что автор видит ровно то же,
+    что зритель, а здесь именно зрительская точка входа (инвариант №9).
+  */
+  #host { position: fixed; inset: 0 0 56px 0; background: #07090c; }
   #bar { position: fixed; left: 0; right: 0; bottom: 0; height: 56px;
          display: flex; align-items: center; gap: 12px; padding: 0 16px;
          border-top: 1px solid #1c242f; background: #0b0f14; }

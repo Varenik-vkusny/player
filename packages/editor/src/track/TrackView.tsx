@@ -29,6 +29,8 @@ export interface TrackViewProps {
   selectedMark: { kind: MarkKind; id: string } | undefined;
   onSelectMark: (kind: MarkKind, id: string) => void;
   onMoveMark: (kind: MarkKind, id: string, seconds: number) => void;
+  /** Перетаскивание метки завершено — точка коммита истории (срез 2). */
+  onMoveMarkEnd: () => void;
   /** Добавляет анимацию выделенному элементу на текущей позиции. */
   onAddCue: () => void;
   /** Добавляет гейт на текущей позиции. */
@@ -60,6 +62,7 @@ export function TrackView({
   selectedMark,
   onSelectMark,
   onMoveMark,
+  onMoveMarkEnd,
   onAddCue,
   onAddGate,
   canAddCue,
@@ -210,6 +213,7 @@ export function TrackView({
         selected={selectedMark}
         onSelect={onSelectMark}
         onMove={onMoveMark}
+        onMoveEnd={onMoveMarkEnd}
       />
 
       <p className="ed-words" data-testid="track-words">

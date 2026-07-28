@@ -33,7 +33,15 @@ export interface MarksLaneProps {
   durationSeconds: number;
   selected: { kind: MarkKind; id: string } | undefined;
   onSelect: (kind: MarkKind, id: string) => void;
+  /**
+   * Правка момента метки жестом. Как и `StageView.onElementChange`, вызывается
+   * многократно за один жест — коммит-точку ставит `onMoveEnd` на `pointerup`
+   * (срез 2: перетаскивание метки, как и перетаскивание элемента, обязано
+   * стать ОДНИМ шагом истории, а не одним на каждый `pointermove`).
+   */
   onMove: (kind: MarkKind, id: string, seconds: number) => void;
+  /** Жест перетаскивания метки завершён — точка коммита истории. */
+  onMoveEnd: () => void;
 }
 
 export function MarksLane({
@@ -42,6 +50,7 @@ export function MarksLane({
   selected,
   onSelect,
   onMove,
+  onMoveEnd,
 }: MarksLaneProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{ kind: MarkKind; id: string; pointerId: number } | null>(null);
@@ -78,12 +87,21 @@ export function MarksLane({
     [onMove, secondsAt],
   );
 
-  const handleUp = useCallback((event: ReactPointerEvent<HTMLButtonElement>): void => {
-    draggingRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-  }, []);
+  const handleUp = useCallback(
+    (event: ReactPointerEvent<HTMLButtonElement>): void => {
+      const wasDragging = draggingRef.current !== null;
+      draggingRef.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      // Клик без движения (простое выделение метки) тоже проходит через
+      // handleDown/handleUp, но onMove ни разу не звался — коммитить нечего.
+      // onMoveEnd на стороне истории всё равно безопасен как no-op, но
+      // проверка здесь дешевле лишнего вызова через компонент выше.
+      if (wasDragging) onMoveEnd();
+    },
+    [onMoveEnd],
+  );
 
   return (
     <div className="ed-marks" ref={laneRef} data-testid="marks-lane">
