@@ -26,7 +26,7 @@ import {
 } from 'react';
 
 import type { Cue, Element, Gate, Project } from '@player/core';
-import { segmentOf, type ScenePreview } from '@player/player';
+import { entryNodeOf, segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
 import { ANIMATIONS, ELEMENTS, GATES, plural } from './plural.js';
@@ -76,10 +76,15 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   // сам, без участия Editor.tsx; этот мост нужен ровно для Escape.
   const stageRef = useRef<StageViewHandle>(null);
 
+  // Текущий узел — состояние вида, а не проекта: переключение узла (Задача 9)
+  // не создаёт шаг истории само по себе. Пока в проекте всегда ровно один
+  // узел, поэтому значение не меняется, но дверца уже читает узел явно.
+  const [nodeId] = useState(() => entryNodeOf(currentProject));
+
   // Единственная точка, через которую редактор видит дорожку и сцену.
-  // Когда проект станет графом сегментов, поменяется segmentOf, а не это
+  // Когда проект стал графом сегментов, поменялась segmentOf, а не это
   // место и не всё, что ниже (docs/planning.md §5а).
-  const segment = useMemo(() => segmentOf(currentProject), [currentProject]);
+  const segment = useMemo(() => segmentOf(currentProject, nodeId), [currentProject, nodeId]);
 
   const transport = useTransport(segment.src, segment.duration);
 

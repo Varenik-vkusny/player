@@ -54,8 +54,8 @@ test.describe('панель гейта: выбор варианта', () => {
 
     const ids = await page.evaluate(
       () =>
-        (window as unknown as { __project: { scene: { elements: { id: string }[] } } }).__project
-          .scene.elements.map((element) => element.id),
+        (window as unknown as { __project: { nodes: { scene: { elements: { id: string }[] } }[] } })
+          .__project.nodes[0]!.scene.elements.map((element) => element.id),
     );
     expect(ids).toEqual(['text-1', 'text-2']);
 
@@ -79,8 +79,8 @@ test.describe('панель гейта: выбор варианта', () => {
 
     const gate = await page.evaluate(
       () =>
-        (window as unknown as { __project: { scene: { gates: unknown[] } } }).__project.scene
-          .gates[0],
+        (window as unknown as { __project: { nodes: { scene: { gates: unknown[] } }[] } })
+          .__project.nodes[0]!.scene.gates[0],
     );
     expect(gate).toMatchObject({
       config: {
@@ -137,8 +137,8 @@ test.describe('панель гейта: ввод ответа', () => {
 
     const config = await page.evaluate(
       () =>
-        (window as unknown as { __project: { scene: { gates: { config: unknown }[] } } }).__project
-          .scene.gates[0]!.config,
+        (window as unknown as { __project: { nodes: { scene: { gates: { config: unknown }[] } }[] } })
+          .__project.nodes[0]!.scene.gates[0]!.config,
     );
     expect(config).toMatchObject({ kind: 'input', accept: ['аудио'], caseSensitive: false });
 
@@ -191,8 +191,10 @@ test.describe('панель анимации', () => {
     const savedCue = await page.evaluate(
       () =>
         (window as unknown as {
-          __project: { scene: { cues: { animation: { duration: number; property: string } }[] } };
-        }).__project.scene.cues[0]!,
+          __project: {
+            nodes: { scene: { cues: { animation: { duration: number; property: string } }[] } }[];
+          };
+        }).__project.nodes[0]!.scene.cues[0]!,
     );
     expect(savedCue.animation.duration).toBe(1000);
     expect(savedCue.animation.property).toBe('opacity');

@@ -53,8 +53,9 @@ async function seekTrack(page: Page, seconds: number): Promise<void> {
 async function gatesOf(page: Page): Promise<{ id: string; at: SavedRef }[]> {
   return page.evaluate(
     () =>
-      (window as unknown as { __project: { scene: { gates: { id: string; at: SavedRef }[] } } })
-        .__project.scene.gates,
+      (window as unknown as {
+        __project: { nodes: { scene: { gates: { id: string; at: SavedRef }[] } }[] };
+      }).__project.nodes[0]!.scene.gates,
   );
 }
 

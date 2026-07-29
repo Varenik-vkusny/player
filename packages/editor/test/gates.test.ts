@@ -97,10 +97,18 @@ function element(id: string): Element {
 /** Минимальный проект с одним гейтом — ровно то, что нужно `loadProject`, не больше. */
 function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-    audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-    scene: { elements: [...elements], cues: [], gates: [gate] },
+    entry: 'node-1',
+    nodes: [
+      {
+        id: 'node-1',
+        title: '',
+        audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+        scene: { elements: [...elements], cues: [], gates: [gate] },
+        edges: [],
+      },
+    ],
   };
 }
 
@@ -604,7 +612,7 @@ describe('охранник целостности: гейт, собранный 
     gate = setMaxAttempts(gate, 2);
 
     const project = assertLoadable(gate, [element('moscow-card')]);
-    const loadedGate = project.scene.gates[0]!;
+    const loadedGate = project.nodes[0]!.scene.gates[0]!;
     expect(loadedGate.config.kind).toBe('choice');
     expect(loadedGate.onWrong).toBe('reveal');
     expect(loadedGate.maxAttempts).toBe(2);

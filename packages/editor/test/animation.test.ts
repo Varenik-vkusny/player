@@ -218,14 +218,22 @@ function cue(id: string, targetId: string, animation: AnimationSpec): Cue {
 
 function projectWith(animation: AnimationSpec): Project {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-    audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-    scene: {
-      elements: [element('target')],
-      cues: [cue('cue-1', 'target', animation)],
-      gates: [],
-    },
+    entry: 'node-1',
+    nodes: [
+      {
+        id: 'node-1',
+        title: '',
+        audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+        scene: {
+          elements: [element('target')],
+          cues: [cue('cue-1', 'target', animation)],
+          gates: [],
+        },
+        edges: [],
+      },
+    ],
   };
 }
 
@@ -239,7 +247,7 @@ describe('охранник целостности: loadProject принимае�
       expect(() => loadProject(project)).not.toThrow();
 
       const loaded = loadProject(project);
-      expect(loaded.scene.cues[0]!.animation).toEqual(spec);
+      expect(loaded.nodes[0]!.scene.cues[0]!.animation).toEqual(spec);
     });
   }
 

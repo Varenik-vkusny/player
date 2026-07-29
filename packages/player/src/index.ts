@@ -20,7 +20,7 @@ export {
   type Fit,
   type StageSize,
 } from './render.js';
-export { ScenePreview, segmentOf, type Segment } from './preview.js';
+export { entryNodeOf, ScenePreview, segmentOf, type Segment } from './preview.js';
 export {
   buildTimeline,
   disableEngineMainLoop,

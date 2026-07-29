@@ -216,3 +216,58 @@ describe('инвариант №8: анимируем только transform, op
     expect(new Set(ANIMATABLE).size).toBe(ANIMATABLE.length);
   });
 });
+
+/**
+ * Файлы, которым читать project.audio и project.scene положено по должности.
+ *
+ * schema.ts — валидатор: он определяет формат, ему эти поля видеть обязательно.
+ * preview.ts — сама дверца.
+ * state/project.ts — редьюсер редактора, сторона записи, парная к segmentOf
+ * (ADR-010). Читать проект целиком — его работа.
+ */
+const NARROW_DOOR_EXEMPT = [
+  join('packages', 'core', 'src', 'schema.ts'),
+  join('packages', 'player', 'src', 'preview.ts'),
+  join('packages', 'editor', 'src', 'state', 'project.ts'),
+];
+
+/** Код без комментариев: пояснение, называющее поле, — не обращение к нему. */
+function codeWithoutComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
+describe('дверца: project.audio и project.scene читают в одном месте', () => {
+  const DIRS = [
+    join(ROOT, 'packages', 'core', 'src'),
+    join(ROOT, 'packages', 'player', 'src'),
+    join(ROOT, 'packages', 'editor', 'src'),
+    join(ROOT, 'apps', 'playground', 'src'),
+  ];
+
+  it('охранник умеет находить нарушение: иначе он зелен впустую', () => {
+    const code = codeWithoutComments('const d = project.audio.duration; // project.scene');
+    expect(/project\.(audio|scene)\b/.test(code)).toBe(true);
+  });
+
+  it('охранник не считает нарушением комментарий', () => {
+    const code = codeWithoutComments('// поменяется project.audio, а не всё выше');
+    expect(/project\.(audio|scene)\b/.test(code)).toBe(false);
+  });
+
+  it('вне дверцы к audio и scene напрямую не ходят', () => {
+    const offenders: string[] = [];
+
+    for (const dir of DIRS) {
+      for (const file of sourceFiles(dir)) {
+        const relative = file.replace(ROOT, '').replace(/^[\\/]/, '');
+        if (NARROW_DOOR_EXEMPT.some((exempt) => relative.endsWith(exempt))) continue;
+        const code = codeWithoutComments(readFileSync(file, 'utf8'));
+        for (const match of code.matchAll(/project\.(audio|scene)\b/g)) {
+          offenders.push(`${relative}: project.${match[1]}`);
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});

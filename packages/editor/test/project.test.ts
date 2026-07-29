@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadProject } from '@player/core';
-import type { Cue, Element, Gate, Project, TimeRef } from '@player/core';
+import type { Cue, Element, Gate, Project, Scene, TimeRef } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
 import { editorReducer, initialState } from '../src/state/project.js';
@@ -54,19 +54,32 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-    audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-    scene: {
-      elements: [element('title'), element('subtitle', 1)],
-      cues: [cue('cue-1', 'title')],
-      gates: [gate('gate-1')],
-    },
+    entry: 'node-1',
+    nodes: [
+      {
+        id: 'node-1',
+        title: '',
+        audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+        scene: {
+          elements: [element('title'), element('subtitle', 1)],
+          cues: [cue('cue-1', 'title')],
+          gates: [gate('gate-1')],
+        },
+        edges: [],
+      },
+    ],
   };
 }
 
 function baseState() {
   return initialState(baseProject());
+}
+
+/** Сцена единственного узла — в редьюсере ей и посвящена вся эта дверца. */
+function sceneOf(project: Project): Scene {
+  return project.nodes[0]!.scene;
 }
 
 describe('select', () => {
@@ -95,19 +108,19 @@ describe('select', () => {
 describe('replaceElement', () => {
   it('заменяет элемент; cues и gates остаются теми же массивами по ссылке', () => {
     const state = baseState();
-    const replaced: Element = { ...state.project.scene.elements[0]!, x: 50 };
+    const replaced: Element = { ...sceneOf(state.project).elements[0]!, x: 50 };
 
     const next = editorReducer(state, { type: 'replaceElement', element: replaced });
 
-    expect(next.project.scene.elements[0]).toBe(replaced);
-    expect(next.project.scene.elements).not.toBe(state.project.scene.elements);
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).elements[0]).toBe(replaced);
+    expect(sceneOf(next.project).elements).not.toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('замена тем же объектом — no-op, состояние то же по ссылке', () => {
     const state = baseState();
-    const same = state.project.scene.elements[0]!;
+    const same = sceneOf(state.project).elements[0]!;
 
     const next = editorReducer(state, { type: 'replaceElement', element: same });
 
@@ -128,9 +141,9 @@ describe('addCue', () => {
 
     const next = editorReducer(state, { type: 'addCue', cue: added });
 
-    expect(next.project.scene.cues).toEqual([...state.project.scene.cues, added]);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).cues).toEqual([...sceneOf(state.project).cues, added]);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('дублирующийся id бросает ошибку', () => {
@@ -153,9 +166,9 @@ describe('addGate', () => {
 
     const next = editorReducer(state, { type: 'addGate', gate: added });
 
-    expect(next.project.scene.gates).toEqual([...state.project.scene.gates, added]);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
+    expect(sceneOf(next.project).gates).toEqual([...sceneOf(state.project).gates, added]);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
   });
 
   it('дублирующийся id бросает ошибку', () => {
@@ -172,9 +185,9 @@ describe('moveMark', () => {
 
     const next = editorReducer(state, { type: 'moveMark', kind: 'cue', id: 'cue-1', at });
 
-    expect(next.project.scene.cues[0]!.at).toEqual(at);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).cues[0]!.at).toEqual(at);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('двигает gate; elements и cues остаются теми же массивами по ссылке', () => {
@@ -183,9 +196,9 @@ describe('moveMark', () => {
 
     const next = editorReducer(state, { type: 'moveMark', kind: 'gate', id: 'gate-1', at });
 
-    expect(next.project.scene.gates[0]!.at).toEqual(at);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
+    expect(sceneOf(next.project).gates[0]!.at).toEqual(at);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
   });
 
   it('перемещение несуществующей метки бросает ошибку', () => {
@@ -206,9 +219,9 @@ describe('removeMark', () => {
 
     const next = editorReducer(state, { type: 'removeMark', kind: 'cue', id: 'cue-1' });
 
-    expect(next.project.scene.cues).toEqual([]);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).cues).toEqual([]);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('удаляет gate; elements и cues остаются теми же массивами по ссылке', () => {
@@ -216,9 +229,9 @@ describe('removeMark', () => {
 
     const next = editorReducer(state, { type: 'removeMark', kind: 'gate', id: 'gate-1' });
 
-    expect(next.project.scene.gates).toEqual([]);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
+    expect(sceneOf(next.project).gates).toEqual([]);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
   });
 
   it('удаление несуществующей метки бросает ошибку', () => {
@@ -232,14 +245,14 @@ describe('addElement', () => {
   it('добавляет элемент, сразу его выделяет; cues и gates остаются теми же массивами по ссылке', () => {
     const state = baseState();
     const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
-    const created = createElement('shape', state.project.scene, stage);
+    const created = createElement('shape', sceneOf(state.project), stage);
 
     const next = editorReducer(state, { type: 'addElement', element: created });
 
-    expect(next.project.scene.elements).toEqual([...state.project.scene.elements, created]);
+    expect(sceneOf(next.project).elements).toEqual([...sceneOf(state.project).elements, created]);
     expect(next.selectedId).toBe(created.id);
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('дублирующийся id бросает ошибку', () => {
@@ -255,8 +268,8 @@ describe('removeElement', () => {
 
     const next = editorReducer(state, { type: 'removeElement', id: 'subtitle' });
 
-    expect(next.project.scene.elements.some((e) => e.id === 'subtitle')).toBe(false);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).elements.some((e) => e.id === 'subtitle')).toBe(false);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('каскадом удаляет cues, нацеленные на удалённый элемент', () => {
@@ -264,7 +277,7 @@ describe('removeElement', () => {
 
     const next = editorReducer(state, { type: 'removeElement', id: 'title' });
 
-    expect(next.project.scene.cues).toEqual([]);
+    expect(sceneOf(next.project).cues).toEqual([]);
   });
 
   it('если удаление не задело cues — массив cues остаётся тем же по ссылке', () => {
@@ -272,7 +285,7 @@ describe('removeElement', () => {
 
     const next = editorReducer(state, { type: 'removeElement', id: 'subtitle' });
 
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
   });
 
   it('удаление выделенного элемента снимает выделение', () => {
@@ -305,15 +318,15 @@ describe('updateGate', () => {
 
     const next = editorReducer(state, { type: 'updateGate', gate: updated });
 
-    expect(next.project.scene.gates[0]).toBe(updated);
-    expect(next.project.scene.gates).not.toBe(state.project.scene.gates);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.cues).toBe(state.project.scene.cues);
+    expect(sceneOf(next.project).gates[0]).toBe(updated);
+    expect(sceneOf(next.project).gates).not.toBe(sceneOf(state.project).gates);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).cues).toBe(sceneOf(state.project).cues);
   });
 
   it('замена тем же объектом — no-op, состояние то же по ссылке', () => {
     const state = baseState();
-    const same = state.project.scene.gates[0]!;
+    const same = sceneOf(state.project).gates[0]!;
     const next = editorReducer(state, { type: 'updateGate', gate: same });
     expect(next).toBe(state);
   });
@@ -335,10 +348,10 @@ describe('updateCue', () => {
 
     const next = editorReducer(state, { type: 'updateCue', cue: updated });
 
-    expect(next.project.scene.cues[0]).toBe(updated);
-    expect(next.project.scene.cues).not.toBe(state.project.scene.cues);
-    expect(next.project.scene.elements).toBe(state.project.scene.elements);
-    expect(next.project.scene.gates).toBe(state.project.scene.gates);
+    expect(sceneOf(next.project).cues[0]).toBe(updated);
+    expect(sceneOf(next.project).cues).not.toBe(sceneOf(state.project).cues);
+    expect(sceneOf(next.project).elements).toBe(sceneOf(state.project).elements);
+    expect(sceneOf(next.project).gates).toBe(sceneOf(state.project).gates);
   });
 
   it('смена цели (targetId) на существующий элемент — разрешена', () => {
@@ -347,7 +360,7 @@ describe('updateCue', () => {
 
     const next = editorReducer(state, { type: 'updateCue', cue: retargeted });
 
-    expect(next.project.scene.cues[0]!.targetId).toBe('subtitle');
+    expect(sceneOf(next.project).cues[0]!.targetId).toBe('subtitle');
   });
 
   it('смена цели на несуществующий элемент бросает ошибку — та же проверка, что и у addCue', () => {
@@ -359,7 +372,7 @@ describe('updateCue', () => {
 
   it('замена тем же объектом — no-op, состояние то же по ссылке', () => {
     const state = baseState();
-    const same = state.project.scene.cues[0]!;
+    const same = sceneOf(state.project).cues[0]!;
     const next = editorReducer(state, { type: 'updateCue', cue: same });
     expect(next).toBe(state);
   });
@@ -381,7 +394,7 @@ describe('охранник целостности: серия правок ос�
     let state = initialState(project);
 
     const stage = { width: project.meta.stageWidth, height: project.meta.stageHeight };
-    const created = createElement('text', state.project.scene, stage);
+    const created = createElement('text', sceneOf(state.project), stage);
     state = editorReducer(state, { type: 'addElement', element: created });
 
     const attached = cue('cue-guard', created.id);
@@ -392,11 +405,11 @@ describe('охранник целостности: серия правок ос�
     // Каскад обязан снять и cue вместе с элементом — иначе serializeProject
     // упадёт на ссылке в никуда, и это ровно тот класс дефектов, который
     // должен ловить этот тест, а не единичный сценарий.
-    expect(state.project.scene.cues.some((c) => c.id === 'cue-guard')).toBe(false);
+    expect(sceneOf(state.project).cues.some((c) => c.id === 'cue-guard')).toBe(false);
 
     expect(() => serializeProject(state.project)).not.toThrow();
 
     const reloaded = loadProject(JSON.parse(serializeProject(state.project)));
-    expect(reloaded.scene.elements.some((e) => e.id === created.id)).toBe(false);
+    expect(sceneOf(reloaded).elements.some((e) => e.id === created.id)).toBe(false);
   });
 });

@@ -320,45 +320,53 @@ describe('demo.json: обход каждого элемента и каждог�
 describe('интеграция со схемой: результат подставляется в элемент и проходит loadProject', () => {
   function baseProject(): Project {
     return {
-      schemaVersion: 1,
+      schemaVersion: 2,
       meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080 },
-      audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-      scene: {
-        elements: [
-          {
-            id: 'headline',
-            type: 'text',
-            x: 0,
-            y: 0,
-            width: 400,
-            height: 100,
-            rotation: 0,
-            zIndex: 0,
-            style: {},
-            content: 'Заголовок',
+      entry: 'node-1',
+      nodes: [
+        {
+          id: 'node-1',
+          title: '',
+          audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+          scene: {
+            elements: [
+              {
+                id: 'headline',
+                type: 'text',
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 100,
+                rotation: 0,
+                zIndex: 0,
+                style: {},
+                content: 'Заголовок',
+              },
+              {
+                id: 'panel',
+                type: 'shape',
+                x: 0,
+                y: 0,
+                width: 200,
+                height: 200,
+                rotation: 0,
+                zIndex: 0,
+                style: {},
+                content: '',
+              },
+            ],
+            cues: [],
+            gates: [],
           },
-          {
-            id: 'panel',
-            type: 'shape',
-            x: 0,
-            y: 0,
-            width: 200,
-            height: 200,
-            rotation: 0,
-            zIndex: 0,
-            style: {},
-            content: '',
-          },
-        ],
-        cues: [],
-        gates: [],
-      },
+          edges: [],
+        },
+      ],
     };
   }
 
   it('стиль, собранный через setStyleValue для всех применимых полей text и shape, проходит валидацию схемы', () => {
     const project = baseProject();
-    const [headline, panel] = project.scene.elements;
+    const [headline, panel] = project.nodes[0]!.scene.elements;
 
     let headlineStyle: ElementStyle = headline!.style;
     for (const field of styleFieldsFor('text')) {
@@ -372,22 +380,27 @@ describe('интеграция со схемой: результат подст�
 
     const next: Project = {
       ...project,
-      scene: {
-        ...project.scene,
-        elements: [
-          { ...headline!, style: headlineStyle },
-          { ...panel!, style: panelStyle },
-        ],
-      },
+      nodes: [
+        {
+          ...project.nodes[0]!,
+          scene: {
+            ...project.nodes[0]!.scene,
+            elements: [
+              { ...headline!, style: headlineStyle },
+              { ...panel!, style: panelStyle },
+            ],
+          },
+        },
+      ],
     };
 
     const loaded = loadProject(next);
-    expect(loaded.scene.elements[0]!.style).toEqual(headlineStyle);
-    expect(loaded.scene.elements[1]!.style).toEqual(panelStyle);
+    expect(loaded.nodes[0]!.scene.elements[0]!.style).toEqual(headlineStyle);
+    expect(loaded.nodes[0]!.scene.elements[1]!.style).toEqual(panelStyle);
 
     // И обратно: то, что реально загрузила схема, читается этим же модулем без ошибок.
     for (const field of styleFieldsFor('text')) {
-      expect(getStyleValue(loaded.scene.elements[0]!.style, field.key)).toEqual(parsed(SAMPLES[field.key]));
+      expect(getStyleValue(loaded.nodes[0]!.scene.elements[0]!.style, field.key)).toEqual(parsed(SAMPLES[field.key]));
     }
   });
 });

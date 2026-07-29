@@ -37,14 +37,22 @@ function element(id: string, x = 0): Element {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-    audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-    scene: {
-      elements: [element('title'), element('subtitle', 50)],
-      cues: [],
-      gates: [],
-    },
+    entry: 'node-1',
+    nodes: [
+      {
+        id: 'node-1',
+        title: '',
+        audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+        scene: {
+          elements: [element('title'), element('subtitle', 50)],
+          cues: [],
+          gates: [],
+        },
+        edges: [],
+      },
+    ],
   };
 }
 
@@ -121,12 +129,12 @@ describe('одиночные действия: по шагу на вызов', (
     // исходное состояние — а не перепрыгивает через first целиком.
     expect(state.history.past.length).toBe(2);
     const afterOneUndo = historyReducer(state, { type: 'undo' });
-    expect((afterOneUndo.history.present.scene.elements[0] as Element).x).toBe(10);
+    expect((afterOneUndo.history.present.nodes[0]!.scene.elements[0] as Element).x).toBe(10);
   });
 
   it('replaceElement тем же объектом (no-op editorReducer) не создаёт шаг', () => {
     const state = baseState();
-    const same = state.history.present.scene.elements[0]!;
+    const same = state.history.present.nodes[0]!.scene.elements[0]!;
     const next = historyReducer(state, { type: 'replaceElement', element: same });
     expect(next).toBe(state);
   });
@@ -141,7 +149,7 @@ describe('одиночные действия: по шагу на вызов', (
     state = historyReducer(state, { type: 'updateGate', gate: updated });
 
     expect(state.history.past.length).toBe(pastAfterAdd + 1);
-    expect(state.history.present.scene.gates[0]!.onWrong).toBe('reveal');
+    expect(state.history.present.nodes[0]!.scene.gates[0]!.onWrong).toBe('reveal');
   });
 });
 
@@ -178,7 +186,7 @@ describe('правило 2: жест — один шаг истории', () => 
     s = historyReducer(s, { type: 'commit' });
     expect(s.gestureOpen).toBe(false);
     // commit не меняет данные — верхушка уже несёт финальное значение.
-    expect((s.history.present.scene.elements[0] as Element).x).toBe(30);
+    expect((s.history.present.nodes[0]!.scene.elements[0] as Element).x).toBe(30);
     expect(s.history.past).toEqual([before]);
 
     // Один Ctrl+Z должен вернуть СРАЗУ исходное значение, а не x=20 и не x=10:
@@ -219,7 +227,7 @@ describe('правило 2: жест — один шаг истории', () => 
     expect(state.history.past).toEqual([...pastBeforeDrag, beforeDrag]);
 
     state = historyReducer(state, { type: 'commit' });
-    expect(state.history.present.scene.gates[0]!.at).toEqual({ kind: 'seconds', t: 4 });
+    expect(state.history.present.nodes[0]!.scene.gates[0]!.at).toEqual({ kind: 'seconds', t: 4 });
 
     const undone = historyReducer(state, { type: 'undo' });
     expect(undone.history.present).toBe(beforeDrag);
@@ -299,7 +307,7 @@ describe('правило 3: отмена/повтор не берут на се�
 
     const undone = historyReducer(withNew, { type: 'undo' });
     // shape-1 отменой убран из проекта — выделение обязано слететь.
-    expect(undone.history.present.scene.elements.some((e) => e.id === 'shape-1')).toBe(false);
+    expect(undone.history.present.nodes[0]!.scene.elements.some((e) => e.id === 'shape-1')).toBe(false);
     expect(undone.selectedId).toBeUndefined();
   });
 
@@ -320,7 +328,7 @@ describe('правило 3: отмена/повтор не берут на се�
     expect(undone.selectedId).toBeUndefined();
 
     const redone = historyReducer(undone, { type: 'redo' });
-    expect(redone.history.present.scene.elements.some((e) => e.id === 'shape-1')).toBe(true);
+    expect(redone.history.present.nodes[0]!.scene.elements.some((e) => e.id === 'shape-1')).toBe(true);
     // Выделение НЕ подтягивается обратно автоматически — snapshot истории
     // не хранит selectedId по определению (правило 1).
     expect(redone.selectedId).toBeUndefined();

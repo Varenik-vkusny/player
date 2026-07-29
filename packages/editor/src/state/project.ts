@@ -10,7 +10,7 @@
  * сравнением ссылок. Если редьюсер начнёт пересоздавать неизменившиеся
  * элементы, сцена будет пересобираться целиком на каждое движение мыши.
  */
-import type { Cue, Element, Gate, Project, TimeRef } from '@player/core';
+import type { Cue, Element, Gate, Project, Scene, SegmentNode, TimeRef } from '@player/core';
 
 import { removeElement as removeElementFromScene } from './elements.js';
 
@@ -60,6 +60,24 @@ export function initialState(project: Project): EditorState {
   return { project, selectedId: undefined };
 }
 
+/**
+ * Узел, который сейчас правит редьюсер.
+ *
+ * Пока в проекте всегда ровно один узел (Задача 3 плана графа сегментов),
+ * редьюсер правит стартовый узел без параметра nodeId. Когда автор сможет
+ * переключать узлы (Задача 8), действия обзаведутся собственным nodeId —
+ * этот геттер станет первым местом, которое придётся сменить.
+ */
+function currentNode(project: Project): SegmentNode {
+  const node = project.nodes.find((candidate) => candidate.id === project.entry);
+  if (!node) {
+    // Схема гарантирует существование стартового узла при загрузке —
+    // сюда можно попасть только если состояние собрано в обход loadProject.
+    throw new Error(`Стартового узла «${project.entry}» нет в проекте`);
+  }
+  return node;
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'select': {
@@ -71,7 +89,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'replaceElement': {
-      const elements = state.project.scene.elements;
+      const elements = currentNode(state.project).scene.elements;
       const index = elements.findIndex((element) => element.id === action.element.id);
       if (index < 0) {
         // Замена несуществующего элемента — это рассинхрон состояния
@@ -87,19 +105,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'addElement': {
-      if (state.project.scene.elements.some((element) => element.id === action.element.id)) {
+      if (currentNode(state.project).scene.elements.some((element) => element.id === action.element.id)) {
         throw new Error(`Элемент «${action.element.id}» уже есть: идентификаторы обязаны быть уникальны`);
       }
       // Новый элемент сразу выделен: автор только что его создал и,
       // скорее всего, тут же начнёт править — незачем кликать по нему заново.
-      const next = withScene(state, { elements: [...state.project.scene.elements, action.element] });
+      const next = withScene(state, { elements: [...currentNode(state.project).scene.elements, action.element] });
       return { ...next, selectedId: action.element.id };
     }
 
     case 'removeElement': {
       // Каскад по cues и сохранение ссылки на неизменившиеся массивы —
       // забота elements.ts, а не редьюсера.
-      const { scene } = removeElementFromScene(state.project.scene, action.id);
+      const { scene } = removeElementFromScene(currentNode(state.project).scene, action.id);
       const next = withScene(state, scene);
       if (state.selectedId !== action.id) return next;
       // Удалили то, что было выделено, — выделять больше нечего.
@@ -107,7 +125,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'addCue': {
-      if (state.project.scene.cues.some((cue) => cue.id === action.cue.id)) {
+      if (currentNode(state.project).scene.cues.some((cue) => cue.id === action.cue.id)) {
         throw new Error(`Анимация «${action.cue.id}» уже есть: идентификаторы обязаны быть уникальны`);
       }
       if (!hasElement(state.project, action.cue.targetId)) {
@@ -115,25 +133,25 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         // на полчаса позже — значит потерять полчаса работы.
         throw new Error(`Анимация ссылается на элемент «${action.cue.targetId}», которого нет`);
       }
-      return withScene(state, { cues: [...state.project.scene.cues, action.cue] });
+      return withScene(state, { cues: [...currentNode(state.project).scene.cues, action.cue] });
     }
 
     case 'addGate': {
-      if (state.project.scene.gates.some((gate) => gate.id === action.gate.id)) {
+      if (currentNode(state.project).scene.gates.some((gate) => gate.id === action.gate.id)) {
         throw new Error(`Гейт «${action.gate.id}» уже есть: идентификаторы обязаны быть уникальны`);
       }
-      return withScene(state, { gates: [...state.project.scene.gates, action.gate] });
+      return withScene(state, { gates: [...currentNode(state.project).scene.gates, action.gate] });
     }
 
     case 'moveMark': {
       if (action.kind === 'cue') {
-        const cues = replaceAt(state.project.scene.cues, action.id, (cue) => ({
+        const cues = replaceAt(currentNode(state.project).scene.cues, action.id, (cue) => ({
           ...cue,
           at: action.at,
         }));
         return withScene(state, { cues });
       }
-      const gates = replaceAt(state.project.scene.gates, action.id, (gate) => ({
+      const gates = replaceAt(currentNode(state.project).scene.gates, action.id, (gate) => ({
         ...gate,
         at: action.at,
       }));
@@ -142,14 +160,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'removeMark': {
       if (action.kind === 'cue') {
-        const cues = state.project.scene.cues.filter((cue) => cue.id !== action.id);
-        if (cues.length === state.project.scene.cues.length) {
+        const cues = currentNode(state.project).scene.cues.filter((cue) => cue.id !== action.id);
+        if (cues.length === currentNode(state.project).scene.cues.length) {
           throw new Error(`Нечего удалять: анимации «${action.id}» нет`);
         }
         return withScene(state, { cues });
       }
-      const gates = state.project.scene.gates.filter((gate) => gate.id !== action.id);
-      if (gates.length === state.project.scene.gates.length) {
+      const gates = currentNode(state.project).scene.gates.filter((gate) => gate.id !== action.id);
+      if (gates.length === currentNode(state.project).scene.gates.length) {
         throw new Error(`Нечего удалять: гейта «${action.id}» нет`);
       }
       return withScene(state, { gates });
@@ -159,7 +177,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Панель выделенной метки (срез 3) собирает новый Gate через чистые
       // функции state/gates.ts и присылает готовый объект — редьюсер лишь
       // кладёт его на место по id, как replaceElement для элементов.
-      const gates = state.project.scene.gates;
+      const gates = currentNode(state.project).scene.gates;
       const index = gates.findIndex((gate) => gate.id === action.gate.id);
       if (index < 0) {
         throw new Error(`Нельзя обновить гейт «${action.gate.id}»: его нет в проекте`);
@@ -178,7 +196,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!hasElement(state.project, action.cue.targetId)) {
         throw new Error(`Анимация ссылается на элемент «${action.cue.targetId}», которого нет`);
       }
-      const cues = state.project.scene.cues;
+      const cues = currentNode(state.project).scene.cues;
       const index = cues.findIndex((cue) => cue.id === action.cue.id);
       if (index < 0) {
         throw new Error(`Нельзя обновить анимацию «${action.cue.id}»: её нет в проекте`);
@@ -192,15 +210,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 }
 
 /**
- * Собирает новое состояние с изменённой сценой.
+ * Собирает новое состояние с изменённой сценой текущего узла.
  *
  * Неизменившиеся массивы остаются ТЕМИ ЖЕ по ссылке — на этом держится
  * решение StageView о том, пересобирать сцену или обновить один узел.
+ * Остальные узлы графа (сегодня их нет, но `nodes` уже массив) остаются
+ * теми же объектами по ссылке тоже — `map` их не трогает.
  */
-function withScene(state: EditorState, patch: Partial<Project['scene']>): EditorState {
+function withScene(state: EditorState, patch: Partial<Scene>): EditorState {
+  const node = currentNode(state.project);
+  const nextNode: SegmentNode = { ...node, scene: { ...node.scene, ...patch } };
+  const nodes = state.project.nodes.map((candidate) => (candidate.id === node.id ? nextNode : candidate));
   return {
     ...state,
-    project: { ...state.project, scene: { ...state.project.scene, ...patch } },
+    project: { ...state.project, nodes },
   };
 }
 
@@ -217,6 +240,11 @@ function replaceAt<T extends { id: string }>(
   return next;
 }
 
-function hasElement(project: Project, id: string): boolean {
-  return project.scene.elements.some((element) => element.id === id);
+/**
+ * Экспортирована ради `state/editorHistory.ts`: у него своя, парная забота
+ * (проверить, что выделенный элемент пережил undo/redo), и ей нужен тот же
+ * ответ на тот же вопрос — не свежая копия того же обращения к узлу.
+ */
+export function hasElement(project: Project, id: string): boolean {
+  return currentNode(project).scene.elements.some((element) => element.id === id);
 }

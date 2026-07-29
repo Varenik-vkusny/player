@@ -218,25 +218,26 @@ describe('якорь строится только через core', () => {
 describe('реальные данные: fixtures/projects/demo.json', () => {
   const FIXTURES = new URL('../../../fixtures/projects/', import.meta.url).pathname.slice(1);
   const demo = loadProject(JSON.parse(readFileSync(join(FIXTURES, 'demo.json'), 'utf8')));
-  const words = demo.audio.words;
+  const node = demo.nodes[0]!;
+  const words = node.audio.words;
 
   it('фикстура прочитана целиком', () => {
     expect(words.length).toBe(100);
-    expect(demo.scene.gates.length).toBe(2);
+    expect(node.scene.gates.length).toBe(2);
   });
 
   it('все метки фикстуры переводятся в секунды и лежат на дорожке', () => {
-    const refs = [...demo.scene.cues.map((cue) => cue.at), ...demo.scene.gates.map((g) => g.at)];
+    const refs = [...node.scene.cues.map((cue) => cue.at), ...node.scene.gates.map((g) => g.at)];
     for (const ref of refs) {
       const seconds = markSeconds(ref, words);
       expect(Number.isFinite(seconds)).toBe(true);
       expect(seconds).toBeGreaterThanOrEqual(0);
-      expect(seconds).toBeLessThanOrEqual(demo.audio.duration);
+      expect(seconds).toBeLessThanOrEqual(node.audio.duration);
     }
   });
 
   it('гейт на слове «энергия» воспроизводится модулем ровно', () => {
-    const gate = wordRef(demo.scene.gates[1]!.at);
+    const gate = wordRef(node.scene.gates[1]!.at);
     const seconds = markSeconds(gate, words);
     expect(seconds).toBeCloseTo(44.188, 12);
 
@@ -251,7 +252,7 @@ describe('реальные данные: fixtures/projects/demo.json', () => {
   });
 
   it('гейт на слове «главная» звучит внутри предыдущего слова — и это видно', () => {
-    const gate = wordRef(demo.scene.gates[0]!.at);
+    const gate = wordRef(node.scene.gates[0]!.at);
     const seconds = markSeconds(gate, words);
     expect(seconds).toBeCloseTo(14.387, 12);
 

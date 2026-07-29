@@ -11,7 +11,7 @@
  * в кадр, — это сцена.
  */
 import { loadProject } from '@player/core';
-import { ScenePreview, segmentOf } from '@player/player';
+import { entryNodeOf, ScenePreview, segmentOf } from '@player/player';
 
 const params = new URLSearchParams(location.search);
 
@@ -44,7 +44,7 @@ if (!response.ok) {
 // Валидация обязательна и здесь: битый проект не открывается нигде.
 const project = loadProject(await response.json());
 
-const preview = new ScenePreview(stage, segmentOf(project));
+const preview = new ScenePreview(stage, segmentOf(project, entryNodeOf(project)));
 preview.seek(time);
 preview.fit(host.clientWidth, host.clientHeight);
 

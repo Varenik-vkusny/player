@@ -57,9 +57,9 @@ test.describe('круг: правка в редакторе — просмотр
 
     const moved = await page.evaluate(() => {
       const project = (window as unknown as {
-        __project: { scene: { elements: { id: string; x: number }[] } };
+        __project: { nodes: { scene: { elements: { id: string; x: number }[] } }[] };
       }).__project;
-      return project.scene.elements.find((element) => element.id === 'card')?.x;
+      return project.nodes[0]!.scene.elements.find((element) => element.id === 'card')?.x;
     });
     expect(moved).not.toBe(1240);
 
@@ -72,14 +72,14 @@ test.describe('круг: правка в редакторе — просмотр
     if (!file) throw new Error('файл не сохранился');
     const saved = JSON.parse(readFileSync(file, 'utf8')) as {
       schemaVersion: number;
-      scene: { elements: { id: string; x: number }[] };
+      nodes: { scene: { elements: { id: string; x: number }[] } }[];
     };
 
     // Валидация уже прошла внутри редактора — serializeProject прогоняет
     // текст через loadProject перед выдачей. Здесь проверяется, что в файл
     // попало именно то, что на экране.
-    expect(saved.schemaVersion).toBe(1);
-    expect(saved.scene.elements.find((element) => element.id === 'card')?.x).toBe(moved);
+    expect(saved.schemaVersion).toBe(2);
+    expect(saved.nodes[0]!.scene.elements.find((element) => element.id === 'card')?.x).toBe(moved);
   });
 
   test('правленый проект открывается плеером и доезжает до гейта', async ({ page, context }) => {

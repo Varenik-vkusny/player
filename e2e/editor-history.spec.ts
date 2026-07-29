@@ -37,9 +37,9 @@ async function seekTrack(page: Page, seconds: number): Promise<void> {
 async function elementX(page: Page, id: string): Promise<number> {
   return page.evaluate((elementId) => {
     const project = (window as unknown as {
-      __project: { scene: { elements: { id: string; x: number }[] } };
+      __project: { nodes: { scene: { elements: { id: string; x: number }[] } }[] };
     }).__project;
-    const element = project.scene.elements.find((candidate) => candidate.id === elementId);
+    const element = project.nodes[0]!.scene.elements.find((candidate) => candidate.id === elementId);
     if (!element) throw new Error(`в проекте нет элемента ${elementId}`);
     return element.x;
   }, id);

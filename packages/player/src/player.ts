@@ -9,7 +9,7 @@ import { resolveTimeRef } from '@player/core';
 
 import { AudioClock, loadTrack } from './clock.js';
 import { applyFit, renderScene } from './render.js';
-import { segmentOf, type Segment } from './preview.js';
+import { entryNodeOf, segmentOf, type Segment } from './preview.js';
 import { buildTimeline, disableEngineMainLoop, type DrivenTimeline } from './timeline.js';
 
 export type PlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'at-gate' | 'ended';
@@ -58,6 +58,7 @@ interface ScheduledGate {
 export class Player {
   readonly #host: HTMLElement;
   readonly #stage: HTMLElement;
+  readonly #nodeId: string;
   readonly #segment: Segment;
   readonly #events: PlayerEvents;
 
@@ -76,8 +77,9 @@ export class Player {
   constructor(host: HTMLElement, project: Project, events: PlayerEvents = {}) {
     this.#host = host;
     // Единственная точка чтения project.audio и project.scene (ADR-003,
-    // ADR-011): переход на граф сегментов поменяет segmentOf, а не Player.
-    this.#segment = segmentOf(project);
+    // ADR-011): переход на граф сегментов поменял segmentOf, а не Player.
+    this.#nodeId = entryNodeOf(project);
+    this.#segment = segmentOf(project, this.#nodeId);
     this.#events = events;
 
     this.#stage = document.createElement('div');

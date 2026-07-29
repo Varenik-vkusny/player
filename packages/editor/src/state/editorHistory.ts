@@ -64,7 +64,7 @@
 import type { Project } from '@player/core';
 
 import { canRedo, canUndo, createHistory, push, redo, undo, type History } from './history.js';
-import { editorReducer, type EditorAction, type EditorState } from './project.js';
+import { editorReducer, hasElement, type EditorAction, type EditorState } from './project.js';
 
 export type { History } from './history.js';
 
@@ -110,10 +110,6 @@ function isLiveEvent(action: EditorAction): boolean {
 function replacePresent(history: History<Project>, next: Project): History<Project> {
   if (next === history.present) return history;
   return { past: history.past, present: next, future: history.future };
-}
-
-function hasElement(project: Project, id: string): boolean {
-  return project.scene.elements.some((element) => element.id === id);
 }
 
 /** Общий хвост undo/redo: чинит выделение и закрывает случайно оставшийся жест. */

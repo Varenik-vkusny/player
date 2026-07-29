@@ -42,20 +42,29 @@ export interface Segment {
 }
 
 /**
- * Достаёт сегмент из проекта.
+ * Достаёт сегмент указанного узла.
  *
- * Единственная точка, через которую предпросмотр и редактор видят
- * project.audio и project.scene. Если обращения к ним расползутся,
- * переход на граф сегментов станет переписыванием вместо миграции схемы.
+ * Единственная точка, через которую плеер, предпросмотр и редактор видят
+ * озвучку и сцену. Узел передаётся явно, а не берётся по умолчанию: код,
+ * который не сказал, какой узел он показывает, почти наверняка ошибается.
  */
-export function segmentOf(project: Project): Segment {
+export function segmentOf(project: Project, nodeId: string): Segment {
+  const node = project.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node) {
+    throw new Error(`Узла «${nodeId}» нет в проекте`);
+  }
   return {
-    src: project.audio.src,
-    words: project.audio.words,
-    duration: project.audio.duration,
-    scene: project.scene,
+    src: node.audio.src,
+    words: node.audio.words,
+    duration: node.audio.duration,
+    scene: node.scene,
     stage: { width: project.meta.stageWidth, height: project.meta.stageHeight },
   };
+}
+
+/** Узел, с которого начинается объяснение. */
+export function entryNodeOf(project: Project): string {
+  return project.entry;
 }
 
 /**

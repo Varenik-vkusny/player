@@ -46,8 +46,8 @@ async function seekTrack(page: Page, seconds: number): Promise<void> {
 async function elementIdsOf(page: Page): Promise<string[]> {
   return page.evaluate(
     () =>
-      (window as unknown as { __project: { scene: { elements: { id: string }[] } } }).__project
-        .scene.elements.map((element) => element.id),
+      (window as unknown as { __project: { nodes: { scene: { elements: { id: string }[] } }[] } })
+        .__project.nodes[0]!.scene.elements.map((element) => element.id),
   );
 }
 
@@ -77,8 +77,8 @@ test.describe('панель вставки', () => {
 
     const types = await page.evaluate(
       () =>
-        (window as unknown as { __project: { scene: { elements: { type: string }[] } } }).__project
-          .scene.elements.map((element) => element.type),
+        (window as unknown as { __project: { nodes: { scene: { elements: { type: string }[] } }[] } })
+          .__project.nodes[0]!.scene.elements.map((element) => element.type),
     );
     expect(types).toEqual(['shape', 'image']);
     // Оба элемента реально нарисованы плеерным рендером — не только в проекте.
@@ -164,13 +164,13 @@ test.describe('удаление', () => {
     // упало бы раньше, чем этот тест дошёл до чтения файла.
     const saved = JSON.parse(readFileSync(file, 'utf8')) as {
       schemaVersion: number;
-      scene: { elements: { id: string }[]; cues: { id: string }[] };
+      nodes: { scene: { elements: { id: string }[]; cues: { id: string }[] } }[];
     };
-    expect(saved.schemaVersion).toBe(1);
-    expect(saved.scene.elements.some((element) => element.id === 'dot')).toBe(false);
-    expect(saved.scene.cues.some((cue) => cue.id === 'c-dot' || cue.id === 'c-dot-move')).toBe(
-      false,
-    );
+    expect(saved.schemaVersion).toBe(2);
+    expect(saved.nodes[0]!.scene.elements.some((element) => element.id === 'dot')).toBe(false);
+    expect(
+      saved.nodes[0]!.scene.cues.some((cue) => cue.id === 'c-dot' || cue.id === 'c-dot-move'),
+    ).toBe(false);
   });
 });
 
