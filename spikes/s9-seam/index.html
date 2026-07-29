@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S9 — стык узлов графа</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 20px; }
+  button { font: inherit; padding: 8px 14px; margin-right: 8px; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: default; }
+  table { border-collapse: collapse; margin-top: 12px; }
+  th, td { border: 1px solid #ccc; padding: 5px 9px; }
+  th { background: #f2f2f2; text-align: left; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  #log { white-space: pre-wrap; background: #111; color: #eee; padding: 10px; margin-top: 12px; max-height: 320px; overflow: auto; }
+</style>
+</head>
+<body>
+<h1>S9 — стык двух дорожек графа сегментов</h1>
+<p>Три сценария перехода между узлами при ответе на гейте: A — расписание
+(<code>source.start(when)</code>), B — опрос в кадре (условие
+<code>player.ts:270</code>), C — то же самое, но без предзагрузки второй
+дорожки. Разрывы ищутся методикой S3 — см. комментарии в <code>seam.js</code>.</p>
+
+<p>
+  <button id="a">A: расписание</button>
+  <button id="b">B: опрос в кадре</button>
+  <button id="c">C: без предзагрузки</button>
+</p>
+
+<div id="out"></div>
+<pre id="log"></pre>
+
+<script type="module">
+import { runSeamA, runSeamB, runSeamC } from './seam.js';
+
+const $ = (id) => document.getElementById(id);
+const log = (m) => { $('log').textContent += m + '\n'; $('log').scrollTop = 1e9; console.log('[s9]', m); };
+
+function table(title, rows) {
+  $('out').innerHTML += `<h2>${title}</h2><table>` +
+    rows.map(([k, v]) => `<tr><th>${k}</th><td class="num">${v}</td></tr>`).join('') + '</table>';
+}
+
+$('a').addEventListener('click', async () => {
+  $('a').disabled = true;
+  try {
+    const result = await runSeamA(log);
+    table('A — стык по расписанию', Object.entries(result));
+    window.__s9a = result;
+  } catch (e) {
+    log('ОШИБКА: ' + e.message);
+    throw e;
+  } finally {
+    $('a').disabled = false;
+  }
+});
+
+$('b').addEventListener('click', async () => {
+  $('b').disabled = true;
+  try {
+    const result = await runSeamB(log);
+    table('B — стык по опросу в кадре', Object.entries(result));
+    window.__s9b = result;
+  } catch (e) {
+    log('ОШИБКА: ' + e.message);
+    throw e;
+  } finally {
+    $('b').disabled = false;
+  }
+});
+
+$('c').addEventListener('click', async () => {
+  $('c').disabled = true;
+  try {
+    const result = await runSeamC(log);
+    table('C — стык без предзагрузки', Object.entries(result));
+    window.__s9c = result;
+  } catch (e) {
+    log('ОШИБКА: ' + e.message);
+    throw e;
+  } finally {
+    $('c').disabled = false;
+  }
+});
+</script>
+</body>
+</html>
