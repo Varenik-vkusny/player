@@ -20,6 +20,7 @@ import {
   useLayoutEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactElement,
 } from 'react';
@@ -39,7 +40,7 @@ import { createElement, type ElementType } from './state/elements.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { freeId, type MarkKind } from './state/project.js';
 import { downloadProject, openInPlayer } from './state/save.js';
-import { StageView } from './stage/StageView.js';
+import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
 import { TrackView } from './track/TrackView.js';
@@ -66,6 +67,13 @@ function isTextFieldNode(node: globalThis.Element | null): boolean {
 export function Editor({ project, onReady }: EditorProps): ReactElement {
   const [state, dispatch] = useReducer(historyReducer, project, initialHistoryState);
   const currentProject = state.history.present;
+
+  // Мост к правке текста на холсте (см. StageView.beginTextEdit): Escape
+  // в контексте editingText даёт намерение commitText (keyboard.ts), а
+  // закрывать правку умеет только StageView — он один держит ссылку на
+  // редактируемый DOM-узел. Клик мимо и потеря фокуса StageView коммитит
+  // сам, без участия Editor.tsx; этот мост нужен ровно для Escape.
+  const stageRef = useRef<StageViewHandle>(null);
 
   // Единственная точка, через которую редактор видит дорожку и сцену.
   // Когда проект станет графом сегментов, поменяется segmentOf, а не это
@@ -310,9 +318,10 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       const active = document.activeElement;
       const context: KeyContext = {
         hasSelection: state.selectedId !== undefined,
-        // Правка текста на холсте (двойной клик по элементу) — отдельный
-        // срез сессии, которого здесь ещё нет; проверка честная (реальное
-        // свойство DOM), просто сегодня она всегда false.
+        // Правка текста на холсте (двойной клик по элементу, StageView.
+        // beginTextEdit) ставит узлу contentEditable и фокусирует его —
+        // проверка честная (реальное свойство DOM активного элемента),
+        // а не флаг, который можно забыть сбросить.
         editingText: active instanceof HTMLElement && active.isContentEditable,
         inTextField: isTextFieldNode(active),
       };
@@ -346,9 +355,10 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           handleSelect(undefined);
           return;
         case 'commitText':
-          // Недостижимо, пока editingText всегда false (см. выше) — ветка
-          // оставлена ради исчерпывающего switch: новый вид холста будет
-          // знать, куда прицепить коммит правки текста.
+          // Escape во время правки текста на холсте. StageView сам знает,
+          // какой узел сейчас редактируется, и сам решает, коммитить ли
+          // (содержимое могло не измениться) — здесь только мост к нему.
+          stageRef.current?.commitTextEdit();
           return;
       }
     };
@@ -402,6 +412,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
 
       <div className="ed-main">
         <StageView
+          ref={stageRef}
           segment={segment}
           positionSeconds={transport.positionSeconds}
           selectedId={state.selectedId}

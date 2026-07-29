@@ -17,12 +17,15 @@
  * вопрос (docs/research/prior-art.md, разбор tldraw).
  */
 import {
+  forwardRef,
   useCallback,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type DragEvent as ReactDragEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
 } from 'react';
@@ -36,6 +39,45 @@ import { angleTo, centerOf, moveBox, resizeBox, rotateBox } from './transform.js
 
 /** Округление координат: столько знаков попадёт в сохранённый проект. */
 const PRECISION = 2;
+
+/**
+ * Ставит каретку внутри contenteditable-узла в точке экрана (двойной клик).
+ *
+ * `caretRangeFromPoint` — нестандартный, но давно поддержанный в Chromium API
+ * (единственный движок в e2e-матрице проекта, playwright.config.ts); в
+ * lib.dom.d.ts его нет, поэтому подпись достраивается локальным приведением
+ * типа. Резерв (конец текста) — на случай, если браузер вернёт null (клик
+ * пришёлся мимо текста, в пустую часть бокса): грубая позиция каретки лучше,
+ * чем брошенное на двойном клике исключение.
+ */
+function placeCaretAt(node: HTMLElement, clientX: number, clientY: number): void {
+  const withCaretApi = document as Document & {
+    caretRangeFromPoint?(x: number, y: number): Range | null;
+  };
+  const selection = window.getSelection();
+  if (!selection) return; // окружения без Selection API — каретку ставить некуда, но и падать незачем
+  const range = withCaretApi.caretRangeFromPoint?.(clientX, clientY);
+  selection.removeAllRanges();
+  if (range && node.contains(range.startContainer)) {
+    selection.addRange(range);
+    return;
+  }
+  const fallback = document.createRange();
+  fallback.selectNodeContents(node);
+  fallback.collapse(false);
+  selection.addRange(fallback);
+}
+
+/** Императивная ручка StageView — сегодня ровно одна операция. */
+export interface StageViewHandle {
+  /**
+   * Закрывает текущую правку текста на холсте, если она идёт. Вызывается из
+   * Editor.tsx по намерению `commitText` (Escape в контексте `editingText`,
+   * `keyboard.ts`) — единственный путь коммита, которому нужен мост наружу
+   * из StageView; клик мимо и потеря фокуса узел обрабатывает сам.
+   */
+  commitTextEdit: () => void;
+}
 
 export interface StageViewProps {
   segment: Segment;
@@ -77,16 +119,19 @@ const boxOf = (element: Element): Box => ({
 
 const round = (value: number): number => Number(value.toFixed(PRECISION));
 
-export function StageView({
-  segment,
-  positionSeconds,
-  selectedId,
-  onSelect,
-  onElementChange,
-  onCommitHistory,
-  onImageDrop,
-  onReady,
-}: StageViewProps): ReactElement {
+export const StageView = forwardRef<StageViewHandle, StageViewProps>(function StageView(
+  {
+    segment,
+    positionSeconds,
+    selectedId,
+    onSelect,
+    onElementChange,
+    onCommitHistory,
+    onImageDrop,
+    onReady,
+  }: StageViewProps,
+  ref,
+): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
@@ -192,6 +237,22 @@ export function StageView({
     return () => {
       observer.disconnect();
       onReady?.(null);
+      // Правка текста на холсте не переживает структурную пересборку: узел,
+      // на котором стоит каретка, вот-вот будет уничтожен вместе со всей
+      // сценой. В штатной работе editingRef здесь уже пуст — Escape, клик
+      // мимо и потеря фокуса (commitTextEdit) успевают закрыть правку РАНЬШЕ,
+      // чем структурная правка вообще дойдёт до диспатча: клик по кнопке
+      // «Удалить»/«Вставить»/«Отменить» сперва ловится слушателем на
+      // document в фазе ЗАХВАТА (commitTextEdit внутри beginTextEdit/
+      // handleStageDown), и только потом — обработчиком самой кнопки в фазе
+      // всплытия. Строка ниже — второй рубеж на случай, если что-то всё же
+      // обошло эти пути: набранное отбрасывается, а не сохраняется, потому
+      // что достать отсюда актуальный (не устаревший) элемент, не рискуя
+      // записать правку не в тот проект, нечем.
+      if (editingRef.current) {
+        document.removeEventListener('pointerdown', editingRef.current.outsideDown, true);
+        editingRef.current = null;
+      }
       previewRef.current = null;
       preview.destroy();
     };
@@ -230,7 +291,14 @@ export function StageView({
     if (!sameShape) return;
 
     for (const [index, element] of elements.entries()) {
-      if (previous[index] !== element) preview.updateElement(element);
+      // Пока каретка внутри узла, applyElement его не касается: он
+      // безусловно перезаписывает textContent (player/src/render.ts) и убил
+      // бы правку, даже не пересоздавая узел («Правка текста на холсте»,
+      // препятствие №3). Источник истины остаётся element.content — DOM
+      // расходится с ним ровно на время жеста, как и при перетаскивании.
+      if (previous[index] !== element && editingRef.current?.id !== element.id) {
+        preview.updateElement(element);
+      }
     }
     renderedRef.current = elements;
   }, [elements]);
@@ -286,8 +354,128 @@ export function StageView({
     return Number(getComputedStyle(node).opacity) > 0.01;
   }, []);
 
+  /**
+   * Правка текста на холсте (двойной клик).
+   *
+   * Состояние — id редактируемого элемента и слушатель «клик мимо» —
+   * намеренно НЕ в React state: всё вокруг императивно по природе
+   * (contenteditable, Selection, фокус), и укладывать это в цикл рендера
+   * незачем — видеть его обязаны только функции этого раздела.
+   *
+   * Закрывается любым из независимых путей, и все сходятся в commitTextEdit —
+   * идемпотентной функции, безопасной для повторного вызова:
+   *  - Escape — приходит из Editor.tsx через ref (см. useImperativeHandle
+   *    ниже) по намерению `commitText` by keyboard.ts;
+   *  - клик мимо — слушатель на document в фазе ЗАХВАТА гарантированно
+   *    исполняется раньше обработчика клика по любой кнопке панели
+   *    («Удалить», «Вставить», «Отменить») — тот привязан в фазе всплытия;
+   *  - потеря фокуса (blur) узла — подстраховка на случай, которого не
+   *    покрывает предыдущий пункт (например, Tab увёл фокus без единого
+   *    pointerdown).
+   */
+  const editingRef = useRef<{ id: string; outsideDown: (event: PointerEvent) => void } | null>(null);
+
+  const commitTextEdit = useCallback((): void => {
+    const editing = editingRef.current;
+    if (!editing) return;
+    // Снимаем раньше, чем трогаем DOM: node.blur() ниже сам может заново
+    // вызвать этот же обработчик через слушатель blur узла, и обнулённый
+    // editingRef делает повторный вход безопасным no-op, а не рекурсией.
+    editingRef.current = null;
+    document.removeEventListener('pointerdown', editing.outsideDown, true);
+
+    const node = previewRef.current?.nodes.get(editing.id);
+    if (!node) return; // сцена уже пересобрана мимо нас (см. эффект сборки) — сохранять уже некуда
+
+    const content = node.textContent ?? '';
+    node.contentEditable = 'false';
+    // Возвращается ровно так же, как снималось: точечно, на одном узле.
+    node.style.pointerEvents = '';
+    node.blur();
+
+    const element = elements.find((candidate) => candidate.id === editing.id);
+    // Элемент мог исчезнуть структурной правкой ДРУГОГО элемента, пришедшей
+    // сюда мимо обеих подстраховок выше, — тогда сохранять некуда, и это не
+    // ошибка: автор уже принял более позднее решение.
+    if (!element || element.content === content) return;
+
+    onElementChange({ ...element, content });
+    onCommitHistory();
+  }, [elements, onElementChange, onCommitHistory]);
+
+  const beginTextEdit = useCallback(
+    (element: Element, point: { clientX: number; clientY: number }): void => {
+      if (element.type !== 'text') return; // на месте правится только текст
+
+      if (editingRef.current?.id === element.id) {
+        // Уже редактируем этот же элемент: повторный двойной клик внутри
+        // текста только переносит каретку — продолжение того же жеста
+        // правки, а не новый шаг истории.
+        const node = previewRef.current?.nodes.get(element.id);
+        if (node) placeCaretAt(node, point.clientX, point.clientY);
+        return;
+      }
+
+      commitTextEdit(); // правился ДРУГОЙ элемент — закрыть его правку одним шагом
+
+      const node = previewRef.current?.nodes.get(element.id);
+      if (!node) throw new Error(`Элемента «${element.id}» нет на сцене: править нечего`);
+
+      node.contentEditable = 'true';
+      // Снимается ТОЛЬКО с этого узла и ровно на время правки (препятствие
+      // №1 спеки). Инвариант №3 не задет: у контейнера сцены (stageRef)
+      // pointerEvents остаётся 'none', остальная сцена по-прежнему решает
+      // попадание геометрией, а не браузером.
+      node.style.pointerEvents = 'auto';
+
+      const outsideDown = (down: PointerEvent): void => {
+        const target = down.target;
+        if (target instanceof Node && node.contains(target)) return; // клик внутри — не «мимо»
+        commitTextEdit();
+      };
+      document.addEventListener('pointerdown', outsideDown, true);
+      node.addEventListener('blur', commitTextEdit, { once: true });
+      editingRef.current = { id: element.id, outsideDown };
+
+      node.focus();
+      placeCaretAt(node, point.clientX, point.clientY);
+    },
+    [commitTextEdit],
+  );
+
+  useImperativeHandle(ref, () => ({ commitTextEdit }), [commitTextEdit]);
+
+  const handleStageDoubleClick = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>): void => {
+      const point = scenePointOf(event);
+      const hit = topmostAt(
+        elements
+          .filter((element) => isVisible(element.id))
+          .map((element) => ({ ...boxOf(element), zIndex: element.zIndex, id: element.id })),
+        point,
+      );
+      if (!hit) return;
+      const element = elements.find((candidate) => candidate.id === hit.id);
+      if (!element) throw new Error(`Двойной клик в элемент «${hit.id}», которого нет в сцене`);
+      beginTextEdit(element, event);
+    },
+    [scenePointOf, elements, isVisible, beginTextEdit],
+  );
+
   const handleStageDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const editing = editingRef.current;
+      if (editing) {
+        const editingNode = previewRef.current?.nodes.get(editing.id);
+        if (editingNode && event.target instanceof Node && editingNode.contains(event.target)) {
+          // Клик внутри редактируемого текста — браузер сам ставит каретку
+          // или тянет выделение (node.style.pointerEvents = 'auto' на время
+          // правки, см. beginTextEdit). Перехватывать жестом StageView
+          // нельзя: setPointerCapture в beginGesture сломал бы нативное
+          // выделение текста.
+          return;
+        }
+      }
       const point = scenePointOf(event);
       // Выделяется то, что видно СЕЙЧАС. Элемент, который на этой секунде
       // ещё не появился, геометрически на сцене есть и может лежать выше
@@ -397,6 +585,7 @@ export function StageView({
       onPointerMove={handleMove}
       onPointerUp={endGesture}
       onPointerCancel={endGesture}
+      onDoubleClick={handleStageDoubleClick}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
@@ -404,4 +593,4 @@ export function StageView({
       <Overlay frame={frame} onGripDown={handleGripDown} />
     </div>
   );
-}
+});
