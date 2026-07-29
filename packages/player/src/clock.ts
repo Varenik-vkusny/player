@@ -84,6 +84,23 @@ export class AudioClock {
 
   get context(): AudioContext { return this.#ctx; }
   get duration(): number { return this.#buffer.duration; }
+
+  /**
+   * Контекстное время, в которое дорожка доиграет. `null` — старта не было.
+   *
+   * Нужно, чтобы следующий узел графа можно было запланировать РОВНО на этот
+   * момент, а не поймать конец опросом в кадре. S9 намерил цену опроса:
+   * задержка 65 мс — это не длина кадра, а унаследованный `outputLatency`,
+   * и раз в двадцать переходов на стыке щёлкает.
+   *
+   * Считается здесь, а не снаружи, потому что снаружи пришлось бы повторить
+   * формулу якоря — а два описания одного вычисления расходятся тихо.
+   */
+  get endsAtContextTime(): number | null {
+    const anchor = this.#anchor;
+    if (!anchor) return null;
+    return anchor.ctxTime + (this.#buffer.duration - anchor.mediaTime);
+  }
   get isFrozen(): boolean { return this.#frozenPosition !== null; }
   get isRunning(): boolean { return this.#source !== null && this.#frozenPosition === null; }
 

@@ -16,8 +16,15 @@ import type { Project, SegmentNode } from './schema.js';
  * а для выбора ребра из попытки важны ровно два поля.
  */
 export interface GateOutcome {
-  /** Выбранный вариант. Есть только у гейта с выбором. */
-  readonly optionId?: string;
+  /**
+   * Выбранный вариант. Есть только у гейта с выбором.
+   *
+   * `string | undefined` явно, а не просто необязательное поле: при
+   * `exactOptionalPropertyTypes` это разные типы, а «варианта нет» —
+   * настоящее состояние гейтов с вводом и с кнопкой «дальше», а не
+   * пропущенное поле.
+   */
+  readonly optionId?: string | undefined;
   readonly correct: boolean;
 }
 

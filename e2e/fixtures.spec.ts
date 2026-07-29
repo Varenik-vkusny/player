@@ -23,31 +23,36 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { expect, test, type Page } from '@playwright/test';
 
+import { loadProject, nodeOf } from '@player/core';
+
 const FIXTURES_DIR = new URL('../fixtures/projects/', import.meta.url);
 
 /** Доли длительности: начало, три четверти и самый конец дорожки. */
 const FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 
 /**
- * Длительность дорожки фикстуры.
+ * Длительность дорожки стартового узла фикстуры.
  *
- * Разбор ручной и придирчивый: файл читается в обход схемы, на этапе сборки
- * списка тестов, и молчаливое `undefined` здесь превратилось бы в снимок
- * с именем `NaN` вместо внятной ошибки.
+ * Разбор идёт через `loadProject`, а не руками. Раньше он был ручным
+ * и придирчивым намеренно: файл читается на этапе сборки списка тестов,
+ * и молчаливое `undefined` превратилось бы в снимок с именем `NaN` вместо
+ * внятной ошибки. Аргумент был верен, пока форма проекта была одна.
+ *
+ * Со схемой v2 на диске лежат ДВЕ формы: семь старых фикстур в v1
+ * (они неприкосновенны и мигрируют при загрузке) и новые сразу в v2.
+ * Ручной разбор стал бы третьим описанием схемы — ровно тем, что запрещает
+ * ADR-004. `loadProject` знает обе формы, мигрирует и падает громко,
+ * то есть даёт то же свойство «внятная ошибка вместо NaN» без дублирования.
+ *
+ * Берётся стартовый узел, потому что именно его показывает `preview.html`
+ * (`apps/playground/src/preview.ts`: `segmentOf(project, entryNodeOf(project))`).
  */
 function durationOf(fixture: string): number {
   const file = new URL(`${fixture}.json`, FIXTURES_DIR);
-  const parsed: unknown = JSON.parse(readFileSync(file, 'utf8'));
+  const project = loadProject(JSON.parse(readFileSync(file, 'utf8')));
+  const duration = nodeOf(project, project.entry).audio.duration;
 
-  if (typeof parsed !== 'object' || parsed === null || !('audio' in parsed)) {
-    throw new Error(`В фикстуре ${fixture}.json нет поля audio`);
-  }
-  const audio: unknown = parsed.audio;
-  if (typeof audio !== 'object' || audio === null || !('duration' in audio)) {
-    throw new Error(`В фикстуре ${fixture}.json нет audio.duration`);
-  }
-  const duration: unknown = audio.duration;
-  if (typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) {
+  if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error(`У фикстуры ${fixture}.json негодная длительность: ${String(duration)}`);
   }
   return duration;

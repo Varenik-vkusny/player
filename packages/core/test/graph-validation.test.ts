@@ -25,6 +25,9 @@ function twoNodes(): any {
       options: [{ id: 'o1', label: 'Так' }, { id: 'o2', label: 'Иначе' }],
       correctId: 'o1',
     },
+    // Развилка обязана быть проходима: при бесконечном retry ветка «o2»
+    // была бы недостижима, потому что неверный ответ не доводит до ребра.
+    onWrong: 'continue',
   };
   return {
     schemaVersion: 2,
@@ -114,6 +117,38 @@ describe('целостность графа', () => {
     const p = twoNodes();
     p.nodes[1].id = 'n1';
     expect(() => loadProject(p)).toThrow(/повторяется/);
+  });
+
+  it('бесконечный retry на гейте с рёбрами не проходит', () => {
+    // Ветка «Нет» была бы недостижима навсегда: неверный ответ не доводит
+    // до выхода из гейта, а значит и до ребра. Рёбра при этом корректны.
+    const p = twoNodes();
+    p.nodes[0].scene.gates[0].onWrong = 'retry';
+    p.nodes[0].scene.gates[0].maxAttempts = null;
+    expect(() => loadProject(p)).toThrow(/бесконечный retry/);
+  });
+
+  it('retry с ограничением попыток законен: гейт всё же проходим', () => {
+    const p = twoNodes();
+    p.nodes[0].scene.gates[0].onWrong = 'retry';
+    p.nodes[0].scene.gates[0].maxAttempts = 3;
+    expect(() => loadProject(p)).not.toThrow();
+  });
+
+  it('reveal законен: continueAfterReveal доводит до ребра', () => {
+    const p = twoNodes();
+    p.nodes[0].scene.gates[0].onWrong = 'reveal';
+    expect(() => loadProject(p)).not.toThrow();
+  });
+
+  it('бесконечный retry без рёбер законен: это обычный гейт', () => {
+    // Запрет касается только развилок. Обычному гейту бесконечные попытки
+    // разрешены и осмысленны — так устроены старые фикстуры.
+    const p = twoNodes();
+    p.nodes[0].edges = [];
+    p.nodes[0].scene.gates[0].onWrong = 'retry';
+    p.nodes[0].scene.gates[0].maxAttempts = null;
+    expect(() => loadProject(p)).not.toThrow();
   });
 
   it('гейт без рёбер законен: это обычный гейт, а не развилка', () => {
