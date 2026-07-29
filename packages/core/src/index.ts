@@ -8,4 +8,5 @@
 export * from './schema.js';
 export * from './migrations.js';
 export * from './time.js';
+export * from './graph.js';
 export { loadProject, ProjectLoadError } from './load.js';
