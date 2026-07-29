@@ -29,6 +29,7 @@ import type { Cue, Element, Gate, Project } from '@player/core';
 import { segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
+import { ANIMATIONS, ELEMENTS, GATES, plural } from './plural.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { Inspector } from './panels/Inspector.js';
@@ -372,8 +373,9 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       <header className="ed-header">
         <strong className="ed-title">{currentProject.meta.title}</strong>
         <span className="ed-muted">
-          {segment.scene.elements.length} элементов · {segment.scene.cues.length} анимаций ·{' '}
-          {segment.scene.gates.length} гейтов
+          {plural(segment.scene.elements.length, ELEMENTS)} ·{' '}
+          {plural(segment.scene.cues.length, ANIMATIONS)} ·{' '}
+          {plural(segment.scene.gates.length, GATES)}
         </span>
         <span className="ed-actions">
           <button
