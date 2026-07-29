@@ -212,6 +212,24 @@ export const ProjectSchema = z
     nodes: z.array(SegmentNodeSchema).min(1),
   })
   .superRefine((project, ctx) => {
+    const nodeIds = new Set(project.nodes.map((node) => node.id));
+
+    if (nodeIds.size !== project.nodes.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['nodes'],
+        message: 'Идентификатор узла повторяется',
+      });
+    }
+
+    if (!nodeIds.has(project.entry)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['entry'],
+        message: `Стартовый узел «${project.entry}» не существует`,
+      });
+    }
+
     project.nodes.forEach((node, n) => {
       const elementIds = new Set(node.scene.elements.map((e) => e.id));
       const wordCount = node.audio.words.length;
@@ -254,6 +272,135 @@ export const ProjectSchema = z
       node.scene.gates.forEach((gate, i) => {
         checkTimeRef(gate.at, ['nodes', n, 'scene', 'gates', i, 'at']);
       });
+
+      const gatesById = new Map(node.scene.gates.map((gate) => [gate.id, gate]));
+      const byGate = new Map<string, typeof node.edges>();
+      let endEdges = 0;
+
+      node.edges.forEach((edge, i) => {
+        const path = ['nodes', n, 'edges', i];
+
+        if (!nodeIds.has(edge.to)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [...path, 'to'],
+            message: `Ребро ведёт в несуществующий узел «${edge.to}»`,
+          });
+        }
+
+        if (edge.when.kind === 'end') {
+          endEdges += 1;
+          return;
+        }
+
+        const gateId = edge.when.gateId;
+        if (!gatesById.has(gateId)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [...path, 'when', 'gateId'],
+            message: `Ребро ссылается на гейт «${gateId}», которого нет в этом узле`,
+          });
+          return;
+        }
+
+        const list = byGate.get(gateId) ?? [];
+        list.push(edge);
+        byGate.set(gateId, list);
+      });
+
+      if (endEdges > 1) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['nodes', n, 'edges'],
+          message: 'У узла больше одного ребра «конец узла»: следующий узел неоднозначен',
+        });
+      }
+
+      // Правило полного покрытия: если у гейта есть рёбра, они обязаны покрыть
+      // все его исходы. Ловушки нет намеренно — она позволила бы автору не отвечать
+      // на вопрос «а что при таком ответе».
+      for (const [gateId, edges] of byGate) {
+        const path = ['nodes', n, 'edges'];
+        const gate = gatesById.get(gateId)!;
+        const kinds = new Set(edges.map((edge) => edge.when.kind));
+        const byOption = kinds.has('option');
+        const byVerdict = kinds.has('correct') || kinds.has('wrong');
+
+        if (byOption && byVerdict) {
+          ctx.addIssue({
+            code: 'custom',
+            path,
+            message: `Гейт «${gateId}»: нельзя смешивать рёбра по вариантам и по верно/неверно`,
+          });
+          continue;
+        }
+
+        if (gate.config.kind === 'continue') {
+          ctx.addIssue({
+            code: 'custom',
+            path,
+            message: `Гейт «${gateId}» вида continue не может иметь рёбер: у него один исход`,
+          });
+          continue;
+        }
+
+        if (byOption) {
+          if (gate.config.kind !== 'choice') {
+            ctx.addIssue({
+              code: 'custom',
+              path,
+              message: `Гейт «${gateId}»: рёбра по вариантам бывают только у гейта с выбором`,
+            });
+            continue;
+          }
+          const optionIds = gate.config.options.map((option) => option.id);
+          // Цикл, а не map с тернарником: у map пришлось бы подставить фальшивое
+          // значение в недостижимой ветке ради сужения типа. Подставных значений
+          // в потоке данных не держим даже там, куда исполнение не доходит.
+          const covered: string[] = [];
+          for (const edge of edges) {
+            if (edge.when.kind !== 'option') continue;
+            covered.push(edge.when.optionId);
+          }
+
+          for (const optionId of new Set(covered)) {
+            if (!optionIds.includes(optionId)) {
+              ctx.addIssue({
+                code: 'custom',
+                path,
+                message: `Гейт «${gateId}»: ребро ведёт от варианта «${optionId}», которого у гейта нет`,
+              });
+            }
+            if (covered.filter((id) => id === optionId).length > 1) {
+              ctx.addIssue({
+                code: 'custom',
+                path,
+                message: `Гейт «${gateId}»: вариант «${optionId}» покрыт дважды`,
+              });
+            }
+          }
+
+          for (const optionId of optionIds) {
+            if (!covered.includes(optionId)) {
+              ctx.addIssue({
+                code: 'custom',
+                path,
+                message: `Гейт «${gateId}»: вариант «${optionId}» не покрыт ребром. `
+                  + 'Либо покройте все варианты, либо снимите рёбра с этого гейта.',
+              });
+            }
+          }
+          continue;
+        }
+
+        if (!kinds.has('correct') || !kinds.has('wrong')) {
+          ctx.addIssue({
+            code: 'custom',
+            path,
+            message: `Гейт «${gateId}»: нужны оба ребра — и «верно», и «неверно»`,
+          });
+        }
+      }
     });
   });
 
