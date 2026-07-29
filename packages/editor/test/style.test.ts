@@ -404,3 +404,45 @@ describe('интеграция со схемой: результат подст�
     }
   });
 });
+
+/**
+ * Цветовое поле обязано брать только то, что виджет способен показать.
+ *
+ * `<input type="color">` по спецификации принимает ровно «#» и шесть
+ * шестнадцатеричных цифр. Раньше `tryColor` пропускал любую непустую строку,
+ * и панель предлагала править цвет, которого не могла ни показать, ни
+ * сохранить: Chrome писал в консоль «The specified value … must be a valid
+ * CSS color». Пока в проектах лежал только шестизначный hex, дефект спал —
+ * его разбудили фигуры «Рамка» и «Скобка» из библиотеки, у которых фон
+ * прозрачный.
+ */
+describe('цвет: понимаем только то, что умеет показать виджет', () => {
+  it('шестизначный hex разбирается как цвет', () => {
+    expect(getStyleValue({ background: '#112233' }, 'background')).toEqual({
+      kind: 'parsed',
+      value: '#112233',
+    });
+  });
+
+  it('transparent показывается текстом, а не подсовывается в color-виджет', () => {
+    expect(getStyleValue({ background: 'transparent' }, 'background')).toEqual({
+      kind: 'raw',
+      text: 'transparent',
+    });
+  });
+
+  it('rgba() тоже текстом: виджет не умеет прозрачность', () => {
+    expect(getStyleValue({ background: 'rgba(0, 0, 0, 0)' }, 'background')).toEqual({
+      kind: 'raw',
+      text: 'rgba(0, 0, 0, 0)',
+    });
+  });
+
+  it('сокращённый #abc — текстом: input type=color молча заменил бы его на #000000', () => {
+    expect(getStyleValue({ color: '#abc' }, 'color')).toEqual({ kind: 'raw', text: '#abc' });
+  });
+
+  it('именованный цвет — текстом', () => {
+    expect(getStyleValue({ color: 'red' }, 'color')).toEqual({ kind: 'raw', text: 'red' });
+  });
+});

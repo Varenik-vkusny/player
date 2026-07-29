@@ -84,6 +84,36 @@ test.describe('панель вставки', () => {
     // Оба элемента реально нарисованы плеерным рендером — не только в проекте.
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(2);
   });
+
+  test('кнопка «Круг» кладёт на холст видимую фигуру со скруглением 50%', async ({ page }) => {
+    await openEditor(page, 'empty');
+    await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(0);
+
+    await page.getByTestId('insert-circle').click();
+
+    await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(1);
+    const borderRadius = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.ed-stage-host [data-id]')!).borderRadius,
+    );
+    // Браузер обязан ПОНЯТЬ значение (50%), а не просто хранить строку
+    // в данных — это и отличает «фигура рисуется» от «фигура лежит в JSON».
+    expect(borderRadius).toBe('50%');
+  });
+
+  test('кнопка «Стрелка» кладёт фигуру с непустым clip-path — браузер понял многоугольник', async ({
+    page,
+  }) => {
+    await openEditor(page, 'empty');
+
+    await page.getByTestId('insert-arrow').click();
+
+    await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(1);
+    const clipPath = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.ed-stage-host [data-id]')!).clipPath,
+    );
+    expect(clipPath).not.toBe('none');
+    expect(clipPath.length).toBeGreaterThan(0);
+  });
 });
 
 test.describe('список элементов', () => {

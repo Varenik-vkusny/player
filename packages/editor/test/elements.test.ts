@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Cue, Element, Gate, Scene } from '@player/core';
 
 import { createElement, freeId, removeElement } from '../src/state/elements.js';
+import { libraryItem } from '../src/state/library.js';
 
 const STAGE = { width: 1920, height: 1080 };
 
@@ -45,7 +46,7 @@ describe('freeId', () => {
 
 describe('createElement: фабрики трёх видов', () => {
   it('text получает font-family, font-size, color, line-height и заглушку текста', () => {
-    const element = createElement('text', scene(), STAGE);
+    const element = createElement(libraryItem('text'), scene(), STAGE);
     expect(element.type).toBe('text');
     expect(typeof element.style['font-family']).toBe('string');
     expect(typeof element.style['font-size']).toBe('string');
@@ -56,7 +57,7 @@ describe('createElement: фабрики трёх видов', () => {
   });
 
   it('shape получает background и border-radius, содержимого у фигуры нет', () => {
-    const element = createElement('shape', scene(), STAGE);
+    const element = createElement(libraryItem('shape'), scene(), STAGE);
     expect(element.type).toBe('shape');
     expect(typeof element.style.background).toBe('string');
     expect(typeof element.style['border-radius']).toBe('string');
@@ -64,47 +65,47 @@ describe('createElement: фабрики трёх видов', () => {
   });
 
   it('image появляется с пустым style и пустым content — ждёт файла', () => {
-    const element = createElement('image', scene(), STAGE);
+    const element = createElement(libraryItem('image'), scene(), STAGE);
     expect(element.type).toBe('image');
     expect(element.style).toEqual({});
     expect(element.content).toBe('');
   });
 
   it('новый элемент стоит по центру сцены', () => {
-    const element = createElement('shape', scene(), STAGE);
+    const element = createElement(libraryItem('shape'), scene(), STAGE);
     expect(element.x).toBeCloseTo(STAGE.width / 2 - element.width / 2, 6);
     expect(element.y).toBeCloseTo(STAGE.height / 2 - element.height / 2, 6);
   });
 
   it('на непустой сцене центрирование остаётся тем же — от размера сцены, не от соседей', () => {
-    const existing = createElement('text', scene(), STAGE);
-    const next = createElement('shape', scene({ elements: [existing] }), STAGE);
+    const existing = createElement(libraryItem('text'), scene(), STAGE);
+    const next = createElement(libraryItem('shape'), scene({ elements: [existing] }), STAGE);
     expect(next.x).toBeCloseTo(STAGE.width / 2 - next.width / 2, 6);
     expect(next.y).toBeCloseTo(STAGE.height / 2 - next.height / 2, 6);
   });
 
   it('свободный идентификатор: два подряд созданных элемента не совпадают', () => {
-    const first = createElement('text', scene(), STAGE);
-    const second = createElement('text', scene({ elements: [first] }), STAGE);
+    const first = createElement(libraryItem('text'), scene(), STAGE);
+    const second = createElement(libraryItem('text'), scene({ elements: [first] }), STAGE);
     expect(second.id).not.toBe(first.id);
   });
 
   it('на пустой сцене zIndex начинается с нуля', () => {
-    const element = createElement('shape', scene(), STAGE);
+    const element = createElement(libraryItem('shape'), scene(), STAGE);
     expect(element.zIndex).toBe(0);
   });
 
   it('zIndex нового элемента на единицу больше максимального в сцене', () => {
-    const first = createElement('shape', scene(), STAGE);
+    const first = createElement(libraryItem('shape'), scene(), STAGE);
     const bumped: Element = { ...first, zIndex: 9 };
-    const second = createElement('shape', scene({ elements: [bumped] }), STAGE);
+    const second = createElement(libraryItem('shape'), scene({ elements: [bumped] }), STAGE);
     expect(second.zIndex).toBe(10);
   });
 });
 
 describe('removeElement: каскад по cues, gates не трогает', () => {
   it('убирает элемент из scene.elements', () => {
-    const el = createElement('shape', scene(), STAGE);
+    const el = createElement(libraryItem('shape'), scene(), STAGE);
     const s = scene({ elements: [el] });
 
     const { scene: next } = removeElement(s, el.id);
@@ -113,8 +114,8 @@ describe('removeElement: каскад по cues, gates не трогает', () 
   });
 
   it('каскадом удаляет только cues, нацеленные на этот элемент, и возвращает их', () => {
-    const el = createElement('shape', scene(), STAGE);
-    const other = createElement('shape', scene({ elements: [el] }), STAGE);
+    const el = createElement(libraryItem('shape'), scene(), STAGE);
+    const other = createElement(libraryItem('shape'), scene({ elements: [el] }), STAGE);
     const cueOnEl = cue('cue-a', el.id);
     const cueOnOther = cue('cue-b', other.id);
     const s = scene({ elements: [el, other], cues: [cueOnEl, cueOnOther] });
@@ -126,7 +127,7 @@ describe('removeElement: каскад по cues, gates не трогает', () 
   });
 
   it('gates остаются тем же массивом по ссылке — у Gate нет ссылок на элементы', () => {
-    const el = createElement('shape', scene(), STAGE);
+    const el = createElement(libraryItem('shape'), scene(), STAGE);
     const g = gate('gate-1');
     const s = scene({ elements: [el], gates: [g] });
 
@@ -136,8 +137,8 @@ describe('removeElement: каскад по cues, gates не трогает', () 
   });
 
   it('если ни один cue не задет, массив cues остаётся тем же по ссылке', () => {
-    const el = createElement('shape', scene(), STAGE);
-    const other = createElement('shape', scene({ elements: [el] }), STAGE);
+    const el = createElement(libraryItem('shape'), scene(), STAGE);
+    const other = createElement(libraryItem('shape'), scene({ elements: [el] }), STAGE);
     const cueOnOther = cue('cue-a', other.id);
     const s = scene({ elements: [el, other], cues: [cueOnOther] });
 
@@ -147,8 +148,8 @@ describe('removeElement: каскад по cues, gates не трогает', () 
   });
 
   it('элементы, не задетые удалением, остаются теми же объектами по ссылке', () => {
-    const el = createElement('shape', scene(), STAGE);
-    const other = createElement('shape', scene({ elements: [el] }), STAGE);
+    const el = createElement(libraryItem('shape'), scene(), STAGE);
+    const other = createElement(libraryItem('shape'), scene({ elements: [el] }), STAGE);
     const s = scene({ elements: [el, other] });
 
     const { scene: next } = removeElement(s, el.id);

@@ -7,6 +7,7 @@ import { loadProject } from '@player/core';
 import type { Cue, Element, Gate, Project, Scene, TimeRef } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
+import { libraryItem } from '../src/state/library.js';
 import { editorReducer, initialState } from '../src/state/project.js';
 import { serializeProject } from '../src/state/save.js';
 
@@ -245,7 +246,7 @@ describe('addElement', () => {
   it('добавляет элемент, сразу его выделяет; cues и gates остаются теми же массивами по ссылке', () => {
     const state = baseState();
     const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
-    const created = createElement('shape', sceneOf(state.project), stage);
+    const created = createElement(libraryItem('shape'), sceneOf(state.project), stage);
 
     const next = editorReducer(state, { type: 'addElement', element: created });
 
@@ -394,7 +395,7 @@ describe('охранник целостности: серия правок ос�
     let state = initialState(project);
 
     const stage = { width: project.meta.stageWidth, height: project.meta.stageHeight };
-    const created = createElement('text', sceneOf(state.project), stage);
+    const created = createElement(libraryItem('text'), sceneOf(state.project), stage);
     state = editorReducer(state, { type: 'addElement', element: created });
 
     const attached = cue('cue-guard', created.id);

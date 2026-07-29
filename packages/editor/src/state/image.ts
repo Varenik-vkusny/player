@@ -18,6 +18,7 @@
 import type { Element, Scene } from '@player/core';
 
 import { createElement } from './elements.js';
+import { libraryItem } from './library.js';
 
 export interface Size {
   readonly width: number;
@@ -110,15 +111,16 @@ export async function encodeImageFile(file: File, stage: Size): Promise<EncodedI
 /**
  * Собирает новый элемент `image` из уже подготовленной картинки.
  *
- * Размер и положение берутся из `encoded`, а не из `DEFAULT_SIZE` внутри
- * `createElement`: пропорции элемента обязаны быть пропорциями картинки
+ * Размер и положение берутся из `encoded`, а не из заготовки `image`
+ * библиотеки (`state/library.ts`): пропорции элемента обязаны быть
+ * пропорциями картинки
  * («Размеры созданного элемента — по пропорциям картинки, вписать в сцену»).
  * Остальное — id, zIndex, пустой style — даёт та же фабрика, что и для
  * кнопки «Картинка» на панели вставки, чтобы не заводить второй способ
  * присвоить идентификатор.
  */
 export function createImageElement(scene: Scene, stage: Size, encoded: EncodedImage): Element {
-  const base = createElement('image', scene, stage);
+  const base = createElement(libraryItem('image'), scene, stage);
   return {
     ...base,
     width: encoded.width,

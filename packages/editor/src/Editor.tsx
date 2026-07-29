@@ -38,8 +38,9 @@ import { InsertPanel } from './panels/InsertPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
 import { formatRemovalMessage } from './panels/removalMessage.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
-import { createElement, type ElementType } from './state/elements.js';
+import { createElement } from './state/elements.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
+import { libraryItem } from './state/library.js';
 import { freeId, type MarkKind } from './state/project.js';
 import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
@@ -184,8 +185,8 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   const handleCommitHistory = useCallback(() => dispatch({ type: 'commit' }), []);
 
   const handleInsert = useCallback(
-    (type: ElementType) => {
-      const element = createElement(type, segment.scene, segment.stage);
+    (itemId: string) => {
+      const element = createElement(libraryItem(itemId), segment.scene, segment.stage);
       dispatch({ type: 'addElement', element });
     },
     [segment.scene, segment.stage],

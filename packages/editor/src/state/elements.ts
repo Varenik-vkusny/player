@@ -2,55 +2,16 @@
  * Создание и удаление элементов сцены — чистая логика, без React и DOM.
  *
  * Живёт отдельно от `state/project.ts`, потому что фабрики элементов растут
- * (стиль по умолчанию, каскад удаления) и не должны раздувать редьюсер:
- * редьюсер лишь применяет готовый `Element`, а как он собран — забота этого
- * модуля.
+ * (каскад удаления) и не должны раздувать редьюсер: редьюсер лишь применяет
+ * готовый `Element`, а как он собран — забота этого модуля. Что именно
+ * получается в результате — размеры, стиль, содержимое — данные из
+ * `state/library.ts`, а не литералы здесь (см. `LibraryItem`).
  */
 import type { Cue, Element, Scene } from '@player/core';
 
-export type ElementType = 'text' | 'shape' | 'image';
+import type { ElementType, LibraryItem } from './library.js';
 
-interface Size {
-  readonly width: number;
-  readonly height: number;
-}
-
-/**
- * Размеры новых элементов по умолчанию.
- *
- * Подобраны так, чтобы на сцене 1920×1080 (стандартный `stageWidth/Height`
- * фикстур) элемент был заметен, но не перекрывал всю сцену — автор всё равно
- * подгонит размер перетаскиванием сразу после создания.
- */
-const DEFAULT_SIZE: Record<ElementType, Size> = {
-  text: { width: 600, height: 120 },
-  shape: { width: 300, height: 300 },
-  image: { width: 480, height: 320 },
-};
-
-/**
- * Стиль по умолчанию — значения взяты из `fixtures/projects/demo.json`
- * (элементы `lead` и `card`), чтобы созданный элемент выглядел как соседи,
- * а не как чужеродная вставка со стандартными браузерными значениями.
- */
-const DEFAULT_STYLE: Record<ElementType, Record<string, string | number>> = {
-  text: {
-    'font-family': 'system-ui, sans-serif',
-    'font-size': '36px',
-    color: '#9fb0c4',
-    'line-height': '1.5',
-  },
-  shape: {
-    background: '#1b2430',
-    'border-radius': '28px',
-  },
-  // Пусто и намеренно: image ждёт файла (перетаскивание на холст), стиль
-  // ему пока задавать нечем.
-  image: {},
-};
-
-/** Заглушка текста — автор перепишет её двойным кликом сразу после создания. */
-const TEXT_PLACEHOLDER = 'Новый текст';
+export type { ElementType };
 
 /**
  * Свободный идентификатор вида «gate-3».
@@ -75,26 +36,30 @@ function nextZIndex(elements: readonly Element[]): number {
 }
 
 /**
- * Создаёт новый элемент по центру сцены, с zIndex выше всех существующих
- * и стилем, похожим на соседей по проекту.
+ * Создаёт новый элемент по центру сцены, с zIndex выше всех существующих,
+ * из заготовки библиотеки (`state/library.ts`) — размер, стиль и содержимое
+ * целиком берутся из `item`, эта функция только кладёт заготовку на сцену.
+ *
+ * `id` берётся из `item.id`, а не из `item.type`: у круга получается id
+ * `circle-1`, а не `shape-4` — так автор видит в списке элементов, что
+ * именно он создал, а не только базовый тип схемы.
  */
 export function createElement(
-  type: ElementType,
+  item: LibraryItem,
   scene: Scene,
   stage: { width: number; height: number },
 ): Element {
-  const size = DEFAULT_SIZE[type];
   return {
-    id: freeId(type, scene.elements),
-    type,
-    x: stage.width / 2 - size.width / 2,
-    y: stage.height / 2 - size.height / 2,
-    width: size.width,
-    height: size.height,
+    id: freeId(item.id, scene.elements),
+    type: item.type,
+    x: stage.width / 2 - item.width / 2,
+    y: stage.height / 2 - item.height / 2,
+    width: item.width,
+    height: item.height,
     rotation: 0,
     zIndex: nextZIndex(scene.elements),
-    style: { ...DEFAULT_STYLE[type] },
-    content: type === 'text' ? TEXT_PLACEHOLDER : '',
+    style: { ...item.style },
+    content: item.content,
   };
 }
 

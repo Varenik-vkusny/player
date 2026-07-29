@@ -239,9 +239,29 @@ function isBlank(value: string | number | LengthOrPercent | null | undefined): b
 // а сигналит «не понимаю» через undefined; вызывающий превращает это в raw.
 // ---------------------------------------------------------------------------
 
+/**
+ * Цвет — только то, что виджет способен показать и вернуть.
+ *
+ * `<input type="color">` по спецификации HTML принимает РОВНО «#» и шесть
+ * шестнадцатеричных цифр: и `transparent`, и `rgba(0,0,0,0)`, и сокращённое
+ * `#abc` он молча заменяет на `#000000`, а Chrome вдобавок пишет в консоль
+ * «The specified value … must be a valid CSS color».
+ *
+ * Раньше сюда проходила любая непустая строка. Пока в проектах лежал только
+ * шестизначный hex, это ничего не значило; фигуры «Рамка» и «Скобка» из
+ * библиотеки (`state/library.ts`) задают прозрачный фон и сделали дефект
+ * достижимым нажатием кнопки — панель предлагала правку цвета, которого
+ * не могла ни показать, ни сохранить, и предупреждала об этом в консоль.
+ *
+ * Всё остальное — законный CSS, просто не редактируемый этим виджетом:
+ * возвращаем undefined, и значение показывается текстом, как любое другое
+ * непонятое (это уже проверено `e2e/style.spec.ts`).
+ */
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
 function tryColor(raw: string | number): string | undefined {
   const text = String(raw).trim();
-  return text === '' ? undefined : text;
+  return HEX_COLOR.test(text) ? text : undefined;
 }
 
 function tryLength(raw: string | number): number | undefined {
