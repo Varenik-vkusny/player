@@ -1,5 +1,5 @@
 /**
- * Схема проекта v1 — единственный источник истины.
+ * Схема проекта v2 — единственный источник истины.
  *
  * Типы TypeScript выводятся отсюда через z.infer и НИКОГДА не пишутся руками:
  * два описания одной сущности неизбежно разъедутся, причём тихо (см. ADR-004).
@@ -9,7 +9,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** Идентификатор внутри проекта. Непустая строка без пробелов по краям. */
 const Id = z.string().min(1).refine((v) => v === v.trim(), {
@@ -153,6 +153,52 @@ export const SceneSchema = z.object({
   gates: z.array(GateSchema),
 });
 
+export const AudioSchema = z.object({
+  src: z.string().min(1),
+  duration: z.number().finite().positive(),
+  /** Всегда присутствует. Пустой массив делает невалидной любую ссылку на слово. */
+  words: z.array(WordSchema),
+});
+
+/**
+ * Условие перехода по ребру — размеченное объединение, а не строка-предикат.
+ *
+ * Объединение, чтобы редактор мог собрать ребро выпадающим списком, а схема
+ * проверила, что gateId и optionId существуют. Строка-предикат сделала бы
+ * ветвление кодом внутри данных.
+ */
+export const EdgeWhenSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('option'), gateId: Id, optionId: Id }),
+  z.object({ kind: z.literal('correct'), gateId: Id }),
+  z.object({ kind: z.literal('wrong'), gateId: Id }),
+  /** Узел доиграл до конца. Не более одного на узел. */
+  z.object({ kind: z.literal('end') }),
+]);
+
+export const EdgeSchema = z.object({
+  id: Id,
+  to: Id,
+  when: EdgeWhenSchema,
+});
+
+/**
+ * Узел графа: своя озвучка, своя сцена, свои исходящие рёбра.
+ *
+ * Рёбра лежат здесь, а не общим списком в корне: ребро выбирается только пока
+ * играет этот узел, и удаление узла обязано быть локальной операцией.
+ *
+ * Назван `SegmentNode`, а не `Node`, намеренно: `Node` — глобальный DOM-тип,
+ * и в редакторе он живой (`target instanceof Node` в StageView). Импорт
+ * одноимённого типа из ядра затенил бы его в том файле, где он нужен.
+ */
+export const SegmentNodeSchema = z.object({
+  id: Id,
+  title: z.string().default(''),
+  audio: AudioSchema,
+  scene: SceneSchema,
+  edges: z.array(EdgeSchema).default([]),
+});
+
 export const ProjectSchema = z
   .object({
     schemaVersion: z.literal(SCHEMA_VERSION),
@@ -161,56 +207,53 @@ export const ProjectSchema = z
       stageWidth: z.number().int().positive().default(1920),
       stageHeight: z.number().int().positive().default(1080),
     }),
-    audio: z.object({
-      src: z.string().min(1),
-      duration: z.number().finite().positive(),
-      /** Всегда присутствует. Пустой массив делает невалидной любую ссылку на слово. */
-      words: z.array(WordSchema),
-    }),
-    /** v0: ровно одна сцена. Ветвления и нескольких сцен в v1 нет. */
-    scene: SceneSchema,
+    /** Узел, с которого начинается объяснение. Явно, а не «первый в массиве». */
+    entry: Id,
+    nodes: z.array(SegmentNodeSchema).min(1),
   })
   .superRefine((project, ctx) => {
-    const elementIds = new Set(project.scene.elements.map((e) => e.id));
-    const wordCount = project.audio.words.length;
+    project.nodes.forEach((node, n) => {
+      const elementIds = new Set(node.scene.elements.map((e) => e.id));
+      const wordCount = node.audio.words.length;
 
-    const checkTimeRef = (ref: z.infer<typeof TimeRefSchema>, path: (string | number)[]) => {
-      if (ref.kind === 'seconds') {
-        if (ref.t > project.audio.duration) {
+      const checkTimeRef = (ref: z.infer<typeof TimeRefSchema>, path: (string | number)[]) => {
+        if (ref.kind === 'seconds') {
+          if (ref.t > node.audio.duration) {
+            ctx.addIssue({
+              code: 'custom',
+              path,
+              message: `Время ${ref.t} с выходит за длительность дорожки ${node.audio.duration} с`,
+            });
+          }
+          return;
+        }
+        // Ссылка на слово при пустом транскрипте невалидна — падаем на загрузке,
+        // а не в рантайме, когда до этой метки доедет воспроизведение.
+        if (ref.wordIndex >= wordCount) {
           ctx.addIssue({
             code: 'custom',
             path,
-            message: `Время ${ref.t} с выходит за длительность дорожки ${project.audio.duration} с`,
+            message: wordCount === 0
+              ? 'Ссылка на слово при пустом транскрипте'
+              : `Слово №${ref.wordIndex} отсутствует, всего слов ${wordCount}`,
           });
         }
-        return;
-      }
-      // Ссылка на слово при пустом транскрипте невалидна — падаем на загрузке,
-      // а не в рантайме, когда до этой метки доедет воспроизведение.
-      if (ref.wordIndex >= wordCount) {
-        ctx.addIssue({
-          code: 'custom',
-          path,
-          message: wordCount === 0
-            ? 'Ссылка на слово при пустом транскрипте'
-            : `Слово №${ref.wordIndex} отсутствует, всего слов ${wordCount}`,
-        });
-      }
-    };
+      };
 
-    project.scene.cues.forEach((cue, i) => {
-      checkTimeRef(cue.at, ['scene', 'cues', i, 'at']);
-      if (!elementIds.has(cue.targetId)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['scene', 'cues', i, 'targetId'],
-          message: `Анимация ссылается на несуществующий элемент «${cue.targetId}»`,
-        });
-      }
-    });
+      node.scene.cues.forEach((cue, i) => {
+        checkTimeRef(cue.at, ['nodes', n, 'scene', 'cues', i, 'at']);
+        if (!elementIds.has(cue.targetId)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['nodes', n, 'scene', 'cues', i, 'targetId'],
+            message: `Анимация ссылается на несуществующий элемент «${cue.targetId}»`,
+          });
+        }
+      });
 
-    project.scene.gates.forEach((gate, i) => {
-      checkTimeRef(gate.at, ['scene', 'gates', i, 'at']);
+      node.scene.gates.forEach((gate, i) => {
+        checkTimeRef(gate.at, ['nodes', n, 'scene', 'gates', i, 'at']);
+      });
     });
   });
 
@@ -222,4 +265,8 @@ export type AnimationSpec = z.infer<typeof AnimationSpecSchema>;
 export type Cue = z.infer<typeof CueSchema>;
 export type Gate = z.infer<typeof GateSchema>;
 export type Scene = z.infer<typeof SceneSchema>;
+export type Audio = z.infer<typeof AudioSchema>;
+export type EdgeWhen = z.infer<typeof EdgeWhenSchema>;
+export type Edge = z.infer<typeof EdgeSchema>;
+export type SegmentNode = z.infer<typeof SegmentNodeSchema>;
 export type Project = z.infer<typeof ProjectSchema>;

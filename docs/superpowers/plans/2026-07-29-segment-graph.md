@@ -70,8 +70,10 @@
 - Тест: `packages/core/test/migrations.test.ts` (создать)
 
 **Интерфейсы:**
-- Отдаёт: `SCHEMA_VERSION = 2`; типы `Node`, `Edge`, `EdgeWhen`, `Audio`;
-  `NodeSchema`, `EdgeSchema`, `ProjectSchema`; константу `ENTRY_NODE_ID`
+- Отдаёт: `SCHEMA_VERSION = 2`; типы `SegmentNode`, `Edge`, `EdgeWhen`, `Audio`;
+  `SegmentNodeSchema`, `EdgeSchema`, `ProjectSchema`; константу `ENTRY_NODE_ID`.
+  Тип узла назван `SegmentNode`, а не `Node`: `Node` — глобальный DOM-тип,
+  живой в редакторе (`target instanceof Node`, `StageView.tsx:433`)
 - Потребляет: существующие `SceneSchema`, `WordSchema`, `Id`, `TimeRefSchema`
 
 - [ ] **Шаг 1: падающий тест миграции**
@@ -975,7 +977,7 @@ describe('выбор следующего узла', () => {
  * Живут в ядре, а не в классе плеера, потому что выбор следующего узла —
  * правило продукта, и его надо проверять юнит-тестом, а не прогоном звука.
  */
-import type { Node } from './schema.js';
+import type { SegmentNode } from './schema.js';
 
 export interface GateOutcome {
   /** Выбранный вариант, если гейт с выбором. */
@@ -992,7 +994,7 @@ export interface GateOutcome {
  * до сюда не доезжает.
  */
 export function nextNodeAfterGate(
-  node: Node,
+  node: SegmentNode,
   gateId: string,
   outcome: GateOutcome,
 ): string | undefined {
@@ -1015,7 +1017,7 @@ export function nextNodeAfterGate(
 }
 
 /** Куда вести, когда узел доиграл. `undefined` — объяснение закончилось. */
-export function nextNodeAtEnd(node: Node): string | undefined {
+export function nextNodeAtEnd(node: SegmentNode): string | undefined {
   return node.edges.find((edge) => edge.when.kind === 'end')?.to;
 }
 ```
@@ -1151,7 +1153,7 @@ git commit -m "e2e развилки: разные ответы приводят 
 **Интерфейсы:**
 - Отдаёт: `addNode`, `removeNode`, `connect`, `disconnect`, `reachableFrom`,
   `uncoveredOptions` — чистые функции `(project, …) => Project | результат`
-- Потребляет: типы `Node`, `Edge` из `@player/core`
+- Потребляет: типы `SegmentNode`, `Edge` из `@player/core`
 
 - [ ] **Шаг 1: падающие тесты**
 

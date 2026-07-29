@@ -13,11 +13,50 @@ import { SCHEMA_VERSION } from './schema.js';
 /** Миграция — чистая функция: получает данные версии N, возвращает версии N+1. */
 export type Migration = (input: unknown) => unknown;
 
+/** Идентификатор единственного узла, в который сворачивается проект версии 1. */
+export const ENTRY_NODE_ID = 'node-1';
+
 /**
- * Реестр: ключ — версия, ИЗ которой мигрируем.
- * Для версии 1 записи нет, потому что мигрировать пока некуда.
+ * Форма проекта версии 1 ровно в той мере, в какой миграция её читает.
+ *
+ * Поля необязательные намеренно: миграция работает до валидации и не имеет
+ * права падать на битом входе своим TypeError. Отсутствующее поле доедет
+ * до Zod и получит внятное сообщение с путём.
  */
-export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({});
+interface ProjectV1 {
+  meta?: { title?: unknown };
+  audio?: unknown;
+  scene?: unknown;
+}
+
+/**
+ * v1 → v2: «одна дорожка, одна сцена» становится графом из одного узла.
+ *
+ * audio и scene переносятся по ссылке, без правки полей: так ни одно поле
+ * не может тихо поменять смысл по дороге. Рёбер нет — узел без исходящих
+ * рёбер и есть концовка, то есть сегодняшнее поведение проекта.
+ */
+const migrateV1toV2: Migration = (input) => {
+  const v1 = input as ProjectV1;
+  return {
+    schemaVersion: 2,
+    meta: v1.meta,
+    entry: ENTRY_NODE_ID,
+    nodes: [
+      {
+        id: ENTRY_NODE_ID,
+        title: v1.meta?.title,
+        audio: v1.audio,
+        scene: v1.scene,
+        edges: [],
+      },
+    ],
+  };
+};
+
+export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
+  1: migrateV1toV2,
+});
 
 export class SchemaVersionError extends Error {
   constructor(message: string, readonly found: unknown) {
