@@ -546,4 +546,160 @@ export const EDITOR_STYLES = `
   gap: 6px;
   margin: 0;
 }
+
+/* Панель графа сегментов (Задача 9). Живёт ВНУТРИ .ed-elements-panel, а не
+   отдельной колонкой грида: колонка со своей фиксированной шириной — 220px
+   и 260px соседей уже съедают бюджет узкого окна (e2e\editor.spec.ts:216
+   держит окно 600px и требует масштаб < 0.5 — четвёртая фиксированная
+   колонка эту проверку ломает, измерено при первой версии правки). Поэтому
+   ширина колонки не меняется вовсе — граф делит высоту с .ed-elements
+   (flex: 1 1 auto у обоих, каждый сам прокручивается), а не берёт себе
+   ширину. min-width: 0 обязателен на самой панели и на каждом текстовом
+   ребёнке — иначе длинный id узла или подпись варианта раздвигает колонку
+   шире отведённых 220px, тот же закон, что и у .ed-muted/.ed-delete-msg. */
+.ed-graph-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  padding-top: 8px;
+  border-top: 1px solid #1c242f;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+.ed-graph-nodes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ed-graph-node-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ed-graph-node {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border: 1px solid #2c3a4d;
+  border-radius: 6px;
+  background: #1b2430;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.ed-graph-node:hover { border-color: #4c8dff; }
+.ed-graph-node-current { border-color: #4c8dff; background: #111a24; }
+
+/* Не декоративная — это предупреждение автору, что ветку никто не увидит,
+   пока он не проведёт к ней ребро (см. комментарий GraphPanel.tsx). */
+.ed-graph-unreachable {
+  flex: 0 0 auto;
+  color: #ff8a6b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.ed-graph-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.ed-graph-edges {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ed-graph-edge-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+/* Переносится, а НЕ обрезается многоточием. Обрезка здесь выглядела
+   безобидно (колонку она не раздвигала), но уничтожала ровно то, ради чего
+   список рёбер существует: в колонке 190px оба ребра развилки читались как
+   «вариант «Да» → Конц…» и «вариант «Нет» → Кон…», то есть автор не видел,
+   куда ведёт ребро, и два разных ребра выглядели одинаково. Найдено взглядом
+   в браузере — ни один тест на это не смотрел.
+
+   overflow-wrap: anywhere, а не просто перенос по словам: с ним минимальная
+   ширина текста равна одному символу, поэтому длинное название узла всё так же
+   не может раздвинуть колонку — тот же закон, что и у .ed-muted. */
+.ed-graph-edge-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: #a8c686;
+}
+
+.ed-graph-empty {
+  margin: 0;
+  color: #7d8fa5;
+  font-size: 12px;
+}
+
+.ed-graph-uncovered {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ed-graph-hole-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Дыра в покрытии — то, ради чего вся панель существует (см. GraphPanel.tsx):
+   схема откажется грузить проект с непокрытым вариантом, и автор обязан
+   увидеть это ДО сохранения, а не после. */
+.ed-graph-hole {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid #ff8a6b;
+  border-radius: 6px;
+}
+
+.ed-graph-hole-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+  color: #ff8a6b;
+}
+
+.ed-graph-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid #1c242f;
+  border-radius: 4px;
+  background: #07090c;
+  color: #e6edf5;
+  font: inherit;
+  font-size: 12px;
+}
 `;

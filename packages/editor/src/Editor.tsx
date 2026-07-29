@@ -25,13 +25,14 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Cue, Element, Gate, Project } from '@player/core';
-import { entryNodeOf, segmentOf, type ScenePreview } from '@player/player';
+import type { Cue, Element, EdgeWhen, Gate, Project } from '@player/core';
+import { segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
 import { ANIMATIONS, ELEMENTS, GATES, plural } from './plural.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
+import { GraphPanel } from './panels/GraphPanel.js';
 import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
@@ -76,10 +77,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   // сам, без участия Editor.tsx; этот мост нужен ровно для Escape.
   const stageRef = useRef<StageViewHandle>(null);
 
-  // Текущий узел — состояние вида, а не проекта: переключение узла (Задача 9)
-  // не создаёт шаг истории само по себе. Пока в проекте всегда ровно один
-  // узел, поэтому значение не меняется, но дверца уже читает узел явно.
-  const [nodeId] = useState(() => entryNodeOf(currentProject));
+  // Текущий узел — состояние вида, а не проекта, но живёт в редьюсере рядом
+  // с выделением (state/editorHistory.ts): после Ctrl+Z узла может уже
+  // не быть в проекте (например, отменили addNode), и починить это может
+  // только тот, кто видит откаченный проект — afterNav в editorHistory.ts.
+  const nodeId = state.currentNodeId;
 
   // Единственная точка, через которую редактор видит дорожку и сцену.
   // Когда проект стал графом сегментов, поменялась segmentOf, а не это
@@ -142,6 +144,23 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
 
   const handleUpdateGate = useCallback((gate: Gate) => dispatch({ type: 'updateGate', gate }), []);
   const handleUpdateCue = useCallback((cue: Cue) => dispatch({ type: 'updateCue', cue }), []);
+
+  const handleAddNode = useCallback(() => dispatch({ type: 'addNode' }), []);
+  const handleRemoveNode = useCallback((id: string) => dispatch({ type: 'removeNode', id }), []);
+  const handleConnect = useCallback(
+    (when: EdgeWhen, to: string) => dispatch({ type: 'connect', when, to }),
+    [],
+  );
+  const handleDisconnect = useCallback((edgeId: string) => dispatch({ type: 'disconnect', edgeId }), []);
+
+  const handleSelectNode = useCallback((id: string) => {
+    // Выделенная метка принадлежала дорожке прежнего узла — тот же довод,
+    // что и в handleSelect для выделения элемента. Эффект ниже (снятие
+    // метки, когда markData не находится) покрывает большинство случаев
+    // сам, но не спасает от совпадения id гейта/анимации между узлами.
+    setSelectedMark(undefined);
+    dispatch({ type: 'selectNode', id });
+  }, []);
 
   /**
    * Одношаговая правка элемента — например, смена цвета в системном пикере
@@ -452,6 +471,15 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             </span>
           ) : null}
           <ElementList rows={elementRows} selectedId={state.selectedId} onSelect={handleSelect} />
+          <GraphPanel
+            project={currentProject}
+            currentNodeId={nodeId}
+            onSelectNode={handleSelectNode}
+            onAddNode={handleAddNode}
+            onRemoveNode={handleRemoveNode}
+            onConnect={handleConnect}
+            onDisconnect={handleDisconnect}
+          />
         </aside>
         {markData ? (
           <MarkPanel

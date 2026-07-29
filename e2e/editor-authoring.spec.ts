@@ -135,7 +135,9 @@ test.describe('список элементов', () => {
 test.describe('удаление', () => {
   test('кнопка удаления недоступна, пока ничего не выделено', async ({ page }) => {
     await openEditor(page, 'demo');
-    await expect(page.getByRole('button', { name: 'Удалить' })).toBeDisabled();
+    // exact: true — иначе имя совпадает и с «Удалить узел» панели графа
+    // (Задача 9): без exact локатор ловил бы обе кнопки.
+    await expect(page.getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
   });
 
   test('удаление элемента с анимациями сообщает о каскаде и оставляет проект, который грузится', async ({
@@ -146,7 +148,7 @@ test.describe('удаление', () => {
     await page.getByTestId('element-row-dot').click();
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
 
-    await page.getByRole('button', { name: 'Удалить' }).click();
+    await page.getByRole('button', { name: 'Удалить', exact: true }).click();
 
     await expect(page.getByTestId('removal-message')).toContainText('dot');
     await expect(page.getByTestId('removal-message')).toContainText('2 анимации');

@@ -63,6 +63,17 @@ export function useTransport(src: string, declaredDuration: number): TransportAp
     (window as unknown as { __transport: Transport }).__transport = transport;
     setFailure(undefined);
     setPeaks([]);
+    // Смена src — это смена узла графа (Задача 9), а не только смена файла
+    // на месте. Пока узел был один, `src` не менялся никогда, и оба сброса
+    // ниже были бы no-op. Теперь меняется, и без них вылезают два дефекта:
+    // 1. `useState(declaredDuration)` берёт значение один раз — до конца
+    //    загрузки НОВОЙ дорожки `duration` остаётся длительностью старой.
+    // 2. Головка (`positionSeconds`) не смещённая переживает переход с узла
+    //    на 48.6 с (позиция, скажем, 20 с) на узел длиной 3 с — и `seek(20)`
+    //    в StageView покажет все анимации в конечном состоянии. Дефект
+    //    опасен именно тем, что рисует правдоподобную картинку, а не пустую.
+    setPositionSeconds(0);
+    setDuration(declaredDuration);
 
     let cancelled = false;
     void transport.load(src).then((buffer) => {
@@ -79,7 +90,13 @@ export function useTransport(src: string, declaredDuration: number): TransportAp
       transportRef.current = null;
       transport.destroy();
     };
-  }, [src]);
+    // declaredDuration — в зависимостях: она меняется ВМЕСТЕ с src (оба
+    // приходят от segmentOf на одном и том же переключении узла), и линтер
+    // react-hooks/exhaustive-deps обязан видеть её как зависимость эффекта,
+    // который её читает. Не через ref: значение не «сопутствующее» жесту
+    // (как positionRef в StageView), а часть входных данных этого самого
+    // эффекта — сброс на объявленную длительность ЕСТЬ его работа.
+  }, [src, declaredDuration]);
 
   return useMemo(
     (): TransportApi => ({
