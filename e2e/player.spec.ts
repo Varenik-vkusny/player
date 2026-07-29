@@ -188,3 +188,53 @@ test.describe('плеер: интерактив внутри сцены (ADR-011
     await expect(page.getByRole('button', { name: 'Отдельный таймер' })).toBeVisible();
   });
 });
+
+test.describe('плеер: гейт на нулевой секунде', () => {
+  /**
+   * Гейт в самом начале — первое, что построит автор на пустом проекте.
+   *
+   * Путь у него отдельный: `play()` открывает такой гейт сразу, не запуская
+   * звук, иначе зритель услышал бы начало фразы, к которой относится вопрос.
+   * Часы при этом обязаны оказаться в определённом состоянии — иначе ответ
+   * на гейт некуда возобновлять.
+   *
+   * Фикстура `edge-cases` такой гейт содержит, но её аудиофайла на диске нет,
+   * поэтому проект подменяется на лету: берём `e2e` и двигаем первый гейт
+   * в ноль. Эталонные фикстуры при этом не трогаются.
+   */
+  async function openWithGateAtZero(page: Page): Promise<void> {
+    await page.route('**/fixtures/e2e.json', async (route) => {
+      const original = await route.fetch();
+      const project = await original.json();
+      project.scene.gates[0].at = { kind: 'seconds', t: 0 };
+      await route.fulfill({ json: project });
+    });
+    await openPlayground(page);
+  }
+
+  test('останавливается до первого звука', async ({ page }) => {
+    await openWithGateAtZero(page);
+    await page.getByRole('button', { name: 'Играть' }).click();
+
+    await expect(page.locator('#overlay[data-open="1"]')).toBeVisible({ timeout: 15_000 });
+    expect(await stateOf(page)).toBe('at-gate');
+    // Ни одного сэмпла не прозвучало: позиция ровно ноль, а не «почти ноль».
+    expect(await positionOf(page)).toBe(0);
+  });
+
+  test('ответ на него продолжает воспроизведение, а не роняет часы', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+
+    await openWithGateAtZero(page);
+    await page.getByRole('button', { name: 'Играть' }).click();
+    await expect(page.locator('#overlay[data-open="1"]')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: 'Позиция в аудио' }).click();
+
+    await expect.poll(() => stateOf(page), { timeout: 15_000 }).toBe('playing');
+    expect(errors, 'ответ на гейт в нуле не должен ронять часы').toEqual([]);
+    // Продолжили с нуля, а не перемотали: инвариант №4.
+    await expect.poll(() => positionOf(page)).toBeGreaterThan(0);
+  });
+});

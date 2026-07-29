@@ -3501,6 +3501,11 @@ var To = class {
 		let i = (t.rampMs ?? So) / 1e3, a = this.#e.currentTime, o = r.ctxTime + (e - r.mediaTime), s = Math.max(a + .001, o);
 		this.#n.gain.cancelScheduledValues(a), this.#n.gain.setValueAtTime(this.#n.gain.value, Math.max(a, s - i)), this.#n.gain.linearRampToValueAtTime(0, s), this.#o = e, n.stop(s), n.disconnect(), this.#i = null, await this.#e.suspend();
 	}
+	holdBeforeStart(e) {
+		if (this.#i) throw Error("Источник уже запущен: остановка до начала здесь неуместна");
+		if (!(e >= 0)) throw RangeError(`Позиция паузы до начала должна быть неотрицательной, получено ${e}`);
+		this.#o = e;
+	}
 	async resumeFromFreeze() {
 		if (this.#o === null) throw Error("Часы не в состоянии паузы");
 		let e = this.#o;
@@ -4937,7 +4942,7 @@ var vl = class {
 		if (this.#u !== "playing") {
 			if (this.#u === "at-gate") throw Error("Нельзя продолжить, пока гейт не пройден");
 			if (await e.context.resume(), this.#y(0)) {
-				this.#S();
+				e.holdBeforeStart(0), this.#S();
 				return;
 			}
 			e.start(this.#u === "ended" ? 0 : e.position), this.#u === "ended" && (this.#c = 0), this.#m("playing"), this.#b();
