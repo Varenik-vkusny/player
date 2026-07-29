@@ -80,6 +80,12 @@ export interface HistoryState {
   readonly history: History<Project>;
   readonly selectedId: string | undefined;
   /**
+   * Узел, который автор сейчас правит — состояние вида, как и `selectedId`:
+   * снимок истории его не несёт, а после undo/redo его чинит `afterNav`
+   * так же, как чинит `selectedId`.
+   */
+  readonly currentNodeId: string;
+  /**
    * Идёт ли сейчас жест (перетаскивание, набор в числовом поле). Часть
    * состояния, а не локальная переменная снаружи: редьюсер обязан быть
    * чистым и детерминированным, а флаг обязан пережить два последовательных
@@ -89,7 +95,12 @@ export interface HistoryState {
 }
 
 export function initialHistoryState(project: Project): HistoryState {
-  return { history: createHistory(project), selectedId: undefined, gestureOpen: false };
+  return {
+    history: createHistory(project),
+    selectedId: undefined,
+    currentNodeId: project.entry,
+    gestureOpen: false,
+  };
 }
 
 /** Действия, которые МОГУТ дробить один жест на десятки вызовов. */
@@ -112,14 +123,26 @@ function replacePresent(history: History<Project>, next: Project): History<Proje
   return { past: history.past, present: next, future: history.future };
 }
 
-/** Общий хвост undo/redo: чинит выделение и закрывает случайно оставшийся жест. */
+/**
+ * Общий хвост undo/redo: чинит текущий узел и выделение, закрывает случайно
+ * оставшийся жест.
+ *
+ * Undo/redo может откатить сам факт существования текущего узла (например,
+ * отменить `addNode`) — тогда `currentNodeId` возвращается на стартовый узел
+ * проекта, как и предписано `removeNode` в редьюсере при удалении текущего
+ * узла. Проверку «выжило ли выделение» делаем уже для ПОЧИНЕННОГО узла —
+ * иначе можно было бы оставить выделение элемента из сцены узла, которого
+ * в починенном currentNodeId уже нет.
+ */
 function afterNav(state: HistoryState, history: History<Project>): HistoryState {
   if (history === state.history) return state; // граница — undo()/redo() уже no-op по ссылке
+  const nodeExists = history.present.nodes.some((node) => node.id === state.currentNodeId);
+  const currentNodeId = nodeExists ? state.currentNodeId : history.present.entry;
   const selectedId =
-    state.selectedId !== undefined && hasElement(history.present, state.selectedId)
+    state.selectedId !== undefined && hasElement(history.present, currentNodeId, state.selectedId)
       ? state.selectedId
       : undefined;
-  return { history, selectedId, gestureOpen: false };
+  return { history, currentNodeId, selectedId, gestureOpen: false };
 }
 
 export function historyReducer(state: HistoryState, action: HistoryEditorAction): HistoryState {
@@ -136,13 +159,27 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   // Дальше — обычный EditorAction. Прогоняем через уже проверенный
   // editorReducer, подставив ЖИВОЙ project (верхушку истории) и текущее
   // выделение — эта пара и есть EditorState, которым он оперирует.
-  const before: EditorState = { project: state.history.present, selectedId: state.selectedId };
+  const before: EditorState = {
+    project: state.history.present,
+    selectedId: state.selectedId,
+    currentNodeId: state.currentNodeId,
+  };
   const after = editorReducer(before, action);
 
   if (action.type === 'select') {
     // Правило №1: select истории не касается вовсе, даже когда меняет
     // выделение. history остаётся тем же объектом по ссылке.
     return after.selectedId === state.selectedId ? state : { ...state, selectedId: after.selectedId };
+  }
+
+  if (action.type === 'selectNode') {
+    // То же правило №1, только для переключения узла: это тоже вид,
+    // а не данные. Без отдельной ветки generic-путь ниже (после этой)
+    // сравнил бы after.project === before.project (верно, project не менялся)
+    // и перенёс бы только selectedId — новый currentNodeId потерялся бы.
+    return after.currentNodeId === state.currentNodeId && after.selectedId === state.selectedId
+      ? state
+      : { ...state, currentNodeId: after.currentNodeId, selectedId: after.selectedId };
   }
 
   if (after.project === before.project) {
@@ -156,7 +193,9 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   const history =
     state.gestureOpen && live ? replacePresent(state.history, after.project) : push(state.history, after.project);
 
-  return { history, selectedId: after.selectedId, gestureOpen: live };
+  // currentNodeId переносим из after: addNode/removeNode могли его сменить,
+  // остальные действия оставляют тем же значением, что и before.
+  return { history, selectedId: after.selectedId, currentNodeId: after.currentNodeId, gestureOpen: live };
 }
 
 /** Для кнопок «Отменить»/«Повторить» и для тестов — тонкие реэкспорты. */
