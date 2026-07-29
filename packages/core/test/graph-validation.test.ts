@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { loadProject } from '../src/index.js';
 
 /**
@@ -123,5 +125,17 @@ describe('целостность графа', () => {
   it('узел без исходящих рёбер законен: это концовка', () => {
     const p = twoNodes();
     expect(loadProject(p).nodes[1]!.edges).toEqual([]);
+  });
+
+  it('фикстура развилки валидна и имеет три узла', () => {
+    const raw = JSON.parse(
+      readFileSync(join(process.cwd(), 'fixtures', 'projects', 'branching.json'), 'utf8'),
+    );
+    const project = loadProject(raw);
+    expect(project.schemaVersion).toBe(2);
+    expect(project.nodes).toHaveLength(3);
+    expect(project.nodes[0]!.edges).toHaveLength(2);
+    const targets = project.nodes[0]!.edges.map((edge) => edge.to);
+    expect(new Set(targets).size).toBe(2);
   });
 });

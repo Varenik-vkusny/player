@@ -7,12 +7,17 @@ const FIXTURES = join(process.cwd(), 'fixtures', 'projects');
 
 describe('миграция v1 → v2', () => {
   const files = readdirSync(FIXTURES).filter((f) => f.endsWith('.json'));
+  // branching.json — фикстура Задачи 4, собрана сразу в версии 2 и мигрировать
+  // не должна: проверки «сворачивается в один узел» относятся только к семи
+  // старым файлам версии 1.
+  const v1files = files.filter((f) => f !== 'branching.json');
 
   it('фикстуры на месте: иначе тест зелен впустую', () => {
-    expect(files.length).toBe(7);
+    expect(files.length).toBe(8);
+    expect(v1files.length).toBe(7);
   });
 
-  it.each(files)('%s открывается после миграции', (file) => {
+  it.each(v1files)('%s открывается после миграции', (file) => {
     const raw = JSON.parse(readFileSync(join(FIXTURES, file), 'utf8'));
     const project = loadProject(raw);
     expect(project.schemaVersion).toBe(SCHEMA_VERSION);
@@ -20,7 +25,7 @@ describe('миграция v1 → v2', () => {
     expect(project.nodes[0]!.edges).toEqual([]);
   });
 
-  it.each(files)('%s: озвучка и сцена переносятся без правок', (file) => {
+  it.each(v1files)('%s: озвучка и сцена переносятся без правок', (file) => {
     const raw = JSON.parse(readFileSync(join(FIXTURES, file), 'utf8'));
     const project = loadProject(raw);
     const node = project.nodes[0]!;
