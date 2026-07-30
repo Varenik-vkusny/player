@@ -54,7 +54,7 @@ test.describe('@shots снимки продукта', () => {
     for (const t of ['0.000', '1.200', '1.500', '1.800', '2.250', '3.000']) {
       await page.goto(`/preview.html?fixture=morph&t=${t}&fonts=test`, { waitUntil: 'load' });
       await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1');
-      await page.locator('#stage').screenshot({ path: `${OUT}/morph-${t.replace('.', '-')}.png` });
+      await page.locator('#stage-host').screenshot({ path: `${OUT}/morph-${t.replace('.', '-')}.png` });
     }
   });
 
@@ -66,5 +66,11 @@ test.describe('@shots снимки продукта', () => {
       .poll(() => page.evaluate(() => document.getElementById('state')?.textContent), { timeout: 15_000 })
       .toBe('at-gate');
     await page.screenshot({ path: `${OUT}/gate-open.png` });
+  });
+
+  test('голый HTML: инвариант №9 глазами', async ({ page }) => {
+    await page.goto('/bare.html', { waitUntil: 'load' });
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: `${OUT}/bare.png` });
   });
 });
