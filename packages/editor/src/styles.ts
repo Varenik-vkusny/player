@@ -180,6 +180,12 @@ export const EDITOR_STYLES = `
 
 .ed-insert { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* Группа кнопок шаблонов — свой заголовок, кнопки в тех же .ed-insert/.ed-action,
+   что и у панели вставки фигур: колонка не должна заводить второй визуальный
+   язык ради второго списка кнопок. */
+.ed-templates { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.ed-templates-label { font-size: 11px; color: #7d8fa5; }
+
 .ed-delete-row {
   flex: 0 0 auto;
   display: flex;

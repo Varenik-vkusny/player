@@ -37,11 +37,13 @@ import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
 import { formatRemovalMessage } from './panels/removalMessage.js';
+import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, type MarkKind } from './state/project.js';
+import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { markSeconds, timeRefAt } from './track/marks.js';
@@ -191,6 +193,15 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     },
     [segment.scene, segment.stage],
   );
+
+  /**
+   * Шаблон правит elements, cues и gates разом — ОДИН шаг истории на кнопку
+   * (действие `applyTemplate`, а не отдельные addElement/addCue/addGate по
+   * очереди, которые historyReducer положил бы в историю по одному).
+   */
+  const handleApplyTemplate = useCallback((templateId: string) => {
+    dispatch({ type: 'applyTemplate', template: sceneTemplate(templateId) });
+  }, []);
 
   // Сообщение о каскадном удалении — состояние вида, а не проекта: сколько
   // анимаций пропало вместе с последним удалённым элементом, интересно
@@ -451,6 +462,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         />
         <aside className="ed-elements-panel" aria-label="Элементы сцены">
           <InsertPanel onInsert={handleInsert} />
+          <TemplatesPanel onApply={handleApplyTemplate} />
           <div className="ed-delete-row">
             <button
               type="button"

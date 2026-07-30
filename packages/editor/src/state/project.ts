@@ -14,6 +14,7 @@ import type { Cue, Element, EdgeWhen, Gate, Project, Scene, SegmentNode, TimeRef
 
 import { removeElement as removeElementFromScene } from './elements.js';
 import * as graph from './graph.js';
+import { applyTemplate as applyTemplateToScene, type SceneTemplate } from './templates.js';
 
 /**
  * `freeId` живёт в `elements.ts` — это модуль про элементы, а не про весь
@@ -49,6 +50,11 @@ export type EditorAction =
   | { readonly type: 'removeElement'; readonly id: string }
   | { readonly type: 'addCue'; readonly cue: Cue }
   | { readonly type: 'addGate'; readonly gate: Gate }
+  // Один шаг истории на кнопку: шаблон правит elements, cues и gates разом,
+  // и это обязано остаться одной правкой сцены (см. state/templates.ts),
+  // а не отдельными addElement/addCue/addGate, которые historyReducer
+  // положил бы в историю по одному.
+  | { readonly type: 'applyTemplate'; readonly template: SceneTemplate }
   | {
       readonly type: 'moveMark';
       readonly kind: MarkKind;
@@ -154,6 +160,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         throw new Error(`Гейт «${action.gate.id}» уже есть: идентификаторы обязаны быть уникальны`);
       }
       return withScene(state, { gates: [...currentNode(state.project, state.currentNodeId).scene.gates, action.gate] });
+    }
+
+    case 'applyTemplate': {
+      // Размер сцены — из meta проекта, той же величины, которой уже
+      // пользуется segmentOf/renderScene, а не из состояния вида.
+      const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
+      const scene = applyTemplateToScene(
+        action.template,
+        currentNode(state.project, state.currentNodeId).scene,
+        stage,
+      );
+      return withScene(state, scene);
     }
 
     case 'moveMark': {
