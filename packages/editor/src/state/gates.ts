@@ -264,6 +264,33 @@ export function setCorrect(gate: Gate, optionId: string): Gate {
   return { ...gate, config: { ...config, correctId: optionId } };
 }
 
+/**
+ * Делает остановку развилкой или возвращает её в вопросы.
+ *
+ * Развилка — та же остановка с выбором, у которой НЕТ верного ответа
+ * (схема v4, `correctId: null`). Отдельного поля «тип остановки» нет
+ * намеренно: два поля рассогласовались бы, а значение — не с чем.
+ *
+ * Возврат в вопросы назначает верным ПЕРВЫЙ вариант, а не запоминает
+ * прежний: помнить его пришлось бы через все правки списка вариантов,
+ * включая удаление того самого варианта. Автор всё равно выбирает верный
+ * ответ радиокнопкой рядом, и лишний невидимый черновик тут дороже
+ * одного щелчка.
+ */
+export function setFork(gate: Gate, isFork: boolean): Gate {
+  const config = requireChoice(gate, 'Переключить тип остановки');
+  if (isFork) {
+    if (config.correctId === null) return gate;
+    return { ...gate, config: { ...config, correctId: null } };
+  }
+  if (config.correctId !== null) return gate;
+  const first = config.options[0];
+  if (!first) {
+    throw new Error('У остановки нет ни одного варианта: верным назначать нечего');
+  }
+  return { ...gate, config: { ...config, correctId: first.id } };
+}
+
 /** Та же проверка, что `Id` в схеме (`packages/core/src/schema.ts`), но она там не экспортирована. */
 function assertValidElementId(elementId: string): void {
   if (elementId.length === 0) {

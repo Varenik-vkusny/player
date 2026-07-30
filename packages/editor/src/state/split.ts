@@ -265,6 +265,31 @@ export function splitSegmentAtGate(
   return { head, branches, tail };
 }
 
+/**
+ * Почему разрез сейчас невозможен, словами для автора. `undefined` — возможен.
+ *
+ * Живёт рядом с самим разрезом намеренно: запрет и его причина обязаны
+ * меняться вместе. Разведи их по разным файлам — и панель однажды покажет
+ * кнопку, которая бросит, либо запретит то, что уже разрешено.
+ */
+export function splitBlockedReason(gate: Gate, words: readonly Word[]): string | undefined {
+  if (gate.config.kind !== 'choice') {
+    return 'Разделить можно только остановку с вариантами ответа.';
+  }
+  let at: number;
+  try {
+    at = secondsOf(gate.at, words);
+  } catch {
+    // Метка потеряла своё слово — до разреза автору нужно перепривязать её.
+    // Молча разрешить разрез значило бы поделить часть не там, где он думает.
+    return 'Метка остановки потеряла своё слово в транскрипте: сначала поставьте её заново.';
+  }
+  if (at <= 0) {
+    return 'Развилка стоит в самом начале части: до неё нет рассказа, и делить нечего.';
+  }
+  return undefined;
+}
+
 /** Заголовок ветки: метка варианта, а не его идентификатор. */
 function branches_title(gate: Gate, optionId: string, index: number): string {
   if (gate.config.kind !== 'choice') return `Ветка ${index + 1}`;

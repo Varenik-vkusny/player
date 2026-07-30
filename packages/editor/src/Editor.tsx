@@ -43,6 +43,7 @@ import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
+import { splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, segmentSlide, type MarkKind } from './state/project.js';
@@ -125,7 +126,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [segment],
   );
 
-  const transport = useTransport(segment.src, segment.duration, gateSeconds);
+  const transport = useTransport(segment.src, segment.duration, gateSeconds, segment.offset);
 
   const selected =
     state.selectedId === undefined
@@ -202,6 +203,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   }, [selectedMark]);
 
   const handleUpdateGate = useCallback((gate: Gate) => dispatch({ type: 'updateGate', gate }), []);
+
+  const handleSplitAtGate = useCallback(
+    (gateId: string) => dispatch({ type: 'splitAtGate', gateId }),
+    [],
+  );
 
   const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
   const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
@@ -354,7 +360,9 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       id: gate.id,
       seconds: markSeconds(gate.at, words),
       onWord: gate.at.kind === 'word',
-      title: `Гейт «${gate.id}»: ${gate.config.kind}`,
+      // Подсказка автору при наведении: словами продукта, а не схемы.
+      // Развилка от вопроса отличается отсутствием верного ответа.
+      title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} «${gate.id}»`,
     }));
     const fromSlides = segment.slides.slice(1).map((slide): Mark => ({
       kind: 'slide',
@@ -583,6 +591,12 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
               && gateInsideTransition(markData.gate, segment.slides, segment.words)}
             onUpdateGate={handleUpdateGate}
             onRemove={handleRemoveMark}
+            onSplitAtGate={markData.kind === 'gate'
+              ? () => handleSplitAtGate(markData.gate.id)
+              : undefined}
+            splitBlockedReason={markData.kind === 'gate'
+              ? splitBlockedReason(markData.gate, segment.words)
+              : undefined}
           />
         ) : (
           <Inspector

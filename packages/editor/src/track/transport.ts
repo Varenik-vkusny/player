@@ -40,6 +40,10 @@ export class Transport {
   #ctx: AudioContext | null = null;
   #clock: AudioClock | null = null;
   #buffer: AudioBuffer | null = null;
+  /** Начало окна части внутри файла, секунды (схема v4). */
+  #offset = 0;
+  /** Длина окна части, секунды. Ноль — окно не задано, берём весь файл. */
+  #window = 0;
   #state: TransportState = 'idle';
   #frame = 0;
   /** Позиция до загрузки дорожки: автор вправе двигать головку и раньше. */
@@ -58,10 +62,19 @@ export class Transport {
   }
 
   get positionSeconds(): number {
-    return this.#clock ? this.#clock.position : this.#pending;
+    return this.#clock ? this.#clock.position - this.#offset : this.#pending;
   }
 
+  /**
+   * Длина ОКНА части, а не файла.
+   *
+   * До версии 4 схемы это было одно и то же, и разницы никто не видел.
+   * Теперь несколько частей делят файл разными окнами, и показать автору
+   * длину файла значило бы нарисовать ему линейку чужой длины: после
+   * разреза часть на две секунды выглядела бы трёхсекундной.
+   */
   get durationSeconds(): number {
+    if (this.#window > 0) return this.#window;
     return this.#buffer ? this.#buffer.duration : 0;
   }
 
@@ -76,8 +89,10 @@ export class Transport {
    * Контекст создаётся здесь же и остаётся усыплённым до первого жеста
    * автора: браузер не даст звучать раньше, и делать вид, что даст, незачем.
    */
-  async load(src: string): Promise<AudioBuffer | null> {
+  async load(src: string, window?: { offset: number; duration: number }): Promise<AudioBuffer | null> {
     this.#setState('loading');
+    this.#offset = window?.offset ?? 0;
+    this.#window = window?.duration ?? 0;
     const ctx = new AudioContext();
     this.#ctx = ctx;
 
@@ -100,7 +115,9 @@ export class Transport {
     this.#buffer = buffer;
     this.#clock = new AudioClock(ctx, buffer);
     // Позиция, выставленная до загрузки, не теряется.
-    if (this.#pending > 0) this.#clock.seek(Math.min(this.#pending, buffer.duration));
+    if (this.#pending > 0) {
+      this.#clock.seek(Math.min(this.#pending, this.durationSeconds) + this.#offset);
+    }
     this.#setState('ready');
     this.#emitPosition();
     return buffer;
@@ -114,7 +131,7 @@ export class Transport {
     await clock.context.resume();
 
     if (clock.isFrozen) await clock.resumeFromFreeze();
-    else clock.start(this.positionSeconds);
+    else clock.start(this.positionSeconds + this.#offset);
 
     this.#setState('playing');
     this.#startLoop();
@@ -142,7 +159,7 @@ export class Transport {
       this.#emitPosition();
       return;
     }
-    this.#clock.seek(clamped);
+    this.#clock.seek(clamped + this.#offset);
     this.#emitPosition();
   }
 
@@ -163,7 +180,8 @@ export class Transport {
       this.#emitPosition();
       // Дорожка кончилась — останавливаемся сами, иначе позиция упрётся
       // в конец и будет молча стоять, делая вид, что всё идёт.
-      if (clock.position >= clock.duration) {
+      // Конец ОКНА части, а не файла: за окном в том же файле лежит соседняя.
+      if (clock.position >= this.#offset + this.durationSeconds) {
         void this.pause();
         return;
       }

@@ -48,6 +48,7 @@ export function useTransport(
   src: string,
   declaredDuration: number,
   stopsAt: readonly number[] = [],
+  offsetSeconds = 0,
 ): TransportApi {
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [state, setState] = useState<TransportState>('idle');
@@ -111,13 +112,28 @@ export function useTransport(
     previousRef.current = 0;
 
     let cancelled = false;
-    void transport.load(src).then((buffer) => {
+    void transport.load(src, { offset: offsetSeconds, duration: declaredDuration }).then((buffer) => {
       // Компонент могли снять, пока декодировался звук. Считать пики
       // и трогать состояние после этого незачем.
       if (cancelled || !buffer) return;
-      setDuration(buffer.duration);
+
+      // Длительность НЕ перетирается длиной файла. Раньше перетиралась, и это
+      // было почти незаметно: часть занимала файл целиком. С окном (схема v4)
+      // части делят один файл, и длина файла — уже не длина части: после
+      // разреза линейка показывала бы автору чужую секунду в конце.
+      // Источник истины про длину части — проект, а не декодер.
+
+      // Волна тоже рисуется по СВОЕМУ участку: иначе автор видел бы форму
+      // всей дорожки под куском, который к ней не относится.
       // Дорожка озвучки моно (docs/research/audio.md §4), поэтому канал один.
-      setPeaks(computePeaks(buffer.getChannelData(0), PEAK_BUCKETS));
+      const samples = buffer.getChannelData(0);
+      const from = Math.max(0, Math.floor(offsetSeconds * buffer.sampleRate));
+      const to = declaredDuration > 0
+        ? Math.min(samples.length, Math.ceil((offsetSeconds + declaredDuration) * buffer.sampleRate))
+        : samples.length;
+      const windowed = from > 0 || to < samples.length ? samples.subarray(from, to) : samples;
+
+      setPeaks(computePeaks(windowed, PEAK_BUCKETS));
     });
 
     return () => {
@@ -131,7 +147,12 @@ export function useTransport(
     // который её читает. Не через ref: значение не «сопутствующее» жесту
     // (как positionRef в StageView), а часть входных данных этого самого
     // эффекта — сброс на объявленную длительность ЕСТЬ его работа.
-  }, [src, declaredDuration]);
+    //
+    // offsetSeconds — по той же причине: смещение окна приходит от того же
+    // segmentOf на том же переключении части. Две части могут делить ОДИН
+    // файл (схема v4), и тогда `src` не меняется, а окно меняется — без
+    // смещения в зависимостях дорожка осталась бы показывать прежний участок.
+  }, [src, declaredDuration, offsetSeconds]);
 
   return useMemo(
     (): TransportApi => ({

@@ -30,6 +30,7 @@ import {
   setAccept,
   setCaseSensitive,
   setCorrect,
+  setFork,
   setGateKind,
   setMaxAttempts,
   setOnWrong,
@@ -65,6 +66,22 @@ export interface MarkPanelProps {
   onUpdateGate: (gate: Gate) => void;
   /** Действие `removeMark`/`removeSlide` в редьюсере уже есть — эта кнопка его вызывает. */
   onRemove: () => void;
+  /**
+   * Разрезать часть по этой развилке (действие `splitAtGate`).
+   *
+   * Отдельным жестом, а не побочным эффектом переключения типа остановки:
+   * разрез рождает несколько частей и уводит половину слайдов в новую.
+   * Автор должен иметь возможность объявить развилку, посмотреть и передумать,
+   * не перестраивая объяснение движением мыши по выпадающему списку.
+   */
+  onSplitAtGate?: (() => void) | undefined;
+  /**
+   * Почему разрез сейчас невозможен. `undefined` — возможен.
+   *
+   * Строкой, а не булевым: запрещённая кнопка без причины — это тупик,
+   * в котором автор не понимает, что он сделал не так.
+   */
+  splitBlockedReason?: string | undefined;
 }
 
 export function MarkPanel({
@@ -73,14 +90,18 @@ export function MarkPanel({
   gateInsideTransition = false,
   onUpdateGate,
   onRemove,
+  onSplitAtGate,
+  splitBlockedReason,
 }: MarkPanelProps): ReactElement {
   return (
     <aside className="ed-inspector" data-testid="mark-panel">
-      <h2 className="ed-insp-title">{mark.kind === 'gate' ? 'Гейт' : 'Слайд'}</h2>
+      {/* «Остановка», а не «Гейт»: внутреннее слово в интерфейс не течёт
+          (product.md §2). Автор видит остановку, вопрос и развилку. */}
+      <h2 className="ed-insp-title">{mark.kind === 'gate' ? 'Остановка' : 'Слайд'}</h2>
       <div className="ed-insp-body">
         {mark.kind === 'gate' && gateInsideTransition ? (
           <p className="ed-warning" data-testid="gate-in-transition">
-            Гейт стоит внутри перехода между слайдами. Зритель увидит переход
+            Остановка стоит внутри перехода между слайдами. Зритель увидит переход
             уже доведённым до конца — вопрос будет задан не к тому, что едет.
           </p>
         ) : null}
@@ -88,7 +109,14 @@ export function MarkPanel({
           // key по id: при выборе другой метки виджеты (и их внутренние
           // черновики, см. AcceptListField) пересоздаются с нуля, как
           // у Inspector.ElementFields.
-          <GatePanel key={mark.gate.id} gate={mark.gate} elements={elements} onUpdate={onUpdateGate} />
+          <GatePanel
+            key={mark.gate.id}
+            gate={mark.gate}
+            elements={elements}
+            onUpdate={onUpdateGate}
+            onSplit={onSplitAtGate}
+            splitBlockedReason={splitBlockedReason}
+          />
         ) : (
           <SlideMarkPanel key={mark.slide.id} slide={mark.slide} />
         )}
@@ -128,9 +156,11 @@ interface GatePanelProps {
   gate: Gate;
   elements: readonly Element[];
   onUpdate: (gate: Gate) => void;
+  onSplit?: (() => void) | undefined;
+  splitBlockedReason?: string | undefined;
 }
 
-function GatePanel({ gate, elements, onUpdate }: GatePanelProps): ReactElement {
+function GatePanel({ gate, elements, onUpdate, onSplit, splitBlockedReason }: GatePanelProps): ReactElement {
   // Память о вопросе при переключении вида (choice/input → continue → …) —
   // забота панели, а не state/gates.ts: модуль намеренно ничего не хранит
   // сам (см. docstring promptOf). Инициализируется текущим вопросом и дальше
@@ -152,7 +182,9 @@ function GatePanel({ gate, elements, onUpdate }: GatePanelProps): ReactElement {
     <>
       <div className="ed-insp-block">
         <ReadonlyField label="Идентификатор" value={gate.id} />
-        <ReadonlyField label="Переменная (recordAs)" value={gate.recordAs} />
+        {/* Без «recordAs»: внутреннее имя поля автору ничего не говорит,
+            а слово «переменная» он уже понимает по школьному опыту. */}
+        <ReadonlyField label="Ответ запоминается как" value={gate.recordAs} />
         <ChoiceField
           label="Вид"
           value={config.kind}
@@ -165,6 +197,16 @@ function GatePanel({ gate, elements, onUpdate }: GatePanelProps): ReactElement {
         <div className="ed-insp-block">
           <StringField label="Вопрос" value={config.prompt} onCommit={(prompt) => onUpdate(setPrompt(gate, prompt))} />
         </div>
+      )}
+
+      {config.kind === 'choice' && (
+        <StopKindEditor
+          gate={gate}
+          config={config}
+          onUpdate={onUpdate}
+          onSplit={onSplit}
+          splitBlockedReason={splitBlockedReason}
+        />
       )}
 
       {config.kind === 'choice' && (
@@ -199,6 +241,76 @@ function GatePanel({ gate, elements, onUpdate }: GatePanelProps): ReactElement {
 
 type ChoiceConfig = Extract<Gate['config'], { kind: 'choice' }>;
 type InputConfig = Extract<Gate['config'], { kind: 'input' }>;
+
+/**
+ * Две остановки продукта, названные так, как их называет автор.
+ *
+ * Вопрос — остановка ПОСРЕДИ части: зритель отвечает, повествование
+ * продолжается здесь же. Развилка — остановка В КОНЦЕ: она делит
+ * объяснение на части.
+ *
+ * В схеме это одно и то же поле `correctId`, и различие выражено его
+ * значением. Автору же про `correctId`, `exit` и «правила выхода» знать
+ * незачем: он ставит развилку, а правила появляются сами.
+ */
+const STOP_KIND_CHOICES: readonly Choice[] = [
+  // Коротко, потому что это выпадающий список: длинную подпись он обрезает,
+  // и автор видит обрывок фразы. Полное объяснение — в подсказке ниже.
+  { value: 'question', label: 'Вопрос — рассказ идёт дальше' },
+  { value: 'fork', label: 'Развилка — рассказ делится' },
+];
+
+interface StopKindEditorProps {
+  gate: Gate;
+  config: ChoiceConfig;
+  onUpdate: (gate: Gate) => void;
+  onSplit?: (() => void) | undefined;
+  splitBlockedReason?: string | undefined;
+}
+
+function StopKindEditor({ gate, config, onUpdate, onSplit, splitBlockedReason }: StopKindEditorProps): ReactElement {
+  const isFork = config.correctId === null;
+
+  return (
+    <div className="ed-insp-block" data-testid="stop-kind">
+      <ChoiceField
+        label="Что это за остановка"
+        value={isFork ? 'fork' : 'question'}
+        choices={STOP_KIND_CHOICES}
+        onCommit={(value) => {
+          if (value !== 'question' && value !== 'fork') {
+            throw new Error(`Неизвестный тип остановки «${value}»`);
+          }
+          onUpdate(setFork(gate, value === 'fork'));
+        }}
+      />
+
+      {isFork && (
+        <>
+          <p className="ed-insp-hint" data-testid="fork-hint">
+            У развилки нет верного ответа: ветки равноправны. Чтобы каждый ответ
+            повёл зрителя своей дорогой, разделите повествование здесь — рассказ
+            после этой точки станет отдельной частью, а на каждый вариант появится
+            своя.
+          </p>
+          <button
+            type="button"
+            className="ed-action"
+            data-testid="gate-split"
+            disabled={splitBlockedReason !== undefined || onSplit === undefined}
+            title={splitBlockedReason ?? 'Разделить повествование по этой развилке'}
+            onClick={() => onSplit?.()}
+          >
+            Разделить повествование здесь
+          </button>
+          {splitBlockedReason !== undefined && (
+            <p className="ed-insp-hint" data-testid="split-blocked">{splitBlockedReason}</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 interface ChoiceOptionsEditorProps {
   gate: Gate;
@@ -244,16 +356,21 @@ function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptions
               onChange={(event) => onUpdate(setOptionLabel(gate, option.id, event.target.value))}
             />
 
-            <label className="ed-insp-label">
-              <input
-                type="radio"
-                name={`gate-correct-${gate.id}`}
-                data-testid={`gate-option-correct-${index}`}
-                checked={option.id === config.correctId}
-                onChange={() => onUpdate(setCorrect(gate, option.id))}
-              />{' '}
-              Правильный вариант
-            </label>
+            {/* У развилки верного ответа нет вовсе — показывать выбор
+                «правильного» значило бы вернуть на экран ровно ту ложь,
+                которую версия 4 убрала из данных. */}
+            {config.correctId !== null && (
+              <label className="ed-insp-label">
+                <input
+                  type="radio"
+                  name={`gate-correct-${gate.id}`}
+                  data-testid={`gate-option-correct-${index}`}
+                  checked={option.id === config.correctId}
+                  onChange={() => onUpdate(setCorrect(gate, option.id))}
+                />{' '}
+                Правильный вариант
+              </label>
+            )}
 
             <label className="ed-insp-label" htmlFor={`gate-option-bind-${index}`}>
               Элемент сцены, служащий этим вариантом
@@ -282,7 +399,7 @@ function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptions
               disabled={config.options.length <= 2}
               title={
                 config.options.length <= 2
-                  ? 'У гейта «выбор» должно остаться не меньше двух вариантов'
+                  ? 'У остановки с выбором должно остаться не меньше двух вариантов'
                   : 'Удалить этот вариант'
               }
               onClick={() => onUpdate(removeOption(gate, option.id))}

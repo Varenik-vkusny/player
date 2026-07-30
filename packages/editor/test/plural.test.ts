@@ -44,12 +44,12 @@ describe('число вместе с формой', () => {
   it('подставляет само число', () => {
     expect(plural(1, ELEMENTS)).toBe('1 элемент');
     expect(plural(3, ANIMATIONS)).toBe('3 анимации');
-    expect(plural(11, GATES)).toBe('11 гейтов');
+    expect(plural(11, GATES)).toBe('11 остановок');
   });
 
   it('пустой набор — тоже осмысленная фраза, а не пропуск', () => {
     expect(plural(0, ELEMENTS)).toBe('0 элементов');
-    expect(plural(0, GATES)).toBe('0 гейтов');
+    expect(plural(0, GATES)).toBe('0 остановок');
   });
 });
 

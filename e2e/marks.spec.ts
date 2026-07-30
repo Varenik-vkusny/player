@@ -86,7 +86,7 @@ test.describe('метки на дорожке', () => {
     // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
     // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
     // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: '▮ гейт', exact: true }).click();
+    await page.getByRole('button', { name: '▮ остановка', exact: true }).click();
 
     const after = await gatesOf(page);
     expect(after).toHaveLength(before.length + 1);
@@ -132,7 +132,7 @@ test.describe('метки на дорожке', () => {
     // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
     // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
     // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: '▮ гейт', exact: true }).click();
+    await page.getByRole('button', { name: '▮ остановка', exact: true }).click();
 
     const after = await gatesOf(page);
     const added = after.find((gate) => !before.some((old) => old.id === gate.id));
@@ -158,7 +158,7 @@ test.describe('метки на дорожке', () => {
     // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
     // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
     // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: '▮ гейт', exact: true }).click();
+    await page.getByRole('button', { name: '▮ остановка', exact: true }).click();
 
     const after = await page.evaluate(
       () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,

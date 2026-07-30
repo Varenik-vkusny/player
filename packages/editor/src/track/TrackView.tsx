@@ -159,7 +159,7 @@ export function TrackView({
             onClick={onAddGate}
             title="Гейт на этой секунде"
           >
-            ▮ гейт
+            ▮ остановка
           </button>
         </span>
       </div>

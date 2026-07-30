@@ -43,5 +43,10 @@ export function plural(count: number, forms: PluralForms): string {
 
 export const ELEMENTS: PluralForms = { one: 'элемент', few: 'элемента', many: 'элементов' };
 export const ANIMATIONS: PluralForms = { one: 'анимация', few: 'анимации', many: 'анимаций' };
-export const GATES: PluralForms = { one: 'гейт', few: 'гейта', many: 'гейтов' };
+/**
+ * «Остановка», а не «гейт»: внутреннее слово схемы в интерфейс не течёт
+ * (product.md §2). Автор видит остановку, а её разновидности — вопрос
+ * и развилку — называет панель остановки.
+ */
+export const GATES: PluralForms = { one: 'остановка', few: 'остановки', many: 'остановок' };
 export const SLIDES: PluralForms = { one: 'слайде', few: 'слайдах', many: 'слайдах' };

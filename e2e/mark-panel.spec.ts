@@ -67,7 +67,7 @@ test.describe('панель гейта: выбор варианта', () => {
       (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(1);
     });
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
-    await page.getByRole('button', { name: /гейт/ }).click();
+    await page.getByRole('button', { name: /остановка/ }).click();
     await expect(page.getByTestId('mark-panel')).toBeVisible();
 
     await page.getByLabel('Вид', { exact: true }).selectOption('choice');
@@ -127,7 +127,7 @@ test.describe('панель гейта: ввод ответа', () => {
       (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(1);
     });
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
-    await page.getByRole('button', { name: /гейт/ }).click();
+    await page.getByRole('button', { name: /остановка/ }).click();
     await page.getByLabel('Вид', { exact: true }).selectOption('input');
     await page.getByLabel('Вопрос', { exact: true }).fill('Что является часами проекта?');
 
