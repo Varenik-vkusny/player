@@ -324,14 +324,14 @@ describe('интеграция со схемой: результат подст�
 
   function baseProject(headlineStyle: ElementStyle, panelStyle: ElementStyle): Project {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [
         {
           id: 'seg-1',
           title: '',
-          audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+          audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
           elements: [
             { id: 'headline', type: 'text', content: 'Заголовок' },
             { id: 'panel', type: 'shape', content: '' },

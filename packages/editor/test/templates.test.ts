@@ -22,7 +22,7 @@ function emptySegment(): Segment {
   return {
     id: 'seg-1',
     title: '',
-    audio: { src: 'audio/test.mp3', duration: 3, words: [] },
+    audio: { src: 'audio/test.mp3', offset: 0, duration: 3, words: [] },
     elements: [],
     slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
     gates: [],
@@ -32,7 +32,7 @@ function emptySegment(): Segment {
 
 function projectAround(segment: Segment): Project {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height },
     entry: segment.id,
     segments: [segment],
@@ -200,7 +200,7 @@ describe('applyTemplate через historyReducer: один шаг истори�
  * Проверяем не «валидны ли данные», а «доходит ли автор до цели».
  */
 describe('шаблон «вопрос»: варианты действительно можно развести по сегментам', () => {
-  const audio = { src: 'a.mp3', duration: 10, words: [] };
+  const audio = { src: 'a.mp3', offset: 0, duration: 10, words: [] };
 
   function projectWithQuestion(): { project: Project; gateId: string; optionIds: string[] } {
     const segment = applyTemplate(sceneTemplate('question'), emptySegment(), STAGE);
@@ -208,7 +208,7 @@ describe('шаблон «вопрос»: варианты действитель
     const optionIds = gate.config.kind === 'choice' ? gate.config.options.map((option) => option.id) : [];
     return {
       project: {
-        schemaVersion: 3,
+        schemaVersion: 4,
         meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
         entry: 'n1',
         segments: [

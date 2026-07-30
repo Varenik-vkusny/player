@@ -29,6 +29,16 @@ import { SlideEngine } from './slides.js';
 export interface Segment {
   /** Путь к озвучке этого сегмента. */
   readonly src: string;
+  /**
+   * С какой секунды файла звучит этот сегмент (схема v4).
+   *
+   * Несколько сегментов могут делить один файл разными окнами — так
+   * выражено решение [Р] «аудио физически не режется». ВАЖНО: всё остальное
+   * в этом интерфейсе — слова, слайды, гейты, `duration` — живёт
+   * в координатах САМОГО сегмента, от нуля. Смещение нужно ровно там, где
+   * время сегмента переводится в позицию внутри файла, и больше нигде.
+   */
+  readonly offset: number;
   readonly words: readonly Word[];
   readonly duration: number;
   readonly elements: readonly Element[];
@@ -49,6 +59,7 @@ export function segmentOf(project: Project, segmentId: string): Segment {
   const segment = findSegment(project, segmentId);
   return {
     src: segment.audio.src,
+    offset: segment.audio.offset,
     words: segment.audio.words,
     duration: segment.audio.duration,
     elements: segment.elements,

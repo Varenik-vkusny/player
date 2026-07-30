@@ -1,5 +1,5 @@
 /**
- * Схема проекта v3 — единственный источник истины.
+ * Схема проекта v4 — единственный источник истины.
  *
  * Типы TypeScript выводятся отсюда через z.infer и НИКОГДА не пишутся руками:
  * два описания одной сущности неизбежно разъедутся, причём тихо (см. ADR-004).
@@ -24,7 +24,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /** Идентификатор внутри проекта. Непустая строка без пробелов по краям. */
 const Id = z.string().min(1).refine((v) => v === v.trim(), {
@@ -164,11 +164,23 @@ export const SlideSchema = z.object({
   states: z.record(Id, ElementStateSchema),
 });
 
+/**
+ * Выбор из вариантов — и то место, где различаются две остановки продукта.
+ *
+ * `correctId: null` значит «верного ответа нет»: это РАЗВИЛКА, где ветки
+ * равноправны, а не вопрос, на который можно ответить неверно. До версии 4
+ * поле было обязательным, поэтому развилка была вынуждена назначать
+ * «правильную» ветку — ложь, которая доезжала до данных и была видна
+ * в `fixtures/projects/exit-branch.json`.
+ *
+ * Различие выражено ЗНАЧЕНИЕМ, а не отдельным флагом вида остановки:
+ * флаг можно рассогласовать с `correctId`, а `null` рассогласовать не с чем.
+ */
 const ChoiceConfig = z.object({
   kind: z.literal('choice'),
   prompt: z.string(),
   options: z.array(z.object({ id: Id, label: z.string() })).min(2),
-  correctId: Id,
+  correctId: Id.nullable(),
 });
 
 const InputConfig = z.object({
@@ -221,6 +233,8 @@ export const GateSchema = z
       // размеченного объединения по gate.config теряется.
       const config = gate.config;
       if (config.kind !== 'choice') return true;
+      // Развилка: верного ответа нет, и указывать ему на вариант незачем.
+      if (config.correctId === null) return true;
       return config.options.some((option) => option.id === config.correctId);
     },
     { message: 'correctId должен указывать на один из вариантов' },
@@ -267,6 +281,21 @@ export const SegmentSchema = z.object({
   title: z.string().default(''),
   audio: z.object({
     src: z.string().min(1),
+    /**
+     * С какой секунды ФАЙЛА начинается дорожка этой части. Появилось в версии 4.
+     *
+     * Продуктовое решение [Р] «аудио физически не режется» до сих пор нигде
+     * не было выражено: часть и файл были склеены один к одному, и разрезать
+     * повествование на развилке было попросту нечем. Окно разлепляет их —
+     * несколько частей ссылаются на один файл разными участками.
+     *
+     * **Смещение НЕ меняет систему координат части.** Слова транскрипта,
+     * `TimeRef`, слайды и гейты по-прежнему считаются от нуля этой части,
+     * а `duration` — длина окна, а не остаток файла. Иначе пришлось бы
+     * переписать всё, что считает время, и потерять правило «первый слайд
+     * стоит на нуле». Смещение знает только тот, кто заводит воспроизведение.
+     */
+    offset: NonNegative.default(0),
     duration: z.number().finite().positive(),
     /** Всегда присутствует. Пустой массив делает невалидной любую ссылку на слово. */
     words: z.array(WordSchema),
@@ -320,7 +349,7 @@ export const ProjectSchema = z
     // выход сегмента вправе опереться на ответ, данный в предыдущем сегменте.
     const variables = new Map<
       string,
-      { kind: string; segmentId: string; optionIds: readonly string[] }
+      { kind: string; segmentId: string; optionIds: readonly string[]; isFork: boolean }
     >();
     for (const segment of segments) {
       for (const gate of segment.gates) {
@@ -340,6 +369,7 @@ export const ProjectSchema = z
           kind: config.kind,
           segmentId: segment.id,
           optionIds: config.kind === 'choice' ? config.options.map((o) => o.id) : [],
+          isFork: config.kind === 'choice' && config.correctId === null,
         });
       }
     }
@@ -490,6 +520,22 @@ export const ProjectSchema = z
               + 'которую не записывает ни один гейт объяснения',
           });
           return;
+        }
+
+        // У развилки нет верного ответа, поэтому вердикт о нём невозможен.
+        // Без этой проверки правило `correct` на переменной развилки прошло бы
+        // загрузку и никогда не сработало: сравнивать ответ было бы не с чем,
+        // то есть ветка оказалась бы недостижимой навсегда при валидном
+        // проекте — ровно тот род дефекта, который уже ловится ниже для
+        // исчезнувшего варианта.
+        if ((rule.when.kind === 'correct' || rule.when.kind === 'wrong') && source.isFork) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [...path, 'when'],
+            message: `Переменная «${rule.when.variable}» записана развилкой: верного ответа `
+              + 'у неё нет, и вердикт «верно»/«неверно» о ней невозможен. '
+              + 'Сравнивайте с конкретным вариантом (equals).',
+          });
         }
 
         if (rule.when.kind === 'equals' && source.kind === 'continue') {

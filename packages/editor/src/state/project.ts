@@ -17,6 +17,7 @@ import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, T
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
 import * as slidesApi from './slides.js';
+import { splitSegmentAtGate } from './split.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
 
 /**
@@ -86,7 +87,12 @@ export type EditorAction =
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
   | { readonly type: 'selectSegment'; readonly id: string }
   | { readonly type: 'connect'; readonly condition: Condition; readonly goto: string }
-  | { readonly type: 'disconnect'; readonly ruleId: string };
+  | { readonly type: 'disconnect'; readonly ruleId: string }
+  // Объявление остановки развилкой. Один шаг истории на весь разрез: он правит
+  // текущую часть и рождает несколько новых, и разложить это на addSegment +
+  // connect + правку гейта значило бы отдать автору полуразрезанное состояние
+  // на каждом промежуточном Ctrl+Z.
+  | { readonly type: 'splitAtGate'; readonly gateId: string };
 
 export function initialState(project: Project): EditorState {
   const segment = requireSegment(project, project.entry);
@@ -348,7 +354,45 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const project = exits.disconnect(state.project, state.currentSegmentId, action.ruleId);
       return { ...state, project };
     }
+
+    case 'splitAtGate': {
+      const project = splitAtGate(state.project, state.currentSegmentId, action.gateId);
+      const head = requireSegment(project, state.currentSegmentId);
+      // Автор остаётся там, где нажал: он объявлял развилку в этой части,
+      // а не просил перевести себя в новую. Слайд и выделение сбрасываются
+      // не для порядка — то, что было выделено, могло уехать в продолжение.
+      return {
+        ...state,
+        project,
+        currentSlideId: requireFirstSlide(head).id,
+        selectedId: undefined,
+      };
+    }
   }
+}
+
+/**
+ * Разрезает часть по остановке: остановка становится развилкой, повествование
+ * после неё уезжает в продолжение, каждый вариант ответа получает свою часть.
+ *
+ * Живёт здесь, а не в `split.ts`, по той же причине, что и весь этот файл:
+ * собрать новый состав частей — работа стороны записи. `split.ts` знает, как
+ * поделить ОДНУ часть, и намеренно не видит проекта целиком.
+ *
+ * Набор веток не передаётся аргументом, хотя так было бы гибче: варианты
+ * ответа уже записаны в самой остановке, и второй их список можно было бы
+ * рассинхронизировать с первым — а схема запрещает правилу выхода ссылаться
+ * на вариант, которого у гейта нет («Эта ветка недостижима навсегда»).
+ */
+export function splitAtGate(project: Project, segmentId: string, gateId: string): Project {
+  const segment = requireSegment(project, segmentId);
+  const { head, branches, tail } = splitSegmentAtGate(segment, gateId, project.segments);
+
+  const created: Segment[] = tail ? [...branches, tail] : [...branches];
+  const segments = project.segments.flatMap((candidate) =>
+    (candidate.id === head.id ? [head, ...created] : [candidate]));
+
+  return { ...project, segments };
 }
 
 function currentSegment(state: EditorState): Segment {

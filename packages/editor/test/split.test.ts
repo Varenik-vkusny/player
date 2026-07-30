@@ -1,0 +1,285 @@
+/**
+ * Разрез части по развилке.
+ *
+ * Главное здесь — не «функция вернула объект», а три вещи, каждая из которых
+ * ломается тихо:
+ *
+ *   стык невидим — первый слайд продолжения обязан быть точным снимком сцены
+ *   на момент разреза, иначе зритель увидит скачок именно на границе;
+ *
+ *   метки переехали согласованно — слова второй половины уезжают в новую
+ *   часть, их индексы сдвигаются, и всё, что на них ссылалось, обязано
+ *   указывать на ТЕ ЖЕ слова (инвариант №10);
+ *
+ *   результат ПРОХОДИМ — разрезанный проект не просто валиден, а доводит
+ *   зрителя по любой ветке. Валидность данных не равна достижимости поведения.
+ */
+import { loadProject, resolveTimeRef, type Project, type Word } from '@player/core';
+import { describe, expect, it } from 'vitest';
+
+import { splitAtGate } from '../src/state/project.js';
+import { splitSegmentAtGate, SplitError } from '../src/state/split.js';
+
+/** Десять слов по секунде: «w0» в 0.000, «w1» в 1.000 и так далее. */
+const WORDS: Word[] = Array.from({ length: 10 }, (_, index) => ({
+  text: `w${index}`,
+  start: index,
+  end: index + 0.5,
+  source: 'manual' as const,
+}));
+
+const wordRef = (index: number) => ({
+  kind: 'word' as const,
+  wordIndex: index,
+  offset: 0,
+  anchor: { text: `w${index}`, before: '', after: '' },
+});
+
+const box = (x: number) => ({
+  x, y: 0, width: 100, height: 100,
+  rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {},
+});
+
+/**
+ * Часть длиной 10 секунд: слайды на 0, на слове №3 и на слове №7,
+ * остановка-выбор на пятой секунде. Ровно то, что автор разрезает.
+ */
+function project(): Project {
+  return {
+    schemaVersion: 4,
+    meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080 },
+    entry: 'whole',
+    segments: [{
+      id: 'whole',
+      title: 'Цельное повествование',
+      audio: { src: '/track.mp3', offset: 0, duration: 10, words: WORDS },
+      elements: [
+        { id: 'hero', type: 'text', content: 'Заголовок' },
+        { id: 'late', type: 'shape', content: '' },
+      ],
+      slides: [
+        { id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: { hero: box(0) } },
+        { id: 'sl-3', at: wordRef(3), transition: 'morph', states: { hero: box(300) } },
+        { id: 'sl-7', at: wordRef(7), transition: 'morph', states: { hero: box(700), late: box(50) } },
+      ],
+      gates: [{
+        id: 'g-fork',
+        at: { kind: 'seconds', t: 5 },
+        config: {
+          kind: 'choice',
+          prompt: 'Куда дальше?',
+          options: [{ id: 'left', label: 'Налево' }, { id: 'right', label: 'Направо' }],
+          correctId: 'left',
+        },
+        onWrong: 'continue',
+        maxAttempts: null,
+        recordAs: 'куда',
+      }],
+      exit: { rules: [], default: null },
+    }],
+  } as Project;
+}
+
+const split = () => splitAtGate(project(), 'whole', 'g-fork');
+const parts = () => splitSegmentAtGate(project().segments[0]!, 'g-fork', project().segments);
+
+describe('разрез делит повествование, а не копирует его', () => {
+  it('голова кончается на развилке', () => {
+    const { head } = parts();
+    expect(head.audio.duration).toBe(5);
+    expect(head.slides.map((s) => s.id)).toEqual(['sl-0', 'sl-3']);
+  });
+
+  it('остановка становится развилкой: верного ответа у неё больше нет', () => {
+    const gate = parts().head.gates[0]!;
+    expect(gate.config.kind).toBe('choice');
+    expect(gate.config.kind === 'choice' && gate.config.correctId).toBe(null);
+  });
+
+  it('на каждый вариант ответа появляется своя часть', () => {
+    const { branches } = parts();
+    expect(branches).toHaveLength(2);
+    expect(branches.map((b) => b.title)).toEqual(['Налево', 'Направо']);
+  });
+
+  it('ветки сходятся обратно в продолжение, а не обрываются', () => {
+    const { branches, tail } = parts();
+    expect(tail).not.toBeNull();
+    for (const branch of branches) {
+      expect(branch.exit.default).toBe(tail!.id);
+    }
+  });
+
+  it('выход головы ведёт в ветки по варианту ответа', () => {
+    const { head, branches } = parts();
+    expect(head.exit.rules.map((r) => r.goto)).toEqual(branches.map((b) => b.id));
+    expect(head.exit.rules.map((r) => r.when.kind === 'equals' && r.when.value))
+      .toEqual(['left', 'right']);
+  });
+
+  it('решение о продолжении переезжает в продолжение вместе с повествованием', () => {
+    // Выход отвечает на вопрос «что дальше, когда договорили». Договаривает
+    // теперь хвост, значит выход исходной части принадлежит ему.
+    const source = project().segments[0]!;
+    expect(parts().tail!.exit).toEqual(source.exit);
+  });
+});
+
+describe('аудио не режется: два окна одного файла', () => {
+  it('обе половины ссылаются на один и тот же файл', () => {
+    const { head, tail } = parts();
+    expect(head.audio.src).toBe('/track.mp3');
+    expect(tail!.audio.src).toBe('/track.mp3');
+  });
+
+  it('окно продолжения начинается там, где кончилось окно головы', () => {
+    const { head, tail } = parts();
+    expect(head.audio.offset).toBe(0);
+    expect(tail!.audio.offset).toBe(5);
+    expect(tail!.audio.duration).toBe(5);
+  });
+
+  it('окна вместе покрывают исходную дорожку без нахлёста и без дыры', () => {
+    const source = project().segments[0]!.audio;
+    const { head, tail } = parts();
+    expect(head.audio.offset).toBe(source.offset);
+    expect(head.audio.offset + head.audio.duration).toBe(tail!.audio.offset);
+    expect(tail!.audio.offset + tail!.audio.duration).toBe(source.offset + source.duration);
+  });
+});
+
+describe('стык невидим', () => {
+  it('первый слайд продолжения — точный снимок сцены на момент разреза', () => {
+    const { head, tail } = parts();
+    const lastBeforeCut = head.slides.at(-1)!;
+    expect(tail!.slides[0]!.states).toEqual(lastBeforeCut.states);
+  });
+
+  it('первый слайд продолжения стоит на нуле и не морфится', () => {
+    const first = parts().tail!.slides[0]!;
+    expect(first.at).toEqual({ kind: 'seconds', t: 0 });
+    // На стыке частей анимировать нечего: картинка уже совпадает.
+    expect(first.transition).toBe('cut');
+  });
+
+  it('снимок берётся у слайда, который ДЕЙСТВУЕТ на разрезе, а не у ближайшего', () => {
+    // Разрез на 5-й секунде: действует слайд со слова №3, а не следующий.
+    const tail = parts().tail!;
+    expect(tail.slides[0]!.states['hero']!.x).toBe(300);
+  });
+});
+
+describe('метки времени переезжают согласованно со словами', () => {
+  it('слова делятся по точке разреза', () => {
+    const { head, tail } = parts();
+    expect(head.audio.words.map((w) => w.text)).toEqual(['w0', 'w1', 'w2', 'w3', 'w4']);
+    expect(tail!.audio.words.map((w) => w.text)).toEqual(['w5', 'w6', 'w7', 'w8', 'w9']);
+  });
+
+  it('слова продолжения отсчитываются от нуля своей части', () => {
+    expect(parts().tail!.audio.words[0]!.start).toBe(0);
+  });
+
+  it('ссылка на слово указывает на ТО ЖЕ слово после переезда', () => {
+    // Слайд стоял на слове «w7» (7-я секунда исходной части). После разреза
+    // он обязан стоять на нём же — то есть на 2-й секунде продолжения.
+    const tail = parts().tail!;
+    const moved = tail.slides.find((slide) => slide.id === 'sl-7')!;
+    expect(moved.at.kind === 'word' && moved.at.wordIndex).toBe(2);
+    expect(tail.audio.words[2]!.text).toBe('w7');
+    expect(resolveTimeRef(moved.at, tail.audio.words)).toBe(2);
+  });
+
+  it('якорь не перепривязывается: текст вокруг слова не менялся', () => {
+    const moved = parts().tail!.slides.find((slide) => slide.id === 'sl-7')!;
+    expect(moved.at.kind === 'word' && moved.at.anchor.text).toBe('w7');
+  });
+});
+
+describe('элементы едут туда, где они используются', () => {
+  it('часть не тащит за собой элементы, которых на её слайдах нет', () => {
+    const { head } = parts();
+    expect(head.elements.map((e) => e.id)).toEqual(['hero']);
+  });
+
+  it('элемент, появляющийся после разреза, уезжает в продолжение', () => {
+    const tail = parts().tail!;
+    expect(tail.elements.map((e) => e.id).sort()).toEqual(['hero', 'late']);
+  });
+});
+
+describe('разрезанный проект пригоден к показу, а не только валиден', () => {
+  it('открывается загрузкой без единой жалобы схемы', () => {
+    expect(() => loadProject(split())).not.toThrow();
+  });
+
+  it('части не теряются и не задваиваются', () => {
+    const ids = split().segments.map((s) => s.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    // Исходная часть, две ветки, продолжение.
+    expect(ids).toHaveLength(4);
+  });
+
+  it('обе ветки достижимы, и обе доводят до продолжения', () => {
+    const result = loadProject(split());
+    const head = result.segments.find((s) => s.id === 'whole')!;
+    const tailId = result.segments.at(-1)!.id;
+
+    for (const rule of head.exit.rules) {
+      const branch = result.segments.find((s) => s.id === rule.goto)!;
+      expect(branch, `ветка «${rule.goto}» существует`).toBeTruthy();
+      expect(branch.exit.default, `ветка «${rule.goto}» доводит до продолжения`).toBe(tailId);
+    }
+  });
+
+  it('выход головы тотален: ответ не может оказаться в тупике', () => {
+    // Схема отказала бы при загрузке, но проверить стоит и здесь: правило
+    // на каждый вариант — это и есть тотальность без запасного выхода.
+    const head = loadProject(split()).segments.find((s) => s.id === 'whole')!;
+    expect(head.exit.default).toBe(null);
+    expect(head.exit.rules).toHaveLength(2);
+  });
+});
+
+describe('разрез отказывается делать бессмыслицу', () => {
+  it('остановки нет', () => {
+    expect(() => splitAtGate(project(), 'whole', 'нет-такой')).toThrow(SplitError);
+  });
+
+  it('остановка без вариантов ответа ветвить не может', () => {
+    const source = project();
+    source.segments[0]!.gates[0]!.config = { kind: 'continue', label: 'Дальше' };
+    expect(() => splitAtGate(source, 'whole', 'g-fork')).toThrow(/ветвить нечем/);
+  });
+
+  it('развилка в самом начале части: делить нечего', () => {
+    const source = project();
+    source.segments[0]!.gates[0]!.at = { kind: 'seconds', t: 0 };
+    expect(() => splitAtGate(source, 'whole', 'g-fork')).toThrow(/в начале части/);
+  });
+});
+
+describe('развилка в конце дорожки: продолжения не возникает', () => {
+  function atTheEnd() {
+    const source = project();
+    source.segments[0]!.gates[0]!.at = { kind: 'seconds', t: 10 };
+    return source;
+  }
+
+  it('продолжения нет — резать после развилки нечего', () => {
+    const { tail } = splitSegmentAtGate(atTheEnd().segments[0]!, 'g-fork', []);
+    expect(tail).toBeNull();
+  });
+
+  it('ветки заканчивают объяснение, а не ведут в пустоту', () => {
+    const { branches } = splitSegmentAtGate(atTheEnd().segments[0]!, 'g-fork', []);
+    for (const branch of branches) {
+      expect(branch.exit.default).toBeNull();
+      expect(branch.exit.rules).toEqual([]);
+    }
+  });
+
+  it('и такой проект тоже открывается', () => {
+    expect(() => loadProject(splitAtGate(atTheEnd(), 'whole', 'g-fork'))).not.toThrow();
+  });
+});

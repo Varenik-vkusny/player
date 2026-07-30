@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "meta": {
     "title": "Развилка на выходе сегмента",
     "stageWidth": 1920,
@@ -12,6 +12,7 @@
       "title": "Спрашивает и доигрывает до конца",
       "audio": {
         "src": "/audio/ask.wav",
+        "offset": 0,
         "duration": 3,
         "words": []
       },
@@ -54,7 +55,7 @@
               { "id": "opt-yes", "label": "Направо" },
               { "id": "opt-no", "label": "Налево" }
             ],
-            "correctId": "opt-yes"
+            "correctId": null
           },
           "onWrong": "continue",
           "maxAttempts": null,
@@ -80,7 +81,7 @@
     {
       "id": "s-right",
       "title": "Направо",
-      "audio": { "src": "/audio/branch-yes.wav", "duration": 3, "words": [] },
+      "audio": { "src": "/audio/branch-yes.wav", "offset": 0, "duration": 3, "words": [] },
       "elements": [{ "id": "r-bg", "type": "shape", "content": "" }],
       "slides": [
         {
@@ -102,7 +103,7 @@
     {
       "id": "s-left",
       "title": "Налево",
-      "audio": { "src": "/audio/branch-no.wav", "duration": 3, "words": [] },
+      "audio": { "src": "/audio/branch-no.wav", "offset": 0, "duration": 3, "words": [] },
       "elements": [{ "id": "l-bg", "type": "shape", "content": "" }],
       "slides": [
         {

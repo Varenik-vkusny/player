@@ -26,7 +26,7 @@ function segment(id: string, overrides: Partial<Segment> = {}): Segment {
   return {
     id,
     title: '',
-    audio: { src: `audio/${id}.mp3`, duration: 10, words: [] },
+    audio: { src: `audio/${id}.mp3`, offset: 0, duration: 10, words: [] },
     elements: [],
     slides: [{ id: `${id}-slide`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
     gates: [],
@@ -68,7 +68,7 @@ function rule(id: string, when: Condition, goto: string): ExitRule {
 
 function project(segments: readonly Segment[], entry = 'seg-1'): Project {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry,
     segments: [...segments],

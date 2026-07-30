@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 4,
+  "meta": {
+    "title": "Разрезанное повествование: четыре части на одном файле",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-head",
+  "segments": [
+    {
+      "id": "s-head",
+      "title": "До развилки",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "offset": 0,
+        "duration": 2.5,
+        "words": []
+      },
+      "elements": [
+        { "id": "h-bg", "type": "shape", "content": "" },
+        { "id": "h-title", "type": "text", "content": "Часть до развилки" }
+      ],
+      "slides": [
+        {
+          "id": "h-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "h-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "h-title": {
+              "x": 140, "y": 200, "width": 1640, "height": 160,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "72px",
+                "font-weight": "700",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-fork",
+          "at": { "kind": "seconds", "t": 1.5 },
+          "config": {
+            "kind": "choice",
+            "prompt": "Куда пойти дальше?",
+            "options": [
+              { "id": "left", "label": "Налево" },
+              { "id": "right", "label": "Направо" }
+            ],
+            "correctId": null
+          },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "куда"
+        }
+      ],
+      "exit": {
+        "rules": [
+          {
+            "id": "rule-1",
+            "when": { "kind": "equals", "variable": "куда", "value": "left" },
+            "goto": "s-left"
+          },
+          {
+            "id": "rule-2",
+            "when": { "kind": "equals", "variable": "куда", "value": "right" },
+            "goto": "s-right"
+          }
+        ],
+        "default": null
+      }
+    },
+    {
+      "id": "s-left",
+      "title": "Налево",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "offset": 4,
+        "duration": 0.6,
+        "words": []
+      },
+      "elements": [{ "id": "l-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "l-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "l-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": "s-tail" }
+    },
+    {
+      "id": "s-right",
+      "title": "Направо",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "offset": 5,
+        "duration": 0.6,
+        "words": []
+      },
+      "elements": [{ "id": "r-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "r-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "r-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#10b981" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": "s-tail" }
+    },
+    {
+      "id": "s-tail",
+      "title": "После развилки — общее продолжение",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "offset": 6,
+        "duration": 1.5,
+        "words": []
+      },
+      "elements": [{ "id": "t-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "t-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "t-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#3b5bdb" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

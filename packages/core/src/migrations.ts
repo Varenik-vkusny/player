@@ -465,9 +465,58 @@ const migrateV2toV3: Migration = (input) => {
   };
 };
 
+/**
+ * Форма проекта версии 3 ровно в той мере, в какой миграция её читает.
+ */
+interface ProjectV3 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+}
+
+/**
+ * v3 → v4: у дорожки части появляется окно, у выбора — право не иметь
+ * верного ответа.
+ *
+ * Ставит `audio.offset = 0` каждой части: до версии 4 часть и файл были
+ * склеены один к одному, то есть дорожка всегда начиналась с начала файла.
+ * Ноль — не заглушка, а точное прежнее поведение.
+ *
+ * **`correctId` намеренно не трогается.** Соблазн «догадаться, что это была
+ * развилка» — по тому, читают ли переменную гейта правила выхода, — превратил
+ * бы миграцию в угадайку: вопрос, чей ответ используется для ветвления, —
+ * законная и частая конструкция, неотличимая по данным от развилки. В версии 3
+ * схема требовала верный ответ у КАЖДОГО выбора, поэтому единственное честное
+ * прочтение старого файла: все его выборы — вопросы. Развилку автор объявляет
+ * сам, и с версии 4 ему есть чем.
+ */
+const migrateV3toV4: Migration = (input) => {
+  const v3 = input as ProjectV3;
+
+  const segments = Array.isArray(v3.segments)
+    ? v3.segments.map((segment) => {
+      if (typeof segment !== 'object' || segment === null) return segment;
+      const audio = (segment as { audio?: unknown }).audio;
+      // Битую или отсутствующую дорожку доводим до Zod нетронутой: внятное
+      // сообщение с путём полезнее падения миграции своим TypeError.
+      if (typeof audio !== 'object' || audio === null) return segment;
+      if ('offset' in audio) return segment;
+      return { ...segment, audio: { ...audio, offset: 0 } };
+    })
+    : v3.segments;
+
+  return {
+    schemaVersion: 4,
+    meta: v3.meta,
+    entry: v3.entry,
+    segments,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
+  3: migrateV3toV4,
 });
 
 export class SchemaVersionError extends Error {

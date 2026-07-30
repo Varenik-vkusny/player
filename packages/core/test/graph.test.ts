@@ -17,7 +17,7 @@ import type { Project, Segment } from '../src/schema.js';
 const segment = (id: string, exit: Segment['exit']): Segment => ({
   id,
   title: '',
-  audio: { src: `/${id}.mp3`, duration: 10, words: [] },
+  audio: { src: `/${id}.mp3`, offset: 0, duration: 10, words: [] },
   elements: [],
   slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
   gates: [],
@@ -25,7 +25,7 @@ const segment = (id: string, exit: Segment['exit']): Segment => ({
 });
 
 const project = (segments: Segment[]): Project => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
   entry: segments[0]!.id,
   segments,

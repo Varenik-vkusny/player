@@ -198,7 +198,26 @@ export class Player {
 
   get state(): PlayerState { return this.#state; }
   get stageElement(): HTMLElement { return this.#stage; }
-  get positionSeconds(): number { return this.#clock?.position ?? 0; }
+  get positionSeconds(): number { return this.#clock ? this.#toSegmentTime(this.#clock.position) : 0; }
+
+  /**
+   * Перевод между двумя системами координат, которые легко перепутать.
+   *
+   * Часы живут в координатах ФАЙЛА: `position` и `duration` у них — это
+   * позиция и длина буфера. Всё остальное в плеере — гейты, слайды, слова,
+   * `duration` сегмента — живёт в координатах САМОГО сегмента, от нуля.
+   * Пока каждый сегмент занимал файл целиком, разницы не было; с версией 4
+   * несколько сегментов делят один файл разными окнами, и путаница здесь
+   * дала бы не ошибку, а сдвиг: сцена играла бы не в том месте дорожки.
+   */
+  #toSegmentTime(clockPosition: number): number {
+    return clockPosition - this.#segment.offset;
+  }
+
+  /** Обратный перевод: время сегмента → позиция внутри файла. */
+  #toClockTime(segmentPosition: number): number {
+    return segmentPosition + this.#segment.offset;
+  }
   /** Гейт, на котором стоим: и пока отвечают, и пока читают разбор. */
   get currentGate(): Gate | undefined {
     if (this.#state !== 'at-gate' && this.#state !== 'at-reveal') return undefined;
@@ -371,12 +390,12 @@ export class Player {
     // гейт возобновлять неоткуда. Раньше этой строки не было, и ответ падал
     // с «Часы не в состоянии паузы» уже после того, как зритель нажал кнопку.
     if (this.#gateDueAt(0)) {
-      clock.holdBeforeStart(0);
+      clock.holdBeforeStart(this.#toClockTime(0));
       this.#openGate();
       return;
     }
 
-    clock.start(this.#state === 'ended' ? 0 : clock.position);
+    clock.start(this.#state === 'ended' ? this.#toClockTime(0) : clock.position);
     if (this.#state === 'ended') this.#nextGateIndex = 0;
     this.#setState('playing');
     this.#startFrameLoop();
@@ -398,7 +417,7 @@ export class Player {
       const clock = this.#requireClock();
       const slides = this.#requireSlides();
 
-      const position = clock.position;
+      const position = this.#toSegmentTime(clock.position);
       // Инвариант №2 в одной строке: время сцены = время аудио.
       slides.seekSeconds(position);
       this.#events.onFrame?.(position);
@@ -416,7 +435,9 @@ export class Player {
 
       this.#maybeSchedulePending(position);
 
-      if (position >= clock.duration - 0.02) {
+      // Конец СЕГМЕНТА, а не конец файла: при разрезанном повествовании
+      // за окном этого сегмента в том же файле лежит следующий.
+      if (position >= this.#segment.duration - 0.02) {
         void this.#reachEndOfNode();
         return;
       }
@@ -441,10 +462,11 @@ export class Player {
     const next = nextSegment(findSegment(this.#project, this.#nodeId), this.#answers);
     if (next === null) return;
 
-    const remaining = clock.duration - position;
+    const remaining = this.#segment.duration - position;
     if (remaining > PRELOAD_AHEAD_S) return;
 
-    const src = segmentOf(this.#project, next).src;
+    const target = segmentOf(this.#project, next);
+    const src = target.src;
     if (remaining > SCHEDULE_AHEAD_S) {
       this.#clocks.warm(src);
       return;
@@ -465,7 +487,9 @@ export class Player {
     const pendingClock = this.#clocks.clockIfReady(src);
     if (!pendingClock) return;
 
-    const startsAt = pendingClock.start(0, { leadTime });
+    // С начала ОКНА следующего сегмента, а не с начала файла: если он делит
+    // файл с текущим (разрезанное повествование), нулём была бы чужая речь.
+    const startsAt = pendingClock.start(target.offset, { leadTime });
     this.#pending = { clock: pendingClock, nodeId: next, startsAt };
   }
 
@@ -530,7 +554,7 @@ export class Player {
     await this.#clock.wake();
 
     this.#mountSegment();
-    this.#clock.start(0);
+    this.#clock.start(this.#toClockTime(0));
     this.#setState('playing');
     this.#startFrameLoop();
   }
@@ -547,7 +571,7 @@ export class Player {
 
     // Время встаёт РОВНО на гейте, а не там, где мы успели заметить
     // пересечение: обнаружение ограничено длиной кадра (ADR-005).
-    await clock.freezeAt(scheduled.at);
+    await clock.freezeAt(this.#toClockTime(scheduled.at));
     slides.seekSeconds(scheduled.at);
 
     /**

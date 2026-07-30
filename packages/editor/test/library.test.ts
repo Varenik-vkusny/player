@@ -26,7 +26,7 @@ function segment(): Segment {
   return {
     id: 'seg-1',
     title: '',
-    audio: { src: 'a.mp3', duration: 10, words: [] },
+    audio: { src: 'a.mp3', offset: 0, duration: 10, words: [] },
     elements: [],
     slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
     gates: [],
@@ -222,7 +222,7 @@ describe('фигура библиотеки может быть варианто
     };
 
     const project = {
-      schemaVersion: 3 as const,
+      schemaVersion: 4 as const,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

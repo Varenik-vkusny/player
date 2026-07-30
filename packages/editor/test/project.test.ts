@@ -39,14 +39,14 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
       {
         id: 'seg-1',
         title: '',
-        audio: { src: 'audio/test.mp3', duration: 10, words: [] },
+        audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
         elements: [element('title'), element('subtitle')],
         slides: [
           {
@@ -371,14 +371,14 @@ describe('removeMark', () => {
 describe('редьюсер: переключение сегмента открывает его для правки', () => {
   function twoSegments(): Project {
     return {
-      schemaVersion: 3,
+      schemaVersion: 4,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [
         {
           id: 'seg-1',
           title: '',
-          audio: { src: 'a.mp3', duration: 10, words: [] },
+          audio: { src: 'a.mp3', offset: 0, duration: 10, words: [] },
           elements: [],
           slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
           gates: [],
@@ -387,7 +387,7 @@ describe('редьюсер: переключение сегмента откры
         {
           id: 'seg-2',
           title: '',
-          audio: { src: 'a.mp3', duration: 10, words: [] },
+          audio: { src: 'a.mp3', offset: 0, duration: 10, words: [] },
           elements: [],
           slides: [{ id: 'slide-2', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
           gates: [],

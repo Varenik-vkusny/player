@@ -1,0 +1,274 @@
+/**
+ * Разрез части по развилке — операция, ради которой заводилось окно дорожки.
+ *
+ * Автор объявляет остановку развилкой, и цельное повествование делится:
+ * всё до остановки остаётся здесь, всё после уезжает в продолжение, а между
+ * ними появляется по части на каждый вариант ответа. Это и есть те узлы,
+ * которые потом рисует карта.
+ *
+ * Чистый модуль: ни React, ни DOM, ни `project.segments`. Он работает
+ * с ОДНОЙ частью и возвращает несколько — сборка проекта из них принадлежит
+ * `state/project.ts`, узкой дверце на сторону записи. Так разрез можно
+ * проверять юнит-тестами без проекта вообще, а дверца остаётся закрытой.
+ *
+ * Что здесь считается правильным (и почему):
+ *
+ *   Граница части невидима — решение [Р] в product.md. Поэтому первый слайд
+ *   продолжения не «похож» на сцену в момент разреза, а является её точным
+ *   снимком: зритель не видит стыка, потому что показывать на стыке нечего.
+ *
+ *   Аудио физически не режется — тоже [Р]. Обе половины ссылаются на ОДИН
+ *   файл разными окнами (`audio.offset` + `audio.duration`, схема v4).
+ *
+ *   Метки времени привязаны к словам — инвариант №10. Слова второй половины
+ *   уезжают вместе с частью, поэтому их индексы сдвигаются, и всё, что на них
+ *   ссылалось, обязано переехать согласованно.
+ */
+import type { Gate, Segment, Slide, TimeRef, Word } from '@player/core';
+import { resolveTimeRef } from '@player/core';
+
+import { freeId } from './elements.js';
+
+/** Ветка развилки: какой вариант ответа в неё ведёт и как её назвать. */
+export interface SplitBranch {
+  /** Идентификатор варианта у гейта-развилки. */
+  readonly optionId: string;
+  /** Заголовок будущей части. Пустой — подставится по метке варианта. */
+  readonly title?: string;
+}
+
+export interface SplitResult {
+  /** Что осталось от исходной части: до развилки включительно. */
+  readonly head: Segment;
+  /** По одной части на вариант ответа, в порядке вариантов гейта. */
+  readonly branches: readonly Segment[];
+  /**
+   * Продолжение — всё, что звучало после развилки.
+   *
+   * `null`, когда развилка стоит в самом конце дорожки и отрезать нечего.
+   * Тогда ветки не сходятся обратно, а заканчивают объяснение. Это законный
+   * случай, а не ошибка: развилка в финале — обычный приём.
+   */
+  readonly tail: Segment | null;
+}
+
+export class SplitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SplitError';
+  }
+}
+
+/**
+ * Ниже этого зазора продолжение считается пустым.
+ *
+ * Не «строго больше нуля»: часть длиной в микросекунды — не продолжение,
+ * а мусор, который зритель не услышит, зато на карте он будет занимать узел.
+ */
+const MIN_TAIL_SECONDS = 0.05;
+
+/** Секунды метки внутри части. Своя обёртка — чтобы не тянуть слова в каждый вызов. */
+function secondsOf(ref: TimeRef, words: readonly Word[]): number {
+  return resolveTimeRef(ref, words);
+}
+
+/**
+ * Сдвигает метку на начало новой части.
+ *
+ * Секунды уменьшаются на точку разреза; ссылка на слово меняет ИНДЕКС, но
+ * сохраняет якорь и смещение — слово то же самое, просто в новом транскрипте
+ * оно стоит раньше. Перепривязка здесь была бы ошибкой: якорь описывает
+ * текст вокруг слова, а текст не изменился.
+ */
+function shiftRef(ref: TimeRef, splitSeconds: number, wordsCut: number): TimeRef {
+  if (ref.kind === 'seconds') {
+    return { kind: 'seconds', t: Math.max(0, ref.t - splitSeconds) };
+  }
+  return { ...ref, wordIndex: ref.wordIndex - wordsCut };
+}
+
+/** Состояния сцены на момент `seconds`: снимок последнего наступившего слайда. */
+function statesAt(slides: readonly Slide[], words: readonly Word[], seconds: number): Slide['states'] {
+  let current: Slide | undefined;
+  for (const slide of slides) {
+    if (secondsOf(slide.at, words) <= seconds) current = slide;
+  }
+  // Первый слайд обязан стоять на нуле (схема), поэтому «ни одного
+  // наступившего» невозможно ни при каком неотрицательном `seconds`.
+  if (!current) {
+    throw new SplitError('У части нет слайда на нуле — снимок сцены взять неоткуда');
+  }
+  return current.states;
+}
+
+/** Элементы, которые действительно используются перечисленными слайдами. */
+function usedElements(segment: Segment, slides: readonly Slide[]): Segment['elements'] {
+  const used = new Set<string>();
+  for (const slide of slides) {
+    for (const id of Object.keys(slide.states)) used.add(id);
+  }
+  return segment.elements.filter((element) => used.has(element.id));
+}
+
+/**
+ * Делит часть по остановке `gateId`.
+ *
+ * `takenSegmentIds` — то, что уже занято в проекте: разрез сам не видит
+ * проект, но обязан выдать частям неконфликтующие идентификаторы.
+ */
+export function splitSegmentAtGate(
+  segment: Segment,
+  gateId: string,
+  takenSegmentIds: readonly { id: string }[],
+): SplitResult {
+  const gate = segment.gates.find((candidate) => candidate.id === gateId);
+  if (!gate) {
+    throw new SplitError(`В части «${segment.id}» нет остановки «${gateId}»`);
+  }
+  if (gate.config.kind !== 'choice') {
+    throw new SplitError(
+      `Остановка «${gateId}» не спрашивает выбор из вариантов: ветвить нечем. `
+      + 'Развилкой может стать только выбор.',
+    );
+  }
+
+  const words = segment.audio.words;
+  const at = secondsOf(gate.at, words);
+
+  if (at <= 0) {
+    throw new SplitError(
+      `Остановка «${gateId}» стоит в начале части: до неё нет повествования, `
+      + 'и делить нечего.',
+    );
+  }
+
+  // --- дорожка: одно окно превращается в два, файл не трогается ---
+
+  const wordsCut = words.filter((word) => word.start < at).length;
+  const headWords = words.slice(0, wordsCut);
+  const tailWords = words.slice(wordsCut).map((word) => ({
+    ...word,
+    start: word.start - at,
+    end: word.end - at,
+  }));
+
+  const tailSeconds = segment.audio.duration - at;
+  const hasTail = tailSeconds >= MIN_TAIL_SECONDS;
+
+  // --- слайды и остановки расходятся по времени разреза ---
+
+  const headSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) <= at);
+  const tailSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) > at);
+  const headGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) <= at);
+  const tailGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) > at);
+
+  // --- имена новых частей ---
+
+  const taken = [...takenSegmentIds];
+  const claim = (): string => {
+    const id = freeId('segment', taken);
+    taken.push({ id });
+    return id;
+  };
+
+  const branchIds = gate.config.options.map(() => claim());
+  const tailId = hasTail ? claim() : null;
+
+  // --- голова: то же повествование, но остановка стала последней ---
+
+  const forkGate: Gate = {
+    ...gate,
+    // Разрез — это и есть объявление развилки. У развилки верного ответа нет,
+    // и с версии 4 схема позволяет это сказать, не назначая «правильную» ветку.
+    config: { ...gate.config, correctId: null },
+  };
+
+  const head: Segment = {
+    ...segment,
+    audio: { ...segment.audio, duration: at, words: headWords },
+    elements: usedElements(segment, headSlides),
+    slides: headSlides,
+    gates: headGates.map((candidate) => (candidate.id === gateId ? forkGate : candidate)),
+    exit: {
+      // По правилу на вариант — покрытие полное, поэтому запасной выход не нужен
+      // и схема признаёт такой выход тотальным (см. `ProjectSchema.superRefine`).
+      rules: gate.config.options.map((option, index) => ({
+        id: `rule-${index + 1}`,
+        when: { kind: 'equals' as const, variable: gate.recordAs, value: option.id },
+        goto: branchIds[index]!,
+      })),
+      default: null,
+    },
+  };
+
+  // --- продолжение: первый слайд — точный снимок сцены на разрезе ---
+
+  const snapshot = statesAt(segment.slides, words, at);
+
+  const tail: Segment | null = hasTail
+    ? {
+      id: tailId!,
+      title: `${segment.title || segment.id} — продолжение`,
+      audio: {
+        ...segment.audio,
+        // Файл тот же, окно сдвинуто: «аудио физически не режется».
+        offset: segment.audio.offset + at,
+        duration: tailSeconds,
+        words: tailWords,
+      },
+      elements: usedElements(segment, [
+        { id: 'snapshot', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: snapshot },
+        ...tailSlides,
+      ]),
+      slides: [
+        {
+          id: freeId('slide', tailSlides),
+          at: { kind: 'seconds', t: 0 },
+          // Не морфинг: на стыке частей анимировать нечего. Граница невидима
+          // потому, что картинка совпадает с предыдущим кадром, а не потому,
+          // что переход её сглаживает.
+          transition: 'cut',
+          states: snapshot,
+        },
+        ...tailSlides.map((slide) => ({ ...slide, at: shiftRef(slide.at, at, wordsCut) })),
+      ],
+      gates: tailGates.map((candidate) => ({
+        ...candidate,
+        at: shiftRef(candidate.at, at, wordsCut),
+      })),
+      // Куда шло объяснение после этой части, туда теперь идёт продолжение:
+      // выход отвечает на вопрос «что дальше, когда договорили», а договаривает
+      // отныне именно оно.
+      exit: segment.exit,
+    }
+    : null;
+
+  // --- ветки: пустые части, сходящиеся обратно в продолжение ---
+
+  const branches: Segment[] = gate.config.options.map((option, index) => ({
+    id: branchIds[index]!,
+    title: branches_title(gate, option.id, index),
+    // Дорожка берётся у исходной части ПО ССЫЛКЕ и с её окном — ровно так же,
+    // как это делает `addSegment`: своей озвучки у только что созданной ветки
+    // взяться неоткуда, а `audio` обязательно схемой. Автор заменит её, когда
+    // запишет ветку.
+    audio: segment.audio,
+    elements: [],
+    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+    gates: [],
+    // Ветки сходятся обратно — самый дешёвый правильный сценарий. Автор уводит
+    // ветку в сторону потом, если захочет; обрыв по умолчанию заставил бы его
+    // чинить объяснение после каждой развилки.
+    exit: { rules: [], default: tailId },
+  }));
+
+  return { head, branches, tail };
+}
+
+/** Заголовок ветки: метка варианта, а не его идентификатор. */
+function branches_title(gate: Gate, optionId: string, index: number): string {
+  if (gate.config.kind !== 'choice') return `Ветка ${index + 1}`;
+  const option = gate.config.options.find((candidate) => candidate.id === optionId);
+  const label = option?.label.trim();
+  return label && label.length > 0 ? label : `Ветка ${index + 1}`;
+}

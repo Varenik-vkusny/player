@@ -1,5 +1,5 @@
 /**
- * Миграции схемы: v1 → v2 → v3.
+ * Миграции схемы: v1 → v2 → v3 → v4.
  *
  * Главное здесь — не «проект открылся», а «проект означает то же самое».
  * Валидный результат с другим смыслом — самый дорогой способ ошибиться:
@@ -252,5 +252,84 @@ describe('миграция не падает своим TypeError на бито�
     expect(() => MIGRATIONS[2]!({ schemaVersion: 2 })).not.toThrow();
     expect(() => MIGRATIONS[2]!({ schemaVersion: 2, nodes: 'не массив' })).not.toThrow();
     expect(() => MIGRATIONS[1]!({ schemaVersion: 1 })).not.toThrow();
+  });
+});
+
+/**
+ * v3 → v4. Ступень маленькая, но у неё есть ровно один способ ошибиться
+ * дорого: «догадаться», что старый выбор был развилкой.
+ */
+describe('v3 → v4: окно дорожки и право не иметь верного ответа', () => {
+  const v3 = () => ({
+    schemaVersion: 3,
+    meta: { title: 'Старый проект', stageWidth: 1920, stageHeight: 1080 },
+    entry: 'a',
+    segments: [{
+      id: 'a',
+      title: 'Часть',
+      audio: { src: '/a.mp3', duration: 10, words: [] },
+      elements: [],
+      slides: [{ id: 's1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+      gates: [{
+        id: 'g1',
+        at: { kind: 'seconds', t: 2 },
+        config: {
+          kind: 'choice',
+          prompt: 'Верно?',
+          options: [{ id: 'yes', label: 'Да' }, { id: 'no', label: 'Нет' }],
+          correctId: 'yes',
+        },
+        onWrong: 'continue',
+        maxAttempts: null,
+        recordAs: 'ответ',
+      }],
+      exit: { rules: [], default: null },
+    }],
+  });
+
+  it('дорожка получает окно, начинающееся с начала файла', () => {
+    const migrated: any = MIGRATIONS[3]!(v3());
+    expect(migrated.segments[0].audio.offset).toBe(0);
+  });
+
+  it('окно не трогает остальное в дорожке', () => {
+    const before = v3().segments[0]!.audio;
+    const after: any = (MIGRATIONS[3]!(v3()) as any).segments[0].audio;
+    expect(after.src).toBe(before.src);
+    expect(after.duration).toBe(before.duration);
+  });
+
+  it('верный ответ сохраняется: старый выбор — это вопрос, а не развилка', () => {
+    // Соблазн вывести развилку из того, что переменную гейта читают правила
+    // выхода, превратил бы миграцию в угадайку: вопрос, чей ответ используется
+    // для ветвления, — законная конструкция, неотличимая по данным.
+    const migrated: any = MIGRATIONS[3]!(v3());
+    expect(migrated.segments[0].gates[0].config.correctId).toBe('yes');
+  });
+
+  it('миграция чистая: исходный объект не тронут', () => {
+    const input = v3();
+    const before = JSON.stringify(input);
+    MIGRATIONS[3]!(input);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it('не падает своим TypeError на битом входе — доводит его до Zod', () => {
+    expect(() => MIGRATIONS[3]!({ schemaVersion: 3 })).not.toThrow();
+    expect(() => MIGRATIONS[3]!({ schemaVersion: 3, segments: 'не массив' })).not.toThrow();
+    expect(() => MIGRATIONS[3]!({ schemaVersion: 3, segments: [null, 7, {}] })).not.toThrow();
+  });
+
+  it('уже проставленное окно не затирается', () => {
+    const input: any = v3();
+    input.segments[0].audio.offset = 12.5;
+    const migrated: any = MIGRATIONS[3]!(input);
+    expect(migrated.segments[0].audio.offset).toBe(12.5);
+  });
+
+  it('проект версии 3 доезжает до текущей версии целиком', () => {
+    const project = loadProject(v3());
+    expect(project.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(project.segments[0]!.audio.offset).toBe(0);
   });
 });

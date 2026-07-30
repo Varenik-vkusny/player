@@ -16,6 +16,8 @@ import { readFileSync } from 'node:fs';
 
 import { expect, test, type Page } from '@playwright/test';
 
+import { SCHEMA_VERSION } from '@player/core';
+
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
@@ -209,7 +211,8 @@ test.describe('удаление', () => {
       schemaVersion: number;
       segments: { elements: { id: string }[]; slides: { states: Record<string, unknown> }[] }[];
     };
-    expect(saved.schemaVersion).toBe(3);
+    // Текущая версия сборки, а не зашитое число (см. roundtrip.spec.ts).
+    expect(saved.schemaVersion).toBe(SCHEMA_VERSION);
     expect(saved.segments[0]!.elements.some((element) => element.id === 'dot')).toBe(false);
     // Кью в v3 нет (ADR-015): каскад снимает состояние элемента с каждого
     // слайда, где оно было, а не запись со своим id.

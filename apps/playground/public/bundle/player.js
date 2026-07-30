@@ -3278,7 +3278,7 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 				id: B,
 				label: I()
 			})).min(2),
-			correctId: B
+			correctId: B.nullable()
 		}),
 		z({
 			kind: ja("input"),
@@ -3301,7 +3301,7 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 	recordAs: B
 }).refine((e) => {
 	let t = e.config;
-	return t.kind !== "choice" || t.options.some((e) => e.id === t.correctId);
+	return t.kind !== "choice" || t.correctId === null || t.options.some((e) => e.id === t.correctId);
 }, { message: "correctId должен указывать на один из вариантов" }), lo = z({
 	rules: va(z({
 		id: B,
@@ -3328,6 +3328,7 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 	title: I().default(""),
 	audio: z({
 		src: I().min(1),
+		offset: to.default(0),
 		duration: R().finite().positive(),
 		words: va(no)
 	}),
@@ -3341,7 +3342,7 @@ z({
 	segments: va(uo).min(1)
 });
 var fo = z({
-	schemaVersion: ja(3),
+	schemaVersion: ja(4),
 	meta: z({
 		title: I(),
 		stageWidth: R().int().positive().default(1920),
@@ -3375,7 +3376,8 @@ var fo = z({
 		a.set(n.recordAs, {
 			kind: i.kind,
 			segmentId: e.id,
-			optionIds: i.kind === "choice" ? i.options.map((e) => e.id) : []
+			optionIds: i.kind === "choice" ? i.options.map((e) => e.id) : [],
+			isFork: i.kind === "choice" && i.correctId === null
 		});
 	}
 	n.forEach((e, n) => {
@@ -3461,7 +3463,11 @@ var fo = z({
 				});
 				return;
 			}
-			n.when.kind === "equals" && c.kind === "continue" && t.addIssue({
+			(n.when.kind === "correct" || n.when.kind === "wrong") && c.isFork && t.addIssue({
+				code: "custom",
+				path: [...s, "when"],
+				message: `Переменная «${n.when.variable}» записана развилкой: верного ответа у неё нет, и вердикт «верно»/«неверно» о ней невозможен. Сравнивайте с конкретным вариантом (equals).`
+			}), n.when.kind === "equals" && c.kind === "continue" && t.addIssue({
 				code: "custom",
 				path: [...s, "when"],
 				message: `Переменная «${n.when.variable}» пишется гейтом вида continue: у него один исход, и сравнивать её значение не с чем`
@@ -3710,6 +3716,25 @@ var xo = Object.freeze({
 			entry: t.entry,
 			segments: a
 		};
+	},
+	3: (e) => {
+		let t = e, n = Array.isArray(t.segments) ? t.segments.map((e) => {
+			if (typeof e != "object" || !e) return e;
+			let t = e.audio;
+			return typeof t != "object" || !t || "offset" in t ? e : {
+				...e,
+				audio: {
+					...t,
+					offset: 0
+				}
+			};
+		}) : t.segments;
+		return {
+			schemaVersion: 4,
+			meta: t.meta,
+			entry: t.entry,
+			segments: n
+		};
 	}
 }), Co = class extends Error {
 	found;
@@ -3725,9 +3750,9 @@ function wo(e) {
 }
 function To(e) {
 	let t = wo(e);
-	if (t > 3) throw new Co(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 3. Обновите приложение.`, t);
+	if (t > 4) throw new Co(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 4. Обновите приложение.`, t);
 	let n = e;
-	for (; t < 3;) {
+	for (; t < 4;) {
 		let e = So[t];
 		if (!e) throw new Co(`Нет миграции с версии ${t} на ${t + 1}. Каждая версия схемы обязана иметь миграцию (инвариант №7).`, t);
 		n = e(n), t = wo(n);
@@ -5348,6 +5373,7 @@ function Ul(e, t) {
 	let n = ko(e, t);
 	return {
 		src: n.audio.src,
+		offset: n.audio.offset,
 		words: n.audio.words,
 		duration: n.audio.duration,
 		elements: n.elements,
@@ -5435,7 +5461,7 @@ var Gl = class {
 	#_ = [];
 	#v = null;
 	constructor(e, t, n = {}, r = new Bo()) {
-		this.#e = e, this.#o = r, this.#n = t, this.#i = Wl(t), this.#a = Ul(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#C), e.appendChild(this.#t);
+		this.#e = e, this.#o = r, this.#n = t, this.#i = Wl(t), this.#a = Ul(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#T), e.appendChild(this.#t);
 	}
 	get state() {
 		return this.#m;
@@ -5444,7 +5470,13 @@ var Gl = class {
 		return this.#t;
 	}
 	get positionSeconds() {
-		return this.#l?.position ?? 0;
+		return this.#l ? this.#y(this.#l.position) : 0;
+	}
+	#y(e) {
+		return e - this.#a.offset;
+	}
+	#b(e) {
+		return e + this.#a.offset;
 	}
 	get currentGate() {
 		if (!(this.#m !== "at-gate" && this.#m !== "at-reveal")) return this.#d[this.#f]?.gate;
@@ -5452,42 +5484,42 @@ var Gl = class {
 	get currentReveal() {
 		return this.#v ?? void 0;
 	}
-	get #y() {
+	get #x() {
 		return this.#u?.nodes ?? /* @__PURE__ */ new Map();
 	}
-	#b(e) {
+	#S(e) {
 		this.#m !== e && (this.#m = e, this.#r.onStateChange?.(e));
 	}
 	async load() {
-		this.#b("loading"), this.#g = new ResizeObserver(() => this.#S()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.src), this.#x(), this.#b("ready");
+		this.#S("loading"), this.#g = new ResizeObserver(() => this.#w()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.src), this.#C(), this.#S("ready");
 	}
-	#x() {
-		this.#B(), this.#u?.destroy(), this.#u = new Hl({
+	#C() {
+		this.#H(), this.#u?.destroy(), this.#u = new Hl({
 			host: this.#t,
 			elements: this.#a.elements,
 			slides: this.#a.slides,
 			words: this.#a.words,
 			stage: this.#a.stage
-		}), this.#_ = [], this.#S(), this.#F(), this.#d = this.#a.gates.map((e) => ({
+		}), this.#_ = [], this.#w(), this.#L(), this.#d = this.#a.gates.map((e) => ({
 			gate: e,
 			at: Oo(e.at, this.#a.words)
 		})).sort((e, t) => e.at - t.at), this.#f = 0, this.#p.clear(), this.#u.renderAt(0);
 	}
-	#S() {
+	#w() {
 		Vl(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
 	}
-	#C = (e) => {
+	#T = (e) => {
 		if (this.#m !== "at-gate") return;
 		let t = this.currentGate;
 		if (!t || t.config.kind !== "choice") return;
 		let n = e.target, r = (n instanceof HTMLElement ? n.closest("[data-id]") : null)?.dataset.id;
 		r !== void 0 && t.config.options.some((e) => e.id === r) && this.answer(r);
 	};
-	#w(e) {
+	#E(e) {
 		if (e.config.kind !== "choice") return [];
 		let t = [];
 		for (let n of e.config.options) {
-			let e = this.#y.get(n.id);
+			let e = this.#x.get(n.id);
 			if (!e) {
 				t.push(n);
 				continue;
@@ -5496,106 +5528,106 @@ var Gl = class {
 		}
 		return t;
 	}
-	#T() {
+	#D() {
 		for (let e of this.#_) {
-			let t = this.#y.get(e);
+			let t = this.#x.get(e);
 			t && (delete t.dataset.answerOption, t.style.cursor = "");
 		}
 		this.#_ = [];
 	}
 	async play() {
-		let e = this.#B();
+		let e = this.#H();
 		if (this.#m !== "playing") {
 			if (this.#m === "at-gate") throw Error("Нельзя продолжить, пока гейт не пройден");
-			if (await e.wake(), this.#E(0)) {
-				e.holdBeforeStart(0), this.#P();
+			if (await e.wake(), this.#O(0)) {
+				e.holdBeforeStart(this.#b(0)), this.#I();
 				return;
 			}
-			e.start(this.#m === "ended" ? 0 : e.position), this.#m === "ended" && (this.#f = 0), this.#b("playing"), this.#D();
+			e.start(this.#m === "ended" ? this.#b(0) : e.position), this.#m === "ended" && (this.#f = 0), this.#S("playing"), this.#k();
 		}
 	}
-	#E(e) {
+	#O(e) {
 		let t = this.#d[this.#f];
 		return t !== void 0 && e >= t.at;
 	}
-	#D() {
+	#k() {
 		let e = () => {
 			if (this.#m !== "playing") return;
-			let t = this.#B(), n = this.#V(), r = t.position;
-			if (n.seekSeconds(r), this.#r.onFrame?.(r), this.#E(r)) {
-				this.#N();
+			let t = this.#H(), n = this.#U(), r = this.#y(t.position);
+			if (n.seekSeconds(r), this.#r.onFrame?.(r), this.#O(r)) {
+				this.#F();
 				return;
 			}
-			if (this.#k()) {
+			if (this.#j()) {
 				this.#h = requestAnimationFrame(e);
 				return;
 			}
-			if (this.#O(r), r >= t.duration - .02) {
-				this.#j();
+			if (this.#A(r), r >= this.#a.duration - .02) {
+				this.#N();
 				return;
 			}
 			this.#h = requestAnimationFrame(e);
 		};
 		this.#h = requestAnimationFrame(e);
 	}
-	#O(e) {
+	#A(e) {
 		if (this.#s) return;
 		let t = this.#l;
 		if (!t) return;
 		let n = jo(ko(this.#n, this.#i), this.#c);
 		if (n === null) return;
-		let r = t.duration - e;
+		let r = this.#a.duration - e;
 		if (r > Kl) return;
-		let i = Ul(this.#n, n).src;
+		let i = Ul(this.#n, n), a = i.src;
 		if (r > ql) {
-			this.#o.warm(i);
+			this.#o.warm(a);
 			return;
 		}
-		let a = t.scheduleEnd;
-		if (a === null) return;
-		let o = a - t.scheduleNow;
-		if (o <= 0) return;
-		let s = this.#o.clockIfReady(i);
-		if (!s) return;
-		let c = s.start(0, { leadTime: o });
+		let o = t.scheduleEnd;
+		if (o === null) return;
+		let s = o - t.scheduleNow;
+		if (s <= 0) return;
+		let c = this.#o.clockIfReady(a);
+		if (!c) return;
+		let l = c.start(i.offset, { leadTime: s });
 		this.#s = {
-			clock: s,
+			clock: c,
 			nodeId: n,
-			startsAt: c
+			startsAt: l
 		};
 	}
-	#k() {
+	#j() {
 		let e = this.#s, t = this.#l;
-		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = Ul(this.#n, e.nodeId), this.#s = null, this.#x(), !0);
+		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = Ul(this.#n, e.nodeId), this.#s = null, this.#C(), !0);
 	}
-	#A() {
+	#M() {
 		let e = this.#s;
 		e && (e.clock.stop(), this.#s = null);
 	}
-	async #j() {
+	async #N() {
 		let e = jo(ko(this.#n, this.#i), this.#c);
 		if (e === null) {
-			this.#R();
+			this.#B();
 			return;
 		}
-		await this.#M(e);
+		await this.#P(e);
 	}
-	async #M(e) {
-		this.#z(), this.#A(), this.#l?.stop(), this.#i = e, this.#a = Ul(this.#n, e), this.#l = await this.#o.clockFor(this.#a.src), await this.#l.wake(), this.#x(), this.#l.start(0), this.#b("playing"), this.#D();
+	async #P(e) {
+		this.#V(), this.#M(), this.#l?.stop(), this.#i = e, this.#a = Ul(this.#n, e), this.#l = await this.#o.clockFor(this.#a.src), await this.#l.wake(), this.#C(), this.#l.start(this.#b(0)), this.#S("playing"), this.#k();
 	}
-	async #N() {
-		let e = this.#B(), t = this.#V(), n = this.#d[this.#f];
+	async #F() {
+		let e = this.#H(), t = this.#U(), n = this.#d[this.#f];
 		if (!n) throw Error("Гейт исчез между проверкой и остановкой");
-		this.#A(), await e.freezeAt(n.at), t.seekSeconds(n.at), t.settle(), this.#P();
+		this.#M(), await e.freezeAt(this.#b(n.at)), t.seekSeconds(n.at), t.settle(), this.#I();
 	}
-	#P() {
+	#I() {
 		let e = this.#d[this.#f];
 		if (!e) throw Error("Нет гейта для открытия");
-		this.#z(), this.#t.style.pointerEvents = "auto", this.#b("at-gate"), this.#F();
-		let t = this.#w(e.gate);
+		this.#V(), this.#t.style.pointerEvents = "auto", this.#S("at-gate"), this.#L();
+		let t = this.#E(e.gate);
 		this.#r.onGateOpen?.(e.gate, t);
 	}
-	#F() {
+	#L() {
 		let e = ko(this.#n, this.#i);
 		for (let t of Mo(e)) this.#o.warm(Ul(this.#n, t).src);
 	}
@@ -5619,39 +5651,39 @@ var Gl = class {
 				value: e ?? "",
 				correct: i
 			}
-		}, this.#r.onGateResolved?.(s), o === "continue" ? await this.#L() : o === "reveal" && this.#I(n), s;
+		}, this.#r.onGateResolved?.(s), o === "continue" ? await this.#z() : o === "reveal" && this.#R(n), s;
 	}
-	#I(e) {
-		this.#T(), this.#t.style.pointerEvents = "none";
+	#R(e) {
+		this.#D(), this.#t.style.pointerEvents = "none";
 		let t = e.config;
 		this.#v = {
 			gate: e,
 			kind: e.onWrong === "inline-hint" ? "inline-hint" : "inline-explain",
 			correctOption: t.kind === "choice" ? t.options.find((e) => e.id === t.correctId) : void 0
-		}, this.#b("at-reveal"), this.#r.onRevealOpen?.(this.#v);
+		}, this.#S("at-reveal"), this.#r.onRevealOpen?.(this.#v);
 	}
 	async continueAfterReveal() {
 		if (this.#m !== "at-reveal") throw Error(`Разбор не открыт: состояние ${this.#m}`);
-		await this.#L();
+		await this.#z();
 	}
-	async #L() {
-		let e = this.#B();
-		this.#v = null, this.#T(), this.#t.style.pointerEvents = "none", this.#f += 1, await e.resumeFromFreeze(), this.#b("playing"), this.#D();
+	async #z() {
+		let e = this.#H();
+		this.#v = null, this.#D(), this.#t.style.pointerEvents = "none", this.#f += 1, await e.resumeFromFreeze(), this.#S("playing"), this.#k();
 	}
-	#R() {
-		this.#z(), this.#A(), this.#l?.stop(), this.#b("ended");
+	#B() {
+		this.#V(), this.#M(), this.#l?.stop(), this.#S("ended");
 	}
-	#z() {
+	#V() {
 		this.#h !== null && (cancelAnimationFrame(this.#h), this.#h = null);
 	}
 	destroy() {
-		this.#z(), this.#A(), this.#g?.disconnect(), this.#l?.stop(), this.#u?.destroy(), this.#o.close(), this.#t.remove(), this.#b("idle");
+		this.#V(), this.#M(), this.#g?.disconnect(), this.#l?.stop(), this.#u?.destroy(), this.#o.close(), this.#t.remove(), this.#S("idle");
 	}
-	#B() {
+	#H() {
 		if (!this.#l) throw Error("Плеер не загружен: сначала load()");
 		return this.#l;
 	}
-	#V() {
+	#U() {
 		if (!this.#u) throw Error("Плеер не загружен: сначала load()");
 		return this.#u;
 	}

@@ -1,5 +1,5 @@
 /**
- * Схема v3: что она принимает и, важнее, что отказывается принимать.
+ * Схема v4: что она принимает и, важнее, что отказывается принимать.
  *
  * Валидация обязана падать громко и называть место. Молчаливое принятие
  * битого проекта — это дефект, который доедет до зрителя.
@@ -17,7 +17,7 @@ const raw = (name: string): any => JSON.parse(readFileSync(join(DIR, name), 'utf
 const all = readdirSync(DIR).filter((name) => name.endsWith('.json'));
 
 /**
- * Минимальное валидное объяснение версии 3 — основа отрицательных проверок.
+ * Минимальное валидное объяснение версии 4 — основа отрицательных проверок.
  *
  * Собирается функцией, а не константой: каждый тест ломает свою копию,
  * и общий объект утёк бы правкой из одного теста в другой.
@@ -268,5 +268,82 @@ describe('загрузка падает громко и перечисляет �
       expect(error).toBeInstanceOf(ProjectLoadError);
       expect((error as ProjectLoadError).issues.length).toBeGreaterThan(1);
     }
+  });
+});
+
+/**
+ * Версия 4 добавила ровно две вещи, и обе — про то, чего схема раньше сказать
+ * не давала: что у остановки может не быть верного ответа и что часть звучит
+ * не с начала файла.
+ */
+describe('версия 4: развилка и окно дорожки', () => {
+  /** Объяснение, где остановка — развилка: два равноправных исхода. */
+  function withFork(): any {
+    const project = explanation();
+    project.segments[0].gates = [{
+      id: 'g-fork',
+      at: { kind: 'seconds', t: 5 },
+      config: {
+        kind: 'choice',
+        prompt: 'Куда пойти?',
+        options: [{ id: 'left', label: 'Налево' }, { id: 'right', label: 'Направо' }],
+        correctId: null,
+      },
+      onWrong: 'continue',
+      maxAttempts: null,
+      recordAs: 'куда',
+    }];
+    return project;
+  }
+
+  it('развилка не обязана назначать верный ответ', () => {
+    expect(ProjectSchema.safeParse(withFork()).success).toBe(true);
+  });
+
+  it('вопрос по-прежнему обязан указывать на настоящий вариант', () => {
+    const project = withFork();
+    project.segments[0].gates[0].config.correctId = 'нет-такого-варианта';
+    expect(problems(project)).toMatch(/correctId/);
+  });
+
+  it('о развилке нельзя вынести вердикт «верно»: сравнивать не с чем', () => {
+    const project = withFork();
+    project.segments[0].exit = {
+      rules: [{ id: 'r', when: { kind: 'correct', variable: 'куда' }, goto: 'intro' }],
+      default: 'intro',
+    };
+    expect(problems(project)).toMatch(/верного ответа|вердикт/i);
+  });
+
+  it('о вопросе вердикт «верно» по-прежнему законен', () => {
+    const project = withFork();
+    project.segments[0].gates[0].config.correctId = 'left';
+    project.segments[0].exit = {
+      rules: [{ id: 'r', when: { kind: 'correct', variable: 'куда' }, goto: 'intro' }],
+      default: 'intro',
+    };
+    expect(ProjectSchema.safeParse(project).success).toBe(true);
+  });
+
+  it('окно дорожки по умолчанию начинается с начала файла', () => {
+    const parsed = ProjectSchema.parse(explanation());
+    expect(parsed.segments[0]!.audio.offset).toBe(0);
+  });
+
+  it('окно дорожки не может начинаться раньше начала файла', () => {
+    const project = explanation();
+    project.segments[0].audio.offset = -1;
+    expect(problems(project).length).toBeGreaterThan(0);
+  });
+
+  it('смещение окна не сдвигает систему координат части', () => {
+    // Часть звучит с 30-й секунды файла, но внутри неё время идёт от нуля:
+    // первый слайд на нуле законен, а метка за длительностью окна — нет.
+    const project = explanation();
+    project.segments[0].audio.offset = 30;
+    expect(ProjectSchema.safeParse(project).success).toBe(true);
+
+    project.segments[0].slides[0].at = { kind: 'seconds', t: 999 };
+    expect(problems(project)).toMatch(/выходит за длительность/);
   });
 });

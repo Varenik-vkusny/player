@@ -15,7 +15,7 @@ import { expect, test, type Page } from '@playwright/test';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 
-import { resolveTimeRef, type Project, type Segment } from '@player/core';
+import { resolveTimeRef, SCHEMA_VERSION, type Project, type Segment } from '@player/core';
 
 /** Момент, на котором сравниваются картинки. Видны и текст, и фигуры. */
 const PARITY_AT = 24;
@@ -142,7 +142,10 @@ test.describe('круг: правка в редакторе — просмотр
     // Валидация уже прошла внутри редактора — serializeProject прогоняет
     // текст через loadProject перед выдачей. Здесь проверяется, что в файл
     // попало именно то, что на экране.
-    expect(saved.schemaVersion).toBe(3);
+    // Текущая версия, а не зашитое число: редактор обязан сохранять в той
+    // версии, которую понимает сборка. Зашитое число пережило бы бамп схемы
+    // и покраснело бы на ровном месте — так и случилось при переходе на v4.
+    expect(saved.schemaVersion).toBe(SCHEMA_VERSION);
     expect(saved.segments[0]!.slides.find((s) => s.id === slide.id)!.states['card']?.x).toBe(moved);
   });
 
