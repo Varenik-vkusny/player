@@ -15,6 +15,17 @@
  * во время захвата указателя браузерное определение цели всё равно перестаёт
  * работать, и полагаться на него значило бы иметь два разных ответа на один
  * вопрос (docs/research/prior-art.md, разбор tldraw).
+ *
+ * **Схема v3.** Геометрия и вид элемента живут в `ElementState` на слайде,
+ * а не на самом `Element`. Сцена здесь поэтому показывает не «весь сегмент
+ * в момент времени» (как это будет делать плеер, когда морфинг доедет до
+ * конца — ADR-015, `player/src/slides.ts`), а ровно ОДИН слайд — тот, который
+ * автор сейчас правит (`currentSlide`). Ради этого предпросмотру
+ * подсовывается сегмент с единственным слайдом: `ScenePreview`/`SlideEngine`
+ * при этом не заводятся заново — используется тот же класс, что и у плеера
+ * (инвариант №5), просто список его слайдов сужен до одного. Непрерывная
+ * анимация во время воспроизведения — забота другого дня: эта сессия про
+ * правку слайда, а не про предпросмотр перехода между ними.
  */
 import {
   forwardRef,
@@ -30,7 +41,7 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Element } from '@player/core';
+import type { Element, ElementState, Slide } from '@player/core';
 import { ScenePreview, type Segment } from '@player/player';
 
 import { boxToScreen, toScene, topmostAt, type Box, type Point } from './geometry.js';
@@ -80,18 +91,22 @@ export interface StageViewHandle {
 }
 
 export interface StageViewProps {
+  /** Все элементы и все слайды сегмента — нужны предпросмотру и списку кандидатов на попадание. */
   segment: Segment;
-  positionSeconds: number;
+  /** Слайд, который автор сейчас правит: именно его states рисует и меняет сцена. */
+  currentSlide: Slide;
   selectedId: string | undefined;
   onSelect: (id: string | undefined) => void;
   /**
-   * Правка геометрии элемента жестом (перетаскивание, ручка). Вызывается
-   * МНОГОКРАТНО за один жест — каждое `pointermove` даёт свой вызов, — и это
-   * намеренно живое, некоммитящее событие: коммит-точку жеста ставит
-   * `onCommitHistory` на `pointerup`, а не этот колбэк (срез 2, `Ctrl+Z`
-   * обязан отменять жест целиком, а не один промежуточный кадр).
+   * Правка состояния элемента жестом (перетаскивание, ручка) на ТЕКУЩЕМ
+   * слайде. Вызывается МНОГОКРАТНО за один жест — каждое `pointermove` даёт
+   * свой вызов, — и это намеренно живое, некоммитящее событие: коммит-точку
+   * жеста ставит `onCommitHistory` на `pointerup`, а не этот колбэк (срез 2,
+   * `Ctrl+Z` обязан отменять жест целиком, а не один промежуточный кадр).
    */
-  onElementChange: (element: Element) => void;
+  onElementStateChange: (elementId: string, patch: Partial<ElementState>) => void;
+  /** Правка содержимого элемента (правка текста на холсте) — самостоятельный шаг истории. */
+  onElementContentChange: (element: Element) => void;
   /** Жест завершён (`pointerup`/`pointercancel`) — точка коммита истории. */
   onCommitHistory: () => void;
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
@@ -109,12 +124,12 @@ interface Gesture {
   readonly grabOffset: number;
 }
 
-const boxOf = (element: Element): Box => ({
-  x: element.x,
-  y: element.y,
-  width: element.width,
-  height: element.height,
-  rotation: element.rotation,
+const boxOf = (state: ElementState): Box => ({
+  x: state.x,
+  y: state.y,
+  width: state.width,
+  height: state.height,
+  rotation: state.rotation,
 });
 
 const round = (value: number): number => Number(value.toFixed(PRECISION));
@@ -122,10 +137,11 @@ const round = (value: number): number => Number(value.toFixed(PRECISION));
 export const StageView = forwardRef<StageViewHandle, StageViewProps>(function StageView(
   {
     segment,
-    positionSeconds,
+    currentSlide,
     selectedId,
     onSelect,
-    onElementChange,
+    onElementStateChange,
+    onElementContentChange,
     onCommitHistory,
     onImageDrop,
     onReady,
@@ -135,12 +151,12 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const hostRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
-  const renderedRef = useRef<readonly Element[]>([]);
+  const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
   const gestureRef = useRef<Gesture | null>(null);
 
   const [frame, setFrame] = useState<Frame | null>(null);
 
-  const elements = segment.scene.elements;
+  const elements = segment.elements;
 
   /** Требует контейнеры: их отсутствие означает сломанную разметку, а не штатный случай. */
   const requireNodes = useCallback((): { host: HTMLDivElement; stage: HTMLDivElement } => {
@@ -164,10 +180,8 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   /** Пересчитывает рамку выделения в пикселях контейнера. */
   const syncFrame = useCallback((): void => {
     const { host, stage } = requireNodes();
-    const selected = selectedId === undefined
-      ? undefined
-      : elements.find((element) => element.id === selectedId);
-    if (!selected) {
+    const selectedState = selectedId === undefined ? undefined : currentSlide.states[selectedId];
+    if (!selectedState) {
       setFrame(null);
       return;
     }
@@ -175,44 +189,50 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // ширина другая, и масштаб вышел бы завышенным — тихо и правдоподобно.
     const stageRect = stage.getBoundingClientRect();
     const hostRect = host.getBoundingClientRect();
-    const screen = boxToScreen(stageRect, segment.stage.width, boxOf(selected));
+    const screen = boxToScreen(stageRect, segment.stage.width, selectedState);
     setFrame({
       left: screen.left - hostRect.left,
       top: screen.top - hostRect.top,
       width: screen.width,
       height: screen.height,
-      rotation: selected.rotation,
+      rotation: selectedState.rotation,
     });
-  }, [requireNodes, elements, selectedId, segment.stage.width]);
+  }, [requireNodes, selectedId, currentSlide, segment.stage.width]);
 
-  // Сцена пересобирается только при СТРУКТУРНОЙ правке.
-  //
-  // Зависеть от самого segment нельзя: segmentOf отдаёт новый объект при
-  // любом изменении проекта, а значит и при каждом движении мыши. Эффект
-  // на нём уничтожал бы и строил сцену заново шестьдесят раз в секунду —
-  // вместе с узлом под курсором и таймлайном, который на него ссылается.
-  // Ключ описывает именно то, из-за чего сцену действительно надо собирать
-  // заново: состав элементов и размер сцены. Изменения cues, gates и слов
-  // ловятся ссылками — эти массивы пересоздаются только при правке.
-  const structureKey = useMemo(
-    () => `${segment.stage.width}x${segment.stage.height}|${JSON.stringify(elements.map((e) => e.id))}`,
-    [segment.stage.width, segment.stage.height, elements],
+  /**
+   * Сегмент из ОДНОГО слайда — то, что реально показывает и правит сцена.
+   * `elements`/`words`/`stage` берутся у настоящего сегмента без изменений:
+   * `SlideEngine` использует их лишь для построения узлов и разрешения
+   * TimeRef, а с единственным слайдом в списке `resolveTimeRef` может дать
+   * любое число — активным всегда останется он один (см. `SlideEngine`,
+   * `player/src/slides.ts`).
+   */
+  const stageSegment = useMemo<Segment>(
+    () => ({ ...segment, slides: [currentSlide] }),
+    [segment, currentSlide],
   );
+  const stageSegmentRef = useRef(stageSegment);
+  stageSegmentRef.current = stageSegment;
 
-  // Внутри эффекта нужны АКТУАЛЬНЫЕ сегмент и момент, а не те, что были
-  // на момент последней смены структуры.
-  const segmentRef = useRef(segment);
-  segmentRef.current = segment;
-  const positionRef = useRef(positionSeconds);
-  positionRef.current = positionSeconds;
+  // Сцена пересобирается только при СТРУКТУРНОЙ правке: изменился размер
+  // сцены, состав элементов сегмента или сам слайд (переключение слайда —
+  // всегда полная пересборка, дешевле и надёжнее, чем построчно сверять,
+  // какие элементы получили или потеряли состояние). Точечные правки внутри
+  // ОДНОГО И ТОГО ЖЕ слайда (перетаскивание, набор числа) идут через второй
+  // эффект ниже и полной пересборки не вызывают — иначе узел под курсором
+  // редактора уничтожался бы на каждый pointermove.
+  const structureKey = useMemo(
+    () => `${segment.stage.width}x${segment.stage.height}|${JSON.stringify(elements.map((e) => e.id))}|${currentSlide.id}`,
+    [segment.stage.width, segment.stage.height, elements, currentSlide.id],
+  );
 
   useLayoutEffect(() => {
     const { host, stage } = requireNodes();
-    const segment = segmentRef.current;
+    const built = stageSegmentRef.current;
 
-    const preview = new ScenePreview(stage, segment);
+    const preview = new ScenePreview(stage, built);
     previewRef.current = preview;
-    renderedRef.current = segment.scene.elements;
+    renderedStatesRef.current = built.slides[0]!.states;
     // Инвариант №3 действует и в редакторе, только по другой причине:
     // здесь сцена не должна перехватывать жесты у слоя взаимодействия.
     stage.style.pointerEvents = 'none';
@@ -220,12 +240,6 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     if (host.clientWidth > 0 && host.clientHeight > 0) {
       preview.fit(host.clientWidth, host.clientHeight);
     }
-    // Свежий предпросмотр стоит на нуле, а головка — там, где её оставил
-    // автор. Без этой строки любая структурная правка (добавили метку,
-    // добавили элемент) молча отматывала сцену в начало: эффект перемотки
-    // не срабатывает, потому что момент не менялся, и React справедливо
-    // считает, что делать нечего.
-    preview.seek(positionRef.current);
 
     const observer = new ResizeObserver(() => {
       fit();
@@ -259,53 +273,37 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // fit и syncFrame намеренно не в зависимостях: они меняются вместе
     // с выделением, а пересобирать сцену на смену выделения незачем.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    structureKey,
-    segment.scene.cues,
-    segment.scene.gates,
-    segment.words,
-    segment.duration,
-    requireNodes,
-    onReady,
-  ]);
+  }, [structureKey, requireNodes, onReady]);
 
-  // Точечное обновление изменившихся элементов.
+  // Точечное обновление изменившихся элементов текущего слайда.
   //
   // Сюда попадают правки, не меняющие структуру: подвинули, растянули,
-  // повернули. Состав элементов при этом тот же, поэтому applyElement
-  // по изменившимся узлам достаточно, а renderScene была бы разрушительна.
-  // Смена состава обрабатывается эффектом выше и досюда не доходит:
-  // он пересоздаёт предпросмотр и сам записывает renderedRef.
+  // повернули, поменяли цвет. Состав элементов и сам слайд при этом те же,
+  // поэтому applyElement по изменившимся узлам достаточно, а пересборка
+  // была бы разрушительна. Смена структуры (в том числе переключение
+  // слайда) обрабатывается эффектом выше и досюда не доходит: тот
+  // пересоздаёт предпросмотр и сам записывает renderedStatesRef.
   useLayoutEffect(() => {
     const preview = previewRef.current;
     if (!preview) return;
 
-    const previous = renderedRef.current;
-    if (previous === elements) return;
+    const previous = renderedStatesRef.current;
+    const states = currentSlide.states;
+    if (previous === states) return;
 
-    const sameShape =
-      previous.length === elements.length &&
-      previous.every((element, index) => element.id === elements[index]?.id);
-    // Структура изменилась — значит эффект сборки уже отработал или вот-вот
-    // отработает. Трогать сцену отсюда нельзя: получилось бы два хозяина.
-    if (!sameShape) return;
-
-    for (const [index, element] of elements.entries()) {
+    for (const element of elements) {
+      const state = states[element.id];
       // Пока каретка внутри узла, applyElement его не касается: он
       // безусловно перезаписывает textContent (player/src/render.ts) и убил
       // бы правку, даже не пересоздавая узел («Правка текста на холсте»,
       // препятствие №3). Источник истины остаётся element.content — DOM
       // расходится с ним ровно на время жеста, как и при перетаскивании.
-      if (previous[index] !== element && editingRef.current?.id !== element.id) {
-        preview.updateElement(element);
+      if (state && state !== previous[element.id] && editingRef.current?.id !== element.id) {
+        preview.updateElement(element, state);
       }
     }
-    renderedRef.current = elements;
-  }, [elements]);
-
-  useLayoutEffect(() => {
-    previewRef.current?.seek(positionSeconds);
-  }, [positionSeconds]);
+    renderedStatesRef.current = states;
+  }, [elements, currentSlide.states]);
 
   useLayoutEffect(syncFrame, [syncFrame]);
 
@@ -318,15 +316,48 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     [requireNodes, segment.stage.width],
   );
 
+  /** Виден ли элемент на текущем слайде — по тому, что реально нарисовано. */
+  const isVisible = useCallback((id: string): boolean => {
+    const node = previewRef.current?.nodes.get(id);
+    if (!node) return false;
+    // Порог, а не строгий ноль: на границе анимации значение бывает
+    // вроде 0.002, и такой элемент кликать всё равно не по чему.
+    return Number(getComputedStyle(node).opacity) > 0.01;
+  }, []);
+
+  /**
+   * Верхний по стопке элемент под точкой — то, что видно СЕЙЧАС.
+   *
+   * Элемент, который на этом слайде ещё не появился, геометрически на сцене
+   * есть (states хранит для него ту же запись, что и для видимых) и может
+   * лежать выше по zIndex — и тогда клик по видимой карточке выделял бы
+   * невидимую точку поверх неё. Прозрачность берётся у отрисованного узла:
+   * это ответ самого рендера на вопрос «что сейчас на экране», а не вторая
+   * реализация той же логики.
+   */
+  const hitElementAt = useCallback(
+    (point: Point): { id: string; box: Box } | undefined => {
+      const states = currentSlide.states;
+      const layers = elements
+        .filter((element) => isVisible(element.id))
+        .map((element) => {
+          const state = states[element.id]!; // isVisible гарантирует отрисованный узел ⇒ состояние есть
+          return { ...boxOf(state), zIndex: state.zIndex, id: element.id };
+        });
+      const hit = topmostAt(layers, point);
+      return hit ? { id: hit.id, box: { x: hit.x, y: hit.y, width: hit.width, height: hit.height, rotation: hit.rotation } } : undefined;
+    },
+    [elements, currentSlide, isVisible],
+  );
+
   const beginGesture = useCallback(
-    (grip: Grip | 'body', element: Element, event: ReactPointerEvent<HTMLElement>): void => {
+    (grip: Grip | 'body', elementId: string, box: Box, event: ReactPointerEvent<HTMLElement>): void => {
       const { host } = requireNodes();
       const point = scenePointOf(event);
-      const box = boxOf(element);
       gestureRef.current = {
         pointerId: event.pointerId,
         grip,
-        elementId: element.id,
+        elementId,
         startBox: box,
         startPoint: point,
         // Разница между текущим поворотом и углом захвата. Без неё элемент
@@ -345,15 +376,6 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     [requireNodes, scenePointOf],
   );
 
-  /** Виден ли элемент на текущем моменте — по тому, что реально нарисовано. */
-  const isVisible = useCallback((id: string): boolean => {
-    const node = previewRef.current?.nodes.get(id);
-    if (!node) return false;
-    // Порог, а не строгий ноль: на границе анимации значение бывает
-    // вроде 0.002, и такой элемент кликать всё равно не по чему.
-    return Number(getComputedStyle(node).opacity) > 0.01;
-  }, []);
-
   /**
    * Правка текста на холсте (двойной клик).
    *
@@ -370,7 +392,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
    *    исполняется раньше обработчика клика по любой кнопке панели
    *    («Удалить», «Вставить», «Отменить») — тот привязан в фазе всплытия;
    *  - потеря фокуса (blur) узла — подстраховка на случай, которого не
-   *    покрывает предыдущий пункт (например, Tab увёл фокus без единого
+   *    покрывает предыдущий пункт (например, Tab увёл фокус без единого
    *    pointerdown).
    */
   const editingRef = useRef<{ id: string; outsideDown: (event: PointerEvent) => void } | null>(null);
@@ -399,9 +421,9 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // ошибка: автор уже принял более позднее решение.
     if (!element || element.content === content) return;
 
-    onElementChange({ ...element, content });
+    onElementContentChange({ ...element, content });
     onCommitHistory();
-  }, [elements, onElementChange, onCommitHistory]);
+  }, [elements, onElementContentChange, onCommitHistory]);
 
   const beginTextEdit = useCallback(
     (element: Element, point: { clientX: number; clientY: number }): void => {
@@ -448,18 +470,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const handleStageDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>): void => {
       const point = scenePointOf(event);
-      const hit = topmostAt(
-        elements
-          .filter((element) => isVisible(element.id))
-          .map((element) => ({ ...boxOf(element), zIndex: element.zIndex, id: element.id })),
-        point,
-      );
+      const hit = hitElementAt(point);
       if (!hit) return;
       const element = elements.find((candidate) => candidate.id === hit.id);
       if (!element) throw new Error(`Двойной клик в элемент «${hit.id}», которого нет в сцене`);
       beginTextEdit(element, event);
     },
-    [scenePointOf, elements, isVisible, beginTextEdit],
+    [scenePointOf, hitElementAt, elements, beginTextEdit],
   );
 
   const handleStageDown = useCallback(
@@ -477,48 +494,33 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         }
       }
       const point = scenePointOf(event);
-      // Выделяется то, что видно СЕЙЧАС. Элемент, который на этой секунде
-      // ещё не появился, геометрически на сцене есть и может лежать выше
-      // по zIndex — и тогда клик по видимой карточке выделял бы невидимую
-      // точку поверх неё. Прозрачность берётся у отрисованного узла:
-      // это ответ самого рендера на вопрос «что сейчас на экране»,
-      // а не вторая реализация той же логики.
-      const hit = topmostAt(
-        elements
-          .filter((element) => isVisible(element.id))
-          .map((element) => ({ ...boxOf(element), zIndex: element.zIndex, id: element.id })),
-        point,
-      );
+      const hit = hitElementAt(point);
       if (!hit) {
         onSelect(undefined);
         return;
       }
-      const element = elements.find((candidate) => candidate.id === hit.id);
-      if (!element) throw new Error(`Попадание в элемент «${hit.id}», которого нет в сцене`);
-      onSelect(element.id);
-      beginGesture('body', element, event);
+      onSelect(hit.id);
+      beginGesture('body', hit.id, hit.box, event);
     },
-    [scenePointOf, elements, onSelect, beginGesture, isVisible],
+    [scenePointOf, hitElementAt, onSelect, beginGesture],
   );
 
   const handleGripDown = useCallback(
     (grip: Grip, event: ReactPointerEvent<HTMLElement>): void => {
-      // Иначе тот же нажатие уйдёт в сцену и начнёт перетаскивание элемента.
+      // Иначе то же нажатие уйдёт в сцену и начнёт перетаскивание элемента.
       event.stopPropagation();
-      const element = elements.find((candidate) => candidate.id === selectedId);
-      if (!element) throw new Error('Ручка нажата без выделенного элемента');
-      beginGesture(grip, element, event);
+      if (selectedId === undefined) throw new Error('Ручка нажата без выделенного элемента');
+      const state = currentSlide.states[selectedId];
+      if (!state) throw new Error(`У выделенного элемента «${selectedId}» нет состояния на текущем слайде`);
+      beginGesture(grip, selectedId, boxOf(state), event);
     },
-    [elements, selectedId, beginGesture],
+    [selectedId, currentSlide, beginGesture],
   );
 
   const handleMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
       const gesture = gestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
-
-      const element = elements.find((candidate) => candidate.id === gesture.elementId);
-      if (!element) throw new Error(`Жест по элементу «${gesture.elementId}», которого нет в сцене`);
 
       const point = scenePointOf(event);
       let next: Box;
@@ -530,8 +532,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         next = resizeBox(gesture.startBox, gesture.grip, point);
       }
 
-      onElementChange({
-        ...element,
+      onElementStateChange(gesture.elementId, {
         x: round(next.x),
         y: round(next.y),
         width: round(next.width),
@@ -539,7 +540,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         rotation: round(next.rotation),
       });
     },
-    [elements, scenePointOf, onElementChange],
+    [scenePointOf, onElementStateChange],
   );
 
   const endGesture = useCallback(
@@ -550,7 +551,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       const host = hostRef.current;
       if (host?.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId);
       // Коммит-точка жеста (срез 2): если движение и правда было,
-      // `onElementChange` уже записал финальное значение — здесь только
+      // `onElementStateChange` уже записал финальное значение — здесь только
       // закрываем шаг истории. Если жеста фактически не было (простой клик
       // без движения), это безопасный no-op на стороне историй.
       onCommitHistory();

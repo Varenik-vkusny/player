@@ -695,12 +695,12 @@
             "id": "gate-start",
             "at": {
               "kind": "word",
-              "wordIndex": 3,
+              "wordIndex": 97,
               "offset": 0,
               "anchor": {
-                "text": "смотришь",
-                "before": "ты",
-                "after": "объяснение"
+                "text": "борьбу",
+                "before": "на",
+                "after": "с"
               }
             },
             "config": {

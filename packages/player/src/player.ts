@@ -4,19 +4,18 @@
  * Главный принцип: всё на экране — чистая функция от одного числа, позиции
  * в аудио. Каждый кадр это число берётся у часов и раздаётся остальным.
  */
-import type { Gate, GateOutcome, Project } from '@player/core';
+import type { Answer, Gate, Project } from '@player/core';
 import {
-  nextNodeAfterGate,
-  nextNodeAtEnd,
-  nodeOf,
-  preloadTargetsOfGate,
+  nextSegment,
+  preloadTargetsOfExit,
   resolveTimeRef,
+  findSegment,
 } from '@player/core';
 
 import { AudioClock, loadTrack } from './clock.js';
-import { applyFit, renderScene } from './render.js';
-import { entryNodeOf, segmentOf, type Segment } from './preview.js';
-import { buildTimeline, disableEngineMainLoop, type DrivenTimeline } from './timeline.js';
+import { applyFit } from './render.js';
+import { entrySegmentOf, segmentOf, type Segment } from './preview.js';
+import { SlideEngine } from './slides.js';
 
 export type PlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'at-gate' | 'ended';
 
@@ -118,10 +117,18 @@ export class Player {
   #warming: Promise<unknown> | null = null;
 
   /** Исход последней разобранной попытки: им выбирается ребро графа. */
-  #lastOutcome: GateOutcome | null = null;
+  /**
+   * Ответы зрителя, накопленные за всё объяснение.
+   *
+   * Живут на объяснении, а не на сегменте, и переживают переходы: выход сегмента
+   * вправе опереться на ответ, данный раньше. Именно поэтому поле не
+   * очищается в mountSegment вместе со счётчиком попыток — попытки
+   * принадлежат гейту, ответы принадлежат зрителю.
+   */
+  #answers: Record<string, Answer> = {};
 
   #clock: AudioClock | null = null;
-  #timeline: DrivenTimeline | null = null;
+  #slides: SlideEngine | null = null;
   #nodes: Map<string, HTMLElement> = new Map();
   #gates: ScheduledGate[] = [];
   #nextGateIndex = 0;
@@ -137,7 +144,7 @@ export class Player {
     // Единственная точка чтения project.audio и project.scene (ADR-003,
     // ADR-011): переход на граф сегментов поменял segmentOf, а не Player.
     this.#project = project;
-    this.#nodeId = entryNodeOf(project);
+    this.#nodeId = entrySegmentOf(project);
     this.#segment = segmentOf(project, this.#nodeId);
     this.#events = events;
 
@@ -170,7 +177,6 @@ export class Player {
   /** Загружает аудио, строит сцену и таймлайн. После этого можно играть. */
   async load(): Promise<void> {
     this.#setState('loading');
-    disableEngineMainLoop();
 
     // Пересчёт масштаба при изменении размера окна. Масштаб всегда берётся
     // из актуальных размеров, а не из сохранённого значения (ADR-007).
@@ -207,25 +213,31 @@ export class Player {
   #mountSegment(): void {
     const clock = this.#requireClock();
 
-    this.#nodes = renderScene(this.#stage, this.#segment.scene, this.#segment.stage);
+    this.#slides?.destroy();
+    this.#slides = new SlideEngine({
+      host: this.#stage,
+      elements: this.#segment.elements,
+      slides: this.#segment.slides,
+      words: this.#segment.words,
+      stage: this.#segment.stage,
+    });
+    this.#nodes = new Map(this.#slides.nodes);
     // Пометки кликабельных вариантов жили на элементах прошлой сцены,
-    // а её больше нет: renderScene очищает контейнер (render.ts:107).
+    // а её больше нет: движок слайдов очищает контейнер.
     this.#markedOptionIds = [];
     this.#fit();
 
-    this.#timeline = buildTimeline(
-      this.#segment.scene.cues,
-      this.#nodes,
-      this.#segment.words,
-      { audioDuration: clock.duration },
-    );
+    // Греть продолжения можно с самого начала сегмента: он линеен, его
+    // длительность известна точно, и ждать открытия гейта больше незачем —
+    // ветвление переехало на выход.
+    this.#warmExitTargets();
 
     // Гейты разрешаются в секунды один раз и сортируются: дальше плеер
     // движется по ним строго вперёд, потому что перемотки не существует.
     // Слова берутся ЭТОГО узла (инвариант №10): у каждого узла свой
     // транскрипт, и разрешить метку чужим — значит получить правдоподобные
     // секунды с видом настоящих.
-    this.#gates = this.#segment.scene.gates
+    this.#gates = this.#segment.gates
       .map((gate) => ({ gate, at: resolveTimeRef(gate.at, this.#segment.words) }))
       .sort((a, b) => a.at - b.at);
     this.#nextGateIndex = 0;
@@ -234,8 +246,9 @@ export class Player {
     this.#attempts.clear();
 
     // Свежая сцена стоит на нуле: время выставляется до первого кадра,
-    // иначе зритель увидит состояние до всех анимаций.
-    this.#timeline.seekSeconds(0);
+    // иначе зритель увидит состояние до всех переходов.
+    this.#slides.renderAt(0);
+    void clock;
   }
 
   #fit(): void {
@@ -353,11 +366,11 @@ export class Player {
       // же цикла, и захваченная ссылка осталась бы от прошлого узла —
       // сцена играла бы новую, а время шло по старым часам.
       const clock = this.#requireClock();
-      const timeline = this.#requireTimeline();
+      const slides = this.#requireSlides();
 
       const position = clock.position;
-      // Инвариант №2 в одной строке: время таймлайна = время аудио.
-      timeline.seekSeconds(position);
+      // Инвариант №2 в одной строке: время сцены = время аудио.
+      slides.seekSeconds(position);
       this.#events.onFrame?.(position);
 
       if (this.#gateDueAt(position)) {
@@ -396,8 +409,8 @@ export class Player {
     const clock = this.#clock;
     if (!ctx || !clock) return;
 
-    const next = nextNodeAtEnd(nodeOf(this.#project, this.#nodeId));
-    if (next === undefined) return;
+    const next = nextSegment(findSegment(this.#project, this.#nodeId), this.#answers);
+    if (next === null) return;
 
     const remaining = clock.duration - position;
     if (remaining > PRELOAD_AHEAD_S) return;
@@ -465,10 +478,15 @@ export class Player {
       .finally(() => { this.#warming = null; });
   }
 
-  /** Конец дорожки: либо дальше по ребру, либо объяснение закончилось. */
+  /**
+   * Конец дорожки: выход сегмента решает, куда дальше.
+   *
+   * Это ЕДИНСТВЕННОЕ место, где объяснение меняет сегмент по своей воле. Гейт
+   * такого права не имеет и иметь не может: поля для рёбер у него нет.
+   */
   async #reachEndOfNode(): Promise<void> {
-    const next = nextNodeAtEnd(nodeOf(this.#project, this.#nodeId));
-    if (next === undefined) {
+    const next = nextSegment(findSegment(this.#project, this.#nodeId), this.#answers);
+    if (next === null) {
       this.#finish();
       return;
     }
@@ -505,7 +523,7 @@ export class Player {
 
   async #reachGate(): Promise<void> {
     const clock = this.#requireClock();
-    const timeline = this.#requireTimeline();
+    const slides = this.#requireSlides();
     const scheduled = this.#gates[this.#nextGateIndex];
     if (!scheduled) throw new Error('Гейт исчез между проверкой и остановкой');
 
@@ -516,7 +534,7 @@ export class Player {
     // Время встаёт РОВНО на гейте, а не там, где мы успели заметить
     // пересечение: обнаружение ограничено длиной кадра (ADR-005).
     await clock.freezeAt(scheduled.at);
-    timeline.seekSeconds(scheduled.at);
+    slides.seekSeconds(scheduled.at);
     this.#openGate();
   }
 
@@ -527,17 +545,18 @@ export class Player {
     this.#stopFrameLoop();
     this.#stage.style.pointerEvents = 'auto';
     this.#setState('at-gate');
-    // Время стоит — это единственный гарантированный простой во всём
-    // объяснении, и других окон для декодирования не будет.
-    this.#warmTargetsOf(scheduled.gate.id);
+    // Время стоит — окно бесплатное, поэтому прогрев подтверждается ещё раз.
+    // Основной прогрев идёт с начала сегмента: ветвление живёт на выходе,
+    // и ждать вопроса, чтобы узнать продолжения, больше не нужно.
+    this.#warmExitTargets();
     const unboundOptions = this.#markAnswerElements(scheduled.gate);
     this.#events.onGateOpen?.(scheduled.gate, unboundOptions);
   }
 
-  /** Греет дорожки всех продолжений этого гейта: что ответят — неизвестно. */
-  #warmTargetsOf(gateId: string): void {
-    const node = nodeOf(this.#project, this.#nodeId);
-    for (const target of preloadTargetsOfGate(node, gateId)) {
+  /** Греет дорожки всех продолжений сегмента: что ответят — неизвестно. */
+  #warmExitTargets(): void {
+    const segment = findSegment(this.#project, this.#nodeId);
+    for (const target of preloadTargetsOfExit(segment)) {
       const src = segmentOf(this.#project, target).src;
       if (this.#tracks.has(src)) continue;
       this.#warmTrack(src);
@@ -567,13 +586,13 @@ export class Player {
     let outcome: GateAttempt['outcome'];
     if (correct) outcome = 'continue';
     else if (gate.onWrong === 'continue') outcome = 'continue';
-    else if (gate.onWrong === 'reveal') outcome = 'reveal';
+    else if (gate.onWrong === 'inline-explain' || gate.onWrong === 'inline-hint') outcome = 'reveal';
     else outcome = exhausted ? 'reveal' : 'retry';
 
     const attempt: GateAttempt = { gate, correct, attemptsUsed: used, outcome };
-    // Запоминается ДО выхода из гейта: ребро графа выбирается этим исходом,
-    // а `continueAfterReveal` вызывается позже и самого ответа уже не знает.
-    this.#lastOutcome = { optionId: value, correct };
+    // Единственное, что гейт делает с ответом: записывает его в переменную.
+    // Никуда не перекидывает — решение о следующем сегменте принимает выход.
+    this.#answers = { ...this.#answers, [gate.recordAs]: { value: value ?? '', correct } };
     this.#events.onGateResolved?.(attempt);
 
     if (outcome === 'continue') await this.#leaveGate();
@@ -591,20 +610,9 @@ export class Player {
     this.#unmarkAnswerElements();
     this.#stage.style.pointerEvents = 'none';
 
-    // Ответ мог оказаться развилкой. `undefined` означает «у этого гейта
-    // рёбер нет», то есть это обычный гейт, и продолжать надо внутри узла —
-    // самый частый случай, так устроены все фикстуры версии схемы 1.
-    const gate = this.#gates[this.#nextGateIndex]?.gate;
-    const outcome = this.#lastOutcome;
-    const next = gate && outcome
-      ? nextNodeAfterGate(nodeOf(this.#project, this.#nodeId), gate.id, outcome)
-      : undefined;
-
-    if (next !== undefined) {
-      await this.#goToNode(next);
-      return;
-    }
-
+    // Сегмент продолжается ВСЕГДА. Ответ уже записан в переменную, а куда
+    // идти дальше, решит выход, когда дорожка доиграет. Раньше здесь стоял
+    // прыжок в другой сегмент прямо из середины дорожки — от него и уходили.
     this.#nextGateIndex += 1;
 
     // Возобновление с ТОЙ ЖЕ позиции. Перемотки не возникает по построению:
@@ -648,9 +656,9 @@ export class Player {
     return this.#clock;
   }
 
-  #requireTimeline(): DrivenTimeline {
-    if (!this.#timeline) throw new Error('Плеер не загружен: сначала load()');
-    return this.#timeline;
+  #requireSlides(): SlideEngine {
+    if (!this.#slides) throw new Error('Плеер не загружен: сначала load()');
+    return this.#slides;
   }
 }
 

@@ -6,6 +6,7 @@ import type { Element, Gate, Project } from '@player/core';
 import {
   addOption,
   bindOption,
+  createGate,
   promptOf,
   removeOption,
   setAccept,
@@ -20,17 +21,15 @@ import {
 import { serializeProject } from '../src/state/save.js';
 
 /**
- * Главное требование к этим тестам (см. задание сессии 3): не только
- * сравнение полей, но и прогон результата через настоящую схему —
- * `loadProject` из `@player/core`. Если функция способна породить гейт,
- * который схема не примет, тест обязан это поймать раньше, чем автор.
+ * Главное требование к этим тестам: не только сравнение полей, но и прогон
+ * результата через настоящую схему — `loadProject` из `@player/core`. Если
+ * функция способна породить гейт, который схема не примет, тест обязан это
+ * поймать раньше, чем автор.
  *
- * Второе требование (добавлено после ревью): проверять не только то, что
- * ЗАГРУЖАЕТСЯ, но и то, что реально попадает в файл через `serializeProject`
- * — `loadProject` внутри неё проверяет РАЗОБРАННУЮ копию текста, а не
- * исходный объект, и служебное поле редактора могло бы уйти на диск целиком,
- * оставшись незамеченным. См. описание в `describe('охранник схемы: ...')`
- * ниже.
+ * Второе требование: проверять не только то, что ЗАГРУЖАЕТСЯ, но и то, что
+ * реально попадает в файл через `serializeProject` — она проверяет
+ * РАЗОБРАННУЮ копию текста, а не исходный объект, и служебное поле редактора
+ * могло бы уйти на диск целиком, оставшись незамеченным.
  */
 
 function continueGate(overrides: Partial<Gate> = {}): Gate {
@@ -40,6 +39,7 @@ function continueGate(overrides: Partial<Gate> = {}): Gate {
     config: { kind: 'continue', label: 'Дальше' },
     onWrong: 'retry',
     maxAttempts: null,
+    recordAs: 'gate-1',
     ...overrides,
   };
 }
@@ -59,6 +59,7 @@ function choiceGate(overrides: Partial<Gate> = {}): Gate {
     },
     onWrong: 'retry',
     maxAttempts: null,
+    recordAs: 'gate-1',
     ...overrides,
   };
 }
@@ -75,38 +76,30 @@ function inputGate(overrides: Partial<Gate> = {}): Gate {
     },
     onWrong: 'retry',
     maxAttempts: null,
+    recordAs: 'gate-1',
     ...overrides,
   };
 }
 
 function element(id: string): Element {
-  return {
-    id,
-    type: 'shape',
-    x: 0,
-    y: 0,
-    width: 100,
-    height: 100,
-    rotation: 0,
-    zIndex: 0,
-    style: {},
-    content: '',
-  };
+  return { id, type: 'shape', content: '' };
 }
 
 /** Минимальный проект с одним гейтом — ровно то, что нужно `loadProject`, не больше. */
 function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-    entry: 'node-1',
-    nodes: [
+    entry: 'seg-1',
+    segments: [
       {
-        id: 'node-1',
+        id: 'seg-1',
         title: '',
         audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-        scene: { elements: [...elements], cues: [], gates: [gate] },
-        edges: [],
+        elements: [...elements],
+        slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+        gates: [gate],
+        exit: { rules: [], default: null },
       },
     ],
   };
@@ -124,9 +117,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /**
  * Ищет ключи, которые есть в `raw` (то, что реально лежит в тексте файла),
  * но которых нет в `canonical` (то, что вернул `loadProject` — то есть то,
- * что описано схемой). Рекурсивно, а не только на верхнем уровне гейта:
- * дефект «редактор дописывает служебное поле мимо схемы» может случиться
- * где угодно в дереве проекта, не только в `Gate`.
+ * что описано схемой).
  */
 function findExtraKeys(raw: unknown, canonical: unknown, path: string): string[] {
   if (Array.isArray(raw) && Array.isArray(canonical)) {
@@ -141,6 +132,20 @@ function findExtraKeys(raw: unknown, canonical: unknown, path: string): string[]
   return [];
 }
 
+describe('createGate: новый гейт вида «дальше»', () => {
+  it('recordAs равен собственному id', () => {
+    const gate = createGate('gate-9', { kind: 'seconds', t: 3 });
+    expect(gate.recordAs).toBe('gate-9');
+    expect(gate.id).toBe('gate-9');
+    assertLoadable(gate);
+  });
+
+  it('вид по умолчанию — «дальше»', () => {
+    const gate = createGate('gate-1', { kind: 'seconds', t: 0 });
+    expect(gate.config).toEqual({ kind: 'continue', label: 'Дальше' });
+  });
+});
+
 describe('setGateKind: базовые переходы', () => {
   it('переключение на тот же вид — no-op, гейт тот же объект по ссылке', () => {
     const gate = choiceGate();
@@ -149,9 +154,6 @@ describe('setGateKind: базовые переходы', () => {
 
   it('continue → choice: создаёт ровно два валидных варианта-заготовки, а не пустой список', () => {
     const next = setGateKind(continueGate(), 'choice');
-    // Сужение вытащено в локальную константу не для красоты: внутри замыкания
-    // TypeScript теряет сужение по `next.config`, потому что свойство объекта
-    // могло измениться между проверкой и вызовом.
     const config = next.config;
     if (config.kind !== 'choice') throw new Error('ожидался choice');
     expect(config.options.length).toBe(2);
@@ -223,7 +225,7 @@ describe('promptOf', () => {
 describe('setGateKind: prompt переживает случайные переключения через явную память вызывающего', () => {
   it('choice → continue → choice: варианты не обязаны восстановиться, но переданный prompt возвращается', () => {
     const original = choiceGate();
-    const remembered = promptOf(original); // вызывающий обязан достать его сам ДО переключения
+    const remembered = promptOf(original);
 
     const viaContinue = setGateKind(original, 'continue');
     assertLoadable(viaContinue);
@@ -231,8 +233,6 @@ describe('setGateKind: prompt переживает случайные перек
     const back = setGateKind(viaContinue, 'choice', remembered);
     if (back.config.kind !== 'choice') throw new Error('ожидался choice');
     expect(back.config.prompt).toBe('Столица Франции?');
-    // Варианты — новая заготовка, не старые «paris»/«london»: смена вида
-    // не обязана их восстанавливать (см. комментарий в gates.ts).
     expect(back.config.options.map((o) => o.id)).not.toEqual(['paris', 'london']);
     expect(back.config.options.length).toBe(2);
     assertLoadable(back);
@@ -391,8 +391,6 @@ describe('removeOption', () => {
     if (next.config.kind !== 'choice') throw new Error('ожидался choice');
     expect(next.config.options.map((o) => o.id)).toEqual(['london', 'berlin']);
     expect(next.config.correctId).toBe('london');
-    // Именно это защищает GateSchema.refine: correctId обязан указывать
-    // на существующий вариант, иначе проект не пройдёт loadProject вовсе.
     assertLoadable(next);
   });
 
@@ -549,13 +547,19 @@ describe('setCaseSensitive', () => {
 
 describe('setOnWrong', () => {
   it('меняет поведение при неверном ответе — общее поле, работает на любом виде', () => {
-    const next = setOnWrong(choiceGate(), 'reveal');
-    expect(next.onWrong).toBe('reveal');
+    const next = setOnWrong(choiceGate(), 'inline-explain');
+    expect(next.onWrong).toBe('inline-explain');
     assertLoadable(next);
 
     const onContinueGate = setOnWrong(continueGate(), 'continue');
     expect(onContinueGate.onWrong).toBe('continue');
     assertLoadable(onContinueGate);
+  });
+
+  it('принимает inline-hint', () => {
+    const next = setOnWrong(choiceGate(), 'inline-hint');
+    expect(next.onWrong).toBe('inline-hint');
+    assertLoadable(next);
   });
 
   it('то же значение — no-op по ссылке', () => {
@@ -608,13 +612,13 @@ describe('охранник целостности: гейт, собранный 
     gate = setOptionLabel(gate, optC!.id, 'Сочи');
     gate = bindOption(gate, optA!.id, 'moscow-card');
     gate = setCorrect(gate, 'moscow-card');
-    gate = setOnWrong(gate, 'reveal');
+    gate = setOnWrong(gate, 'inline-explain');
     gate = setMaxAttempts(gate, 2);
 
     const project = assertLoadable(gate, [element('moscow-card')]);
-    const loadedGate = project.nodes[0]!.scene.gates[0]!;
+    const loadedGate = project.segments[0]!.gates[0]!;
     expect(loadedGate.config.kind).toBe('choice');
-    expect(loadedGate.onWrong).toBe('reveal');
+    expect(loadedGate.onWrong).toBe('inline-explain');
     expect(loadedGate.maxAttempts).toBe(2);
     if (loadedGate.config.kind === 'choice') {
       expect(loadedGate.config.correctId).toBe('moscow-card');
@@ -624,27 +628,17 @@ describe('охранник целостности: гейт, собранный 
 });
 
 describe('охранник схемы: сериализованный файл не содержит служебных полей редактора', () => {
-  /**
-   * Это не тест про конкретное поле, а про класс дефекта: `serializeProject`
-   * (`state/save.ts`) сериализует переданный объект напрямую и лишь
-   * ДОПОЛНИТЕЛЬНО прогоняет через `loadProject` разобранную копию текста —
-   * значит если какая-то функция этого модуля когда-нибудь допишет
-   * гейту поле мимо схемы (как раньше делал `setGateKind` с `__promptMemory`),
-   * `serializeProject` не бросит: она проверяет копию, а не то, что реально
-   * ушло в файл. Ловит это только прямое сравнение ключей исходного текста
-   * с тем, что описывает схема.
-   */
   it('после цепочки переходов и правок в тексте файла нет ключей сверх схемы', () => {
     let gate = choiceGate();
     const remembered = promptOf(gate); // достаём вопрос сам, до перехода на continue
 
-    gate = setGateKind(gate, 'continue'); // здесь раньше жила __promptMemory
+    gate = setGateKind(gate, 'continue');
     gate = setGateKind(gate, 'input', remembered);
     gate = setAccept(gate, ['Париж', 'paris']);
     gate = setGateKind(gate, 'choice'); // choice → input → choice, без continue — прямой перенос
     if (gate.config.kind !== 'choice') throw new Error('ожидался choice');
     gate = bindOption(gate, gate.config.options[0]!.id, 'hero-image');
-    gate = setOnWrong(gate, 'reveal');
+    gate = setOnWrong(gate, 'inline-explain');
     gate = setMaxAttempts(gate, 3);
 
     const project = projectWithGate(gate, [element('hero-image')]);

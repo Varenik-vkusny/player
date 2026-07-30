@@ -18,15 +18,11 @@ export {
   DEFAULT_STAGE_HEIGHT,
   DEFAULT_STAGE_WIDTH,
   type Fit,
+  type SlideStates,
   type StageSize,
 } from './render.js';
-export { entryNodeOf, ScenePreview, segmentOf, type Segment } from './preview.js';
-export {
-  buildTimeline,
-  disableEngineMainLoop,
-  type BuildTimelineOptions,
-  type DrivenTimeline,
-} from './timeline.js';
+export { entrySegmentOf, ScenePreview, segmentOf, type Segment } from './preview.js';
+export { SlideEngine, type SlideEngineOptions } from './slides.js';
 export {
   isCorrect,
   Player,

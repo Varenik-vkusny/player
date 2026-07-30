@@ -12,58 +12,54 @@
  * правки идут через applyElement — ту же самую функцию, что и при полном
  * рендере. Второй реализации здесь по-прежнему неоткуда взяться.
  */
-import { nodeOf } from '@player/core';
-import type { Element, Project, Scene, Word } from '@player/core';
+import { findSegment as findSegment } from '@player/core';
+import type { Element, ElementState, Gate, Project, Slide, Word } from '@player/core';
 
-import {
-  applyElement,
-  applyFit,
-  renderScene,
-  type Fit,
-  type StageSize,
-} from './render.js';
-import { buildTimeline, disableEngineMainLoop, type DrivenTimeline } from './timeline.js';
+import { applyElement, applyFit, type Fit, type StageSize } from './render.js';
+import { SlideEngine } from './slides.js';
 
 /**
- * Отрезок объяснения: своя озвучка, своя сцена.
+ * Сегмент объяснения: своя непрерывная озвучка, свои элементы, свои слайды.
  *
- * Сегодня сегмент ровно один и совпадает со всем проектом. Названо так
- * не на вырост, а чтобы шов существовал: планируется, что проект станет
- * графом сегментов, у каждой ноды своя дорожка и своя сцена
- * (docs/planning.md §5а). Когда это случится, поменяется segmentOf,
- * а не всё, что стоит выше.
+ * Это ДВЕРЦА. Единственное место, через которое плеер, предпросмотр
+ * и редактор видят содержимое объяснения. Дисциплина себя уже оправдала дважды:
+ * переход «одна сцена → граф узлов» (v2) и «граф узлов → объяснение из сегментов»
+ * (v3) поменяли эту функцию, а не всё, что стоит выше.
  */
 export interface Segment {
-  /** Путь к озвучке этого отрезка. */
+  /** Путь к озвучке этого сегмента. */
   readonly src: string;
   readonly words: readonly Word[];
   readonly duration: number;
-  readonly scene: Scene;
+  readonly elements: readonly Element[];
+  readonly slides: readonly Slide[];
+  readonly gates: readonly Gate[];
   readonly stage: StageSize;
 }
 
 /**
- * Достаёт сегмент указанного узла.
+ * Достаёт сегмент по идентификатору.
  *
- * Единственная точка, через которую плеер, предпросмотр и редактор видят
- * озвучку и сцену. Узел передаётся явно, а не берётся по умолчанию: код,
- * который не сказал, какой узел он показывает, почти наверняка ошибается.
+ * Сегмент передаётся явно, а не берётся по умолчанию: код, который не сказал,
+ * какой сегмент он показывает, почти наверняка ошибается.
  */
-export function segmentOf(project: Project, nodeId: string): Segment {
-  // Поиск узла берётся из ядра, а не повторяется здесь: два описания одного
+export function segmentOf(project: Project, segmentId: string): Segment {
+  // Поиск сегмента берётся из ядра, а не повторяется здесь: два описания одного
   // действия расходятся тихо, и первым разойдётся текст ошибки (ADR-004).
-  const node = nodeOf(project, nodeId);
+  const segment = findSegment(project, segmentId);
   return {
-    src: node.audio.src,
-    words: node.audio.words,
-    duration: node.audio.duration,
-    scene: node.scene,
+    src: segment.audio.src,
+    words: segment.audio.words,
+    duration: segment.audio.duration,
+    elements: segment.elements,
+    slides: segment.slides,
+    gates: segment.gates,
     stage: { width: project.meta.stageWidth, height: project.meta.stageHeight },
   };
 }
 
-/** Узел, с которого начинается объяснение. */
-export function entryNodeOf(project: Project): string {
+/** Сегмент, с которого начинается объяснение. */
+export function entrySegmentOf(project: Project): string {
   return project.entry;
 }
 
@@ -76,21 +72,14 @@ export function entryNodeOf(project: Project): string {
 export class ScenePreview {
   readonly #host: HTMLElement;
   #segment: Segment;
-  #nodes: Map<string, HTMLElement>;
-  #timeline: DrivenTimeline;
+  #engine: SlideEngine;
   #position = 0;
   #destroyed = false;
 
   constructor(host: HTMLElement, segment: Segment) {
-    // Тот же выключатель, что зовёт Player. Идемпотентен и глобален:
-    // главного цикла движка не должно существовать ни в одном хосте.
-    disableEngineMainLoop();
     this.#host = host;
     this.#segment = segment;
-    const built = this.#build(segment);
-    this.#nodes = built.nodes;
-    this.#timeline = built.timeline;
-    this.#timeline.renderAt(0);
+    this.#engine = this.#build(segment);
   }
 
   /** Момент, на котором сейчас стоит сцена, секунды. */
@@ -101,11 +90,17 @@ export class ScenePreview {
   /** Узлы сцены по id элемента. Отдаётся только на чтение. */
   get nodes(): ReadonlyMap<string, HTMLElement> {
     this.#assertAlive();
-    return this.#nodes;
+    return this.#engine.nodes;
   }
 
   get segment(): Segment {
     return this.#segment;
+  }
+
+  /** Слайд, который идёт на текущем моменте. */
+  get slide(): Slide {
+    this.#assertAlive();
+    return this.#engine.slideAt(this.#position);
   }
 
   /**
@@ -121,7 +116,7 @@ export class ScenePreview {
       throw new RangeError(`Некорректный момент: ${seconds}`);
     }
     this.#position = seconds;
-    this.#timeline.renderAt(seconds);
+    this.#engine.renderAt(seconds);
   }
 
   /**
@@ -129,35 +124,30 @@ export class ScenePreview {
    *
    * Ради этого applyElement и стала публичной: renderScene начинается
    * с очистки контейнера, а значит при перетаскивании убивала бы узел
-   * под курсором вместе с таймлайном, который на него ссылается.
-   *
-   * Геометрию меняем точечно, но состояние анимаций после этого обязано
-   * вернуться: applyElement стирает всё, что накрутил таймлайн.
+   * под курсором вместе со всем, что на него ссылается.
    */
-  updateElement(element: Element): void {
+  updateElement(element: Element, state: ElementState): void {
     this.#assertAlive();
-    const node = this.#nodes.get(element.id);
+    const node = this.#engine.nodes.get(element.id);
     if (!node) {
       throw new Error(`Элемента «${element.id}» нет на сцене: обновлять нечего`);
     }
-    applyElement(node, element);
-    this.#timeline.renderAt(this.#position);
+    applyElement(node, element, state);
   }
 
   /**
    * Пересобирает сцену под новый сегмент и возвращается на текущий момент.
    *
    * Нужно после структурной правки: добавления или удаления элемента,
-   * правки анимаций, смены озвучки. Для перемещения одного элемента
+   * правки слайдов, смены озвучки. Для перемещения одного элемента
    * это слишком крупный молоток — есть updateElement.
    */
   rebuild(segment: Segment): void {
     this.#assertAlive();
     this.#segment = segment;
-    const built = this.#build(segment);
-    this.#nodes = built.nodes;
-    this.#timeline = built.timeline;
-    this.#timeline.renderAt(this.#position);
+    this.#engine.destroy();
+    this.#engine = this.#build(segment);
+    this.#engine.renderAt(this.#position);
   }
 
   /** Вписывает сцену в размеры контейнера. Масштаб возвращается вызывающему. */
@@ -168,17 +158,18 @@ export class ScenePreview {
 
   destroy(): void {
     if (this.#destroyed) return;
-    this.#host.textContent = '';
-    this.#nodes.clear();
+    this.#engine.destroy();
     this.#destroyed = true;
   }
 
-  #build(segment: Segment): { nodes: Map<string, HTMLElement>; timeline: DrivenTimeline } {
-    const nodes = renderScene(this.#host, segment.scene, segment.stage);
-    const timeline = buildTimeline(segment.scene.cues, nodes, segment.words, {
-      audioDuration: segment.duration,
+  #build(segment: Segment): SlideEngine {
+    return new SlideEngine({
+      host: this.#host,
+      elements: segment.elements,
+      slides: segment.slides,
+      words: segment.words,
+      stage: segment.stage,
     });
-    return { nodes, timeline };
   }
 
   #assertAlive(): void {

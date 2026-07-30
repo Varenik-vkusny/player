@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 3,
+  "meta": {
+    "title": "Морфинг между слайдами",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-morph",
+  "segments": [
+    {
+      "id": "s-morph",
+      "title": "Три слайда: едет, приходит, уходит",
+      "audio": {
+        "src": "/audio/branch-yes.wav",
+        "duration": 3,
+        "words": []
+      },
+      "elements": [
+        { "id": "mover", "type": "shape", "content": "" },
+        { "id": "label", "type": "text", "content": "Еду и расту" },
+        { "id": "leaver", "type": "shape", "content": "" },
+        { "id": "comer", "type": "shape", "content": "" }
+      ],
+      "slides": [
+        {
+          "id": "m-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "states": {
+            "mover": {
+              "x": 160, "y": 160, "width": 320, "height": 200,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#3b82f6", "border-radius": "16px" }
+            },
+            "label": {
+              "x": 160, "y": 420, "width": 640, "height": 80,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": false,
+              "style": { "color": "#f5f7fa", "font-size": "48px", "font-family": "system-ui, sans-serif" }
+            },
+            "leaver": {
+              "x": 1280, "y": 160, "width": 320, "height": 200,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e", "border-radius": "16px" }
+            }
+          }
+        },
+        {
+          "id": "m-2",
+          "at": { "kind": "seconds", "t": 1 },
+          "transition": "morph",
+          "states": {
+            "mover": {
+              "x": 800, "y": 560, "width": 640, "height": 400,
+              "rotation": 12, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#3b82f6", "border-radius": "16px" }
+            },
+            "label": {
+              "x": 160, "y": 420, "width": 640, "height": 80,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "48px", "font-family": "system-ui, sans-serif" }
+            },
+            "leaver": {
+              "x": 1280, "y": 160, "width": 320, "height": 200,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e", "border-radius": "16px" }
+            }
+          }
+        },
+        {
+          "id": "m-3",
+          "at": { "kind": "seconds", "t": 2 },
+          "transition": "morph",
+          "states": {
+            "mover": {
+              "x": 800, "y": 560, "width": 640, "height": 400,
+              "rotation": 12, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#3b82f6", "border-radius": "16px" }
+            },
+            "label": {
+              "x": 160, "y": 420, "width": 640, "height": 80,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "48px", "font-family": "system-ui, sans-serif" }
+            },
+            "comer": {
+              "x": 160, "y": 700, "width": 400, "height": 200,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#10b981", "border-radius": "16px" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

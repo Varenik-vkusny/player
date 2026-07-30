@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 3,
+  "meta": {
+    "title": "Развилка на выходе сегмента",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-ask",
+  "segments": [
+    {
+      "id": "s-ask",
+      "title": "Спрашивает и доигрывает до конца",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "duration": 48.6,
+        "words": []
+      },
+      "elements": [
+        { "id": "bg", "type": "shape", "content": "" },
+        { "id": "title", "type": "text", "content": "Ответ собирается здесь" }
+      ],
+      "slides": [
+        {
+          "id": "a-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "title": {
+              "x": 140, "y": 200, "width": 1640, "height": 160,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "72px",
+                "font-weight": "700",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-ask",
+          "at": { "kind": "seconds", "t": 2 },
+          "config": {
+            "kind": "choice",
+            "prompt": "Куда пойти дальше?",
+            "options": [
+              { "id": "opt-yes", "label": "Направо" },
+              { "id": "opt-no", "label": "Налево" }
+            ],
+            "correctId": "opt-yes"
+          },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "куда"
+        }
+      ],
+      "exit": {
+        "rules": [
+          {
+            "id": "r-yes",
+            "when": { "kind": "equals", "variable": "куда", "value": "opt-yes" },
+            "goto": "s-right"
+          },
+          {
+            "id": "r-no",
+            "when": { "kind": "equals", "variable": "куда", "value": "opt-no" },
+            "goto": "s-left"
+          }
+        ],
+        "default": null
+      }
+    },
+    {
+      "id": "s-right",
+      "title": "Направо",
+      "audio": { "src": "/audio/branch-yes.wav", "duration": 3, "words": [] },
+      "elements": [{ "id": "r-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "r-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "r-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#10b981" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    },
+    {
+      "id": "s-left",
+      "title": "Налево",
+      "audio": { "src": "/audio/branch-no.wav", "duration": 3, "words": [] },
+      "elements": [{ "id": "l-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "l-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "l-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

@@ -1,134 +1,135 @@
+/**
+ * Костяк объяснения: выбор следующего сегмента по накопленным ответам.
+ *
+ * Чистые функции, поэтому проверяются юнитом, а не прогоном звука.
+ */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+
 import {
-  loadProject,
-  nextNodeAfterGate,
-  nextNodeAtEnd,
-  nodeOf,
-  preloadTargetsOfGate,
-  type SegmentNode,
-} from '../src/index.js';
+  conditionHolds,
+  findSegment,
+  nextSegment,
+  preloadTargetsOfExit,
+  type Answers,
+} from '../src/graph.js';
+import type { Project, Segment } from '../src/schema.js';
 
-/** Узел с развилкой по вариантам и сквозным ребром на конец. */
-function branching(): SegmentNode {
-  return {
-    id: 'n1',
-    title: 'Первый',
-    audio: { src: 'a.wav', duration: 10, words: [] },
-    scene: { elements: [], cues: [], gates: [] },
-    edges: [
-      { id: 'e1', to: 'yes', when: { kind: 'option', gateId: 'g1', optionId: 'o1' } },
-      { id: 'e2', to: 'no', when: { kind: 'option', gateId: 'g1', optionId: 'o2' } },
-      { id: 'e3', to: 'tail', when: { kind: 'end' } },
-    ],
-  };
-}
+const segment = (id: string, exit: Segment['exit']): Segment => ({
+  id,
+  title: '',
+  audio: { src: `/${id}.mp3`, duration: 10, words: [] },
+  elements: [],
+  slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+  gates: [],
+  exit,
+});
 
-/** Узел, который ветвится по верно/неверно, а не по варианту. */
-function byVerdict(): SegmentNode {
-  return {
-    ...branching(),
-    edges: [
-      { id: 'e1', to: 'praise', when: { kind: 'correct', gateId: 'g1' } },
-      { id: 'e2', to: 'explain', when: { kind: 'wrong', gateId: 'g1' } },
-    ],
-  };
-}
+const project = (segments: Segment[]): Project => ({
+  schemaVersion: 3,
+  meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
+  entry: segments[0]!.id,
+  segments,
+});
 
-describe('выбор следующего узла', () => {
-  it('вариант ведёт по своему ребру', () => {
-    const node = branching();
-    expect(nextNodeAfterGate(node, 'g1', { optionId: 'o1', correct: true })).toBe('yes');
-    expect(nextNodeAfterGate(node, 'g1', { optionId: 'o2', correct: false })).toBe('no');
+const answered = (variable: string, value: string, correct: boolean): Answers =>
+  ({ [variable]: { value, correct } });
+
+describe('сегмент по идентификатору', () => {
+  it('находится', () => {
+    expect(findSegment(project([segment('a', { rules: [], default: null })]), 'a').id).toBe('a');
   });
 
-  it('верно и неверно ведут по своим рёбрам', () => {
-    const node = byVerdict();
-    expect(nextNodeAfterGate(node, 'g1', { correct: true })).toBe('praise');
-    expect(nextNodeAfterGate(node, 'g1', { correct: false })).toBe('explain');
-  });
-
-  it('гейт без рёбер не уводит из узла', () => {
-    // Не развилка, а обычный гейт: воспроизведение продолжается внутри узла.
-    // Самый частый случай — так устроены все семь старых фикстур.
-    const node = branching();
-    expect(nextNodeAfterGate(node, 'g-другой', { optionId: 'o1', correct: true }))
-      .toBeUndefined();
-  });
-
-  it('ребро «конец узла» не участвует в выборе по ответу', () => {
-    // Иначе сквозное ребро перехватывало бы ответы на любом гейте.
-    const node: SegmentNode = { ...branching(), edges: [branching().edges[2]!] };
-    expect(nextNodeAfterGate(node, 'g1', { optionId: 'o1', correct: true })).toBeUndefined();
-  });
-
-  it('рёбра есть, но ответ ни под одно не подошёл — падает громко', () => {
-    // Схема обязана поймать это при загрузке правилом полного покрытия.
-    // Если дошло до сюда, молчать нельзя: тихий выбор «первого попавшегося»
-    // увёл бы зрителя не туда, и никто бы не узнал.
-    const node = branching();
-    expect(() => nextNodeAfterGate(node, 'g1', { optionId: 'нет-такого', correct: false }))
-      .toThrow(/ни одно не подошло/);
+  it('отсутствующий сегмент бросает там, где спросили', () => {
+    // Не undefined: рассинхрон состояния надо увидеть здесь, а не тремя
+    // кадрами позже в виде пустой сцены.
+    const p = project([segment('a', { rules: [], default: null })]);
+    expect(() => findSegment(p, 'нет')).toThrow(/Сегмента «нет» нет в объяснении/);
   });
 });
 
-describe('конец узла', () => {
-  it('ведёт по ребру end', () => {
-    expect(nextNodeAtEnd(branching())).toBe('tail');
+describe('условие против накопленных ответов', () => {
+  const answers = answered('вопрос', 'yes', true);
+
+  it('равенство значению', () => {
+    expect(conditionHolds({ kind: 'equals', variable: 'вопрос', value: 'yes' }, answers)).toBe(true);
+    expect(conditionHolds({ kind: 'equals', variable: 'вопрос', value: 'no' }, answers)).toBe(false);
   });
 
-  it('узел без ребра end завершает объяснение', () => {
-    expect(nextNodeAtEnd(byVerdict())).toBeUndefined();
+  it('верно и неверно', () => {
+    expect(conditionHolds({ kind: 'correct', variable: 'вопрос' }, answers)).toBe(true);
+    expect(conditionHolds({ kind: 'wrong', variable: 'вопрос' }, answers)).toBe(false);
+    const мимо = answered('вопрос', 'no', false);
+    expect(conditionHolds({ kind: 'wrong', variable: 'вопрос' }, мимо)).toBe(true);
+  });
+
+  it('неотвеченный вопрос не подходит ни под какое условие, но и не роняет', () => {
+    // Зритель мог дойти до выхода, не встретив этот гейт: он стоял в ветке,
+    // которую зритель не видел. Это не ошибка.
+    expect(conditionHolds({ kind: 'correct', variable: 'вопрос' }, {})).toBe(false);
+    expect(conditionHolds({ kind: 'wrong', variable: 'вопрос' }, {})).toBe(false);
+    expect(conditionHolds({ kind: 'equals', variable: 'вопрос', value: 'yes' }, {})).toBe(false);
   });
 });
 
-describe('что греть на гейте', () => {
-  it('цели всех рёбер этого гейта, без повторов', () => {
-    expect(preloadTargetsOfGate(branching(), 'g1').sort()).toEqual(['no', 'yes']);
+describe('следующий сегмент', () => {
+  const развилка = segment('start', {
+    rules: [
+      { id: 'r1', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'да' },
+      { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'no' }, goto: 'нет' },
+    ],
+    default: null,
   });
 
-  it('ребро end не греется на гейте: оно сработает не сейчас', () => {
-    expect(preloadTargetsOfGate(branching(), 'g1')).not.toContain('tail');
+  it('первое подошедшее правило выигрывает', () => {
+    expect(nextSegment(развилка, answered('q', 'yes', true))).toBe('да');
+    expect(nextSegment(развилка, answered('q', 'no', false))).toBe('нет');
   });
 
-  it('у гейта без рёбер греть нечего', () => {
-    expect(preloadTargetsOfGate(branching(), 'g-другой')).toEqual([]);
-  });
-
-  it('две ветки в один узел дают одну цель', () => {
-    const node: SegmentNode = {
-      ...branching(),
-      edges: [
-        { id: 'e1', to: 'same', when: { kind: 'option', gateId: 'g1', optionId: 'o1' } },
-        { id: 'e2', to: 'same', when: { kind: 'option', gateId: 'g1', optionId: 'o2' } },
+  it('порядок правил — это семантика, а не оформление', () => {
+    const оба = segment('s', {
+      rules: [
+        { id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'первый' },
+        { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'второй' },
       ],
-    };
-    expect(preloadTargetsOfGate(node, 'g1')).toEqual(['same']);
+      default: 'запасной',
+    });
+    // Ответ подходит под ОБА правила. Побеждает то, что выше.
+    expect(nextSegment(оба, answered('q', 'yes', true))).toBe('первый');
+  });
+
+  it('ни одно правило не подошло — идём в запасной выход', () => {
+    const с_запасным = segment('s', {
+      rules: [{ id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'верно' }],
+      default: 'дальше',
+    });
+    expect(nextSegment(с_запасным, answered('q', 'no', false))).toBe('дальше');
+  });
+
+  it('сегмент без правил и без запасного выхода — концовка', () => {
+    // Не ошибка: именно такой выход получает сегмент после миграции с версии 2,
+    // то есть это основной случай, а не краевой.
+    expect(nextSegment(segment('s', { rules: [], default: null }), {})).toBeNull();
+  });
+
+  it('неотвеченный вопрос при полном покрытии вариантов даёт концовку, а не тупик', () => {
+    expect(nextSegment(развилка, {})).toBeNull();
   });
 });
 
-describe('поиск узла', () => {
-  const project = loadProject(
-    JSON.parse(readFileSync(join(process.cwd(), 'fixtures', 'projects', 'branching.json'), 'utf8')),
-  );
-
-  it('находит узел по идентификатору', () => {
-    expect(nodeOf(project, 'n-yes').audio.src).toBe('/audio/branch-yes.wav');
+describe('что греть заранее', () => {
+  it('все возможные продолжения без повторов', () => {
+    const s = segment('s', {
+      rules: [
+        { id: 'r1', when: { kind: 'equals', variable: 'q', value: 'a' }, goto: 'один' },
+        { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'b' }, goto: 'два' },
+        { id: 'r3', when: { kind: 'equals', variable: 'q', value: 'c' }, goto: 'один' },
+      ],
+      default: 'два',
+    });
+    expect(preloadTargetsOfExit(s).sort()).toEqual(['два', 'один']);
   });
 
-  it('несуществующий узел — громкая ошибка, а не undefined', () => {
-    expect(() => nodeOf(project, 'нет-такого')).toThrow(/нет-такого/);
-  });
-
-  it('фикстура развилки ходится целиком от стартового узла', () => {
-    const start = nodeOf(project, project.entry);
-    const yes = nextNodeAfterGate(start, 'gate-start', { optionId: 'opt-yes', correct: true });
-    const no = nextNodeAfterGate(start, 'gate-start', { optionId: 'opt-no', correct: false });
-    expect(yes).toBe('n-yes');
-    expect(no).toBe('n-no');
-    // Обе ветки — концовки: объяснение завершается, а не падает.
-    expect(nextNodeAtEnd(nodeOf(project, yes!))).toBeUndefined();
-    expect(nextNodeAtEnd(nodeOf(project, no!))).toBeUndefined();
+  it('у концовки греть нечего', () => {
+    expect(preloadTargetsOfExit(segment('s', { rules: [], default: null }))).toEqual([]);
   });
 });

@@ -7,61 +7,47 @@
  * `editorReducer` (`state/project.ts`) историей `Project`, отвечая на три
  * требования сессии.
  *
- * **1. `select` в историю не пишется.**
- * Секция выделения (`selectedId`) вообще не входит в снимок — история хранит
- * `History<Project>`, а не `History<EditorState>`. `select` меняет только
- * `selectedId` в возвращаемом `HistoryState`, `history` при этом остаётся
- * тем же объектом по ссылке.
+ * **1. `select`/`selectSegment`/`selectSlide` в историю не пишутся.**
+ * Секция вида (`selectedId`, `currentSegmentId`, `currentSlideId`) вообще
+ * не входит в снимок — история хранит `History<Project>`, а не
+ * `History<EditorState>`. Переключения меняют только вид в возвращаемом
+ * `HistoryState`, `history` при этом остаётся тем же объектом по ссылке.
  *
  * **2. Жест = один шаг, коммит-точка явная.**
  * Перетаскивание элемента (`StageView`) и перетаскивание метки (`MarksLane`)
- * шлют десятки `replaceElement`/`moveMark` за один жест; набор числа
+ * шлют десятки `setElementState`/`moveMark` за один жест; набор числа
  * в `NumberField` шлёт по вызову на каждую распознанную цифру. Склеивать их
  * по признаку «подряд идущие правки одного элемента» отвергнуто заданием
  * сессии — это молча объединило бы две осознанные правки одного поля.
  *
- * Вместо угаданной коалесценции — явный флаг у действия. `replaceElement`
- * и `moveMark` несут необязательное поле `commit`: `commit: false` значит
- * «это ОДНО из событий уже идущего жеста», обычный вызов (поле отсутствует)
- * значит «это самостоятельный шаг». Жест раскрывается так:
+ * Вместо угаданной коалесценции — явный флаг у действия. `replaceElement`,
+ * `setElementState` и `moveMark` несут необязательное поле `commit`:
+ * `commit: false` значит «это ОДНО из событий уже идущего жеста», обычный
+ * вызов (поле отсутствует) значит «это самостоятельный шаг». Жест
+ * раскрывается так:
  *
  * - первое событие жеста (`commit: false`, `gestureOpen` ещё false) кладёт
  *   в `past` состояние ДО жеста через настоящий `push` из history.ts —
  *   это и есть коммит-точка «начало»;
  * - каждое следующее событие того же жеста заменяет только верхушку
  *   (`present`), не трогая `past`/`future` — история не растёт;
- * - явное действие `{ type: 'commit' }` жест завершает. Оно ничего не
- *   меняет в данных (последнее событие уже записало финальное значение
- *   в `present`) — только снимает флаг «жест идёт», и тем самым следующее
- *   `commit: false`-событие начнёт УЖЕ НОВЫЙ жест собственным `push`, а не
- *   продолжит старый.
- *
- * Компоненты дают ровно эти два конца: `StageView` знает `pointerup`
- * (`onCommitHistory`), `MarksLane` — свой `pointerup`, `NumberField` уже
- * коммитит на blur через паттерн черновика — туда и вешается `commit`.
- * Действия без поля `commit` (клавиатурный сдвиг стрелками, любая правка вне
- * жеста) остаются самостоятельными шагами — по одному нажатию клавиши,
- * без скрытого объединения серии, тем же явным правилом.
+ * - явное действие `{ type: 'commit' }` жест завершает.
  *
  * **3. Отмена не двигает время.**
- * Эта задача уже решена в `StageView`: эффект пересборки сцены запускается
- * при смене ссылки на `elements`, `cues`, `gates` или `words` — а отмена
- * ВСЕГДА меняет хотя бы одну из этих ссылок (иначе отменять было бы нечего,
- * `push`/`undo` не создают шаг на no-op). Эффект уже вызывает
- * `preview.seek(positionRef.current)` при пересборке — тем самым отмена
- * автоматически проходит через тот же путь, что чинил отмотку при добавлении
- * метки в прошлой сессии, без отдельного кода здесь. Единственное, что этот
+ * Эта задача решена в StageView: эффект пересборки сцены запускается при
+ * смене ссылки на `elements`/`slides`/`gates`/`words` текущего сегмента —
+ * а отмена ВСЕГДА меняет хотя бы одну из этих ссылок (иначе отменять было бы
+ * нечего, `push`/`undo` не создают шаг на no-op). Единственное, что этот
  * модуль обязан сделать сам, — не трогать `positionSeconds` вообще (он им
  * не владеет) и не пересоздавать `Project` глубже, чем меняется настоящая
- * правка, чтобы ссылочная целостность (на которой держится решение
- * StageView, пересобирать сцену или нет) не пострадала при откате.
+ * правка, чтобы ссылочная целостность не пострадала при откате.
  *
- * Выделение элемента после отмены/повтора проверяется на существование:
- * если выделенного элемента в восстановленном проекте нет, выделение
- * снимается — само `select` в снимок не входит, но раз проект откатился,
- * старое значение `selectedId` может ссылаться в никуда.
+ * Выделение элемента и текущий слайд после отмены/повтора проверяются на
+ * существование: если выделенного элемента или текущего слайда
+ * в восстановленном проекте нет, они чинятся так же, как чинил бы их
+ * обычный редьюсер (снятие выделения, возврат на первый слайд сегмента).
  */
-import type { Project } from '@player/core';
+import type { Project, Segment } from '@player/core';
 
 import { canRedo, canUndo, createHistory, push, redo, undo, type History } from './history.js';
 import { editorReducer, hasElement, type EditorAction, type EditorState } from './project.js';
@@ -80,11 +66,13 @@ export interface HistoryState {
   readonly history: History<Project>;
   readonly selectedId: string | undefined;
   /**
-   * Узел, который автор сейчас правит — состояние вида, как и `selectedId`:
-   * снимок истории его не несёт, а после undo/redo его чинит `afterNav`
-   * так же, как чинит `selectedId`.
+   * Сегмент, который автор сейчас правит — состояние вида, как и
+   * `selectedId`: снимок истории его не несёт, а после undo/redo его чинит
+   * `afterNav` так же, как чинит `selectedId`.
    */
-  readonly currentNodeId: string;
+  readonly currentSegmentId: string;
+  /** Слайд текущего сегмента — тоже вид, не данные. См. `currentSegmentId`. */
+  readonly currentSlideId: string;
   /**
    * Идёт ли сейчас жест (перетаскивание, набор в числовом поле). Часть
    * состояния, а не локальная переменная снаружи: редьюсер обязан быть
@@ -94,11 +82,24 @@ export interface HistoryState {
   readonly gestureOpen: boolean;
 }
 
+function firstSlideId(segment: Segment): string {
+  const first = segment.slides[0];
+  if (!first) throw new Error(`В сегменте «${segment.id}» нет ни одного слайда`);
+  return first.id;
+}
+
+function requireSegment(project: Project, segmentId: string): Segment {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) throw new Error(`Текущего сегмента «${segmentId}» нет в проекте`);
+  return segment;
+}
+
 export function initialHistoryState(project: Project): HistoryState {
   return {
     history: createHistory(project),
     selectedId: undefined,
-    currentNodeId: project.entry,
+    currentSegmentId: project.entry,
+    currentSlideId: firstSlideId(requireSegment(project, project.entry)),
     gestureOpen: false,
   };
 }
@@ -106,7 +107,7 @@ export function initialHistoryState(project: Project): HistoryState {
 /** Действия, которые МОГУТ дробить один жест на десятки вызовов. */
 function isLiveEvent(action: EditorAction): boolean {
   return (
-    (action.type === 'replaceElement' || action.type === 'moveMark') &&
+    (action.type === 'replaceElement' || action.type === 'setElementState' || action.type === 'moveMark') &&
     (action as { commit?: boolean }).commit === false
   );
 }
@@ -124,25 +125,34 @@ function replacePresent(history: History<Project>, next: Project): History<Proje
 }
 
 /**
- * Общий хвост undo/redo: чинит текущий узел и выделение, закрывает случайно
- * оставшийся жест.
+ * Общий хвост undo/redo: чинит текущий сегмент, текущий слайд и выделение,
+ * закрывает случайно оставшийся жест.
  *
- * Undo/redo может откатить сам факт существования текущего узла (например,
- * отменить `addNode`) — тогда `currentNodeId` возвращается на стартовый узел
- * проекта, как и предписано `removeNode` в редьюсере при удалении текущего
- * узла. Проверку «выжило ли выделение» делаем уже для ПОЧИНЕННОГО узла —
- * иначе можно было бы оставить выделение элемента из сцены узла, которого
- * в починенном currentNodeId уже нет.
+ * Undo/redo может откатить сам факт существования текущего сегмента
+ * (например, отменить `addSegment`) — тогда `currentSegmentId` возвращается
+ * на стартовый сегмент проекта, как и предписано `removeSegment` в редьюсере
+ * при удалении текущего сегмента. Слайд чинится тем же способом на уровне
+ * ниже: если `currentSlideId` не находится среди слайдов ПОЧИНЕННОГО
+ * сегмента, он возвращается на первый слайд этого сегмента.
  */
 function afterNav(state: HistoryState, history: History<Project>): HistoryState {
   if (history === state.history) return state; // граница — undo()/redo() уже no-op по ссылке
-  const nodeExists = history.present.nodes.some((node) => node.id === state.currentNodeId);
-  const currentNodeId = nodeExists ? state.currentNodeId : history.present.entry;
+
+  const segmentExists = history.present.segments.some((segment) => segment.id === state.currentSegmentId);
+  const segment = segmentExists
+    ? requireSegment(history.present, state.currentSegmentId)
+    : requireSegment(history.present, history.present.entry);
+  const currentSegmentId = segment.id;
+
+  const slideExists = segment.slides.some((slide) => slide.id === state.currentSlideId);
+  const currentSlideId = slideExists ? state.currentSlideId : firstSlideId(segment);
+
   const selectedId =
-    state.selectedId !== undefined && hasElement(history.present, currentNodeId, state.selectedId)
+    state.selectedId !== undefined && hasElement(history.present, currentSegmentId, state.selectedId)
       ? state.selectedId
       : undefined;
-  return { history, currentNodeId, selectedId, gestureOpen: false };
+
+  return { history, currentSegmentId, currentSlideId, selectedId, gestureOpen: false };
 }
 
 export function historyReducer(state: HistoryState, action: HistoryEditorAction): HistoryState {
@@ -157,12 +167,13 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   }
 
   // Дальше — обычный EditorAction. Прогоняем через уже проверенный
-  // editorReducer, подставив ЖИВОЙ project (верхушку истории) и текущее
-  // выделение — эта пара и есть EditorState, которым он оперирует.
+  // editorReducer, подставив ЖИВОЙ project (верхушку истории) и текущий вид —
+  // эта тройка и есть EditorState, которым он оперирует.
   const before: EditorState = {
     project: state.history.present,
     selectedId: state.selectedId,
-    currentNodeId: state.currentNodeId,
+    currentSegmentId: state.currentSegmentId,
+    currentSlideId: state.currentSlideId,
   };
   const after = editorReducer(before, action);
 
@@ -172,14 +183,24 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     return after.selectedId === state.selectedId ? state : { ...state, selectedId: after.selectedId };
   }
 
-  if (action.type === 'selectNode') {
-    // То же правило №1, только для переключения узла: это тоже вид,
+  if (action.type === 'selectSegment' || action.type === 'selectSlide') {
+    // То же правило №1, только для переключения вида: это тоже вид,
     // а не данные. Без отдельной ветки generic-путь ниже (после этой)
-    // сравнил бы after.project === before.project (верно, project не менялся)
-    // и перенёс бы только selectedId — новый currentNodeId потерялся бы.
-    return after.currentNodeId === state.currentNodeId && after.selectedId === state.selectedId
+    // сравнил бы after.project === before.project (верно, project
+    // не менялся) и перенёс бы только selectedId — смена сегмента/слайда
+    // потерялась бы.
+    const unchanged =
+      after.currentSegmentId === state.currentSegmentId &&
+      after.currentSlideId === state.currentSlideId &&
+      after.selectedId === state.selectedId;
+    return unchanged
       ? state
-      : { ...state, currentNodeId: after.currentNodeId, selectedId: after.selectedId };
+      : {
+          ...state,
+          currentSegmentId: after.currentSegmentId,
+          currentSlideId: after.currentSlideId,
+          selectedId: after.selectedId,
+        };
   }
 
   if (after.project === before.project) {
@@ -193,9 +214,16 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   const history =
     state.gestureOpen && live ? replacePresent(state.history, after.project) : push(state.history, after.project);
 
-  // currentNodeId переносим из after: addNode/removeNode могли его сменить,
-  // остальные действия оставляют тем же значением, что и before.
-  return { history, selectedId: after.selectedId, currentNodeId: after.currentNodeId, gestureOpen: live };
+  // currentSegmentId/currentSlideId переносим из after: addSegment/
+  // removeSegment/addSlide/removeSlide могли их сменить, остальные действия
+  // оставляют теми же значениями, что и before.
+  return {
+    history,
+    selectedId: after.selectedId,
+    currentSegmentId: after.currentSegmentId,
+    currentSlideId: after.currentSlideId,
+    gestureOpen: live,
+  };
 }
 
 /** Для кнопок «Отменить»/«Повторить» и для тестов — тонкие реэкспорты. */

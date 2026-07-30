@@ -41,6 +41,11 @@ export function ElementList({ rows, selectedId, onSelect }: ElementListProps): R
                 <span className="ed-element-type">{row.type}</span>
                 <span className="ed-element-id">{row.id}</span>
                 <span className="ed-element-summary">{row.summary}</span>
+                {/* Элемент существует в сегменте, но на этом слайде у него ещё
+                    нет состояния — появится только на более позднем слайде.
+                    Не показать это значило бы дать автору выделить элемент
+                    и упереться в пустую панель свойств без объяснения. */}
+                {!row.onSlide ? <span className="ed-element-not-on-slide">не на слайде</span> : null}
               </button>
             </li>
           ))}

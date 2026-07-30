@@ -54,8 +54,8 @@ test.describe('панель гейта: выбор варианта', () => {
 
     const ids = await page.evaluate(
       () =>
-        (window as unknown as { __project: { nodes: { scene: { elements: { id: string }[] } }[] } })
-          .__project.nodes[0]!.scene.elements.map((element) => element.id),
+        (window as unknown as { __project: { segments: { elements: { id: string }[] }[] } })
+          .__project.segments[0]!.elements.map((element) => element.id),
     );
     expect(ids).toEqual(['text-1', 'text-2']);
 
@@ -79,8 +79,8 @@ test.describe('панель гейта: выбор варианта', () => {
 
     const gate = await page.evaluate(
       () =>
-        (window as unknown as { __project: { nodes: { scene: { gates: unknown[] } }[] } })
-          .__project.nodes[0]!.scene.gates[0],
+        (window as unknown as { __project: { segments: { gates: unknown[] }[] } })
+          .__project.segments[0]!.gates[0],
     );
     expect(gate).toMatchObject({
       config: {
@@ -137,8 +137,8 @@ test.describe('панель гейта: ввод ответа', () => {
 
     const config = await page.evaluate(
       () =>
-        (window as unknown as { __project: { nodes: { scene: { gates: { config: unknown }[] } }[] } })
-          .__project.nodes[0]!.scene.gates[0]!.config,
+        (window as unknown as { __project: { segments: { gates: { config: unknown }[] }[] } })
+          .__project.segments[0]!.gates[0]!.config,
     );
     expect(config).toMatchObject({ kind: 'input', accept: ['аудио'], caseSensitive: false });
 
@@ -161,95 +161,13 @@ test.describe('панель гейта: ввод ответа', () => {
   });
 });
 
-test.describe('панель анимации', () => {
-  test('анимация с правленым свойством видна на своей секунде и не видна до неё — проверка покадровая', async ({
-    page,
-    context,
-  }) => {
-    test.setTimeout(60_000);
-    await openEditor(page, 'empty');
-    await waitTransportReady(page);
 
-    await page.getByTestId('insert-shape').click(); // shape-1, авто-выделен
-
-    await page.evaluate(() => {
-      (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(5);
-    });
-    // Ждём, пока и настоящий транспорт, и React-состояние догонят перемотку —
-    // иначе кнопка добавит анимацию на секунде, где ещё стоял редактор
-    // до вызова seek.
-    await expect(page.getByTestId('track-clock')).toContainText('00:05', { timeout: 5_000 });
-
-    await page.getByRole('button', { name: /анимация/ }).click();
-    await expect(page.getByTestId('mark-panel')).toBeVisible();
-
-    // Правим свойство, изначально заданное срезом 1 (opacity 0 → 1, 400 мс),
-    // на собственную длительность — тест обязан ловить и то, что правка
-    // панели реально попала в проект, а не только исходные значения кнопки.
-    await setNumberField(page, 'Длительность, мс', 1000);
-
-    const savedCue = await page.evaluate(
-      () =>
-        (window as unknown as {
-          __project: {
-            nodes: { scene: { cues: { animation: { duration: number; property: string } }[] } }[];
-          };
-        }).__project.nodes[0]!.scene.cues[0]!,
-    );
-    expect(savedCue.animation.duration).toBe(1000);
-    expect(savedCue.animation.property).toBe('opacity');
-
-    const [player] = await Promise.all([
-      context.waitForEvent('page'),
-      page.getByRole('button', { name: 'Открыть в плеере' }).click(),
-    ]);
-    await player.waitForLoadState('load');
-    await expect(player.locator('#state')).toHaveText('ready', { timeout: 30_000 });
-
-    // До начала анимации (t=0) элемент обязан быть невидим — ровно то, что
-    // чинит ADR-009 (начальное состояние выставляется явно).
-    const initialOpacity = await player.evaluate(
-      () => getComputedStyle(document.querySelector('[data-id="shape-1"]')!).opacity,
-    );
-    expect(Number(initialOpacity)).toBeLessThan(0.01);
-
-    await player.getByRole('button', { name: 'Играть' }).click();
-
-    // Покадровая проверка через настоящее воспроизведение — время движется
-    // вперёд маленькими реальными шагами, а не скачком, которым anime.js
-    // форсирует рендер и прячет дефект (ADR-009).
-    const samples: { t: number; opacity: number }[] = [];
-    const deadline = Date.now() + 45_000;
-    while (Date.now() < deadline) {
-      const sample = await player.evaluate(() => {
-        const p = (window as unknown as { __player: { positionSeconds: number } }).__player;
-        const node = document.querySelector('[data-id="shape-1"]');
-        return {
-          t: p.positionSeconds,
-          opacity: node ? Number(getComputedStyle(node as Element).opacity) : NaN,
-        };
-      });
-      samples.push(sample);
-      if (sample.t >= 7) break;
-      await player.waitForTimeout(100);
-    }
-
-    const before = samples.filter((s) => s.t < 4.7);
-    const mid = samples.filter((s) => s.t >= 5.1 && s.t < 5.9);
-    const after = samples.filter((s) => s.t >= 6.3);
-
-    expect(before.length, 'нет сэмплов до начала анимации — тест ничего не проверяет').toBeGreaterThan(0);
-    expect(before.every((s) => s.opacity < 0.01), 'элемент виден ДО своей секунды').toBe(true);
-
-    expect(mid.length, 'нет сэмплов внутри окна анимации').toBeGreaterThan(0);
-    expect(
-      mid.some((s) => s.opacity > 0.05 && s.opacity < 0.95),
-      'не найдено промежуточное значение прозрачности — анимация не идёт покадрово',
-    ).toBe(true);
-
-    expect(after.length, 'нет сэмплов после конца анимации').toBeGreaterThan(0);
-    expect(after.every((s) => s.opacity > 0.99), 'элемент не стал полностью видимым на своей секунде').toBe(
-      true,
-    );
-  });
-});
+/*
+ * Блок «панель анимации» удалён вместе с предметом.
+ *
+ * Он проверял правку кью — «свойство, from, to, длительность, плавность».
+ * В схеме v3 кью не существует: анимация выражается слайдами, а длительность
+ * перехода — свойство слайда. Адаптировать было нечего, поэтому тест удалён,
+ * а не переписан. Морфинг между слайдами получит собственную страховку
+ * в той сессии, где появится (ADR-015).
+ */

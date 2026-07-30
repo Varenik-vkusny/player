@@ -1,110 +1,107 @@
 /**
- * Запросы к графу сегментов. Чистые функции: ни DOM, ни состояния, ни времени.
+ * Запросы к хребту объяснения. Чистые функции: ни DOM, ни состояния, ни времени.
  *
- * Живут в ядре, а не внутри класса плеера, потому что выбор следующего узла —
+ * Живут в ядре, а не внутри класса плеера, потому что выбор следующего сегмента —
  * правило продукта. Правило продукта обязано проверяться юнит-тестом,
  * а не прогоном звука в браузере: в S3 логика паузы была верна и прошла бы
  * любой юнит-тест, а дефект сидел в звуке — здесь ровно наоборот, и смешивать
  * эти два слоя значит не иметь возможности проверить ни один.
+ *
+ * **Гейта здесь больше нет.** В версии схемы 2 выбор следующего узла делался
+ * по ответу на гейте, прямо из середины дорожки. В версии 3 гейт только
+ * записывает ответ в переменную, а решение принимает выход сегмента — и принять
+ * его больше негде, потому что `Exit` есть поле сегмента (ADR-015).
  */
-import type { Project, SegmentNode } from './schema.js';
+import type { Condition, Project, Segment } from './schema.js';
 
 /**
- * Исход разобранной попытки на гейте — всё, что нужно для выбора ребра.
+ * Ответ зрителя на одном гейте.
  *
- * Не сам `GateAttempt` из плеера: ядро про плеер не знает (инвариант №6),
- * а для выбора ребра из попытки важны ровно два поля.
+ * Не `GateAttempt` из плеера: ядро про плеер не знает (инвариант №6),
+ * а для выбора ветки от ответа нужны ровно два поля.
  */
-export interface GateOutcome {
+export interface Answer {
   /**
-   * Выбранный вариант. Есть только у гейта с выбором.
-   *
-   * `string | undefined` явно, а не просто необязательное поле: при
-   * `exactOptionalPropertyTypes` это разные типы, а «варианта нет» —
-   * настоящее состояние гейтов с вводом и с кнопкой «дальше», а не
-   * пропущенное поле.
+   * Что зритель ответил. Для гейта с выбором — `id` варианта, для ввода —
+   * введённая строка, для кнопки «дальше» — пустая строка.
    */
-  readonly optionId?: string | undefined;
+  readonly value: string;
   readonly correct: boolean;
 }
 
 /**
- * Узел по идентификатору.
+ * Накопленные ответы зрителя: имя переменной → ответ.
  *
- * Бросает, а не отдаёт `undefined`: узел, которого нет, — это рассинхрон
+ * Живут на всё объяснение и переживают переходы между сегментами, поэтому выход
+ * сегмента вправе опереться на ответ, данный раньше. Это состояние зрителя,
+ * а не часть файла проекта, — поэтому тип, а не Zod-схема.
+ */
+export type Answers = Readonly<Record<string, Answer | undefined>>;
+
+/**
+ * Сегмент по идентификатору.
+ *
+ * Бросает, а не отдаёт `undefined`: сегмента, которого нет, — это рассинхрон
  * состояния, и увидеть его надо там, где спросили, а не тремя кадрами позже
  * в виде пустой сцены.
  */
-export function nodeOf(project: Project, nodeId: string): SegmentNode {
-  const node = project.nodes.find((candidate) => candidate.id === nodeId);
-  if (!node) {
-    throw new Error(`Узла «${nodeId}» нет в проекте`);
+export function findSegment(project: Project, segmentId: string): Segment {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) {
+    throw new Error(`Сегмента «${segmentId}» нет в объяснении`);
   }
-  return node;
+  return segment;
 }
 
 /**
- * Рёбра, привязанные к этому гейту.
+ * Подошло ли условие под накопленные ответы.
  *
- * Сквозное ребро `end` сюда не попадает намеренно: оно срабатывает не по
- * ответу, а по тому, что узел доиграл. Иначе оно перехватывало бы ответы
- * на любом гейте узла.
+ * Переменной может не быть вовсе: зритель дошёл до выхода, не ответив
+ * на гейт (гейт стоял в ветке, которую он не видел, или сегменту вообще
+ * не задавали вопросов). Это не ошибка — условие просто не подошло.
  */
-function edgesOfGate(node: SegmentNode, gateId: string) {
-  return node.edges.filter(
-    (edge) => edge.when.kind !== 'end' && edge.when.gateId === gateId,
-  );
-}
+export function conditionHolds(condition: Condition, answers: Answers): boolean {
+  const answer = answers[condition.variable];
+  if (!answer) return false;
 
-/**
- * Куда вести после ответа на гейте.
- *
- * `undefined` означает «остаться в узле»: у гейта нет рёбер, то есть это
- * обычный гейт, а не развилка. Случай законный и самый частый — так устроены
- * все семь фикстур, доставшихся от версии схемы 1.
- */
-export function nextNodeAfterGate(
-  node: SegmentNode,
-  gateId: string,
-  outcome: GateOutcome,
-): string | undefined {
-  const edges = edgesOfGate(node, gateId);
-  if (edges.length === 0) return undefined;
-
-  for (const edge of edges) {
-    const when = edge.when;
-    if (when.kind === 'option' && when.optionId === outcome.optionId) return edge.to;
-    if (when.kind === 'correct' && outcome.correct) return edge.to;
-    if (when.kind === 'wrong' && !outcome.correct) return edge.to;
+  switch (condition.kind) {
+    case 'equals': return answer.value === condition.value;
+    case 'correct': return answer.correct;
+    case 'wrong': return !answer.correct;
+    default: return false;
   }
-
-  // Сюда доехать нельзя: правило полного покрытия в схеме требует, чтобы
-  // рёбра гейта покрывали все его исходы. Если доехали — молчать нельзя.
-  // Тихий выбор «первого попавшегося» увёл бы зрителя не туда, и об этом
-  // не узнал бы никто, включая автора объяснения.
-  throw new Error(
-    `Гейт «${gateId}»: рёбра есть, но ни одно не подошло под ответ. `
-    + 'Схема обязана была поймать это при загрузке правилом полного покрытия.',
-  );
 }
 
 /**
- * Куда вести, когда узел доиграл.
+ * Какой сегмент следующий, когда этот доиграл.
  *
- * `undefined` — объяснение закончилось. Это концовка, а не ошибка: именно
- * такой узел производит миграция с версии 1.
+ * Правила проверяются по порядку, первое подошедшее выигрывает: порядок
+ * задаёт автор, и «первое подошедшее» — единственная семантика, которую
+ * он может держать в голове, читая список сверху вниз.
+ *
+ * `null` — объяснение закончился. Это концовка, а не ошибка: именно такой выход
+ * получает сегмент после миграции с версии 2, то есть это основной случай.
  */
-export function nextNodeAtEnd(node: SegmentNode): string | undefined {
-  return node.edges.find((edge) => edge.when.kind === 'end')?.to;
+export function nextSegment(segment: Segment, answers: Answers): string | null {
+  for (const rule of segment.exit.rules) {
+    if (conditionHolds(rule.when, answers)) return rule.goto;
+  }
+  return segment.exit.default;
 }
 
 /**
- * Какие дорожки греть, когда открылся этот гейт.
+ * Какие дорожки греть, пока играет этот сегмент.
  *
  * Все возможные продолжения сразу, потому что заранее неизвестно, что ответит
- * зритель, а время на гейте стоит — окно бесплатное. Без повторов: две ветки
- * в один узел не должны декодировать его дважды.
+ * зритель. Без повторов: две ветки в один сегмент не должны декодировать его
+ * дважды.
+ *
+ * Гейт из прогрева ушёл вместе с ветвлением по гейту. Окно теперь больше,
+ * а не меньше: сегмент линеен и его длительность известна точно, поэтому греть
+ * можно с самого начала, а не с момента, когда открылся вопрос.
  */
-export function preloadTargetsOfGate(node: SegmentNode, gateId: string): string[] {
-  return [...new Set(edgesOfGate(node, gateId).map((edge) => edge.to))];
+export function preloadTargetsOfExit(segment: Segment): string[] {
+  const targets = segment.exit.rules.map((rule) => rule.goto);
+  if (segment.exit.default !== null) targets.push(segment.exit.default);
+  return [...new Set(targets)];
 }

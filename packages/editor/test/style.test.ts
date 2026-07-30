@@ -78,7 +78,7 @@ describe('STYLE_FIELDS: утверждённый набор восьми пол�
   });
 
   it('background и border-radius применимы ко всем типам, включая text', () => {
-    for (const type of ['text', 'shape', 'image', 'group'] as const) {
+    for (const type of ['text', 'shape', 'image'] as const) {
       const keys = styleFieldsFor(type).map((field) => field.key);
       expect(keys).toContain('background');
       expect(keys).toContain('border-radius');
@@ -317,90 +317,63 @@ describe('demo.json: обход каждого элемента и каждог�
   });
 });
 
-describe('интеграция со схемой: результат подставляется в элемент и проходит loadProject', () => {
-  function baseProject(): Project {
+describe('интеграция со схемой: результат подставляется в состояние слайда и проходит loadProject', () => {
+  function baseState(): { x: number; y: number; width: number; height: number; rotation: number; zIndex: number; opacity: number; visible: boolean; style: ElementStyle } {
+    return { x: 0, y: 0, width: 400, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {} };
+  }
+
+  function baseProject(headlineStyle: ElementStyle, panelStyle: ElementStyle): Project {
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
       meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080 },
-      entry: 'node-1',
-      nodes: [
+      entry: 'seg-1',
+      segments: [
         {
-          id: 'node-1',
+          id: 'seg-1',
           title: '',
           audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-          scene: {
-            elements: [
-              {
-                id: 'headline',
-                type: 'text',
-                x: 0,
-                y: 0,
-                width: 400,
-                height: 100,
-                rotation: 0,
-                zIndex: 0,
-                style: {},
-                content: 'Заголовок',
+          elements: [
+            { id: 'headline', type: 'text', content: 'Заголовок' },
+            { id: 'panel', type: 'shape', content: '' },
+          ],
+          slides: [
+            {
+              id: 'slide-1',
+              at: { kind: 'seconds', t: 0 },
+              transition: 'morph',
+              states: {
+                headline: { ...baseState(), style: headlineStyle },
+                panel: { ...baseState(), width: 200, height: 200, style: panelStyle },
               },
-              {
-                id: 'panel',
-                type: 'shape',
-                x: 0,
-                y: 0,
-                width: 200,
-                height: 200,
-                rotation: 0,
-                zIndex: 0,
-                style: {},
-                content: '',
-              },
-            ],
-            cues: [],
-            gates: [],
-          },
-          edges: [],
+            },
+          ],
+          gates: [],
+          exit: { rules: [], default: null },
         },
       ],
     };
   }
 
   it('стиль, собранный через setStyleValue для всех применимых полей text и shape, проходит валидацию схемы', () => {
-    const project = baseProject();
-    const [headline, panel] = project.nodes[0]!.scene.elements;
-
-    let headlineStyle: ElementStyle = headline!.style;
+    let headlineStyle: ElementStyle = {};
     for (const field of styleFieldsFor('text')) {
       headlineStyle = setStyleValue(headlineStyle, field.key, SAMPLES[field.key]);
     }
 
-    let panelStyle: ElementStyle = panel!.style;
+    let panelStyle: ElementStyle = {};
     for (const field of styleFieldsFor('shape')) {
       panelStyle = setStyleValue(panelStyle, field.key, SAMPLES[field.key]);
     }
 
-    const next: Project = {
-      ...project,
-      nodes: [
-        {
-          ...project.nodes[0]!,
-          scene: {
-            ...project.nodes[0]!.scene,
-            elements: [
-              { ...headline!, style: headlineStyle },
-              { ...panel!, style: panelStyle },
-            ],
-          },
-        },
-      ],
-    };
-
-    const loaded = loadProject(next);
-    expect(loaded.nodes[0]!.scene.elements[0]!.style).toEqual(headlineStyle);
-    expect(loaded.nodes[0]!.scene.elements[1]!.style).toEqual(panelStyle);
+    const project = baseProject(headlineStyle, panelStyle);
+    const loaded = loadProject(project);
+    const states = loaded.segments[0]!.slides[0]!.states;
+    expect(states.headline!.style).toEqual(headlineStyle);
+    expect(states.panel!.style).toEqual(panelStyle);
 
     // И обратно: то, что реально загрузила схема, читается этим же модулем без ошибок.
     for (const field of styleFieldsFor('text')) {
-      expect(getStyleValue(loaded.nodes[0]!.scene.elements[0]!.style, field.key)).toEqual(parsed(SAMPLES[field.key]));
+      expect(getStyleValue(states.headline!.style, field.key)).toEqual(parsed(SAMPLES[field.key]));
     }
   });
 });

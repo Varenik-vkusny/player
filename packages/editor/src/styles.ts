@@ -167,6 +167,7 @@ export const EDITOR_STYLES = `
    в его отсутствие. Список получает flex: 1 1 auto и забирает весь остаток
    высоты независимо от того, сколько соседей сейчас отрисовано. */
 .ed-elements-panel {
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -206,12 +207,80 @@ export const EDITOR_STYLES = `
 }
 
 .ed-elements {
-  flex: 1 1 auto;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  min-height: 0;
 }
+
+/*
+ * Панель слайдов и панель сегментов.
+ *
+ * Три подпанели — элементы, слайды, части — делят одну боковую колонку,
+ * и делить её ВЫСОТОЙ нельзя. Замерено дважды:
+ *
+ *   у demo.json пятнадцать слайдов дают 823 px и выдавливают список
+ *   элементов в НОЛЬ (семь строк честно отрисованы в DOM, но не видны);
+ *
+ *   у branching.json список частей получает высоту 0 при содержимом 70 px,
+ *   кнопки вываливаются за него, и клик по «Концовка: да» попадает
+ *   в «Удалить часть», лежащую ниже. Playwright это видит как
+ *   «section intercepts pointer events», а автор — как кнопку,
+ *   которая делает не то.
+ *
+ * Поэтому колонка прокручивается ЦЕЛИКОМ, а подпанели растут по содержимому
+ * со своим потолком у списков. Ни одна из них не сжимает соседей.
+ */
+.ed-slide-panel,
+.ed-segment-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.ed-slide-list,
+.ed-segment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  /* Потолок, а не доля: список не отбирает высоту у соседей и не схлопывается. */
+  max-height: 180px;
+  flex: 0 0 auto;
+}
+
+.ed-slide-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: #1b2430;
+  color: #cfd8e3;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ed-slide-row[aria-pressed='true'] {
+  border-color: #e4572e;
+  background: #24303f;
+  color: #f5f7fa;
+}
+
+.ed-slide-time {
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+}
+
+.ed-slide-transition { color: #7d8fa5; font-size: 11px; }
 
 .ed-elements-empty { margin: 0; color: #7d8fa5; font-size: 12px; }
 
@@ -222,8 +291,9 @@ export const EDITOR_STYLES = `
   display: flex;
   flex-direction: column;
   gap: 2px;
-  overflow: auto;
-  min-height: 0;
+  overflow-y: auto;
+  max-height: 180px;
+  flex: 0 0 auto;
 }
 
 /* Настоящая кнопка, а не строка со своим обработчиком клика: Tab обходит

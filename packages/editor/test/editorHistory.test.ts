@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Element, Gate, Project } from '@player/core';
+import type { Element, ElementState, Gate, Project } from '@player/core';
 
 import { HISTORY_LIMIT } from '../src/state/history.js';
 import {
@@ -13,44 +13,42 @@ import {
 
 /**
  * Три правила задания сессии, каждое — набор тестов ниже:
- * 1. `select` не создаёт шаг истории.
+ * 1. `select`/`selectSegment`/`selectSlide` не создают шаг истории.
  * 2. Жест (`commit: false` ... `commit`) даёт РОВНО один шаг, а не по шагу
  *    на каждое промежуточное событие.
- * 3. Отмена/повтор не трогают ничего, кроме `history` и выделения — время
+ * 3. Отмена/повтор не трогают ничего, кроме `history` и вида — время
  *    сцены им не принадлежит вовсе (см. комментарий модуля).
  */
 
-function element(id: string, x = 0): Element {
-  return {
-    id,
-    type: 'shape',
-    x,
-    y: 0,
-    width: 100,
-    height: 100,
-    rotation: 0,
-    zIndex: 0,
-    style: {},
-    content: '',
-  };
+function element(id: string): Element {
+  return { id, type: 'shape', content: '' };
+}
+
+function elementState(overrides: Partial<ElementState> = {}): ElementState {
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
 }
 
 function baseProject(): Project {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-    entry: 'node-1',
-    nodes: [
+    entry: 'seg-1',
+    segments: [
       {
-        id: 'node-1',
+        id: 'seg-1',
         title: '',
         audio: { src: 'audio/test.mp3', duration: 10, words: [] },
-        scene: {
-          elements: [element('title'), element('subtitle', 50)],
-          cues: [],
-          gates: [],
-        },
-        edges: [],
+        elements: [element('title'), element('subtitle')],
+        slides: [
+          {
+            id: 'slide-1',
+            at: { kind: 'seconds', t: 0 },
+            transition: 'morph',
+            states: { title: elementState({ x: 0 }), subtitle: elementState({ x: 50 }) },
+          },
+        ],
+        gates: [],
+        exit: { rules: [], default: null },
       },
     ],
   };
@@ -63,6 +61,7 @@ function gate(id: string): Gate {
     config: { kind: 'continue', label: 'Дальше' },
     onWrong: 'retry',
     maxAttempts: null,
+    recordAs: id,
   };
 }
 
@@ -77,13 +76,15 @@ describe('initialHistoryState', () => {
 
     expect(state.history.present).toBe(project);
     expect(state.selectedId).toBeUndefined();
+    expect(state.currentSegmentId).toBe('seg-1');
+    expect(state.currentSlideId).toBe('slide-1');
     expect(state.gestureOpen).toBe(false);
     expect(canUndoState(state)).toBe(false);
     expect(canRedoState(state)).toBe(false);
   });
 });
 
-describe('правило 1: select в историю не пишется', () => {
+describe('правило 1: select/selectSegment/selectSlide в историю не пишутся', () => {
   it('select меняет selectedId, history остаётся тем же объектом по ссылке', () => {
     const state = baseState();
     const next = historyReducer(state, { type: 'select', id: 'title' });
@@ -102,14 +103,30 @@ describe('правило 1: select в историю не пишется', () =>
   it('select несуществующего id бросает ошибку так же, как editorReducer', () => {
     expect(() => historyReducer(baseState(), { type: 'select', id: 'ghost' })).toThrow(/ghost/);
   });
+
+  it('selectSlide меняет currentSlideId, history остаётся тем же объектом по ссылке', () => {
+    let state = historyReducer(baseState(), {
+      type: 'addSlide',
+      afterSlideId: 'slide-1',
+      at: { kind: 'seconds', t: 1 },
+    });
+    const historyAfterAdd = state.history;
+    state = historyReducer(state, { type: 'selectSlide', id: 'slide-1' });
+    expect(state.currentSlideId).toBe('slide-1');
+    expect(state.history).toBe(historyAfterAdd);
+  });
 });
 
 describe('одиночные действия: по шагу на вызов', () => {
   it('addElement — один шаг, present меняется, past растёт на один', () => {
     const state = baseState();
-    const created = element('new-shape', 200);
+    const created = element('new-shape');
 
-    const next = historyReducer(state, { type: 'addElement', element: created });
+    const next = historyReducer(state, {
+      type: 'addElement',
+      element: created,
+      state: elementState({ x: 200 }),
+    });
 
     expect(next.history.present).not.toBe(state.history.present);
     expect(next.history.past).toEqual([state.history.present]);
@@ -117,39 +134,36 @@ describe('одиночные действия: по шагу на вызов', (
     expect(canUndoState(next)).toBe(true);
   });
 
-  it('несколько одиночных replaceElement подряд (без commit) — по шагу на каждый, без склейки', () => {
+  it('несколько одиночных setElementState подряд (без commit) — по шагу на каждый, без склейки', () => {
     let state = baseState();
-    const first = { ...element('title'), x: 10 };
-    const second = { ...element('title'), x: 20 };
 
-    state = historyReducer(state, { type: 'replaceElement', element: first });
-    state = historyReducer(state, { type: 'replaceElement', element: second });
+    state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 10 } });
+    state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 20 } });
 
-    // Два самостоятельных шага: отмена возвращает СНАЧАЛА first, потом
-    // исходное состояние — а не перепрыгивает через first целиком.
+    // Два самостоятельных шага: отмена возвращает СНАЧАЛА x=10, потом
+    // исходное состояние — а не перепрыгивает через первый шаг целиком.
     expect(state.history.past.length).toBe(2);
     const afterOneUndo = historyReducer(state, { type: 'undo' });
-    expect((afterOneUndo.history.present.nodes[0]!.scene.elements[0] as Element).x).toBe(10);
+    expect(afterOneUndo.history.present.segments[0]!.slides[0]!.states.title!.x).toBe(10);
   });
 
-  it('replaceElement тем же объектом (no-op editorReducer) не создаёт шаг', () => {
+  it('setElementState патчем без изменений (no-op editorReducer) не создаёт шаг', () => {
     const state = baseState();
-    const same = state.history.present.nodes[0]!.scene.elements[0]!;
-    const next = historyReducer(state, { type: 'replaceElement', element: same });
+    const next = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 0 } });
     expect(next).toBe(state);
   });
 
-  it('updateGate и updateCue — тоже одиночные шаги (используются панелью меток)', () => {
+  it('updateGate — тоже одиночный шаг (используется панелью меток)', () => {
     let state = baseState();
     state = historyReducer(state, { type: 'addGate', gate: gate('gate-1') });
     expect(canUndoState(state)).toBe(true);
     const pastAfterAdd = state.history.past.length;
 
-    const updated: Gate = { ...gate('gate-1'), onWrong: 'reveal' };
+    const updated: Gate = { ...gate('gate-1'), onWrong: 'inline-explain' };
     state = historyReducer(state, { type: 'updateGate', gate: updated });
 
     expect(state.history.past.length).toBe(pastAfterAdd + 1);
-    expect(state.history.present.nodes[0]!.scene.gates[0]!.onWrong).toBe('reveal');
+    expect(state.history.present.segments[0]!.gates[0]!.onWrong).toBe('inline-explain');
   });
 });
 
@@ -159,8 +173,9 @@ describe('правило 2: жест — один шаг истории', () => 
     const before = state.history.present;
 
     let s = historyReducer(state, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 10 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 10 },
       commit: false,
     });
     expect(s.gestureOpen).toBe(true);
@@ -168,8 +183,9 @@ describe('правило 2: жест — один шаг истории', () => 
     expect(s.history.past).toEqual([before]);
 
     s = historyReducer(s, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 20 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 20 },
       commit: false,
     });
     // Второе живое событие НЕ создаёт второй шаг — past не растёт.
@@ -177,8 +193,9 @@ describe('правило 2: жест — один шаг истории', () => 
     expect(s.gestureOpen).toBe(true);
 
     s = historyReducer(s, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 30 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 30 },
       commit: false,
     });
     expect(s.history.past).toEqual([before]);
@@ -186,7 +203,7 @@ describe('правило 2: жест — один шаг истории', () => 
     s = historyReducer(s, { type: 'commit' });
     expect(s.gestureOpen).toBe(false);
     // commit не меняет данные — верхушка уже несёт финальное значение.
-    expect((s.history.present.nodes[0]!.scene.elements[0] as Element).x).toBe(30);
+    expect(s.history.present.segments[0]!.slides[0]!.states.title!.x).toBe(30);
     expect(s.history.past).toEqual([before]);
 
     // Один Ctrl+Z должен вернуть СРАЗУ исходное значение, а не x=20 и не x=10:
@@ -227,7 +244,7 @@ describe('правило 2: жест — один шаг истории', () => 
     expect(state.history.past).toEqual([...pastBeforeDrag, beforeDrag]);
 
     state = historyReducer(state, { type: 'commit' });
-    expect(state.history.present.nodes[0]!.scene.gates[0]!.at).toEqual({ kind: 'seconds', t: 4 });
+    expect(state.history.present.segments[0]!.gates[0]!.at).toEqual({ kind: 'seconds', t: 4 });
 
     const undone = historyReducer(state, { type: 'undo' });
     expect(undone.history.present).toBe(beforeDrag);
@@ -244,16 +261,18 @@ describe('правило 2: жест — один шаг истории', () => 
     const p0 = state.history.present;
 
     let s = historyReducer(state, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 10 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 10 },
       commit: false,
     });
     s = historyReducer(s, { type: 'commit' });
     const p1 = s.history.present;
 
     s = historyReducer(s, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 99 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 99 },
       commit: false,
     });
     s = historyReducer(s, { type: 'commit' });
@@ -273,8 +292,9 @@ describe('правило 2: жест — один шаг истории', () => 
     const p0 = state.history.present;
 
     let s = historyReducer(state, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 10 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 10 },
       commit: false,
     });
     expect(s.gestureOpen).toBe(true);
@@ -283,15 +303,15 @@ describe('правило 2: жест — один шаг истории', () => 
     // commit потерян (например, pointerup не долетел) — но addElement всё
     // равно обязан стать самостоятельным шагом поверх живого значения,
     // а не потерять его и не слиться с ним в одну запись.
-    const created = element('new-one', 500);
-    s = historyReducer(s, { type: 'addElement', element: created });
+    const created = element('new-one');
+    s = historyReducer(s, { type: 'addElement', element: created, state: elementState({ x: 500 }) });
 
     expect(s.gestureOpen).toBe(false);
     expect(s.history.past).toEqual([p0, liveTip]);
   });
 });
 
-describe('правило 3: отмена/повтор не берут на себя ничего, кроме history и выделения', () => {
+describe('правило 3: отмена/повтор не берут на себя ничего, кроме history и вида', () => {
   it('undo/redo на границе — тот же объект state по ссылке, не бросают', () => {
     const state = baseState();
     expect(() => historyReducer(state, { type: 'undo' })).not.toThrow();
@@ -302,12 +322,16 @@ describe('правило 3: отмена/повтор не берут на се�
   it('после undo выделение снимается, если выделенного элемента больше нет в восстановленном проекте', () => {
     const state = baseState();
     // addElement сразу выделяет созданный элемент.
-    const withNew = historyReducer(state, { type: 'addElement', element: element('shape-1', 300) });
+    const withNew = historyReducer(state, {
+      type: 'addElement',
+      element: element('shape-1'),
+      state: elementState({ x: 300 }),
+    });
     expect(withNew.selectedId).toBe('shape-1');
 
     const undone = historyReducer(withNew, { type: 'undo' });
     // shape-1 отменой убран из проекта — выделение обязано слететь.
-    expect(undone.history.present.nodes[0]!.scene.elements.some((e) => e.id === 'shape-1')).toBe(false);
+    expect(undone.history.present.segments[0]!.elements.some((e) => e.id === 'shape-1')).toBe(false);
     expect(undone.selectedId).toBeUndefined();
   });
 
@@ -315,7 +339,7 @@ describe('правило 3: отмена/повтор не берут на се�
     let state = baseState();
     state = historyReducer(state, { type: 'select', id: 'subtitle' });
     // Правка другого элемента — subtitle остаётся на месте в обоих снимках.
-    state = historyReducer(state, { type: 'replaceElement', element: { ...element('title'), x: 77 } });
+    state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 77 } });
 
     const undone = historyReducer(state, { type: 'undo' });
     expect(undone.selectedId).toBe('subtitle');
@@ -323,12 +347,16 @@ describe('правило 3: отмена/повтор не берут на се�
 
   it('redo не восстанавливает выделение само по себе — оно снаружи истории', () => {
     const state = baseState();
-    const withNew = historyReducer(state, { type: 'addElement', element: element('shape-1', 300) });
+    const withNew = historyReducer(state, {
+      type: 'addElement',
+      element: element('shape-1'),
+      state: elementState({ x: 300 }),
+    });
     const undone = historyReducer(withNew, { type: 'undo' });
     expect(undone.selectedId).toBeUndefined();
 
     const redone = historyReducer(undone, { type: 'redo' });
-    expect(redone.history.present.nodes[0]!.scene.elements.some((e) => e.id === 'shape-1')).toBe(true);
+    expect(redone.history.present.segments[0]!.elements.some((e) => e.id === 'shape-1')).toBe(true);
     // Выделение НЕ подтягивается обратно автоматически — snapshot истории
     // не хранит selectedId по определению (правило 1).
     expect(redone.selectedId).toBeUndefined();
@@ -337,8 +365,9 @@ describe('правило 3: отмена/повтор не берут на се�
   it('undo сбрасывает незакрытый жест (защитный случай)', () => {
     let state = baseState();
     state = historyReducer(state, {
-      type: 'replaceElement',
-      element: { ...element('title'), x: 10 },
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 10 },
       commit: false,
     });
     expect(state.gestureOpen).toBe(true);
@@ -346,13 +375,26 @@ describe('правило 3: отмена/повтор не берут на се�
     const undone = historyReducer(state, { type: 'undo' });
     expect(undone.gestureOpen).toBe(false);
   });
+
+  it('undo, откатывающий addSlide, возвращает currentSlideId на первый слайд сегмента', () => {
+    let state = baseState();
+    state = historyReducer(state, {
+      type: 'addSlide',
+      afterSlideId: 'slide-1',
+      at: { kind: 'seconds', t: 1 },
+    });
+    expect(state.currentSlideId).not.toBe('slide-1');
+
+    const undone = historyReducer(state, { type: 'undo' });
+    expect(undone.currentSlideId).toBe('slide-1');
+  });
 });
 
 describe('охранник переполнения: 60 одиночных правок дают ровно 50 доступных отмен', () => {
   it('делегирует в history.ts без искажений', () => {
     let state = baseState();
     for (let i = 1; i <= 60; i += 1) {
-      state = historyReducer(state, { type: 'replaceElement', element: { ...element('title'), x: i } });
+      state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: i } });
     }
     expect(state.history.past.length).toBe(HISTORY_LIMIT);
 

@@ -21,19 +21,24 @@
     "spike:parity": "node spikes/run-parity.mjs",
     "spike:perf": "node spikes/run-perf.mjs",
     "spike:quota": "node spikes/run-quota.mjs",
-    "spike:seam": "node spikes/run-seam.mjs"
+    "spike:seam": "node spikes/run-seam.mjs",
+    "spike:editor-stack": "vite --config spikes/editor-stack/vite.config.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
+    "@scena/react-guides": "^0.28.2",
     "@types/node": "^22.20.1",
     "@types/pngjs": "^6.0.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.0",
     "animejs": "^4.5.0",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-moveable": "^0.56.0",
+    "react-selecto": "^1.26.3",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
     "vitest": "^4.1.10"

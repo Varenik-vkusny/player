@@ -23,7 +23,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 
 import { expect, test, type Page } from '@playwright/test';
 
-import { loadProject, nodeOf } from '@player/core';
+import { loadProject, findSegment } from '@player/core';
 
 const FIXTURES_DIR = new URL('../fixtures/projects/', import.meta.url);
 
@@ -50,7 +50,7 @@ const FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const;
 function durationOf(fixture: string): number {
   const file = new URL(`${fixture}.json`, FIXTURES_DIR);
   const project = loadProject(JSON.parse(readFileSync(file, 'utf8')));
-  const duration = nodeOf(project, project.entry).audio.duration;
+  const duration = findSegment(project, project.entry).audio.duration;
 
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new Error(`У фикстуры ${fixture}.json негодная длительность: ${String(duration)}`);

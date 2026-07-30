@@ -1,5 +1,5 @@
 /**
- * Задача 9: вид графа в редакторе.
+ * Панель частей: состав сегментов и правила выхода.
  *
  * Несущий тест здесь — переключение узла меняет сцену на холсте: он доказывает,
  * что редактор больше не заперт на стартовом узле (Editor.tsx до этой сессии
@@ -30,13 +30,13 @@ async function waitTransportReady(page: Page): Promise<void> {
   );
 }
 
-test.describe('граф сегментов: панель редактора', () => {
+test.describe('части: панель сегментов', () => {
   test('переключение узла меняет сцену на холсте', async ({ page }) => {
     await openEditor(page, 'branching');
 
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(4);
 
-    await page.getByTestId('graph-node-n-yes').click();
+    await page.getByTestId('segment-n-yes').click();
 
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(2);
   });
@@ -44,12 +44,12 @@ test.describe('граф сегментов: панель редактора', ()
   test('создание узла: новый узел недостижим и становится текущим', async ({ page }) => {
     await openEditor(page, 'branching');
 
-    await page.getByTestId('graph-add-node').click();
+    await page.getByTestId('segment-add').click();
 
-    // Ровно один новый узел — стандартное имя freeId('node', ...).
-    const newNode = page.getByTestId('graph-node-node-1');
+    // Ровно один новый сегмент — стандартное имя freeId('segment', ...).
+    const newNode = page.getByTestId('segment-segment-1');
     await expect(newNode).toBeVisible();
-    await expect(page.getByTestId('graph-unreachable-node-1')).toBeVisible();
+    await expect(page.getByTestId('segment-unreachable-segment-1')).toBeVisible();
 
     // Он же стал текущим — холст пуст: сцена нового узла пуста по построению.
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(0);
@@ -59,28 +59,28 @@ test.describe('граф сегментов: панель редактора', ()
     await openEditor(page, 'branching');
 
     // Рёбра фикстуры покрывают оба варианта — дыры нет.
-    await expect(page.getByTestId('graph-uncovered')).not.toContainText('Нет');
+    await expect(page.getByTestId('exit-uncovered')).not.toContainText('Нет');
 
-    await page.getByTestId('graph-disconnect-e-no').click();
+    await page.getByTestId('exit-disconnect-e-no').click();
 
-    await expect(page.getByTestId('graph-uncovered')).toContainText('Нет');
-    await expect(page.getByTestId('graph-unreachable-n-no')).toBeVisible();
+    await expect(page.getByTestId('exit-uncovered')).toContainText('Нет');
+    await expect(page.getByTestId('segment-unreachable-n-no')).toBeVisible();
 
-    await page.getByTestId('graph-target-gate-start-opt-no').selectOption('n-no');
-    await page.getByTestId('graph-connect-gate-start-opt-no').click();
+    await page.getByTestId('exit-target-gate-start-opt-no').selectOption('n-no');
+    await page.getByTestId('exit-connect-gate-start-opt-no').click();
 
-    await expect(page.getByTestId('graph-uncovered')).not.toContainText('Нет');
-    await expect(page.getByTestId('graph-unreachable-n-no')).toHaveCount(0);
+    await expect(page.getByTestId('exit-uncovered')).not.toContainText('Нет');
+    await expect(page.getByTestId('segment-unreachable-n-no')).toHaveCount(0);
   });
 
   test('стартовый узел удалить нельзя, другой — можно', async ({ page }) => {
     await openEditor(page, 'branching');
 
     // На стартовом узле кнопка удаления заблокирована — removeNode на нём бросает.
-    await expect(page.getByTestId('graph-remove-node')).toBeDisabled();
+    await expect(page.getByTestId('segment-remove')).toBeDisabled();
 
-    await page.getByTestId('graph-node-n-yes').click();
-    await expect(page.getByTestId('graph-remove-node')).toBeEnabled();
+    await page.getByTestId('segment-n-yes').click();
+    await expect(page.getByTestId('segment-remove')).toBeEnabled();
   });
 
   test('переключение узла ставит головку в ноль', async ({ page }) => {
@@ -99,7 +99,7 @@ test.describe('граф сегментов: панель редактора', ()
       )
       .toBeGreaterThan(19);
 
-    await page.getByTestId('graph-node-n-yes').click();
+    await page.getByTestId('segment-n-yes').click();
     await waitTransportReady(page);
 
     const { position, duration } = await page.evaluate(() => {
@@ -127,7 +127,7 @@ test.describe('граф сегментов: панель редактора', ()
   test('текст ребра виден целиком, а не обрезан многоточием', async ({ page }) => {
     await openEditor(page, 'branching');
 
-    const texts = page.locator('.ed-graph-edge-text');
+    const texts = page.locator('.ed-exit-rule-text');
     await expect(texts).toHaveCount(2);
 
     const clipped = await texts.evaluateAll((nodes) =>

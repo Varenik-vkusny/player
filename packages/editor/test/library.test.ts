@@ -13,40 +13,51 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ANIMATABLE, ElementSchema } from '@player/core';
+import { ElementSchema, ElementStateSchema, ProjectSchema } from '@player/core';
+import type { ElementState, Gate, Segment } from '@player/core';
 
-import { EASINGS } from '../src/state/animation.js';
 import { createElement } from '../src/state/elements.js';
 import { ANIMATION_PRESETS, ELEMENT_LIBRARY, libraryItem } from '../src/state/library.js';
-import { ProjectSchema } from '@player/core';
-import type { Gate, Scene } from '@player/core';
 
 const ROOT = new URL('../../../', import.meta.url).pathname.slice(1);
 const STAGE = { width: 1920, height: 1080 };
 
-function scene() {
-  return { elements: [], cues: [], gates: [] };
+function segment(): Segment {
+  return {
+    id: 'seg-1',
+    title: '',
+    audio: { src: 'a.mp3', duration: 10, words: [] },
+    elements: [],
+    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    gates: [],
+    exit: { rules: [], default: null },
+  };
 }
 
-describe('ELEMENT_LIBRARY: каждая заготовка даёт элемент, принятый настоящей схемой', () => {
+function emptyStates(): Record<string, ElementState> {
+  return {};
+}
+
+describe('ELEMENT_LIBRARY: каждая заготовка даёт элемент и состояние, принятые настоящей схемой', () => {
   for (const item of ELEMENT_LIBRARY) {
-    it(`«${item.id}» проходит ElementSchema.parse`, () => {
-      const element = createElement(item, scene(), STAGE);
+    it(`«${item.id}» проходит ElementSchema.parse и ElementStateSchema.parse`, () => {
+      const { element, state } = createElement(item, segment(), emptyStates(), STAGE);
       // Через настоящую схему, а не самодельную проверку: у писателя
       // и читателя одной и той же реализации была бы одна и та же
       // возможная ошибка (CLAUDE.md, «своим парсером свой формат не
       // проверяется»).
       expect(() => ElementSchema.parse(element)).not.toThrow();
+      expect(() => ElementStateSchema.parse(state)).not.toThrow();
     });
   }
 });
 
 describe('ELEMENT_LIBRARY: первые три заготовки не изменили поведение', () => {
-  it('text: 600×120, стиль и заглушка как раньше в DEFAULT_STYLE/TEXT_PLACEHOLDER', () => {
-    const element = createElement(libraryItem('text'), scene(), STAGE);
-    expect(element.width).toBe(600);
-    expect(element.height).toBe(120);
-    expect(element.style).toEqual({
+  it('text: 600×120, стиль и заглушка как раньше', () => {
+    const { state, element } = createElement(libraryItem('text'), segment(), emptyStates(), STAGE);
+    expect(state.width).toBe(600);
+    expect(state.height).toBe(120);
+    expect(state.style).toEqual({
       'font-family': 'system-ui, sans-serif',
       'font-size': '36px',
       color: '#9fb0c4',
@@ -55,33 +66,34 @@ describe('ELEMENT_LIBRARY: первые три заготовки не изме�
     expect(element.content).toBe('Новый текст');
   });
 
-  it('shape: 300×300, стиль как раньше в DEFAULT_STYLE, содержимого нет', () => {
-    const element = createElement(libraryItem('shape'), scene(), STAGE);
-    expect(element.width).toBe(300);
-    expect(element.height).toBe(300);
-    expect(element.style).toEqual({ background: '#1b2430', 'border-radius': '28px' });
+  it('shape: 300×300, стиль как раньше, содержимого нет', () => {
+    const { state, element } = createElement(libraryItem('shape'), segment(), emptyStates(), STAGE);
+    expect(state.width).toBe(300);
+    expect(state.height).toBe(300);
+    expect(state.style).toEqual({ background: '#1b2430', 'border-radius': '28px' });
     expect(element.content).toBe('');
   });
 
   it('image: 480×320, стиль пустой, содержимое пустое', () => {
-    const element = createElement(libraryItem('image'), scene(), STAGE);
-    expect(element.width).toBe(480);
-    expect(element.height).toBe(320);
-    expect(element.style).toEqual({});
+    const { state, element } = createElement(libraryItem('image'), segment(), emptyStates(), STAGE);
+    expect(state.width).toBe(480);
+    expect(state.height).toBe(320);
+    expect(state.style).toEqual({});
     expect(element.content).toBe('');
   });
 });
 
 describe('createElement: id элемента берётся из id заготовки', () => {
   it('круг даёт id circle-1, а не shape-4', () => {
-    const element = createElement(libraryItem('circle'), scene(), STAGE);
+    const { element } = createElement(libraryItem('circle'), segment(), emptyStates(), STAGE);
     expect(element.id).toBe('circle-1');
   });
 
-  it('второй круг на той же сцене — circle-2', () => {
-    const first = createElement(libraryItem('circle'), scene(), STAGE);
-    const second = createElement(libraryItem('circle'), { ...scene(), elements: [first] }, STAGE);
-    expect(second.id).toBe('circle-2');
+  it('второй круг на том же сегменте — circle-2', () => {
+    const first = createElement(libraryItem('circle'), segment(), emptyStates(), STAGE);
+    const seg = { ...segment(), elements: [first.element] };
+    const second = createElement(libraryItem('circle'), seg, { [first.element.id]: first.state }, STAGE);
+    expect(second.element.id).toBe('circle-2');
   });
 });
 
@@ -113,11 +125,6 @@ describe('пополнение ELEMENT_LIBRARY не требует правок 
     'utf8',
   );
 
-  // Заготовки, добавленные этим срезом сверх исходных трёх (text/shape/image
-  // упоминались в компоненте и раньше — они формировали единственный жёстко
-  // заданный список ITEMS). Проверяем именно новые записи: их id и label
-  // не имеют права появиться в исходнике компонента, иначе панель вставки
-  // продолжает знать о конкретных фигурах, а не читать каталог целиком.
   const added = ELEMENT_LIBRARY.filter(
     (item) => !['text', 'shape', 'image'].includes(item.id),
   );
@@ -139,25 +146,11 @@ describe('пополнение ELEMENT_LIBRARY не требует правок 
 
   it('сам компонент не содержит списка заготовок — только чтение ELEMENT_LIBRARY', () => {
     expect(insertPanelSource).toContain('ELEMENT_LIBRARY');
-    // Прежний захардкоженный список (для примера — константа ITEMS
-    // с типом и подписью прямо в JSX) не должен вернуться.
     expect(insertPanelSource).not.toMatch(/const ITEMS/);
   });
 });
 
-describe('ANIMATION_PRESETS: заготовки анимации', () => {
-  it('ease каждой заготовки — из EASINGS (иначе anime.js молча поставит linear)', () => {
-    for (const preset of ANIMATION_PRESETS) {
-      expect(EASINGS, `плавность «${preset.ease}» заготовки «${preset.id}»`).toContain(preset.ease);
-    }
-  });
-
-  it('property каждой заготовки — из ANIMATABLE', () => {
-    for (const preset of ANIMATION_PRESETS) {
-      expect(ANIMATABLE as readonly string[]).toContain(preset.property);
-    }
-  });
-
+describe('ANIMATION_PRESETS: заготовки появления', () => {
   it('id заготовок не повторяются', () => {
     const ids = ANIMATION_PRESETS.map((preset) => preset.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -168,10 +161,19 @@ describe('ANIMATION_PRESETS: заготовки анимации', () => {
     expect(new Set(labels).size).toBe(labels.length);
   });
 
-  it('durationMs — положительное конечное число, как того требует схема AnimationSpec', () => {
+  it('у каждой заготовки задан хотя бы один патч появления', () => {
     for (const preset of ANIMATION_PRESETS) {
-      expect(Number.isFinite(preset.durationMs)).toBe(true);
-      expect(preset.durationMs).toBeGreaterThan(0);
+      const hasPatch =
+        preset.hiddenAtStart === true || preset.dx !== undefined || preset.dy !== undefined || preset.growFrom !== undefined;
+      expect(hasPatch, `заготовка «${preset.id}» не меняет ничего в начальном состоянии`).toBe(true);
+    }
+  });
+
+  it('growFrom, если задан, — «both» или «width»', () => {
+    for (const preset of ANIMATION_PRESETS) {
+      if (preset.growFrom !== undefined) {
+        expect(['both', 'width']).toContain(preset.growFrom);
+      }
     }
   });
 });
@@ -188,15 +190,19 @@ describe('ANIMATION_PRESETS: заготовки анимации', () => {
 describe('фигура библиотеки может быть вариантом ответа', () => {
   it('гейт с вариантами-фигурами проходит настоящий валидатор', () => {
     const stage = { width: 1920, height: 1080 };
-    let scene: Scene = { elements: [], cues: [], gates: [] };
+    let seg = segment();
+    let states: Record<string, ElementState> = {};
 
-    const yes = createElement(libraryItem('circle'), scene, stage);
-    scene = { ...scene, elements: [...scene.elements, yes] };
-    const no = createElement(libraryItem('frame'), scene, stage);
-    scene = { ...scene, elements: [...scene.elements, no] };
+    const yes = createElement(libraryItem('circle'), seg, states, stage);
+    seg = { ...seg, elements: [...seg.elements, yes.element] };
+    states = { ...states, [yes.element.id]: yes.state };
+
+    const no = createElement(libraryItem('frame'), seg, states, stage);
+    seg = { ...seg, elements: [...seg.elements, no.element] };
+    states = { ...states, [no.element.id]: no.state };
 
     // Оба варианта — фигуры, ни одного текста в сцене нет вовсе.
-    expect(scene.elements.every((element) => element.type === 'shape')).toBe(true);
+    expect(seg.elements.every((element) => element.type === 'shape')).toBe(true);
 
     const gate: Gate = {
       id: 'gate-1',
@@ -205,26 +211,26 @@ describe('фигура библиотеки может быть варианто
         kind: 'choice',
         prompt: 'Выбери фигуру',
         options: [
-          { id: yes.id, label: 'Круг' },
-          { id: no.id, label: 'Рамка' },
+          { id: yes.element.id, label: 'Круг' },
+          { id: no.element.id, label: 'Рамка' },
         ],
-        correctId: yes.id,
+        correctId: yes.element.id,
       },
       onWrong: 'continue',
       maxAttempts: null,
+      recordAs: 'gate-1',
     };
 
     const project = {
-      schemaVersion: 2 as const,
+      schemaVersion: 3 as const,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
-      entry: 'n1',
-      nodes: [
+      entry: 'seg-1',
+      segments: [
         {
-          id: 'n1',
-          title: '',
-          audio: { src: 'a.mp3', duration: 10, words: [] },
-          scene: { ...scene, gates: [gate] },
-          edges: [],
+          ...seg,
+          slides: [{ id: 'slide-1', at: { kind: 'seconds' as const, t: 0 }, transition: 'morph' as const, states }],
+          gates: [gate],
+          exit: { rules: [], default: null },
         },
       ],
     };

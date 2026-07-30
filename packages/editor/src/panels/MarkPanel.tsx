@@ -1,21 +1,26 @@
 /**
- * Панель выделенной метки: гейт или анимация.
+ * Панель выделенной метки: гейт или слайд.
  *
- * До этой сессии метка на дорожке выделялась, но настраивать её было нечем —
- * панель свойств продолжала показывать элемент сцены (см. срез 3 плана
- * сессии). Эта панель занимает то же место в раскладке (`Editor.tsx` рисует
- * либо её, либо `Inspector`, никогда обе сразу).
+ * Раньше вторым видом метки была анимация (кью). В схеме v3 кью нет —
+ * появление элемента выражается разницей состояний на соседних слайдах,
+ * а слайд сам стал меткой на дорожке. Эта панель занимает то же место
+ * в раскладке, что и раньше (`Editor.tsx` рисует либо её, либо `Inspector`,
+ * никогда обе сразу).
  *
  * Чисто презентационная, как и `Inspector.tsx`: правила продукта — смена
- * вида гейта, минимумы схемы, привязка варианта к элементу, сброс from/to
- * при смене анимируемого свойства — целиком живут в чистых модулях
- * `state/gates.ts` и `state/animation.ts` (ADR-010). Этот файл только
- * раскладывает виджеты и передаёт готовый `Gate`/`Cue` в редьюсер через
- * колбэки `onUpdateGate`/`onUpdateCue`.
+ * вида гейта, минимумы схемы, привязка варианта к элементу — целиком живут
+ * в чистом модуле `state/gates.ts` (ADR-010). Этот файл только раскладывает
+ * виджеты и передаёт готовый `Gate` в редьюсер через колбэк `onUpdateGate`.
+ *
+ * У слайда своего колбэка правки нет: `transition` показан только для
+ * чтения — у слоя состояния (`state/project.ts`) сейчас нет действия,
+ * которое меняло бы это поле (набор действий редьюсера в этой сессии не
+ * трогается, см. отчёт). Время метки-слайда, как и время гейта, правится
+ * перетаскиванием по дорожке (`moveMark`), а не полем в этой панели.
  */
 import { useState, type ReactElement } from 'react';
 
-import { ANIMATABLE, type Cue, type Element, type Gate } from '@player/core';
+import type { Element, Gate, Slide } from '@player/core';
 
 import {
   addOption,
@@ -32,18 +37,6 @@ import {
   setPrompt,
 } from '../state/gates.js';
 import {
-  EASINGS,
-  defaultsFor,
-  setDuration,
-  setEase,
-  setFrom,
-  setProperty,
-  setTo,
-  type Animatable,
-} from '../state/animation.js';
-import {
-  ANY_NUMBER,
-  POSITIVE,
   POSITIVE_INTEGER,
   ChoiceField,
   NumberField,
@@ -52,22 +45,23 @@ import {
   type Choice,
 } from './fields.js';
 
-export type SelectedMarkData = { readonly kind: 'gate'; readonly gate: Gate } | { readonly kind: 'cue'; readonly cue: Cue };
+export type SelectedMarkData =
+  | { readonly kind: 'gate'; readonly gate: Gate }
+  | { readonly kind: 'slide'; readonly slide: Slide };
 
 export interface MarkPanelProps {
   mark: SelectedMarkData;
-  /** Для привязки варианта ответа (ADR-011) и выбора цели анимации. */
+  /** Для привязки варианта ответа (ADR-011). */
   elements: readonly Element[];
   onUpdateGate: (gate: Gate) => void;
-  onUpdateCue: (cue: Cue) => void;
-  /** Действие `removeMark` в редьюсере уже есть — эта кнопка его вызывает. */
+  /** Действие `removeMark`/`removeSlide` в редьюсере уже есть — эта кнопка его вызывает. */
   onRemove: () => void;
 }
 
-export function MarkPanel({ mark, elements, onUpdateGate, onUpdateCue, onRemove }: MarkPanelProps): ReactElement {
+export function MarkPanel({ mark, elements, onUpdateGate, onRemove }: MarkPanelProps): ReactElement {
   return (
     <aside className="ed-inspector" data-testid="mark-panel">
-      <h2 className="ed-insp-title">{mark.kind === 'gate' ? 'Гейт' : 'Анимация'}</h2>
+      <h2 className="ed-insp-title">{mark.kind === 'gate' ? 'Гейт' : 'Слайд'}</h2>
       <div className="ed-insp-body">
         {mark.kind === 'gate' ? (
           // key по id: при выборе другой метки виджеты (и их внутренние
@@ -75,7 +69,7 @@ export function MarkPanel({ mark, elements, onUpdateGate, onUpdateCue, onRemove 
           // у Inspector.ElementFields.
           <GatePanel key={mark.gate.id} gate={mark.gate} elements={elements} onUpdate={onUpdateGate} />
         ) : (
-          <CuePanel key={mark.cue.id} cue={mark.cue} elements={elements} onUpdate={onUpdateCue} />
+          <SlideMarkPanel key={mark.slide.id} slide={mark.slide} />
         )}
         <div className="ed-insp-block">
           <button type="button" className="ed-action" data-testid="mark-remove" onClick={onRemove}>
@@ -97,9 +91,15 @@ const GATE_KIND_CHOICES: readonly Choice[] = [
   { value: 'input', label: 'Ввод ответа' },
 ];
 
+/**
+ * Набор значений — из схемы v3 (`GateSchema.onWrong`): `inline-hint`
+ * и `inline-explain` заменили единственный `reveal` версии 2, разведя
+ * «короткую подсказку» и «разбор слоем поверх сцены» в два разных исхода.
+ */
 const ON_WRONG_CHOICES: readonly Choice[] = [
   { value: 'retry', label: 'Попробовать снова' },
-  { value: 'reveal', label: 'Показать правильный ответ' },
+  { value: 'inline-hint', label: 'Показать короткую подсказку' },
+  { value: 'inline-explain', label: 'Показать разбор' },
   { value: 'continue', label: 'Пропустить дальше' },
 ];
 
@@ -131,6 +131,7 @@ function GatePanel({ gate, elements, onUpdate }: GatePanelProps): ReactElement {
     <>
       <div className="ed-insp-block">
         <ReadonlyField label="Идентификатор" value={gate.id} />
+        <ReadonlyField label="Переменная (recordAs)" value={gate.recordAs} />
         <ChoiceField
           label="Вид"
           value={config.kind}
@@ -158,7 +159,12 @@ function GatePanel({ gate, elements, onUpdate }: GatePanelProps): ReactElement {
           value={gate.onWrong}
           choices={ON_WRONG_CHOICES}
           onCommit={(value) => {
-            if (value !== 'retry' && value !== 'reveal' && value !== 'continue') {
+            if (
+              value !== 'retry'
+              && value !== 'inline-hint'
+              && value !== 'inline-explain'
+              && value !== 'continue'
+            ) {
               throw new Error(`Неизвестное поведение при ошибке «${value}»`);
             }
             onUpdate(setOnWrong(gate, value));
@@ -363,124 +369,32 @@ function MaxAttemptsField({ gate, onUpdate }: MaxAttemptsFieldProps): ReactEleme
 }
 
 // ---------------------------------------------------------------------------
-// Анимация
+// Слайд
 // ---------------------------------------------------------------------------
 
-const PROPERTY_LABELS: Record<Animatable, string> = {
-  x: 'Сдвиг по X',
-  y: 'Сдвиг по Y',
-  scale: 'Масштаб',
-  scaleX: 'Масштаб по X',
-  scaleY: 'Масштаб по Y',
-  rotate: 'Поворот',
-  opacity: 'Прозрачность',
-  filter: 'Размытие (blur)',
-};
-
-const PROPERTY_CHOICES: readonly Choice[] = ANIMATABLE.map((property) => ({
-  value: property,
-  label: PROPERTY_LABELS[property],
-}));
-
-const EASE_CHOICES: readonly Choice[] = EASINGS.map((ease) => ({ value: ease, label: ease }));
-
-interface CuePanelProps {
-  cue: Cue;
-  elements: readonly Element[];
-  onUpdate: (cue: Cue) => void;
+function transitionLabel(transition: Slide['transition']): string {
+  return transition === 'morph' ? 'плавный (morph)' : 'разрез (cut)';
 }
 
-function assertAnimatable(value: string): Animatable {
-  if ((ANIMATABLE as readonly string[]).includes(value)) return value as Animatable;
-  throw new Error(`Неизвестное анимируемое свойство «${value}»`);
+interface SlideMarkPanelProps {
+  slide: Slide;
 }
 
-function CuePanel({ cue, elements, onUpdate }: CuePanelProps): ReactElement {
-  const spec = cue.animation;
-  const isFilter = spec.property === 'filter';
-  const fromIsUndefined = spec.from === undefined;
-
+/**
+ * Настройка метки-слайда. Время правится перетаскиванием по дорожке —
+ * как и у гейта, отдельного поля для него здесь нет.
+ *
+ * `transition` показан только для чтения: см. комментарий в шапке файла.
+ */
+function SlideMarkPanel({ slide }: SlideMarkPanelProps): ReactElement {
   return (
-    <>
-      <div className="ed-insp-block">
-        <ReadonlyField label="Идентификатор" value={cue.id} />
-        <ChoiceField
-          label="Цель"
-          value={cue.targetId}
-          choices={elements.map((element) => ({ value: element.id, label: `${element.id} · ${element.type}` }))}
-          onCommit={(targetId) => onUpdate({ ...cue, targetId })}
-        />
-      </div>
-
-      <div className="ed-insp-block">
-        <h3 className="ed-insp-title">Что анимируется</h3>
-        <ChoiceField
-          label="Свойство"
-          value={spec.property}
-          choices={PROPERTY_CHOICES}
-          onCommit={(value) => onUpdate({ ...cue, animation: setProperty(spec, assertAnimatable(value)) })}
-        />
-
-        <label className="ed-insp-label">
-          <input
-            type="checkbox"
-            data-testid="cue-from-auto"
-            checked={fromIsUndefined}
-            onChange={(event) =>
-              onUpdate({
-                ...cue,
-                animation: setFrom(spec, event.target.checked ? undefined : defaultsFor(spec.property).from),
-              })
-            }
-          />{' '}
-          Начать с того, что уже на узле (без явного «от»)
-        </label>
-
-        {!fromIsUndefined &&
-          (isFilter ? (
-            <StringField
-              label="Начало (например blur(8px))"
-              value={String(spec.from ?? '')}
-              onCommit={(value) => onUpdate({ ...cue, animation: setFrom(spec, value) })}
-            />
-          ) : (
-            <NumberField
-              label="Начало"
-              value={Number(spec.from ?? 0)}
-              accepts={ANY_NUMBER}
-              onCommit={(value) => onUpdate({ ...cue, animation: setFrom(spec, value) })}
-            />
-          ))}
-
-        {isFilter ? (
-          <StringField
-            label="Конец (например blur(0px))"
-            value={String(spec.to)}
-            onCommit={(value) => onUpdate({ ...cue, animation: setTo(spec, value) })}
-          />
-        ) : (
-          <NumberField
-            label="Конец"
-            value={Number(spec.to)}
-            accepts={ANY_NUMBER}
-            onCommit={(value) => onUpdate({ ...cue, animation: setTo(spec, value) })}
-          />
-        )}
-
-        <NumberField
-          label="Длительность, мс"
-          value={spec.duration}
-          accepts={POSITIVE}
-          onCommit={(value) => onUpdate({ ...cue, animation: setDuration(spec, value) })}
-        />
-
-        <ChoiceField
-          label="Плавность"
-          value={spec.ease}
-          choices={EASE_CHOICES}
-          onCommit={(value) => onUpdate({ ...cue, animation: setEase(spec, value) })}
-        />
-      </div>
-    </>
+    <div className="ed-insp-block">
+      <ReadonlyField label="Идентификатор" value={slide.id} />
+      <ReadonlyField label="Переход" value={transitionLabel(slide.transition)} />
+      <p className="ed-insp-note">
+        Тип перехода (плавно/разрез) в этой сессии доступен только для чтения:
+        в слое состояния нет действия, которое его меняет.
+      </p>
+    </div>
   );
 }

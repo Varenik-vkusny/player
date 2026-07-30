@@ -1,13 +1,16 @@
 /**
- * Создание и удаление элементов сцены — чистая логика, без React и DOM.
+ * Создание и удаление элементов сегмента — чистая логика, без React и DOM.
  *
- * Живёт отдельно от `state/project.ts`, потому что фабрики элементов растут
- * (каскад удаления) и не должны раздувать редьюсер: редьюсер лишь применяет
- * готовый `Element`, а как он собран — забота этого модуля. Что именно
- * получается в результате — размеры, стиль, содержимое — данные из
- * `state/library.ts`, а не литералы здесь (см. `LibraryItem`).
+ * Схема v3 разводит элемент и его состояние на слайде (см. `schema.ts`,
+ * комментарий у `ElementSchema`/`ElementStateSchema`): элемент — это КТО
+ * (`id`/`type`/`content`), состояние — ГДЕ и КАК (геометрия, стиль,
+ * видимость, слой). Раньше `Element` нёс геометрию сам, и фабрика отдавала
+ * один объект; теперь она обязана отдать пару — элемент для
+ * `segment.elements` и его начальное состояние для слайда, на который автор
+ * его кладёт. Что именно получается в результате — размеры, стиль,
+ * содержимое — данные из `state/library.ts`, а не литералы здесь.
  */
-import type { Cue, Element, Scene } from '@player/core';
+import type { Element, ElementState, Segment } from '@player/core';
 
 import type { ElementType, LibraryItem } from './library.js';
 
@@ -27,12 +30,12 @@ export function freeId(prefix: string, taken: readonly { id: string }[]): string
   }
 }
 
-function nextZIndex(elements: readonly Element[]): number {
-  // Пустая сцена — новый элемент первый, ставим в 0, а не в 1: у элементов
-  // по умолчанию (см. ElementSchema) zIndex тоже 0, и первый созданный
-  // элемент не обязан начинать отсчёт с единицы.
-  if (elements.length === 0) return 0;
-  return Math.max(...elements.map((element) => element.zIndex)) + 1;
+function nextZIndex(states: Readonly<Record<string, ElementState>>): number {
+  const values = Object.values(states);
+  // Пустой слайд — новый элемент первый, ставим в 0, а не в 1: у состояния
+  // по умолчанию (см. ElementStateSchema) zIndex тоже 0.
+  if (values.length === 0) return 0;
+  return Math.max(...values.map((state) => state.zIndex)) + 1;
 }
 
 /**
@@ -40,13 +43,11 @@ function nextZIndex(elements: readonly Element[]): number {
  * начинать заново.
  *
  * Без каскада КАЖДЫЙ новый элемент ложился ровно в центр сцены и полностью
- * накрывал предыдущий: автор нажимал «Фигура» после «Текст» и текста больше
- * не видел. Проверено в браузере вставкой девяти заготовок подряд — все девять
- * легли в одну точку, и на холсте читался только верхний.
- *
- * Смещение детерминированное (от числа уже лежащих элементов), а не случайное:
- * одинаковый проект и одинаковые действия обязаны давать одинаковый файл —
- * то же требование, что у `freeId` выше.
+ * накрывал предыдущий — проверено в браузере вставкой девяти заготовок
+ * подряд, все девять легли в одну точку. Смещение считается от числа
+ * элементов, уже видимых на ТЕКУЩЕМ слайде (а не от всех элементов
+ * сегмента): именно с этим слайдом автор сейчас смотрит на сцену, и именно
+ * на нём новый элемент не должен спрятать то, что уже видно.
  */
 const CASCADE_STEP = 56;
 const CASCADE_WRAP = 6;
@@ -57,70 +58,68 @@ function withinStage(value: number, size: number, limit: number): number {
 }
 
 /**
- * Создаёт новый элемент из заготовки библиотеки (`state/library.ts`) — размер,
- * стиль и содержимое целиком берутся из `item`, эта функция только кладёт
- * заготовку на сцену: считает место, свободный id и слой.
- *
- * Первый элемент встаёт по центру сцены, каждый следующий — со сдвигом
- * (см. `CASCADE_STEP`), чтобы не спрятать предыдущий под собой.
+ * Создаёт новый элемент из заготовки библиотеки (`state/library.ts`) вместе
+ * с его начальным состоянием на текущем слайде.
  *
  * `id` берётся из `item.id`, а не из `item.type`: у круга получается id
  * `circle-1`, а не `shape-4` — так автор видит в списке элементов, что
- * именно он создал, а не только базовый тип схемы.
+ * именно он создал, а не только базовый тип схемы. Уникальность id — среди
+ * ВСЕХ элементов сегмента (`segment.elements`), а не только видимых на
+ * текущем слайде: элементы живут на уровне сегмента, id обязан быть
+ * свободен везде.
  */
 export function createElement(
   item: LibraryItem,
-  scene: Scene,
+  segment: Segment,
+  currentStates: Readonly<Record<string, ElementState>>,
   stage: { width: number; height: number },
-): Element {
-  const shift = (scene.elements.length % CASCADE_WRAP) * CASCADE_STEP;
-  return {
-    id: freeId(item.id, scene.elements),
+): { element: Element; state: ElementState } {
+  const shift = (Object.keys(currentStates).length % CASCADE_WRAP) * CASCADE_STEP;
+  const element: Element = {
+    id: freeId(item.id, segment.elements),
     type: item.type,
+    content: item.content,
+  };
+  const state: ElementState = {
     x: withinStage(stage.width / 2 - item.width / 2 + shift, item.width, stage.width),
     y: withinStage(stage.height / 2 - item.height / 2 + shift, item.height, stage.height),
     width: item.width,
     height: item.height,
     rotation: 0,
-    zIndex: nextZIndex(scene.elements),
+    zIndex: nextZIndex(currentStates),
+    opacity: 1,
+    visible: true,
     style: { ...item.style },
-    content: item.content,
   };
+  return { element, state };
 }
 
 /**
- * Удаляет элемент и каскадом — все cues, у которых `targetId === id`.
+ * Удаляет элемент из сегмента и каскадом — его состояние из ВСЕХ слайдов.
  *
- * Каскад обязателен: `ProjectSchema.superRefine` требует, чтобы
- * `cue.targetId` указывал на существующий элемент, иначе проект не грузится
- * вовсе (см. схему). Список удалённых cues возвращается, чтобы вызывающий
- * мог сообщить автору, сколько анимаций пропало вместе с элементом.
+ * Каскад обязателен: `ProjectSchema.superRefine` требует, чтобы ключи
+ * `slide.states` указывали на существующий элемент сегмента, иначе проект
+ * не грузится вовсе (см. схему). Кью в v3 нет — раньше каскад снимал ещё
+ * и их, теперь снимать больше нечего кроме состояний.
  *
- * `gates` не трогает и не пересоздаёт — у `Gate` нет ссылок на элементы
- * (см. ADR-011: совпадение `option.id` с id элемента не делает Gate от него
- * зависимым, это связь по значению, а не структурная ссылка). Массив
- * остаётся тем же объектом по ссылке — на этом основано решение StageView,
- * пересобирать сцену или нет.
+ * Слайды, которые состояние элемента не несли, остаются ТЕМИ ЖЕ объектами
+ * по ссылке — на этом основано решение StageView, пересобирать сцену
+ * или обновить один элемент.
  */
-export function removeElement(
-  scene: Scene,
-  id: string,
-): { scene: Scene; removedCues: readonly Cue[] } {
-  const index = scene.elements.findIndex((element) => element.id === id);
+export function removeElement(segment: Segment, id: string): Segment {
+  const index = segment.elements.findIndex((element) => element.id === id);
   if (index < 0) {
-    throw new Error(`Нельзя удалить элемент «${id}»: его нет в сцене`);
+    throw new Error(`Нельзя удалить элемент «${id}»: его нет в сегменте`);
   }
 
-  const elements = scene.elements.slice(0, index).concat(scene.elements.slice(index + 1));
+  const elements = segment.elements.slice(0, index).concat(segment.elements.slice(index + 1));
 
-  const removedCues = scene.cues.filter((cue) => cue.targetId === id);
-  // Ссылочная целостность: если каскад никого не задел, отдаём тот же
-  // массив cues, а не его копию, — иначе StageView решит, что анимации
-  // изменились, и пересоберёт сцену без причины.
-  const cues = removedCues.length === 0 ? scene.cues : scene.cues.filter((cue) => cue.targetId !== id);
+  const slides = segment.slides.map((slide) => {
+    if (!(id in slide.states)) return slide;
+    const states = { ...slide.states };
+    delete states[id];
+    return { ...slide, states };
+  });
 
-  return {
-    scene: { elements, cues, gates: scene.gates },
-    removedCues,
-  };
+  return { ...segment, elements, slides };
 }

@@ -5,7 +5,7 @@
  * он сообщает, что гейт открыт, и принимает ответ.
  */
 import { loadProject, resolveTimeRef, type Gate } from '@player/core';
-import { entryNodeOf, Player, segmentOf, type GateAttempt, type UnboundOption } from '@player/player';
+import { entrySegmentOf, Player, segmentOf, type GateAttempt, type UnboundOption } from '@player/player';
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
   // Для проекта из редактора это ещё и проверка того, что редактор
   // не испортил его правками.
   const project = loadProject(await readProject());
-  const segment = segmentOf(project, entryNodeOf(project));
+  const segment = segmentOf(project, entrySegmentOf(project));
   const duration = segment.duration;
 
   const player = new Player(host, project, {
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
   });
 
   // Метки гейтов на дорожке: видно, куда плеер приедет.
-  for (const gate of segment.scene.gates) {
+  for (const gate of segment.gates) {
     const at = resolveTimeRef(gate.at, segment.words);
     const mark = document.createElement('div');
     mark.className = 'gate-mark';

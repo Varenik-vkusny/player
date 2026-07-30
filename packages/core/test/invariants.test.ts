@@ -211,24 +211,65 @@ describe('инвариант №8: анимируем только transform, op
     }
   });
 
-  it('перечень закрыт: он используется схемой как enum', () => {
-    expect(ANIMATABLE.length).toBeGreaterThan(0);
+  it('перечень закрыт и назван поимённо', () => {
+    // Поимённо, а не «длина больше нуля»: в версии схемы 2 перечень был
+    // enum'ом кью и потому охранялся самой схемой. Кью больше нет, перечень
+    // стал законом для движка морфинга — и если его не проверять составом,
+    // проверка становится зелёной впустую.
+    expect([...ANIMATABLE]).toEqual([
+      'x', 'y', 'scale', 'scaleX', 'scaleY', 'rotate', 'opacity', 'filter',
+    ]);
     expect(new Set(ANIMATABLE).size).toBe(ANIMATABLE.length);
+  });
+
+  it('изменение width и height между слайдами инвариант не нарушает', () => {
+    // Геометрия слайда хранит width/height, но морфинг анимирует их через
+    // scaleX/scaleY, то есть через transform. Модель хранит, композитор двигает.
+    expect(ANIMATABLE).toContain('scaleX');
+    expect(ANIMATABLE).toContain('scaleY');
   });
 });
 
 /**
- * Файлы, которым читать project.audio и project.scene положено по должности.
+ * Файлы, которым читать `project.segments` и `project.entry` положено
+ * по должности.
  *
- * schema.ts — валидатор: он определяет формат, ему эти поля видеть обязательно.
+ * Дверца защищает от размазывания доступа к СОДЕРЖИМОМУ сегмента — аудио,
+ * элементам, слайдам. Перечисленные ниже работают с самим КОСТЯКОМ: они
+ * ищут сегмент, добавляют, удаляют, считают достижимость. Требовать от них
+ * ходить через `segmentOf` — то же, что требовать от редактора оглавления
+ * смотреть на книгу через страницу.
+ *
+ * Список закрытый и растёт только через ADR. Каждая запись обязана
+ * объяснять, почему файл работает с костяком, а не с содержимым:
+ *
+ * schema.ts — валидатор: он определяет формат, ему поля видеть обязательно.
+ * graph.ts — поиск сегмента и выбор следующего, это и есть работа с костяком.
  * preview.ts — сама дверца.
  * state/project.ts — редьюсер редактора, сторона записи, парная к segmentOf
- * (ADR-010). Читать проект целиком — его работа.
+ *   (ADR-010). Читать проект целиком — его работа.
+ * state/exits.ts — правила выхода и состав сегментов, то есть редактор
+ *   костяка. Содержимое сегмента он не трогает вовсе.
+ * state/editorHistory.ts — починка после отмены: проверяет, существует ли
+ *   ещё сегмент, который автор смотрел. Тот же род работы, что у project.ts.
+ * panels/SegmentPanel.tsx — панель самого костяка: рисует список сегментов
+ *   и правила выхода. Ей костяк и показывать. Содержимое сегмента —
+ *   элементы, слайды, аудио — она не открывает.
+ *
+ * ЧТО ОХРАНЯЕТСЯ НА САМОМ ДЕЛЕ. Дверца бережёт путь к СОДЕРЖИМОМУ: код,
+ * который хочет элементы, слайды или дорожку, обязан спросить `segmentOf`.
+ * Именно поэтому переходы v1→v2 и v2→v3 поменяли одну функцию. Перечисление
+ * сегментов костяка — другая работа, и запрещать её значило бы требовать
+ * от редактора оглавления смотреть на книгу через страницу.
  */
 const NARROW_DOOR_EXEMPT = [
   join('packages', 'core', 'src', 'schema.ts'),
+  join('packages', 'core', 'src', 'graph.ts'),
   join('packages', 'player', 'src', 'preview.ts'),
   join('packages', 'editor', 'src', 'state', 'project.ts'),
+  join('packages', 'editor', 'src', 'state', 'exits.ts'),
+  join('packages', 'editor', 'src', 'state', 'editorHistory.ts'),
+  join('packages', 'editor', 'src', 'panels', 'SegmentPanel.tsx'),
 ];
 
 /** Код без комментариев: пояснение, называющее поле, — не обращение к нему. */
@@ -236,7 +277,7 @@ function codeWithoutComments(text: string): string {
   return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }
 
-describe('дверца: project.audio и project.scene читают в одном месте', () => {
+describe('дверца: project.segments и project.entry читают в одном месте', () => {
   const DIRS = [
     join(ROOT, 'packages', 'core', 'src'),
     join(ROOT, 'packages', 'player', 'src'),
@@ -245,16 +286,16 @@ describe('дверца: project.audio и project.scene читают в одно�
   ];
 
   it('охранник умеет находить нарушение: иначе он зелен впустую', () => {
-    const code = codeWithoutComments('const d = project.audio.duration; // project.scene');
-    expect(/project\.(audio|scene)\b/.test(code)).toBe(true);
+    const code = codeWithoutComments('const s = project.segments; // project.entry');
+    expect(/project\.(segments|entry)\b/.test(code)).toBe(true);
   });
 
   it('охранник не считает нарушением комментарий', () => {
-    const code = codeWithoutComments('// поменяется project.audio, а не всё выше');
-    expect(/project\.(audio|scene)\b/.test(code)).toBe(false);
+    const code = codeWithoutComments('// поменяется project.segments, а не всё выше');
+    expect(/project\.(segments|entry)\b/.test(code)).toBe(false);
   });
 
-  it('вне дверцы к audio и scene напрямую не ходят', () => {
+  it('вне дверцы к segments и entry напрямую не ходят', () => {
     const offenders: string[] = [];
 
     for (const dir of DIRS) {
@@ -262,7 +303,7 @@ describe('дверца: project.audio и project.scene читают в одно�
         const relative = file.replace(ROOT, '').replace(/^[\\/]/, '');
         if (NARROW_DOOR_EXEMPT.some((exempt) => relative.endsWith(exempt))) continue;
         const code = codeWithoutComments(readFileSync(file, 'utf8'));
-        for (const match of code.matchAll(/project\.(audio|scene)\b/g)) {
+        for (const match of code.matchAll(/project\.(segments|entry)\b/g)) {
           offenders.push(`${relative}: project.${match[1]}`);
         }
       }

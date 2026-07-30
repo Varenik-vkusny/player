@@ -1,22 +1,36 @@
 /**
- * Шаблоны сцены: готовый набор элементов и анимаций, который применение
- * кладёт на сцену одним действием — ДАННЫЕ, а не код (тот же приём, что
- * `state/library.ts`, и то же требование теста: пополнение каталога — это
- * дописанная запись в `SCENE_TEMPLATES`, а не правка React, см.
- * `test/templates.test.ts`, «пополнение не требует правок в React»).
+ * Шаблоны сцены: готовый набор элементов и, если нужно, гейт, который
+ * применение кладёт в сегмент одним действием — ДАННЫЕ, а не код (тот же
+ * приём, что `state/library.ts`, и то же требование теста: пополнение
+ * каталога — это дописанная запись в `SCENE_TEMPLATES`, а не правка React,
+ * см. `test/templates.test.ts`, «пополнение не требует правок в React»).
  *
  * Шаблон описывает элементы через `dx`/`dy` — смещение от центра сцены,
  * а не абсолютные `x`/`y`: так шаблон остаётся годным для любого размера
  * сцены (см. `createElement`, тот же приём для одиночной вставки).
  *
+ * **Появление во времени в схеме v3.** Кью больше нет — появление элемента
+ * выражается тем, что на СЛАЙДЕ появления его состояние отличается от
+ * состояния на предыдущем слайде (плеер анимирует переход сам, FLIP).
+ * У элемента без `preset` или с `atSeconds: 0` появляться неоткуда: слайд
+ * на нуле — стартовый вид сегмента, морфить в него не из чего. Поэтому:
+ *
+ *   - элементы без preset или с atSeconds === 0 получают финальное
+ *     состояние сразу на первом слайде сегмента;
+ *   - элементы с preset и atSeconds > 0 получают на первом слайде состояние
+ *     С ПАТЧЕМ заготовки появления (`AnimationPreset`, `state/library.ts`),
+ *     а на новом слайде, вставленном в момент atSeconds, — обычное
+ *     финальное состояние. Между ними и есть появление.
+ *
  * `applyTemplate` — единственная функция этого модуля, которая трогает
- * `Scene`. Она ДОБАВЛЯЕТ к сцене, а не заменяет её: у автора уже могло
- * что-то лежать (см. комментарий самой функции).
+ * `Segment`. Она ДОБАВЛЯЕТ к сегменту, а не заменяет его: у автора уже
+ * могло что-то лежать (см. комментарий самой функции).
  */
-import type { Cue, Element, Gate, Scene, TimeRef } from '@player/core';
+import { resolveTimeRef } from '@player/core';
+import type { Element, ElementState, Gate, Segment, TimeRef } from '@player/core';
 
 import { freeId } from './elements.js';
-import { ANIMATION_PRESETS, libraryItem, type AnimationPreset } from './library.js';
+import { animationPreset, libraryItem, type AnimationPreset } from './library.js';
 
 /** Что шаблон кладёт на сцену: элемент из библиотеки со сдвигом и своим текстом. */
 export interface TemplateElement {
@@ -29,9 +43,9 @@ export interface TemplateElement {
   readonly height?: number;
   readonly content?: string;
   readonly style?: Readonly<Record<string, string | number>>;
-  /** id заготовки анимации из ANIMATION_PRESETS. undefined — без анимации. */
+  /** id заготовки появления из ANIMATION_PRESETS. undefined — без появления. */
   readonly preset?: string;
-  /** Когда появляется, секунды от начала узла. Не длиннее 3 с (см. applyTemplate). */
+  /** Когда появляется, секунды от начала сегмента. Не длиннее 3 с (см. applyTemplate). */
   readonly atSeconds: number;
 }
 
@@ -63,8 +77,7 @@ const SANS = 'system-ui, sans-serif';
  * Пять заготовок сцены. Метки времени — секунды, не слова (инвариант №10):
  * у произвольной дорожки, на которую ляжет шаблон, слов может не быть.
  *
- * Ни одна метка не позже 3 с — короче любой дорожки в фикстурах проекта,
- * включая трёхсекундные узлы `branching.json` (см. test/templates.test.ts).
+ * Ни одна метка не позже 3 с — короче любой дорожки в фикстурах проекта.
  */
 export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
@@ -293,11 +306,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           'text-align': 'center',
           background: PANEL,
           'border-radius': '20px',
-          // Подпись по центру карточки и по вертикали тоже. `text-align`
-          // отвечает только за горизонталь, и без этих трёх свойств текст
-          // прижимается к верхнему краю — ровно то, на что владелец обратил
-          // внимание в фикстуре развилки. Выразимо: `style` в схеме —
-          // открытая запись, а рендер применяет её через setProperty.
           display: 'flex',
           'align-items': 'center',
           'justify-content': 'center',
@@ -319,11 +327,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           'text-align': 'center',
           background: PANEL,
           'border-radius': '20px',
-          // Подпись по центру карточки и по вертикали тоже. `text-align`
-          // отвечает только за горизонталь, и без этих трёх свойств текст
-          // прижимается к верхнему краю — ровно то, на что владелец обратил
-          // внимание в фикстуре развилки. Выразимо: `style` в схеме —
-          // открытая запись, а рендер применяет её через setProperty.
           display: 'flex',
           'align-items': 'center',
           'justify-content': 'center',
@@ -348,81 +351,135 @@ export function sceneTemplate(id: string): SceneTemplate {
   return template;
 }
 
-function animationPreset(id: string): AnimationPreset {
-  const preset = ANIMATION_PRESETS.find((candidate) => candidate.id === id);
-  if (!preset) {
-    throw new Error(`В библиотеке анимаций нет заготовки «${id}»`);
-  }
-  return preset;
+/** Финальное (полностью появившееся) состояние элемента шаблона. */
+function finalState(te: TemplateElement, item: ReturnType<typeof libraryItem>, width: number, height: number, stage: { width: number; height: number }, zIndex: number): ElementState {
+  return {
+    x: stage.width / 2 + te.dx - width / 2,
+    y: stage.height / 2 + te.dy - height / 2,
+    width,
+    height,
+    rotation: 0,
+    zIndex,
+    opacity: 1,
+    visible: true,
+    style: te.style ? { ...item.style, ...te.style } : { ...item.style },
+  };
 }
 
 /**
- * Применяет шаблон к сцене — добавляет элементы, их анимации и, если он есть,
- * гейт с вариантами, привязанными к только что созданным элементам.
+ * Патч состояния «до появления» — накладывается на финальное состояние,
+ * чтобы получить состояние элемента на первом слайде сегмента (см. описание
+ * заготовок появления в `state/library.ts`). `dx`/`dy` заготовки в патч
+ * не входят — они считаются относительно финального `x`/`y`, которого
+ * этот патч не знает, и накладываются вызывающим (`applyTemplate`) отдельно.
+ */
+function startPatch(preset: AnimationPreset): Partial<ElementState> {
+  const patch: Partial<ElementState> = {};
+  if (preset.hiddenAtStart) patch.visible = false;
+  if (preset.growFrom === 'both') {
+    patch.width = 0;
+    patch.height = 0;
+  } else if (preset.growFrom === 'width') {
+    patch.width = 0;
+  }
+  return patch;
+}
+
+/**
+ * Применяет шаблон к сегменту — добавляет элементы, их появление и, если он
+ * есть, гейт с вариантами, привязанными к только что созданным элементам.
  *
- * ДОБАВЛЯЕТ, не заменяет: у автора на сцене уже могло что-то лежать.
- * Существующие элементы, cues и gates остаются ТЕМИ ЖЕ объектами по ссылке
- * (на этом держится решение StageView, пересобирать сцену целиком или
- * обновить один элемент, см. state/project.ts) — если шаблон не добавляет
- * ни одной анимации или гейта, соответствующий массив возвращается тем же,
- * без пересборки.
+ * ДОБАВЛЯЕТ, не заменяет: у автора на сегменте уже могло что-то лежать.
+ * Существующие элементы и слайды остаются ТЕМИ ЖЕ объектами по ссылке
+ * (на этом держится решение StageView, пересобирать сцену или обновить один
+ * элемент) там, где шаблон их не касается.
  *
- * `zIndex` новых элементов выше всех существующих, id всех новых сущностей
- * свободны — два применения одного шаблона подряд не сталкиваются
- * идентификаторами (freeId читает уже накопленный список, а не исходную
- * сцену, на каждом шаге).
+ * `zIndex` новых элементов выше всех существующих на первом слайде, id всех
+ * новых сущностей свободны — два применения одного шаблона подряд
+ * не сталкиваются идентификаторами.
  */
 export function applyTemplate(
   template: SceneTemplate,
-  scene: Scene,
+  segment: Segment,
   stage: { width: number; height: number },
-): Scene {
-  const startZ = scene.elements.reduce((max, element) => Math.max(max, element.zIndex), -1) + 1;
+): Segment {
+  const firstSlide = segment.slides[0];
+  if (!firstSlide) {
+    throw new Error(`В сегменте «${segment.id}» нет ни одного слайда`);
+  }
 
-  const elements = scene.elements.slice();
+  const startStates = firstSlide.states;
+  const startZ = Object.values(startStates).reduce((max, state) => Math.max(max, state.zIndex), -1) + 1;
+
+  const elements = segment.elements.slice();
   const newElements: Element[] = [];
-  const cues = scene.cues.slice();
-  let addedCue = false;
+  let nextStartStates = startStates;
+  // Момент появления → состояние, которое нужно на слайде в этот момент.
+  const laterPatches = new Map<number, Record<string, ElementState>>();
 
   template.elements.forEach((te, index) => {
     const item = libraryItem(te.item);
     const width = te.width ?? item.width;
     const height = te.height ?? item.height;
-    const element: Element = {
-      id: freeId(item.id, elements),
-      type: item.type,
-      x: stage.width / 2 + te.dx - width / 2,
-      y: stage.height / 2 + te.dy - height / 2,
-      width,
-      height,
-      rotation: 0,
-      zIndex: startZ + index,
-      style: te.style ? { ...item.style, ...te.style } : { ...item.style },
-      content: te.content ?? item.content,
-    };
+    const zIndex = startZ + index;
+
+    const element: Element = { id: freeId(item.id, elements), type: item.type, content: te.content ?? item.content };
     elements.push(element);
     newElements.push(element);
 
-    if (te.preset !== undefined) {
-      const preset = animationPreset(te.preset);
-      const cue: Cue = {
-        id: freeId('cue', cues),
-        targetId: element.id,
-        at: { kind: 'seconds', t: te.atSeconds } satisfies TimeRef,
-        animation: {
-          property: preset.property,
-          from: preset.from,
-          to: preset.to,
-          duration: preset.durationMs,
-          ease: preset.ease,
-        },
-      };
-      cues.push(cue);
-      addedCue = true;
+    const final = finalState(te, item, width, height, stage, zIndex);
+
+    if (te.preset === undefined || te.atSeconds <= 0) {
+      // Без появления или появление прямо на старте: слайду на нуле морфить
+      // не из чего, кладём сразу финальное состояние.
+      nextStartStates = { ...nextStartStates, [element.id]: final };
+      return;
     }
+
+    const preset = animationPreset(te.preset);
+    const patch = startPatch(preset);
+    if (preset.dx !== undefined) patch.x = final.x + preset.dx;
+    if (preset.dy !== undefined) patch.y = final.y + preset.dy;
+    const start: ElementState = { ...final, ...patch };
+    nextStartStates = { ...nextStartStates, [element.id]: start };
+
+    const bucket = laterPatches.get(te.atSeconds) ?? {};
+    bucket[element.id] = final;
+    laterPatches.set(te.atSeconds, bucket);
   });
 
-  let gates = scene.gates;
+  let slides = segment.slides.slice();
+  slides[0] = nextStartStates === startStates ? firstSlide : { ...firstSlide, states: nextStartStates };
+
+  // Слайды появления — по возрастанию времени, каждый копией предыдущего
+  // плюс патч элементов, которые появляются именно в этот момент.
+  const words = segment.audio.words;
+  for (const atSeconds of [...laterPatches.keys()].sort((a, b) => a - b)) {
+    const at: TimeRef = { kind: 'seconds', t: atSeconds };
+    let insertAfter = 0;
+    for (let i = 0; i < slides.length; i += 1) {
+      if (resolveTimeRef(slides[i]!.at, words) < atSeconds) insertAfter = i;
+    }
+    const anchor = slides[insertAfter]!;
+    const existingAtSameTime = slides.find((slide) => resolveTimeRef(slide.at, words) === atSeconds);
+    const patch = laterPatches.get(atSeconds)!;
+
+    if (existingAtSameTime) {
+      const i = slides.indexOf(existingAtSameTime);
+      slides[i] = { ...existingAtSameTime, states: { ...existingAtSameTime.states, ...patch } };
+      continue;
+    }
+
+    const newSlide = {
+      id: freeId('slide', slides),
+      at,
+      transition: 'morph' as const,
+      states: { ...anchor.states, ...patch },
+    };
+    slides.splice(insertAfter + 1, 0, newSlide);
+  }
+
+  let gates = segment.gates;
   if (template.gate) {
     const { atSeconds, prompt, optionIndexes, correctIndex } = template.gate;
     const options = optionIndexes.map((optionIndex) => {
@@ -436,30 +493,21 @@ export function applyTemplate(
     if (!correctElement) {
       throw new Error(`Шаблон «${template.id}»: гейт ссылается на элемент №${correctIndex}, которого нет`);
     }
+    const gateId = freeId('gate', segment.gates);
     const gate: Gate = {
-      id: freeId('gate', scene.gates),
-      at: { kind: 'seconds', t: atSeconds } satisfies TimeRef,
+      id: gateId,
+      at: { kind: 'seconds', t: atSeconds },
       config: { kind: 'choice', prompt, options, correctId: correctElement.id },
-      // «Продолжить», а НЕ бесконечный retry, хотя схема разрешила бы и его:
-      // гейт без рёбер под правило проходимости не попадает. Но шаблон
-      // «вопрос с вариантами» затевался ровно ради готового взаимодействия,
-      // и первое, что автор сделает дальше, — разведёт варианты по узлам.
-      // С `retry` и `maxAttempts: null` `graph.connect` ему это ЗАПРЕТИТ
-      // (schema.ts:356: все ветки, кроме верной, стали бы недостижимы), и он
-      // получил бы отказ на действии, ради которого шаблон и нажал. Так же
-      // устроена фикстура развилки — единственная, которая реально ветвится.
-      //
-      // В развилке «верно» и «неверно» и без того теряют смысл: оба ответа
-      // ведут куда-то, просто в разные места.
+      // «Продолжить», а не retry: гейт без правил выхода под правило
+      // проходимости не попадает, а шаблон «вопрос с вариантами» затевался
+      // ровно ради того, чтобы автор развёл варианты по разным сегментам
+      // следующим шагом (см. ту же оговорку в исходном комментарии v2).
       onWrong: 'continue',
       maxAttempts: null,
+      recordAs: gateId,
     };
-    gates = [...scene.gates, gate];
+    gates = [...segment.gates, gate];
   }
 
-  return {
-    elements,
-    cues: addedCue ? cues : scene.cues,
-    gates,
-  };
+  return { ...segment, elements, slides, gates };
 }

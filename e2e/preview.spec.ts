@@ -19,9 +19,11 @@ import { expect, test, type Page } from '@playwright/test';
 
 interface PreviewHandle {
   seek(seconds: number): void;
-  updateElement(element: Record<string, unknown>): void;
+  /** Геометрия живёт в состоянии на слайде, поэтому правится пара (ADR-015). */
+  updateElement(element: Record<string, unknown>, state: Record<string, unknown>): void;
   readonly nodes: ReadonlyMap<string, HTMLElement>;
-  readonly segment: { scene: { elements: Record<string, unknown>[] } };
+  readonly segment: { elements: Record<string, unknown>[] };
+  readonly slide: { states: Record<string, Record<string, unknown> | undefined> };
 }
 
 /** Открывает оснастку и возвращает ошибки страницы: пустой список — часть проверки. */
@@ -56,16 +58,21 @@ test.describe('ScenePreview: картинка на моменте без зву�
     }
   });
 
-  test('элемента нет на экране до его анимации появления', async ({ page }) => {
+  test('элемента нет на экране до его появления', async ({ page }) => {
     // Дефект, найденный этой страховкой в первый же день. У карточки
-    // в two-gates.json кью «opacity 0 → 1» на восьмой секунде, а в стиле
-    // прозрачность не задана. Раньше она была видна все восемь секунд,
-    // на 8.000 гасла и лишь потом проявлялась.
+    // в two-gates.json появление на восьмой секунде, а до неё она была
+    // видна все восемь секунд, на 8.000 гасла и лишь потом проявлялась.
     //
     // Время двигается покадрово, а не скачком, и это существенно: при
-    // большом скачке anime.js форсирует рендер, и сломанная реализация
+    // большом скачке движок форсирует рендер, и сломанная реализация
     // выглядела бы исправной. Разница между этими двумя способами
     // проверки и есть то, на чём легко обмануться.
+    //
+    // Проверяется ВИДИМОСТЬ, а не `opacity`. В схеме v3 «спрятан» выражено
+    // `visible: false` → `visibility: hidden`, потому что скрытый элемент
+    // обязан сохранять бокс раскладки для морфинга (ADR-015). Тест, который
+    // смотрел бы в `opacity`, охранял бы реализацию вместо поведения
+    // и упал бы на верном коде.
     await openPreview(page, 'two-gates', 0);
 
     const samples = await page.evaluate(() => {
@@ -73,19 +80,24 @@ test.describe('ScenePreview: картинка на моменте без зву�
       const card = preview.nodes.get('card');
       if (!card) throw new Error('на сцене нет элемента card');
 
-      const seen: Record<string, string> = {};
-      const checkpoints = new Map([[0, 'старт'], [240, 'середина'], [479, 'перед кью']]);
+      const seen: Record<string, boolean> = {};
+      const checkpoints = new Map([[0, 'старт'], [240, 'середина'], [479, 'перед появлением']]);
       for (let frame = 0; frame <= 479; frame++) {
         preview.seek((frame * 16.7) / 1000);
         const label = checkpoints.get(frame);
-        if (label) seen[label] = card.style.opacity;
+        // Флаги обязательны: по умолчанию checkVisibility() НЕ учитывает
+        // ни `visibility: hidden`, ни нулевую прозрачность — он смотрит
+        // только на display и content-visibility. Без них проба вернула бы
+        // «видно» для честно спрятанного элемента, то есть тест был бы
+        // зелёным на сломанном коде и красным на верном.
+        if (label) seen[label] = card.checkVisibility({ visibilityProperty: true, opacityProperty: true });
       }
       return seen;
     });
 
-    expect(samples['старт'], 'на нулевом кадре карточки уже не должно быть видно').toBe('0');
-    expect(samples['середина']).toBe('0');
-    expect(samples['перед кью'], 'до самого старта кью карточка обязана быть скрыта').toBe('0');
+    expect(samples['старт'], 'на нулевом кадре карточки уже не должно быть видно').toBe(false);
+    expect(samples['середина']).toBe(false);
+    expect(samples['перед появлением'], 'до самого появления карточка обязана быть скрыта').toBe(false);
   });
 
   test('картинка на моменте не зависит от того, откуда к нему пришли', async ({ page }) => {
@@ -129,24 +141,28 @@ test.describe('ScenePreview: картинка на моменте без зву�
       const preview = (window as unknown as { __preview: PreviewHandle }).__preview;
       const node = preview.nodes.get('title');
       if (!node) throw new Error('на сцене нет элемента title');
-      return { left: node.style.left, opacity: node.style.opacity };
+      return { left: node.style.left, visible: node.checkVisibility() };
     });
     expect(before.left).toBe('140px');
-    expect(before.opacity, 'до правки анимация уже вывела title в единицу').toBe('1');
+    expect(before.visible, 'к пятой секунде title уже появился').toBe(true);
 
     const after = await page.evaluate(() => {
       const preview = (window as unknown as { __preview: PreviewHandle }).__preview;
-      const element = preview.segment.scene.elements.find((e) => e['id'] === 'title');
+      // Геометрия живёт в состоянии на слайде, а не в элементе (ADR-015),
+      // поэтому updateElement принимает пару «элемент + состояние».
+      const element = preview.segment.elements.find((e) => e['id'] === 'title');
       if (!element) throw new Error('в сегменте нет элемента title');
-      preview.updateElement({ ...element, x: 400, y: 200 });
+      const state = preview.slide.states['title'];
+      if (!state) throw new Error('у title нет состояния на текущем слайде');
+      preview.updateElement(element, { ...state, x: 400, y: 200 });
       const node = preview.nodes.get('title');
       if (!node) throw new Error('узел title исчез после обновления');
-      return { left: node.style.left, top: node.style.top, opacity: node.style.opacity };
+      return { left: node.style.left, top: node.style.top, visible: node.checkVisibility() };
     });
 
     expect(after.left, 'элемент обязан переехать').toBe('400px');
     expect(after.top).toBe('200px');
-    expect(after.opacity, 'элемент не должен гаснуть при перетаскивании').toBe('1');
+    expect(after.visible, 'элемент не должен пропадать при перетаскивании').toBe(true);
   });
 
   test('узлы переживают точечное обновление: таймлайн не остаётся с мусором', async ({ page }) => {
@@ -156,10 +172,12 @@ test.describe('ScenePreview: картинка на моменте без зву�
 
     const sameNode = await page.evaluate(() => {
       const preview = (window as unknown as { __preview: PreviewHandle }).__preview;
-      const element = preview.segment.scene.elements.find((e) => e['id'] === 'title');
+      const element = preview.segment.elements.find((e) => e['id'] === 'title');
       if (!element) throw new Error('в сегменте нет элемента title');
+      const state = preview.slide.states['title'];
+      if (!state) throw new Error('у title нет состояния на текущем слайде');
       const nodeBefore = preview.nodes.get('title');
-      preview.updateElement({ ...element, x: 300 });
+      preview.updateElement(element, { ...state, x: 300 });
       return nodeBefore === preview.nodes.get('title') && nodeBefore?.isConnected === true;
     });
 

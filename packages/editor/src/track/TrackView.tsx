@@ -31,12 +31,8 @@ export interface TrackViewProps {
   onMoveMark: (kind: MarkKind, id: string, seconds: number) => void;
   /** Перетаскивание метки завершено — точка коммита истории (срез 2). */
   onMoveMarkEnd: () => void;
-  /** Добавляет анимацию выделенному элементу на текущей позиции. */
-  onAddCue: () => void;
   /** Добавляет гейт на текущей позиции. */
   onAddGate: () => void;
-  /** Анимацию некуда вешать, пока элемент не выделен. */
-  canAddCue: boolean;
 }
 
 /** Секунды в вид 01:23.4 — так короче и читается быстрее голых секунд. */
@@ -63,9 +59,7 @@ export function TrackView({
   onSelectMark,
   onMoveMark,
   onMoveMarkEnd,
-  onAddCue,
   onAddGate,
-  canAddCue,
 }: TrackViewProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
@@ -159,17 +153,6 @@ export function TrackView({
         ) : null}
 
         <span className="ed-add">
-          <button
-            type="button"
-            className="ed-add-mark"
-            onClick={onAddCue}
-            disabled={!canAddCue}
-            // Причина недоступности обязана быть видна: иначе автор жмёт
-            // на серую кнопку и не понимает, чего от него хотят.
-            title={canAddCue ? 'Анимация на этой секунде' : 'Сначала выделите элемент на сцене'}
-          >
-            ◆ анимация
-          </button>
           <button
             type="button"
             className="ed-add-mark"

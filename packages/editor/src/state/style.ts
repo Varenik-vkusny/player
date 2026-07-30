@@ -2,7 +2,14 @@
  * Стиль элемента сцены — восемь полей, которые показывает редактор,
  * и функции чтения/записи в свободную карту `style` (ADR-012).
  *
- * `ElementSchema.style` — `Record<string, string | number>`, схема ключи
+ * В схеме v3 `style` переехал с `Element` на `ElementState` (см. schema.ts:
+ * «здесь намеренно нет style» у `ElementSchema») — стиль это ГДЕ и КАК,
+ * а не КТО, и живёт на слайде, а не на самом элементе. Этот модуль от
+ * переезда не пострадал: он как читал/писал произвольную карту `style`,
+ * так и продолжает — просто карта теперь берётся из `ElementState.style`,
+ * а не из `Element.style`.
+ *
+ * `ElementStateSchema.style` — `Record<string, string | number>`, схема ключи
  * не ограничивает вовсе. Значит набор полей, которые видит автор в панели,
  * это продуктовое решение, а не следствие схемы, и его фиксирует этот
  * модуль, а не компонент — иначе набор незаметно расползётся по разным
@@ -51,10 +58,10 @@
  * ключ произвольных данных и поэтому никогда не бросает даже на незнакомом
  * ключе — см. её комментарий.
  */
-import type { Element } from '@player/core';
+import type { Element, ElementState } from '@player/core';
 
-/** Карта style элемента — ровно то же, что `ElementSchema.style`. */
-export type ElementStyle = Element['style'];
+/** Карта style элемента — ровно то же, что `ElementStateSchema.style`. */
+export type ElementStyle = ElementState['style'];
 
 /** Как показывать и разбирать значение поля. */
 export type StyleValueType = 'color' | 'length' | 'length-or-percent' | 'number' | 'choice';
@@ -122,7 +129,9 @@ export type StyleReadResult =
   | { readonly kind: 'raw'; readonly text: string };
 
 const TEXT_ONLY: readonly Element['type'][] = ['text'];
-const ALL_TYPES: readonly Element['type'][] = ['text', 'image', 'shape', 'group'];
+// Схема v3 знает ровно три типа элемента (ElementSchema.type) — в отличие
+// от v2, «group» среди них больше нет.
+const ALL_TYPES: readonly Element['type'][] = ['text', 'image', 'shape'];
 
 /**
  * Восемь полей, ключи kebab-case — как в фикстурах. Значения по умолчанию

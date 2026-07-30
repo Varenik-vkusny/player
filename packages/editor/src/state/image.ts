@@ -15,7 +15,7 @@
  * `createImageBitmap` и `canvas`, а это только браузер — проверяется e2e-тестом
  * перетаскивания файла на сцену, не юнитом.
  */
-import type { Element, Scene } from '@player/core';
+import type { Element, ElementState, Segment } from '@player/core';
 
 import { createElement } from './elements.js';
 import { libraryItem } from './library.js';
@@ -109,24 +109,32 @@ export async function encodeImageFile(file: File, stage: Size): Promise<EncodedI
 }
 
 /**
- * Собирает новый элемент `image` из уже подготовленной картинки.
+ * Собирает новый элемент `image` и его начальное состояние из уже
+ * подготовленной картинки.
  *
- * Размер и положение берутся из `encoded`, а не из заготовки `image`
- * библиотеки (`state/library.ts`): пропорции элемента обязаны быть
+ * Размер и положение состояния берутся из `encoded`, а не из заготовки
+ * `image` библиотеки (`state/library.ts`): пропорции элемента обязаны быть
  * пропорциями картинки
  * («Размеры созданного элемента — по пропорциям картинки, вписать в сцену»).
- * Остальное — id, zIndex, пустой style — даёт та же фабрика, что и для
- * кнопки «Картинка» на панели вставки, чтобы не заводить второй способ
+ * Остальное — id элемента, zIndex, пустой style — даёт та же фабрика, что
+ * и для кнопки «Картинка» на панели вставки, чтобы не заводить второй способ
  * присвоить идентификатор.
  */
-export function createImageElement(scene: Scene, stage: Size, encoded: EncodedImage): Element {
-  const base = createElement(libraryItem('image'), scene, stage);
+export function createImageElement(
+  segment: Segment,
+  currentStates: Readonly<Record<string, ElementState>>,
+  stage: Size,
+  encoded: EncodedImage,
+): { element: Element; state: ElementState } {
+  const base = createElement(libraryItem('image'), segment, currentStates, stage);
   return {
-    ...base,
-    width: encoded.width,
-    height: encoded.height,
-    x: stage.width / 2 - encoded.width / 2,
-    y: stage.height / 2 - encoded.height / 2,
-    content: encoded.dataUri,
+    element: { ...base.element, content: encoded.dataUri },
+    state: {
+      ...base.state,
+      width: encoded.width,
+      height: encoded.height,
+      x: stage.width / 2 - encoded.width / 2,
+      y: stage.height / 2 - encoded.height / 2,
+    },
   };
 }

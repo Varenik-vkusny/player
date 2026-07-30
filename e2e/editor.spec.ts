@@ -66,9 +66,9 @@ async function centerOnScreen(page: Page, id: string): Promise<{ x: number; y: n
 async function geometryOf(page: Page, id: string): Promise<Geometry> {
   return page.evaluate((elementId) => {
     const project = (window as unknown as {
-      __project: { nodes: { scene: { elements: (Geometry & { id: string })[] } }[] };
+      __project: { segments: { elements: (Geometry & { id: string })[] }[] };
     }).__project;
-    const element = project.nodes[0]!.scene.elements.find((candidate) => candidate.id === elementId);
+    const element = project.segments[0]!.elements.find((candidate) => candidate.id === elementId);
     if (!element) throw new Error(`в проекте нет элемента ${elementId}`);
     return {
       x: element.x,

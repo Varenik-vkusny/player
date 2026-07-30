@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { loadProject, resolveTimeRef } from '@player/core';
 import type { TimeRef, Word } from '@player/core';
@@ -216,28 +217,32 @@ describe('якорь строится только через core', () => {
 });
 
 describe('реальные данные: fixtures/projects/demo.json', () => {
-  const FIXTURES = new URL('../../../fixtures/projects/', import.meta.url).pathname.slice(1);
+  // fileURLToPath, а не pathname.slice(1): на Linux путь начинается со слэша,
+  // и slice(1) отрезал бы его.
+  const FIXTURES = fileURLToPath(new URL('../../../fixtures/projects/', import.meta.url));
   const demo = loadProject(JSON.parse(readFileSync(join(FIXTURES, 'demo.json'), 'utf8')));
-  const node = demo.nodes[0]!;
-  const words = node.audio.words;
+  const segment = demo.segments[0]!;
+  const words = segment.audio.words;
 
   it('фикстура прочитана целиком', () => {
     expect(words.length).toBe(100);
-    expect(node.scene.gates.length).toBe(2);
+    expect(segment.gates.length).toBe(2);
   });
 
   it('все метки фикстуры переводятся в секунды и лежат на дорожке', () => {
-    const refs = [...node.scene.cues.map((cue) => cue.at), ...node.scene.gates.map((g) => g.at)];
+    // Слайды вместо кью: после перехода на схему v3 метками на дорожке
+    // стали слайды и гейты, а кью не существует как понятия.
+    const refs = [...segment.slides.map((slide) => slide.at), ...segment.gates.map((g) => g.at)];
     for (const ref of refs) {
       const seconds = markSeconds(ref, words);
       expect(Number.isFinite(seconds)).toBe(true);
       expect(seconds).toBeGreaterThanOrEqual(0);
-      expect(seconds).toBeLessThanOrEqual(node.audio.duration);
+      expect(seconds).toBeLessThanOrEqual(segment.audio.duration);
     }
   });
 
   it('гейт на слове «энергия» воспроизводится модулем ровно', () => {
-    const gate = wordRef(node.scene.gates[1]!.at);
+    const gate = wordRef(segment.gates[1]!.at);
     const seconds = markSeconds(gate, words);
     expect(seconds).toBeCloseTo(44.188, 12);
 
@@ -252,7 +257,7 @@ describe('реальные данные: fixtures/projects/demo.json', () => {
   });
 
   it('гейт на слове «главная» звучит внутри предыдущего слова — и это видно', () => {
-    const gate = wordRef(node.scene.gates[0]!.at);
+    const gate = wordRef(segment.gates[0]!.at);
     const seconds = markSeconds(gate, words);
     expect(seconds).toBeCloseTo(14.387, 12);
 
@@ -282,7 +287,7 @@ describe('реальные данные: fixtures/projects/demo.json', () => {
   });
 
   it('каждое начало слова привязывается к своему слову с нулевым смещением', () => {
-    words.forEach((w, index) => {
+    words.forEach((w: { start: number }, index: number) => {
       const ref = wordRef(timeRefAt(words, w.start));
       expect(ref.wordIndex).toBe(index);
       expect(ref.offset).toBe(0);

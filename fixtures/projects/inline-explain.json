@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 3,
+  "meta": {
+    "title": "Разбор на месте при неверном ответе",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-explain",
+  "segments": [
+    {
+      "id": "s-explain",
+      "title": "Гейт с разбором, не покидая сегмент",
+      "audio": {
+        "src": "/audio/branch-yes.wav",
+        "duration": 3,
+        "words": []
+      },
+      "elements": [
+        { "id": "bg", "type": "shape", "content": "" },
+        { "id": "prompt", "type": "text", "content": "Что останавливает плеер?" }
+      ],
+      "slides": [
+        {
+          "id": "e-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "prompt": {
+              "x": 140, "y": 160, "width": 1640, "height": 160,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "72px",
+                "font-weight": "700",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-explain",
+          "at": { "kind": "seconds", "t": 1.5 },
+          "config": {
+            "kind": "choice",
+            "prompt": "Что останавливает плеер?",
+            "options": [
+              { "id": "opt-gate", "label": "Гейт" },
+              { "id": "opt-timer", "label": "Таймер" }
+            ],
+            "correctId": "opt-gate"
+          },
+          "onWrong": "inline-explain",
+          "maxAttempts": null,
+          "recordAs": "чем-останавливается"
+        }
+      ],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

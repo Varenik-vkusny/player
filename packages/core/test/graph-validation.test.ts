@@ -1,176 +1,158 @@
-import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { loadProject } from '../src/index.js';
-
 /**
- * Заведомо ломаемый черновик проекта.
+ * Тотальность выхода — прямой наследник правила полного покрытия из ADR-013.
  *
- * Тип `any` здесь не заглушка компилятора, а признание: каждый тест ниже
- * деформирует объект так, чтобы он перестал быть валидным проектом, и кормит
- * его `loadProject(input: unknown)`. Строгий тип запрещал бы ровно то, что
- * проверяется, — у системы типов нет полезного мнения о намеренно битых данных.
+ * Правило то же: автор обязан ответить на вопрос «а что при таком ответе».
+ * Поменялось только место, где вопрос задаётся: раньше это были рёбра гейта,
+ * теперь — правила выхода сегмента.
  *
- * Цена известна: опечатку в самом эталоне компилятор не поймает. Её ловит
- * первый тест — «эталон валиден». Без него всё, что ниже, зелено впустую.
+ * Обобщение, ради которого правило и существует: **валидность данных не равна
+ * достижимости поведения**. Схема, проверяющая только целостность ссылок,
+ * разрешает объяснение, в котором зритель упирается в тупик.
  */
-function twoNodes(): any {
-  const audio = { src: 'a.mp3', duration: 10, words: [] };
-  const gate = {
-    id: 'g1',
-    at: { kind: 'seconds', t: 5 },
-    config: {
-      kind: 'choice',
-      prompt: 'Как думаешь?',
-      options: [{ id: 'o1', label: 'Так' }, { id: 'o2', label: 'Иначе' }],
-      correctId: 'o1',
-    },
-    // Развилка обязана быть проходима: при бесконечном retry ветка «o2»
-    // была бы недостижима, потому что неверный ответ не доводит до ребра.
-    onWrong: 'continue',
-  };
+import { describe, expect, it } from 'vitest';
+
+import { ProjectSchema, SCHEMA_VERSION } from '../src/schema.js';
+
+const bare = (id: string, exit: unknown, gates: unknown[] = []): any => ({
+  id,
+  title: '',
+  audio: { src: `/${id}.mp3`, duration: 10, words: [] },
+  elements: [],
+  slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+  gates,
+  exit,
+});
+
+const choice = (recordAs: string, ...optionIds: string[]) => ({
+  id: `g-${recordAs}`,
+  at: { kind: 'seconds', t: 1 },
+  config: {
+    kind: 'choice',
+    prompt: 'Вопрос?',
+    options: optionIds.map((id) => ({ id, label: id })),
+    correctId: optionIds[0],
+  },
+  onWrong: 'continue',
+  maxAttempts: null,
+  recordAs,
+});
+
+/** Объяснение из сегмента `start` плюс два тупика, куда можно вести. */
+function explanation(exit: unknown, gates: unknown[] = []): any {
   return {
-    schemaVersion: 2,
-    meta: { title: 'Тест' },
-    entry: 'n1',
-    nodes: [
-      {
-        id: 'n1', title: 'Первый', audio,
-        scene: { elements: [], cues: [], gates: [gate] },
-        edges: [
-          { id: 'e1', to: 'n2', when: { kind: 'option', gateId: 'g1', optionId: 'o1' } },
-          { id: 'e2', to: 'n2', when: { kind: 'option', gateId: 'g1', optionId: 'o2' } },
-        ],
-      },
-      { id: 'n2', title: 'Второй', audio, scene: { elements: [], cues: [], gates: [] }, edges: [] },
+    schemaVersion: SCHEMA_VERSION,
+    meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
+    entry: 'start',
+    segments: [
+      bare('start', exit, gates),
+      bare('да', { rules: [], default: null }),
+      bare('нет', { rules: [], default: null }),
     ],
   };
 }
 
-describe('целостность графа', () => {
-  it('эталон валиден: иначе все проверки ниже зелены впустую', () => {
-    expect(() => loadProject(twoNodes())).not.toThrow();
+const ok = (project: unknown) => ProjectSchema.safeParse(project).success;
+const why = (project: unknown): string => {
+  const result = ProjectSchema.safeParse(project);
+  return result.success ? '' : result.error.issues.map((i) => i.message).join(' | ');
+};
+
+describe('выход без правил', () => {
+  it('концовка законна', () => {
+    expect(ok(explanation({ rules: [], default: null }))).toBe(true);
   });
 
-  it('стартовый узел обязан существовать', () => {
-    const p = twoNodes();
-    p.entry = 'нет-такого';
-    expect(() => loadProject(p)).toThrow(/Стартовый узел/);
+  it('безусловный переход законен', () => {
+    expect(ok(explanation({ rules: [], default: 'да' }))).toBe(true);
+  });
+});
+
+describe('выход с правилами обязан быть тотальным', () => {
+  const rule = (value: string, goto: string) =>
+    ({ id: `r-${value}`, when: { kind: 'equals', variable: 'q', value }, goto });
+
+  it('запасной выход делает тотальным что угодно', () => {
+    expect(ok(explanation(
+      { rules: [rule('yes', 'да')], default: 'нет' },
+      [choice('q', 'yes', 'no')],
+    ))).toBe(true);
   });
 
-  it('ребро в несуществующий узел не проходит', () => {
-    const p = twoNodes();
-    p.nodes[0].edges[0].to = 'нет-такого';
-    expect(() => loadProject(p)).toThrow(/несуществующий узел/);
+  it('покрытие всех вариантов гейта делает запасной выход лишним', () => {
+    expect(ok(explanation(
+      { rules: [rule('yes', 'да'), rule('no', 'нет')], default: null },
+      [choice('q', 'yes', 'no')],
+    ))).toBe(true);
   });
 
-  it('ребро на чужой гейт не проходит', () => {
-    const p = twoNodes();
-    p.nodes[0].edges[0].when.gateId = 'g-другой';
-    expect(() => loadProject(p)).toThrow(/гейт/);
+  it('непокрытый вариант без запасного выхода — тупик', () => {
+    expect(why(explanation(
+      { rules: [rule('yes', 'да')], default: null },
+      [choice('q', 'yes', 'no')],
+    ))).toMatch(/не покрывают все исходы/);
   });
 
-  it('непокрытый вариант не проходит', () => {
-    const p = twoNodes();
-    p.nodes[0].edges.pop();
-    expect(() => loadProject(p)).toThrow(/не покрыт/);
+  it('пара «верно» и «неверно» тотальна сама по себе', () => {
+    expect(ok(explanation({
+      rules: [
+        { id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'да' },
+        { id: 'r2', when: { kind: 'wrong', variable: 'q' }, goto: 'нет' },
+      ],
+      default: null,
+    }, [choice('q', 'yes', 'no')]))).toBe(true);
   });
 
-  it('два ребра на один вариант не проходят', () => {
-    const p = twoNodes();
-    p.nodes[0].edges[1].when.optionId = 'o1';
-    expect(() => loadProject(p)).toThrow(/дважды/);
+  it('одно только «верно» без запасного выхода — тупик для неверного ответа', () => {
+    expect(why(explanation({
+      rules: [{ id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'да' }],
+      default: null,
+    }, [choice('q', 'yes', 'no')]))).toMatch(/не покрывают все исходы/);
   });
 
-  it('ребро на несуществующий вариант не проходит', () => {
-    const p = twoNodes();
-    p.nodes[0].edges[1].when.optionId = 'нет-такого';
-    expect(() => loadProject(p)).toThrow(/варианта/);
+  it('правила по двум разным переменным без запасного выхода не тотальны', () => {
+    // Даже если каждая переменная покрыта, состояние «ни на что не ответил»
+    // остаётся возможным, и вести зрителя некуда.
+    expect(why(explanation({
+      rules: [
+        { id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'да' },
+        { id: 'r2', when: { kind: 'wrong', variable: 'w' }, goto: 'нет' },
+      ],
+      default: null,
+    }, [choice('q', 'yes', 'no'), choice('w', 'a', 'b')]))).toMatch(/не покрывают все исходы/);
+  });
+});
+
+describe('охранник тотальности сам по себе не пустой', () => {
+  it('проверка ловит нарушение, а не молчит всегда', () => {
+    // Мутация: если убрать правило тотальности, этот тест обязан упасть.
+    expect(ok(explanation(
+      { rules: [{ id: 'r1', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'да' }], default: null },
+      [choice('q', 'yes', 'no')],
+    ))).toBe(false);
+  });
+});
+
+describe('правило выхода не может указывать на исчезнувший вариант', () => {
+  it('значение equals обязано быть настоящим вариантом гейта', () => {
+    // В версии 2 это ловилось у рёбер: приёмка Сессии 5 нашла, что правка
+    // гейта осиротляет ребро. Форма поменялась, дефект остался тем же —
+    // проверка обязана переехать вместе с ним.
+    expect(why(explanation(
+      {
+        rules: [
+          { id: 'r1', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'да' },
+          { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'исчез' }, goto: 'нет' },
+        ],
+        default: 'да',
+      },
+      [choice('q', 'yes', 'no')],
+    ))).toMatch(/недостижима навсегда/);
   });
 
-  it('смешивать варианты и верно-неверно нельзя', () => {
-    const p = twoNodes();
-    p.nodes[0].edges[1].when = { kind: 'wrong', gateId: 'g1' };
-    expect(() => loadProject(p)).toThrow(/смешивать/);
-  });
-
-  it('верно без неверно не проходит', () => {
-    const p = twoNodes();
-    p.nodes[0].edges = [{ id: 'e1', to: 'n2', when: { kind: 'correct', gateId: 'g1' } }];
-    expect(() => loadProject(p)).toThrow(/оба/);
-  });
-
-  it('гейт continue рёбер иметь не может', () => {
-    const p = twoNodes();
-    p.nodes[0].scene.gates[0].config = { kind: 'continue', label: 'Дальше' };
-    expect(() => loadProject(p)).toThrow(/continue/);
-  });
-
-  it('два ребра «конец узла» не проходят', () => {
-    const p = twoNodes();
-    p.nodes[0].edges.push({ id: 'e3', to: 'n2', when: { kind: 'end' } });
-    p.nodes[0].edges.push({ id: 'e4', to: 'n1', when: { kind: 'end' } });
-    expect(() => loadProject(p)).toThrow(/конец узла/);
-  });
-
-  it('повтор идентификатора узла не проходит', () => {
-    const p = twoNodes();
-    p.nodes[1].id = 'n1';
-    expect(() => loadProject(p)).toThrow(/повторяется/);
-  });
-
-  it('бесконечный retry на гейте с рёбрами не проходит', () => {
-    // Ветка «Нет» была бы недостижима навсегда: неверный ответ не доводит
-    // до выхода из гейта, а значит и до ребра. Рёбра при этом корректны.
-    const p = twoNodes();
-    p.nodes[0].scene.gates[0].onWrong = 'retry';
-    p.nodes[0].scene.gates[0].maxAttempts = null;
-    expect(() => loadProject(p)).toThrow(/бесконечный retry/);
-  });
-
-  it('retry с ограничением попыток законен: гейт всё же проходим', () => {
-    const p = twoNodes();
-    p.nodes[0].scene.gates[0].onWrong = 'retry';
-    p.nodes[0].scene.gates[0].maxAttempts = 3;
-    expect(() => loadProject(p)).not.toThrow();
-  });
-
-  it('reveal законен: continueAfterReveal доводит до ребра', () => {
-    const p = twoNodes();
-    p.nodes[0].scene.gates[0].onWrong = 'reveal';
-    expect(() => loadProject(p)).not.toThrow();
-  });
-
-  it('бесконечный retry без рёбер законен: это обычный гейт', () => {
-    // Запрет касается только развилок. Обычному гейту бесконечные попытки
-    // разрешены и осмысленны — так устроены старые фикстуры.
-    const p = twoNodes();
-    p.nodes[0].edges = [];
-    p.nodes[0].scene.gates[0].onWrong = 'retry';
-    p.nodes[0].scene.gates[0].maxAttempts = null;
-    expect(() => loadProject(p)).not.toThrow();
-  });
-
-  it('гейт без рёбер законен: это обычный гейт, а не развилка', () => {
-    const p = twoNodes();
-    p.nodes[0].edges = [];
-    expect(() => loadProject(p)).not.toThrow();
-  });
-
-  it('узел без исходящих рёбер законен: это концовка', () => {
-    const p = twoNodes();
-    expect(loadProject(p).nodes[1]!.edges).toEqual([]);
-  });
-
-  it('фикстура развилки валидна и имеет три узла', () => {
-    const raw = JSON.parse(
-      readFileSync(join(process.cwd(), 'fixtures', 'projects', 'branching.json'), 'utf8'),
-    );
-    const project = loadProject(raw);
-    expect(project.schemaVersion).toBe(2);
-    expect(project.nodes).toHaveLength(3);
-    expect(project.nodes[0]!.edges).toHaveLength(2);
-    const targets = project.nodes[0]!.edges.map((edge) => edge.to);
-    expect(new Set(targets).size).toBe(2);
+  it('живой вариант проверку проходит', () => {
+    expect(ok(explanation(
+      { rules: [{ id: 'r1', when: { kind: 'equals', variable: 'q', value: 'no' }, goto: 'нет' }], default: 'да' },
+      [choice('q', 'yes', 'no')],
+    ))).toBe(true);
   });
 });

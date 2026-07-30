@@ -37,11 +37,11 @@ async function seekTrack(page: Page, seconds: number): Promise<void> {
 async function elementX(page: Page, id: string): Promise<number> {
   return page.evaluate((elementId) => {
     const project = (window as unknown as {
-      __project: { nodes: { scene: { elements: { id: string; x: number }[] } }[] };
+      __project: { segments: { slides: { states: Record<string, { x: number }> }[] }[] };
     }).__project;
-    const element = project.nodes[0]!.scene.elements.find((candidate) => candidate.id === elementId);
-    if (!element) throw new Error(`в проекте нет элемента ${elementId}`);
-    return element.x;
+    const state = project.segments[0]!.slides[0]!.states[elementId];
+    if (!state) throw new Error(`в проекте нет состояния элемента ${elementId}`);
+    return state.x;
   }, id);
 }
 

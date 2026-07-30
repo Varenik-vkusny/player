@@ -3,16 +3,16 @@
  *
  * Держит редактируемый проект (обёрнутый историей отмены/повтора,
  * `state/editorHistory.ts`) и выделение. Всё остальное — производное:
- * момент на дорожке приходит от транспорта, геометрия элементов от жестов,
- * картинка от предпросмотра из плеера.
+ * момент на дорожке приходит от транспорта, геометрия элементов — от
+ * состояния текущего слайда, картинка — от предпросмотра из плеера.
  *
  * Компоненты ниже — только вид. Логика живёт в модулях, которые про React
  * не знают: state/project (редьюсер), state/editorHistory (отмена/повтор),
- * state/gates и state/animation (правила панели метки), keyboard (раскладка
- * клавиатуры), stage/geometry и stage/transform (координаты и жесты),
- * track/transport (звук), track/peaks (волна). Каждый из них покрыт юнитами.
- * Переписать интерфейс — значит заменить компоненты и styles.ts, не трогая
- * ни одной проверенной строчки.
+ * state/slides (слайды), state/exits (сегменты и выход), state/gates
+ * (правила панели метки), keyboard (раскладка клавиатуры), stage/geometry
+ * и stage/transform (координаты и жесты), track/transport (звук), track/peaks
+ * (волна). Каждый из них покрыт юнитами. Переписать интерфейс — значит
+ * заменить компоненты и styles.ts, не трогая ни одной проверенной строчки.
  */
 import {
   useCallback,
@@ -25,24 +25,26 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Cue, Element, EdgeWhen, Gate, Project } from '@player/core';
+import type { Condition, Element, ElementState, Gate, Project } from '@player/core';
+import { findSegment } from '@player/core';
 import { segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
-import { ANIMATIONS, ELEMENTS, GATES, plural } from './plural.js';
+import { ELEMENTS, GATES, plural } from './plural.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
-import { GraphPanel } from './panels/GraphPanel.js';
+import { SegmentPanel } from './panels/SegmentPanel.js';
 import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
-import { formatRemovalMessage } from './panels/removalMessage.js';
+import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
+import { createGate } from './state/gates.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
-import { freeId, type MarkKind } from './state/project.js';
+import { freeId, segmentSlide, type MarkKind } from './state/project.js';
 import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
@@ -80,19 +82,33 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   // сам, без участия Editor.tsx; этот мост нужен ровно для Escape.
   const stageRef = useRef<StageViewHandle>(null);
 
-  // Текущий узел — состояние вида, а не проекта, но живёт в редьюсере рядом
-  // с выделением (state/editorHistory.ts): после Ctrl+Z узла может уже
-  // не быть в проекте (например, отменили addNode), и починить это может
-  // только тот, кто видит откаченный проект — afterNav в editorHistory.ts.
-  const nodeId = state.currentNodeId;
+  // Сегмент, который сейчас правит автор, — настоящий объект хребта, а не
+  // видовое представление segmentOf: он нужен там, где правка обращается
+  // к сегменту напрямую (вставка элемента, добавление слайда). findSegment —
+  // узкая дверца ядра для чтения сегмента по id (та же, которой пользуется
+  // segmentOf и nextSegment), а не второй самодельный обход project.segments.
+  const currentSegment = useMemo(
+    () => findSegment(currentProject, state.currentSegmentId),
+    [currentProject, state.currentSegmentId],
+  );
 
-  // Единственная точка, через которую редактор видит дорожку и сцену.
-  // Когда проект стал графом сегментов, поменялась segmentOf, а не это
-  // место и не всё, что ниже (docs/planning.md §5а).
-  const segment = useMemo(() => segmentOf(currentProject, nodeId), [currentProject, nodeId]);
+  // Слайд, который автор сейчас правит. Узкая дверца — segmentSlide
+  // (state/project.ts): она уже проверяет, что слайд существует.
+  const currentSlide = useMemo(
+    () => segmentSlide(currentProject, state.currentSegmentId, state.currentSlideId),
+    [currentProject, state.currentSegmentId, state.currentSlideId],
+  );
+
+  // Единственная точка, через которую редактор видит дорожку и элементы —
+  // видовое представление плеера. Когда проект стал графом сегментов,
+  // поменялась segmentOf, а не это место и не всё, что ниже.
+  const segment = useMemo(
+    () => segmentOf(currentProject, state.currentSegmentId),
+    [currentProject, state.currentSegmentId],
+  );
 
   /**
-   * Секунды гейтов текущего узла — предпросмотр обязан на них встать.
+   * Секунды гейтов текущего сегмента — предпросмотр обязан на них встать.
    *
    * Без этого дорожка редактора проезжала гейт молча: на линейке стоял
    * квадратик, автор жал «играть», звук шёл дальше, и редактор показывал
@@ -104,7 +120,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
    * остановка случилась бы не там, где нарисован квадратик.
    */
   const gateSeconds = useMemo(
-    () => segment.scene.gates.map((gate) => markSeconds(gate.at, segment.words)),
+    () => segment.gates.map((gate) => markSeconds(gate.at, segment.words)),
     [segment],
   );
 
@@ -113,7 +129,25 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   const selected =
     state.selectedId === undefined
       ? undefined
-      : segment.scene.elements.find((element) => element.id === state.selectedId);
+      : segment.elements.find((element) => element.id === state.selectedId);
+
+  /**
+   * Состояние выделенного элемента на ТЕКУЩЕМ слайде.
+   *
+   * undefined — законный случай, а не рассинхрон: список элементов
+   * (ElementList) специально показывает элементы, ещё не появившиеся
+   * на этом слайде, и автор вправе выделить такой элемент — просто
+   * геометрию и вид у него на этом слайде взять неоткуда.
+   */
+  const selectedState = selected === undefined ? undefined : currentSlide.states[selected.id];
+
+  const selectionReadout =
+    selected === undefined
+      ? 'ничего не выделено'
+      : selectedState === undefined
+        ? `${selected.id}: нет на этом слайде`
+        : `${selected.id}: ${selectedState.x} × ${selectedState.y}, `
+          + `${selectedState.width}×${selectedState.height}, ${selectedState.rotation}°`;
 
   // Выделение метки на дорожке — состояние вида, а не проекта: в файл оно
   // не попадает и переписку интерфейса переживать не обязано (как и раньше).
@@ -127,12 +161,12 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   const markData: SelectedMarkData | undefined = useMemo(() => {
     if (!selectedMark) return undefined;
     if (selectedMark.kind === 'gate') {
-      const gate = segment.scene.gates.find((candidate) => candidate.id === selectedMark.id);
+      const gate = segment.gates.find((candidate) => candidate.id === selectedMark.id);
       return gate ? { kind: 'gate', gate } : undefined;
     }
-    const cue = segment.scene.cues.find((candidate) => candidate.id === selectedMark.id);
-    return cue ? { kind: 'cue', cue } : undefined;
-  }, [selectedMark, segment.scene.gates, segment.scene.cues]);
+    const slide = segment.slides.find((candidate) => candidate.id === selectedMark.id);
+    return slide ? { kind: 'slide', slide } : undefined;
+  }, [selectedMark, segment.gates, segment.slides]);
 
   // Метка могла исчезнуть не только через кнопку удаления, но и через Ctrl+Z
   // (отмена её добавления) — тот же случай, что и «выделенного элемента нет
@@ -143,9 +177,6 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   }, [selectedMark, markData]);
 
   const handleSelect = useCallback((id: string | undefined) => {
-    // Новое выделение — старое сообщение об удалении больше не относится
-    // к делу и не обязано висеть на экране до следующего удаления.
-    setRemovalMessage(undefined);
     // Выделение элемента и метки взаимоисключающи (см. комментарий выше).
     setSelectedMark(undefined);
     dispatch({ type: 'select', id });
@@ -158,37 +189,71 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
 
   const handleRemoveMark = useCallback(() => {
     if (!selectedMark) return;
-    dispatch({ type: 'removeMark', kind: selectedMark.kind, id: selectedMark.id });
+    // Гейт снимается действием removeMark, слайд — своим отдельным
+    // removeSlide (у него своя проверка «нельзя остаться без слайдов»
+    // и «нельзя убрать первый слайд») — то же разделение, что и в редьюсере.
+    if (selectedMark.kind === 'gate') {
+      dispatch({ type: 'removeMark', kind: 'gate', id: selectedMark.id });
+    } else {
+      dispatch({ type: 'removeSlide', slideId: selectedMark.id });
+    }
     setSelectedMark(undefined);
   }, [selectedMark]);
 
   const handleUpdateGate = useCallback((gate: Gate) => dispatch({ type: 'updateGate', gate }), []);
-  const handleUpdateCue = useCallback((cue: Cue) => dispatch({ type: 'updateCue', cue }), []);
 
-  const handleAddNode = useCallback(() => dispatch({ type: 'addNode' }), []);
-  const handleRemoveNode = useCallback((id: string) => dispatch({ type: 'removeNode', id }), []);
+  const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
+  const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
   const handleConnect = useCallback(
-    (when: EdgeWhen, to: string) => dispatch({ type: 'connect', when, to }),
+    (condition: Condition, goto: string) => dispatch({ type: 'connect', condition, goto }),
     [],
   );
-  const handleDisconnect = useCallback((edgeId: string) => dispatch({ type: 'disconnect', edgeId }), []);
+  const handleDisconnect = useCallback((ruleId: string) => dispatch({ type: 'disconnect', ruleId }), []);
 
-  const handleSelectNode = useCallback((id: string) => {
-    // Выделенная метка принадлежала дорожке прежнего узла — тот же довод,
-    // что и в handleSelect для выделения элемента. Эффект ниже (снятие
-    // метки, когда markData не находится) покрывает большинство случаев
-    // сам, но не спасает от совпадения id гейта/анимации между узлами.
+  const handleSelectSegment = useCallback((id: string) => {
+    // Выделенная метка принадлежала дорожке прежнего сегмента — тот же
+    // довод, что и в handleSelect для выделения элемента.
     setSelectedMark(undefined);
-    dispatch({ type: 'selectNode', id });
+    dispatch({ type: 'selectSegment', id });
   }, []);
 
+  const handleSelectSlide = useCallback((id: string) => dispatch({ type: 'selectSlide', id }), []);
+
+  const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
+
   /**
-   * Одношаговая правка элемента — например, смена цвета в системном пикере
-   * или текста в поле панели. Каждый вызов становится САМОСТОЯТЕЛЬНЫМ шагом
-   * истории (срез 2).
+   * Добавляет слайд после текущего выделенного — копией его состояний
+   * (это уже делает `slidesApi.addSlide`, здесь только вычисляется момент
+   * вставки). Момент — середина между текущим слайдом и следующим, либо,
+   * если текущий последний, середина оставшегося хвоста дорожки: оба случая
+   * гарантированно проходят проверку `addSlide` («позже предыдущего, раньше
+   * следующего»), не полагаясь на положение головки плеера.
    */
-  const handleElementChange = useCallback((element: Element) => {
+  const handleAddSlide = useCallback(() => {
+    const slides = currentSegment.slides;
+    const index = slides.findIndex((slide) => slide.id === state.currentSlideId);
+    const anchor = slides[index]!;
+    const next = slides[index + 1];
+    const words = segment.words;
+    const anchorSeconds = markSeconds(anchor.at, words);
+    const target = next
+      ? (anchorSeconds + markSeconds(next.at, words)) / 2
+      : anchorSeconds + Math.max(0.1, (segment.duration - anchorSeconds) / 2);
+    dispatch({ type: 'addSlide', afterSlideId: anchor.id, at: timeRefAt(words, target) });
+  }, [currentSegment.slides, state.currentSlideId, segment.words, segment.duration]);
+
+  /**
+   * Одношаговая правка содержимого элемента (текст, путь к картинке) —
+   * самостоятельный шаг истории. Геометрия и вид сюда не входят: они живут
+   * в состоянии слайда и правятся через setElementState (см. ниже).
+   */
+  const handleElementContentChange = useCallback((element: Element) => {
     dispatch({ type: 'replaceElement', element });
+  }, []);
+
+  /** Одношаговая правка состояния элемента на текущем слайде (цвет, чекбокс). */
+  const handleElementStateChange = useCallback((elementId: string, patch: Partial<ElementState>) => {
+    dispatch({ type: 'setElementState', elementId, patch });
   }, []);
 
   /**
@@ -196,44 +261,40 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
    * в панели свойств. НЕ создаёт шаг истории само по себе: коммит-точку
    * ставит `handleCommitHistory` (см. `state/editorHistory.ts`).
    */
-  const handleElementChangeLive = useCallback((element: Element) => {
-    dispatch({ type: 'replaceElement', element, commit: false });
+  const handleElementStateChangeLive = useCallback((elementId: string, patch: Partial<ElementState>) => {
+    dispatch({ type: 'setElementState', elementId, patch, commit: false });
   }, []);
 
-  /** Завершает жест, открытый `handleElementChangeLive`/`handleMoveMark`. */
+  /** Завершает жест, открытый `handleElementStateChangeLive`/`handleMoveMark`. */
   const handleCommitHistory = useCallback(() => dispatch({ type: 'commit' }), []);
 
   const handleInsert = useCallback(
     (itemId: string) => {
-      const element = createElement(libraryItem(itemId), segment.scene, segment.stage);
-      dispatch({ type: 'addElement', element });
+      const { element, state: elementState } = createElement(
+        libraryItem(itemId),
+        currentSegment,
+        currentSlide.states,
+        segment.stage,
+      );
+      dispatch({ type: 'addElement', element, state: elementState });
     },
-    [segment.scene, segment.stage],
+    [currentSegment, currentSlide.states, segment.stage],
   );
 
   /**
-   * Шаблон правит elements, cues и gates разом — ОДИН шаг истории на кнопку
-   * (действие `applyTemplate`, а не отдельные addElement/addCue/addGate по
+   * Шаблон правит elements, слайды и gates разом — ОДИН шаг истории на кнопку
+   * (действие `applyTemplate`, а не отдельные addElement/addSlide/addGate по
    * очереди, которые historyReducer положил бы в историю по одному).
    */
   const handleApplyTemplate = useCallback((templateId: string) => {
     dispatch({ type: 'applyTemplate', template: sceneTemplate(templateId) });
   }, []);
 
-  // Сообщение о каскадном удалении — состояние вида, а не проекта: сколько
-  // анимаций пропало вместе с последним удалённым элементом, интересно
-  // прямо сейчас и не обязано переживать переписку интерфейса.
-  const [removalMessage, setRemovalMessage] = useState<string | undefined>(undefined);
-
   const handleDeleteSelected = useCallback(() => {
     const id = state.selectedId;
     if (id === undefined) return;
-    // Считаем каскад ДО диспатча: после удаления элемента cues уже вырезаны,
-    // и узнать, сколько их было, будет неоткуда.
-    const removedCueCount = segment.scene.cues.filter((cue) => cue.targetId === id).length;
     dispatch({ type: 'removeElement', id });
-    setRemovalMessage(formatRemovalMessage(id, removedCueCount));
-  }, [state.selectedId, segment.scene.cues]);
+  }, [state.selectedId]);
 
   // Ошибка вставки картинки: файл не картинка, либо кодирование не удалось.
   // Падает громко (CLAUDE.md), но громко — это видимое сообщение автору,
@@ -245,43 +306,52 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       setImageDropError(undefined);
       encodeImageFile(file, segment.stage)
         .then((encoded) => {
-          const element = createImageElement(segment.scene, segment.stage, encoded);
-          dispatch({ type: 'addElement', element });
+          const { element, state: elementState } = createImageElement(
+            currentSegment,
+            currentSlide.states,
+            segment.stage,
+            encoded,
+          );
+          dispatch({ type: 'addElement', element, state: elementState });
         })
         .catch((error: unknown) => {
           setImageDropError(error instanceof Error ? error.message : String(error));
         });
     },
-    [segment.scene, segment.stage],
+    [currentSegment, currentSlide.states, segment.stage],
   );
 
-  const elementRows = useMemo(() => toRows(segment.scene.elements), [segment.scene.elements]);
+  const elementRows = useMemo(
+    () => toRows(segment.elements, currentSlide.states),
+    [segment.elements, currentSlide.states],
+  );
 
   /**
-   * Метки на дорожке.
+   * Метки на дорожке: гейты и слайды (кроме первого — он обязан стоять
+   * на нуле и не может быть сдвинут, `state/project.ts`, `moveMark`).
+   * Показывать его как перетаскиваемую метку значило бы предлагать жест,
+   * который редьюсер тут же отвергнет броском посреди перетаскивания.
    *
    * Секунды считаются из TimeRef здесь, а не хранятся: инвариант №10 требует,
    * чтобы в проекте лежала ссылка на слово, а не результат её разрешения.
-   * Разрешение падает громко, если якорь разошёлся со словом, — и это
-   * правильно: тихо показать метку не там, где она сработает, хуже.
    */
   const marks = useMemo((): Mark[] => {
     const words = segment.words;
-    const fromCues = segment.scene.cues.map((cue): Mark => ({
-      kind: 'cue',
-      id: cue.id,
-      seconds: markSeconds(cue.at, words),
-      onWord: cue.at.kind === 'word',
-      title: `Анимация «${cue.id}»: ${cue.animation.property} у «${cue.targetId}»`,
-    }));
-    const fromGates = segment.scene.gates.map((gate): Mark => ({
+    const fromGates = segment.gates.map((gate): Mark => ({
       kind: 'gate',
       id: gate.id,
       seconds: markSeconds(gate.at, words),
       onWord: gate.at.kind === 'word',
       title: `Гейт «${gate.id}»: ${gate.config.kind}`,
     }));
-    return [...fromCues, ...fromGates];
+    const fromSlides = segment.slides.slice(1).map((slide): Mark => ({
+      kind: 'slide',
+      id: slide.id,
+      seconds: markSeconds(slide.at, words),
+      onWord: slide.at.kind === 'word',
+      title: `Слайд «${slide.id}»: переход ${slide.transition === 'morph' ? 'плавный' : 'разрез'}`,
+    }));
+    return [...fromGates, ...fromSlides];
   }, [segment]);
 
   const handleMoveMark = useCallback(
@@ -301,37 +371,13 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [segment.words],
   );
 
-  const handleAddCue = useCallback(() => {
-    if (!selected) throw new Error('Анимацию некуда вешать: элемент не выделен');
-    const cue: Cue = {
-      id: freeId('cue', segment.scene.cues),
-      at: timeRefAt(segment.words, transport.positionSeconds),
-      targetId: selected.id,
-      // Проявление — самая частая анимация и самая понятная по умолчанию.
-      // Автор поменяет свойство в панели; выдумывать выбор в момент
-      // создания значит спрашивать до того, как есть что спрашивать.
-      animation: { property: 'opacity', from: 0, to: 1, duration: 400, ease: 'outQuad' },
-    };
-    dispatch({ type: 'addCue', cue });
-    // Автор тут же попадает в панель настройки только что созданной анимации.
-    dispatch({ type: 'select', id: undefined });
-    setSelectedMark({ kind: 'cue', id: cue.id });
-  }, [selected, segment.scene.cues, segment.words, transport.positionSeconds]);
-
   const handleAddGate = useCallback(() => {
-    const gate: Gate = {
-      id: freeId('gate', segment.scene.gates),
-      at: timeRefAt(segment.words, transport.positionSeconds),
-      // «Дальше» — гейт без вопроса. Он останавливает и ждёт, и это
-      // единственный вид, который осмыслен без дополнительной настройки.
-      config: { kind: 'continue', label: 'Дальше' },
-      onWrong: 'retry',
-      maxAttempts: null,
-    };
+    const id = freeId('gate', currentSegment.gates);
+    const gate = createGate(id, timeRefAt(segment.words, transport.positionSeconds));
     dispatch({ type: 'addGate', gate });
     dispatch({ type: 'select', id: undefined });
     setSelectedMark({ kind: 'gate', id: gate.id });
-  }, [segment.scene.gates, segment.words, transport.positionSeconds]);
+  }, [currentSegment.gates, segment.words, transport.positionSeconds]);
 
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
   // на каждый рендер и пересобирал сцену по десять раз в секунду.
@@ -391,11 +437,12 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         case 'nudge': {
           const id = state.selectedId;
           if (id === undefined) return; // keyToIntent уже проверил hasSelection — здесь просто защита типов
-          const target = segment.scene.elements.find((element) => element.id === id);
-          if (!target) return;
+          const currentState = currentSlide.states[id];
+          if (!currentState) return; // элемент не появляется на этом слайде — двигать нечего
           dispatch({
-            type: 'replaceElement',
-            element: { ...target, x: target.x + intent.dx, y: target.y + intent.dy },
+            type: 'setElementState',
+            elementId: id,
+            patch: { x: currentState.x + intent.dx, y: currentState.y + intent.dy },
           });
           return;
         }
@@ -419,16 +466,14 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state.selectedId, segment.scene.elements, handleDeleteSelected, handleSelect]);
+  }, [state.selectedId, currentSlide, handleDeleteSelected, handleSelect]);
 
   return (
     <div className="ed-root">
       <header className="ed-header">
         <strong className="ed-title">{currentProject.meta.title}</strong>
         <span className="ed-muted">
-          {plural(segment.scene.elements.length, ELEMENTS)} ·{' '}
-          {plural(segment.scene.cues.length, ANIMATIONS)} ·{' '}
-          {plural(segment.scene.gates.length, GATES)}
+          {plural(segment.elements.length, ELEMENTS)} · {plural(segment.gates.length, GATES)}
         </span>
         <span className="ed-actions">
           <button
@@ -459,9 +504,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           </button>
         </span>
         <span className="ed-selection" data-testid="selection-readout">
-          {selected
-            ? `${selected.id}: ${selected.x} × ${selected.y}, ${selected.width}×${selected.height}, ${selected.rotation}°`
-            : 'ничего не выделено'}
+          {selectionReadout}
         </span>
       </header>
 
@@ -469,10 +512,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         <StageView
           ref={stageRef}
           segment={segment}
-          positionSeconds={transport.positionSeconds}
+          currentSlide={currentSlide}
           selectedId={state.selectedId}
           onSelect={handleSelect}
-          onElementChange={handleElementChangeLive}
+          onElementStateChange={handleElementStateChangeLive}
+          onElementContentChange={handleElementContentChange}
           onCommitHistory={handleCommitHistory}
           onImageDrop={handleImageDrop}
           onReady={handleReady}
@@ -489,11 +533,6 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             >
               Удалить
             </button>
-            {removalMessage ? (
-              <span className="ed-delete-msg" role="status" data-testid="removal-message">
-                {removalMessage}
-              </span>
-            ) : null}
           </div>
           {imageDropError ? (
             <span className="ed-failure" role="alert" data-testid="image-drop-error">
@@ -501,12 +540,20 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             </span>
           ) : null}
           <ElementList rows={elementRows} selectedId={state.selectedId} onSelect={handleSelect} />
-          <GraphPanel
+          <SlidePanel
+            slides={segment.slides}
+            words={segment.words}
+            currentSlideId={state.currentSlideId}
+            onSelect={handleSelectSlide}
+            onAdd={handleAddSlide}
+            onRemove={handleRemoveSlide}
+          />
+          <SegmentPanel
             project={currentProject}
-            currentNodeId={nodeId}
-            onSelectNode={handleSelectNode}
-            onAddNode={handleAddNode}
-            onRemoveNode={handleRemoveNode}
+            currentSegmentId={state.currentSegmentId}
+            onSelectSegment={handleSelectSegment}
+            onAddSegment={handleAddSegment}
+            onRemoveSegment={handleRemoveSegment}
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
           />
@@ -514,16 +561,23 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         {markData ? (
           <MarkPanel
             mark={markData}
-            elements={segment.scene.elements}
+            elements={segment.elements}
             onUpdateGate={handleUpdateGate}
-            onUpdateCue={handleUpdateCue}
             onRemove={handleRemoveMark}
           />
         ) : (
           <Inspector
             element={selected}
-            onChange={handleElementChange}
-            onLiveChange={handleElementChangeLive}
+            state={selectedState}
+            onContentChange={(content) => {
+              if (selected) handleElementContentChange({ ...selected, content });
+            }}
+            onStateChange={(patch) => {
+              if (selected) handleElementStateChange(selected.id, patch);
+            }}
+            onStateChangeLive={(patch) => {
+              if (selected) handleElementStateChangeLive(selected.id, patch);
+            }}
             onCommitHistory={handleCommitHistory}
           />
         )}
@@ -537,9 +591,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         onSelectMark={handleSelectMark}
         onMoveMark={handleMoveMark}
         onMoveMarkEnd={handleCommitHistory}
-        onAddCue={handleAddCue}
         onAddGate={handleAddGate}
-        canAddCue={selected !== undefined}
       />
     </div>
   );

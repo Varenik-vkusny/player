@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Scene } from '@player/core';
+import type { ElementState, Segment } from '@player/core';
 
 import {
   assertImageFile,
@@ -12,8 +12,20 @@ import {
 
 const STAGE = { width: 1920, height: 1080 };
 
-function scene(): Scene {
-  return { elements: [], cues: [], gates: [] };
+function segment(): Segment {
+  return {
+    id: 'seg-1',
+    title: '',
+    audio: { src: 'a.mp3', duration: 10, words: [] },
+    elements: [],
+    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    gates: [],
+    exit: { rules: [], default: null },
+  };
+}
+
+function emptyStates(): Record<string, ElementState> {
+  return {};
 }
 
 describe('fitWithin: подгонка размера картинки под сцену', () => {
@@ -111,33 +123,34 @@ describe('outputMimeOf: выбор формата перекодирования
 describe('createImageElement: элемент по пропорциям картинки', () => {
   const encoded: EncodedImage = { dataUri: 'data:image/png;base64,AAAA', width: 800, height: 600 };
 
-  it('размер элемента равен размеру подготовленной картинки', () => {
-    const element = createImageElement(scene(), STAGE, encoded);
-    expect(element.width).toBe(800);
-    expect(element.height).toBe(600);
+  it('размер состояния равен размеру подготовленной картинки', () => {
+    const { state } = createImageElement(segment(), emptyStates(), STAGE, encoded);
+    expect(state.width).toBe(800);
+    expect(state.height).toBe(600);
   });
 
   it('элемент центрирован на сцене по своему размеру', () => {
-    const element = createImageElement(scene(), STAGE, encoded);
-    expect(element.x).toBeCloseTo(STAGE.width / 2 - 800 / 2, 6);
-    expect(element.y).toBeCloseTo(STAGE.height / 2 - 600 / 2, 6);
+    const { state } = createImageElement(segment(), emptyStates(), STAGE, encoded);
+    expect(state.x).toBeCloseTo(STAGE.width / 2 - 800 / 2, 6);
+    expect(state.y).toBeCloseTo(STAGE.height / 2 - 600 / 2, 6);
   });
 
   it('content — это data-URI, а не путь к файлу', () => {
-    const element = createImageElement(scene(), STAGE, encoded);
+    const { element } = createImageElement(segment(), emptyStates(), STAGE, encoded);
     expect(element.content).toBe(encoded.dataUri);
   });
 
   it('тип элемента — image, идентификатор свободный', () => {
-    const element = createImageElement(scene(), STAGE, encoded);
+    const { element } = createImageElement(segment(), emptyStates(), STAGE, encoded);
     expect(element.type).toBe('image');
     expect(element.id).toBe('image-1');
   });
 
-  it('второй элемент на непустой сцене получает следующий свободный id и zIndex выше', () => {
-    const first = createImageElement(scene(), STAGE, encoded);
-    const second = createImageElement({ ...scene(), elements: [first] }, STAGE, encoded);
-    expect(second.id).not.toBe(first.id);
-    expect(second.zIndex).toBeGreaterThan(first.zIndex);
+  it('второй элемент на непустом сегменте получает следующий свободный id и zIndex выше', () => {
+    const first = createImageElement(segment(), emptyStates(), STAGE, encoded);
+    const seg = { ...segment(), elements: [first.element] };
+    const second = createImageElement(seg, { [first.element.id]: first.state }, STAGE, encoded);
+    expect(second.element.id).not.toBe(first.element.id);
+    expect(second.state.zIndex).toBeGreaterThan(first.state.zIndex);
   });
 });

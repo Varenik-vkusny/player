@@ -10,7 +10,7 @@
  * и кладёт результат в редьюсер через `updateGate` — сам файл про React
  * и про то, как гейт попадает в проект, не знает.
  */
-import type { Gate } from '@player/core';
+import type { Gate, TimeRef } from '@player/core';
 
 import { freeId } from './elements.js';
 
@@ -20,6 +20,30 @@ type InputConfig = Extract<GateConfig, { kind: 'input' }>;
 
 /** Заготовка принимаемого ответа — автор тут же впишет настоящий. */
 const DEFAULT_ACCEPT = 'ответ';
+
+/**
+ * Создаёt новый гейт вида «дальше» — то, с чего начинается любая метка,
+ * которую автор только что поставил на дорожку.
+ *
+ * `recordAs` схема требует всегда (`GateSchema.recordAs: Id`), и это не
+ * педантизм: имя переменной обязано быть известно сразу, потому что правило
+ * выхода сегмента (`state/exits.ts`, `connect`) ссылается на него по имени.
+ * Значением берётся id самого гейта — свободный идентификатор уже посчитан
+ * вызывающим (панелью меток) через `freeId('gate', ...)`, и заводить для
+ * переменной отдельное имя автору в момент создания нечем: он ещё не решил,
+ * как её называть. Переименовать переменную (сменить `recordAs`) эта функция
+ * не даёт — это отдельная операция уровня `updateGate`, не создания.
+ */
+export function createGate(id: string, at: TimeRef): Gate {
+  return {
+    id,
+    at,
+    config: { kind: 'continue', label: 'Дальше' },
+    onWrong: 'retry',
+    maxAttempts: null,
+    recordAs: id,
+  };
+}
 
 /**
  * Текущий вопрос гейта, если он у него есть.
@@ -282,8 +306,18 @@ export function setCaseSensitive(gate: Gate, value: boolean): Gate {
   return { ...gate, config: { ...config, caseSensitive: value } };
 }
 
-/** Поведение при неверном ответе — общее поле Gate, не зависит от вида config. */
-export function setOnWrong(gate: Gate, onWrong: 'retry' | 'reveal' | 'continue'): Gate {
+/**
+ * Поведение при неверном ответе — общее поле Gate, не зависит от вида config.
+ *
+ * Набор значений — из схемы v3 (`GateSchema.onWrong`): `inline-hint` и
+ * `inline-explain` заменили единственный `reveal` версии 2, разведя «короткую
+ * подсказку» и «разбор слоем поверх сцены» в два разных исхода — раньше
+ * оба смысла делил один `reveal`.
+ */
+export function setOnWrong(
+  gate: Gate,
+  onWrong: 'inline-hint' | 'inline-explain' | 'retry' | 'continue',
+): Gate {
   if (gate.onWrong === onWrong) return gate;
   return { ...gate, onWrong };
 }
