@@ -18,6 +18,8 @@ import { ANIMATABLE, ElementSchema } from '@player/core';
 import { EASINGS } from '../src/state/animation.js';
 import { createElement } from '../src/state/elements.js';
 import { ANIMATION_PRESETS, ELEMENT_LIBRARY, libraryItem } from '../src/state/library.js';
+import { ProjectSchema } from '@player/core';
+import type { Gate, Scene } from '@player/core';
 
 const ROOT = new URL('../../../', import.meta.url).pathname.slice(1);
 const STAGE = { width: 1920, height: 1080 };
@@ -171,5 +173,65 @@ describe('ANIMATION_PRESETS: заготовки анимации', () => {
       expect(Number.isFinite(preset.durationMs)).toBe(true);
       expect(preset.durationMs).toBeGreaterThan(0);
     }
+  });
+});
+
+/**
+ * Фигура из библиотеки — обычный элемент сцены, значит она может быть
+ * вариантом ответа наравне с текстом (ADR-011: вариант гейта ссылается
+ * на элемент по id, а тип элемента в этой связи не участвует).
+ *
+ * Утверждение звучит очевидно, и именно поэтому проверяется прогоном:
+ * «вариант — это элемент» держится на том, что `option.id` совпадает с id
+ * элемента, а не на типе, и сломать это можно, не заметив.
+ */
+describe('фигура библиотеки может быть вариантом ответа', () => {
+  it('гейт с вариантами-фигурами проходит настоящий валидатор', () => {
+    const stage = { width: 1920, height: 1080 };
+    let scene: Scene = { elements: [], cues: [], gates: [] };
+
+    const yes = createElement(libraryItem('circle'), scene, stage);
+    scene = { ...scene, elements: [...scene.elements, yes] };
+    const no = createElement(libraryItem('frame'), scene, stage);
+    scene = { ...scene, elements: [...scene.elements, no] };
+
+    // Оба варианта — фигуры, ни одного текста в сцене нет вовсе.
+    expect(scene.elements.every((element) => element.type === 'shape')).toBe(true);
+
+    const gate: Gate = {
+      id: 'gate-1',
+      at: { kind: 'seconds', t: 1 },
+      config: {
+        kind: 'choice',
+        prompt: 'Выбери фигуру',
+        options: [
+          { id: yes.id, label: 'Круг' },
+          { id: no.id, label: 'Рамка' },
+        ],
+        correctId: yes.id,
+      },
+      onWrong: 'continue',
+      maxAttempts: null,
+    };
+
+    const project = {
+      schemaVersion: 2 as const,
+      meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
+      entry: 'n1',
+      nodes: [
+        {
+          id: 'n1',
+          title: '',
+          audio: { src: 'a.mp3', duration: 10, words: [] },
+          scene: { ...scene, gates: [gate] },
+          edges: [],
+        },
+      ],
+    };
+
+    const parsed = ProjectSchema.safeParse(project);
+    expect(
+      parsed.success ? 'ok' : parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+    ).toBe('ok');
   });
 });
