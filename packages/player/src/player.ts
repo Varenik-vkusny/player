@@ -6,6 +6,7 @@
  */
 import type { Answer, Gate, Project } from '@player/core';
 import {
+  certainRemaining,
   nextSegment,
   preloadTargetsOfExit,
   resolveTimeRef,
@@ -69,6 +70,29 @@ export interface Reveal {
   readonly kind: 'inline-explain' | 'inline-hint';
   /** Верный вариант — только у гейта-выбора. У ввода и «дальше» его нет. */
   readonly correctOption: { readonly id: string; readonly label: string } | undefined;
+}
+
+/**
+ * Где зритель находится в объяснении — два уровня сразу.
+ *
+ * Нижний (`positionSeconds` / `durationSeconds`) точен всегда: часть линейна.
+ * Верхний честен ровно настолько, насколько может быть, и различие между
+ * «знаю» и «не знаю» вынесено в тип, а не спрятано за подставленным числом.
+ */
+export interface PlaybackProgress {
+  /** Номер текущей части в пути ЭТОГО зрителя, начиная с единицы. */
+  readonly partIndex: number;
+  /**
+   * Сколько частей осталось после текущей.
+   *
+   * `null` — впереди развилка: длина зависит от ответов, которых ещё нет.
+   * Ни процент, ни «часть 3 из 7» в этот момент не являются правдой.
+   */
+  readonly partsLeft: number | null;
+  /** Позиция внутри текущей части, секунды. */
+  readonly positionSeconds: number;
+  /** Длительность текущей части, секунды. */
+  readonly durationSeconds: number;
 }
 
 export interface PlayerEvents {
@@ -158,6 +182,12 @@ export class Player {
   /** id вариантов, помеченных сейчас как кликабельные элементы гейта — снимается при выходе. */
   #markedOptionIds: string[] = [];
   #reveal: Reveal | null = null;
+  /**
+   * Сколько частей зритель уже прошёл. Считается ходом, а не выводится
+   * из проекта: пройденный путь — свойство ЭТОГО просмотра, и при ветвлении
+   * у двух зрителей он разный.
+   */
+  #partsPassed = 0;
 
   /**
    * Часы передаются четвёртым аргументом со значением по умолчанию.
@@ -199,6 +229,26 @@ export class Player {
   get state(): PlayerState { return this.#state; }
   get stageElement(): HTMLElement { return this.#stage; }
   get positionSeconds(): number { return this.#clock ? this.#toSegmentTime(this.#clock.position) : 0; }
+
+  /**
+   * Где зритель находится — на двух уровнях сразу.
+   *
+   * Нижний уровень точен всегда: часть линейна, её длительность известна.
+   * Верхний честен настолько, насколько может быть: `partsLeft` равен `null`,
+   * когда впереди развилка и длина пути зависит от ответов, которых ещё нет.
+   *
+   * Показывать в такой момент процент или «часть 3 из 7» — значит называть
+   * числом то, чего не существует. Поэтому решение о том, КАК это выглядит,
+   * оставлено интерфейсу, а плеер отдаёт различие между «знаю» и «не знаю».
+   */
+  get progress(): PlaybackProgress {
+    return {
+      partIndex: this.#partsPassed + 1,
+      partsLeft: certainRemaining(this.#project, this.#nodeId),
+      positionSeconds: this.positionSeconds,
+      durationSeconds: this.#segment.duration,
+    };
+  }
 
   /**
    * Перевод между двумя системами координат, которые легко перепутать.
@@ -504,6 +554,7 @@ export class Player {
     this.#nodeId = pending.nodeId;
     this.#segment = segmentOf(this.#project, pending.nodeId);
     this.#pending = null;
+    this.#partsPassed += 1;
 
     this.#mountSegment();
     return true;
@@ -546,6 +597,7 @@ export class Player {
     this.#clock?.stop();
     this.#nodeId = nodeId;
     this.#segment = segmentOf(this.#project, nodeId);
+    this.#partsPassed += 1;
     this.#clock = await this.#clocks.clockFor(this.#segment.src);
 
     // Часы усыплены остановкой на гейте (clock.ts). Забыть разбудить —

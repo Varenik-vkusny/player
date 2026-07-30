@@ -100,6 +100,44 @@ export function nextSegment(segment: Segment, answers: Answers): string | null {
  * а не меньше: сегмент линеен и его длительность известна точно, поэтому греть
  * можно с самого начала, а не с момента, когда открылся вопрос.
  */
+/**
+ * Сколько частей осталось после этой, если путь до конца ОДНОЗНАЧЕН.
+ *
+ * `null` — впереди развилка, и длина объяснения зависит от того, что зритель
+ * ещё не ответил. Это главное свойство продукта, а не краевой случай: точный
+ * процент и «часть 3 из 7» одинаково врут, когда путей несколько.
+ *
+ * Но врут они не ВСЕГДА. Пока впереди у каждой части ровно одно продолжение,
+ * остаток известен точно, и прятать его было бы такой же неправдой, только
+ * в другую сторону. Поэтому ответ — число там, где оно есть, и `null` там,
+ * где его нет.
+ *
+ * Считается по ВСЕМ возможным продолжениям (`preloadTargetsOfExit`), а не
+ * по тому, куда повёл бы текущий набор ответов: вопрос здесь про будущее,
+ * а будущих ответов ещё не существует. Два правила, ведущие в одну и ту же
+ * часть, неоднозначности не создают — путь всё ещё один.
+ *
+ * Цикл обрывает счёт: объяснение, возвращающееся само в себя, не имеет
+ * определённой длины, и назвать её числом значило бы соврать точнее всего.
+ */
+export function certainRemaining(project: Project, segmentId: string): number | null {
+  const visited = new Set<string>();
+  let current = segmentId;
+  let remaining = 0;
+
+  for (;;) {
+    if (visited.has(current)) return null;
+    visited.add(current);
+
+    const targets = preloadTargetsOfExit(findSegment(project, current));
+    if (targets.length === 0) return remaining;
+    if (targets.length > 1) return null;
+
+    current = targets[0]!;
+    remaining += 1;
+  }
+}
+
 export function preloadTargetsOfExit(segment: Segment): string[] {
   const targets = segment.exit.rules.map((rule) => rule.goto);
   if (segment.exit.default !== null) targets.push(segment.exit.default);

@@ -28,6 +28,20 @@ const played = el('played');
 const track = el('track');
 const clockLabel = el('clock');
 const stateLabel = el('state');
+const progressLabel = el('progress');
+
+/**
+ * Прогресс словами. Знаменатель называется ТОЛЬКО когда он известен.
+ *
+ * При ветвлении длина объяснения зависит от ответов, которых ещё нет, и «часть
+ * 3 из 7» было бы выдумкой ровно там, где продукт обещает зрителю выбор.
+ * Показать номер части без знаменателя — не хуже: зритель видит, что движется,
+ * и не получает обещания, которое некому сдержать.
+ */
+function describeProgress(progress: { partIndex: number; partsLeft: number | null }): string {
+  if (progress.partsLeft === null) return `часть ${progress.partIndex}`;
+  return `часть ${progress.partIndex} из ${progress.partIndex + progress.partsLeft}`;
+}
 
 // Какую фикстуру открыть: ?fixture=e2e. По умолчанию — демо.
 // Имя ограничено, чтобы адресная строка не превращалась в способ читать файлы.
@@ -115,9 +129,15 @@ async function main(): Promise<void> {
 
   const player = new Player(host, project, {
     onStateChange: (state) => { stateLabel.textContent = state; syncButton(state); },
-    onFrame: (position) => {
-      clockLabel.textContent = position.toFixed(2);
-      played.style.width = `${(position / duration) * 100}%`;
+    onFrame: () => {
+      // Через player.progress, а не через position и внешнюю `duration`:
+      // та берётся у СТАРТОВОЙ части один раз, и после перехода полоса
+      // считалась бы от чужой длины. Плеер знает длину той части, которая
+      // играет сейчас.
+      const progress = player.progress;
+      clockLabel.textContent = progress.positionSeconds.toFixed(2);
+      played.style.width = `${(progress.positionSeconds / progress.durationSeconds) * 100}%`;
+      progressLabel.textContent = describeProgress(progress);
     },
     onGateOpen: (gate, unboundOptions) => showGate(gate, unboundOptions),
     onGateResolved: (attempt) => showResult(attempt),

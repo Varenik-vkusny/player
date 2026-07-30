@@ -6,13 +6,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  certainRemaining,
   conditionHolds,
   findSegment,
   nextSegment,
   preloadTargetsOfExit,
   type Answers,
 } from '../src/graph.js';
-import type { Project, Segment } from '../src/schema.js';
+import { SCHEMA_VERSION, type Project, type Segment } from '../src/schema.js';
 
 const segment = (id: string, exit: Segment['exit']): Segment => ({
   id,
@@ -131,5 +132,82 @@ describe('что греть заранее', () => {
 
   it('у концовки греть нечего', () => {
     expect(preloadTargetsOfExit(segment('s', { rules: [], default: null }))).toEqual([]);
+  });
+});
+
+/**
+ * Прогресс по объяснению. Главное здесь — не число, а ЧЕСТНОСТЬ числа:
+ * когда длина зависит от будущих ответов, её нельзя называть.
+ */
+describe('сколько частей осталось', () => {
+  const line = (): Project => ({
+    schemaVersion: SCHEMA_VERSION,
+    meta: { title: '', stageWidth: 1920, stageHeight: 1080 },
+    entry: 'a',
+    segments: ['a', 'b', 'c'].map((id, index, all) => ({
+      id,
+      title: '',
+      audio: { src: '/a.mp3', offset: 0, duration: 5, words: [] },
+      elements: [],
+      slides: [{ id: `${id}-1`, at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+      gates: [],
+      exit: { rules: [], default: all[index + 1] ?? null },
+    })),
+  } as Project);
+
+  it('на прямой линии остаток известен точно', () => {
+    const project = line();
+    expect(certainRemaining(project, 'a')).toBe(2);
+    expect(certainRemaining(project, 'b')).toBe(1);
+  });
+
+  it('у концовки не осталось ничего', () => {
+    expect(certainRemaining(line(), 'c')).toBe(0);
+  });
+
+  it('развилка впереди делает длину неизвестной', () => {
+    const project = line();
+    // Часть «a» теперь ветвится: куда пойдёт зритель — зависит от ответа,
+    // которого ещё нет.
+    project.segments[0]!.exit = {
+      rules: [
+        { id: 'r1', when: { kind: 'equals', variable: 'v', value: 'x' }, goto: 'b' },
+        { id: 'r2', when: { kind: 'equals', variable: 'v', value: 'y' }, goto: 'c' },
+      ],
+      default: null,
+    };
+    expect(certainRemaining(project, 'a')).toBeNull();
+  });
+
+  it('развилка ДАЛЬШЕ по пути тоже делает длину неизвестной', () => {
+    const project = line();
+    project.segments[1]!.exit = {
+      rules: [
+        { id: 'r1', when: { kind: 'equals', variable: 'v', value: 'x' }, goto: 'c' },
+        { id: 'r2', when: { kind: 'equals', variable: 'v', value: 'y' }, goto: 'a' },
+      ],
+      default: null,
+    };
+    // Из «a» идти ещё можно, но за «b» путь расходится.
+    expect(certainRemaining(project, 'a')).toBeNull();
+  });
+
+  it('два правила в ОДНУ часть неоднозначности не создают', () => {
+    const project = line();
+    project.segments[0]!.exit = {
+      rules: [
+        { id: 'r1', when: { kind: 'equals', variable: 'v', value: 'x' }, goto: 'b' },
+        { id: 'r2', when: { kind: 'equals', variable: 'v', value: 'y' }, goto: 'b' },
+      ],
+      default: null,
+    };
+    // Ответ влияет на то, ПОЧЕМУ мы идём дальше, но не на то, КУДА.
+    expect(certainRemaining(project, 'a')).toBe(2);
+  });
+
+  it('цикл не имеет определённой длины', () => {
+    const project = line();
+    project.segments[2]!.exit = { rules: [], default: 'a' };
+    expect(certainRemaining(project, 'a')).toBeNull();
   });
 });
