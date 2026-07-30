@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { loadProject, resolveTimeRef } from '@player/core';
 import type { TimeRef, Word } from '@player/core';
 
-import { DEFAULT_SNAP_SECONDS, chooseTarget, markSeconds, timeRefAt, wordAt } from '../src/track/marks.js';
+import { DEFAULT_SNAP_SECONDS, chooseTarget, markSeconds, timeRefAt, wordAt, crossedStop } from '../src/track/marks.js';
 import type { MarkTarget } from '../src/track/marks.js';
 
 function word(text: string, start: number, end: number): Word {
@@ -344,5 +344,51 @@ describe('вырожденные входы падают громко', () => {
 
     const moved: TimeRef = { kind: 'word', wordIndex: 0, offset: 0, anchor };
     expect(() => markSeconds(moved, WORDS)).toThrow(/перепривязка/i);
+  });
+});
+
+/**
+ * Остановка предпросмотра на гейте. До этого дорожка редактора проезжала
+ * гейт молча: на линейке стоял квадратик, автор жал «играть», звук шёл
+ * дальше — редактор показывал поведение, которого у зрителя не будет.
+ * Найдено руками в браузере: 4.5 → 8.4 с через гейт на 6.0 с.
+ */
+describe('crossedStop: пересечение гейта за кадр', () => {
+  it('гейт между прошлым и текущим кадром — останавливаемся на нём', () => {
+    expect(crossedStop([6], 5.9, 6.05)).toBe(6);
+  });
+
+  it('гейт ещё впереди — не останавливаемся', () => {
+    expect(crossedStop([6], 5.5, 5.9)).toBeUndefined();
+  });
+
+  it('гейт уже позади — не останавливаемся снова', () => {
+    expect(crossedStop([6], 6.1, 6.4)).toBeUndefined();
+  });
+
+  it('стоим РОВНО на гейте и жмём «играть» — он не держит нас второй раз', () => {
+    // Несущий случай: остановка ставит головку ровно в 6.0, и если бы условие
+    // было `>=`, автор больше никогда не проехал бы этот гейт в редакторе.
+    expect(crossedStop([6], 6, 6.3)).toBeUndefined();
+  });
+
+  it('за кадр перескочили два гейта — берём первый', () => {
+    expect(crossedStop([6, 6.2], 5.9, 6.5)).toBe(6);
+  });
+
+  it('порядок списка не важен', () => {
+    expect(crossedStop([9, 6, 7.5], 5.9, 8)).toBe(6);
+  });
+
+  it('гейтов нет — останавливаться не на чем', () => {
+    expect(crossedStop([], 0, 30)).toBeUndefined();
+  });
+
+  it('головка не двигалась — пересечения нет', () => {
+    expect(crossedStop([6], 6, 6)).toBeUndefined();
+  });
+
+  it('перемотка назад пересечением не считается', () => {
+    expect(crossedStop([6], 20, 1)).toBeUndefined();
   });
 });

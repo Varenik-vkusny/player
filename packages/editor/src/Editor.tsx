@@ -91,7 +91,24 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   // место и не всё, что ниже (docs/planning.md §5а).
   const segment = useMemo(() => segmentOf(currentProject, nodeId), [currentProject, nodeId]);
 
-  const transport = useTransport(segment.src, segment.duration);
+  /**
+   * Секунды гейтов текущего узла — предпросмотр обязан на них встать.
+   *
+   * Без этого дорожка редактора проезжала гейт молча: на линейке стоял
+   * квадратик, автор жал «играть», звук шёл дальше, и редактор показывал
+   * поведение, которого у зрителя не будет. Инвариант №4 — про плеер, но
+   * автор судит о своей работе по редактору.
+   *
+   * Считается тем же `markSeconds`, что и метки на дорожке (см. `marks`
+   * ниже): два разных способа разрешить один TimeRef разошлись бы, и
+   * остановка случилась бы не там, где нарисован квадратик.
+   */
+  const gateSeconds = useMemo(
+    () => segment.scene.gates.map((gate) => markSeconds(gate.at, segment.words)),
+    [segment],
+  );
+
+  const transport = useTransport(segment.src, segment.duration, gateSeconds);
 
   const selected =
     state.selectedId === undefined

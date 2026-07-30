@@ -77,11 +77,47 @@ describe('createElement: фабрики трёх видов', () => {
     expect(element.y).toBeCloseTo(STAGE.height / 2 - element.height / 2, 6);
   });
 
-  it('на непустой сцене центрирование остаётся тем же — от размера сцены, не от соседей', () => {
+  /**
+   * Прежде здесь утверждалось обратное: «на непустой сцене центрирование
+   * остаётся тем же». Это утверждение и было дефектом — каждый новый элемент
+   * ложился ровно в центр и полностью накрывал предыдущий, так что автор,
+   * нажав «Фигура» после «Текст», текста больше не видел. Найдено взглядом
+   * в браузере: девять вставок подряд легли в одну точку.
+   */
+  it('второй элемент НЕ ложится на первый: центр занят — уходим в сторону', () => {
     const existing = createElement(libraryItem('text'), scene(), STAGE);
     const next = createElement(libraryItem('shape'), scene({ elements: [existing] }), STAGE);
-    expect(next.x).toBeCloseTo(STAGE.width / 2 - next.width / 2, 6);
-    expect(next.y).toBeCloseTo(STAGE.height / 2 - next.height / 2, 6);
+    expect(next.x).not.toBeCloseTo(STAGE.width / 2 - next.width / 2, 6);
+    expect(next.y).not.toBeCloseTo(STAGE.height / 2 - next.height / 2, 6);
+  });
+
+  it('смещение детерминированное: те же действия дают тот же файл', () => {
+    const first = createElement(libraryItem('text'), scene(), STAGE);
+    const again = createElement(libraryItem('text'), scene(), STAGE);
+    expect({ x: again.x, y: again.y }).toEqual({ x: first.x, y: first.y });
+  });
+
+  it('шесть вставок подряд не дают двух элементов в одной точке', () => {
+    let current = scene();
+    const places = new Set<string>();
+    for (let i = 0; i < 6; i += 1) {
+      const element = createElement(libraryItem('shape'), current, STAGE);
+      places.add(`${element.x}:${element.y}`);
+      current = scene({ elements: [...current.elements, element] });
+    }
+    expect(places.size).toBe(6);
+  });
+
+  it('каскад не выносит элемент за пределы сцены — иначе его не выделить мышью', () => {
+    let current = scene();
+    for (let i = 0; i < 20; i += 1) {
+      const element = createElement(libraryItem('shape'), current, STAGE);
+      expect(element.x).toBeGreaterThanOrEqual(0);
+      expect(element.y).toBeGreaterThanOrEqual(0);
+      expect(element.x + element.width).toBeLessThanOrEqual(STAGE.width);
+      expect(element.y + element.height).toBeLessThanOrEqual(STAGE.height);
+      current = scene({ elements: [...current.elements, element] });
+    }
   });
 
   it('свободный идентификатор: два подряд созданных элемента не совпадают', () => {

@@ -8,6 +8,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { crossedStop } from './marks.js';
 import { computePeaks, type Peak } from './peaks.js';
 import { Transport, type TransportState } from './transport.js';
 
@@ -40,8 +41,14 @@ export interface TransportApi {
  * @param src путь к дорожке
  * @param declaredDuration длительность из проекта: она известна и без звука,
  *   поэтому линейка дорожки работает даже когда файла нет на диске
+ * @param stopsAt секунды, на которых предпросмотр обязан встать сам, —
+ *   времена гейтов текущего узла. Пустой список значит «играть насквозь».
  */
-export function useTransport(src: string, declaredDuration: number): TransportApi {
+export function useTransport(
+  src: string,
+  declaredDuration: number,
+  stopsAt: readonly number[] = [],
+): TransportApi {
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [state, setState] = useState<TransportState>('idle');
   const [peaks, setPeaks] = useState<readonly Peak[]>([]);
@@ -50,9 +57,36 @@ export function useTransport(src: string, declaredDuration: number): TransportAp
 
   const transportRef = useRef<Transport | null>(null);
 
+  /**
+   * Времена гейтов — через ref, а НЕ через зависимости эффекта: эффект
+   * создаёт Transport и грузит дорожку заново, а гейты автор правит
+   * постоянно. Попади они в deps — каждая правка метки перезагружала бы
+   * звук. Тот же приём, что у positionRef в StageView.
+   */
+  const stopsRef = useRef<readonly number[]>(stopsAt);
+  stopsRef.current = stopsAt;
+
+  /** Позиция предыдущего кадра: пересечение гейта считается по паре кадров. */
+  const previousRef = useRef(0);
+
   useEffect(() => {
     const transport = new Transport({
-      onPosition: setPositionSeconds,
+      onPosition: (seconds) => {
+        const stop = crossedStop(stopsRef.current, previousRef.current, seconds);
+        previousRef.current = seconds;
+        setPositionSeconds(seconds);
+        if (stop === undefined) return;
+        // Только пауза, без перемотки на гейт. Перемотка здесь ЛОМАЕТ
+        // остановку: `pause()` асинхронный — он снимает кадр сразу, но
+        // состояние остаётся `playing` до конца `await freezeAt`, и `seek`
+        // в этот момент переставляет ещё идущие часы, после чего звук просто
+        // продолжается с новой точки. Проверено в браузере: с перемоткой
+        // головка уезжала на 3.9 с через гейт на 1.175 с.
+        //
+        // Перелёт остаётся в пределах кадра-двух, как и у плеера (S2:
+        // 18.57 мс), — `freezeAt` берёт позицию на момент вызова.
+        void transport.pause();
+      },
       onStateChange: setState,
       onLoadFailed: setFailure,
     });
@@ -74,6 +108,7 @@ export function useTransport(src: string, declaredDuration: number): TransportAp
     //    опасен именно тем, что рисует правдоподобную картинку, а не пустую.
     setPositionSeconds(0);
     setDuration(declaredDuration);
+    previousRef.current = 0;
 
     let cancelled = false;
     void transport.load(src).then((buffer) => {
@@ -116,6 +151,9 @@ export function useTransport(src: string, declaredDuration: number): TransportAp
       },
       seek: (seconds: number) => {
         const transport = transportRef.current;
+        // Перемотка автором — не проигрывание: перескок через гейт мышью
+        // не должен выглядеть как его пересечение и ставить паузу.
+        previousRef.current = Math.max(0, Math.min(seconds, duration));
         if (transport) transport.seek(seconds);
         // Пока дорожка не загрузилась, транспорта ещё нет, но головка
         // всё равно обязана двигаться: сцена показывается и без звука.

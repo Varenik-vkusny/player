@@ -36,9 +36,33 @@ function nextZIndex(elements: readonly Element[]): number {
 }
 
 /**
- * Создаёт новый элемент по центру сцены, с zIndex выше всех существующих,
- * из заготовки библиотеки (`state/library.ts`) — размер, стиль и содержимое
- * целиком берутся из `item`, эта функция только кладёт заготовку на сцену.
+ * Каскад новых элементов: шаг в сторону от центра и через сколько шагов
+ * начинать заново.
+ *
+ * Без каскада КАЖДЫЙ новый элемент ложился ровно в центр сцены и полностью
+ * накрывал предыдущий: автор нажимал «Фигура» после «Текст» и текста больше
+ * не видел. Проверено в браузере вставкой девяти заготовок подряд — все девять
+ * легли в одну точку, и на холсте читался только верхний.
+ *
+ * Смещение детерминированное (от числа уже лежащих элементов), а не случайное:
+ * одинаковый проект и одинаковые действия обязаны давать одинаковый файл —
+ * то же требование, что у `freeId` выше.
+ */
+const CASCADE_STEP = 56;
+const CASCADE_WRAP = 6;
+
+/** Держит элемент в пределах сцены: за краем его не выделить мышью. */
+function withinStage(value: number, size: number, limit: number): number {
+  return Math.max(0, Math.min(value, limit - size));
+}
+
+/**
+ * Создаёт новый элемент из заготовки библиотеки (`state/library.ts`) — размер,
+ * стиль и содержимое целиком берутся из `item`, эта функция только кладёт
+ * заготовку на сцену: считает место, свободный id и слой.
+ *
+ * Первый элемент встаёт по центру сцены, каждый следующий — со сдвигом
+ * (см. `CASCADE_STEP`), чтобы не спрятать предыдущий под собой.
  *
  * `id` берётся из `item.id`, а не из `item.type`: у круга получается id
  * `circle-1`, а не `shape-4` — так автор видит в списке элементов, что
@@ -49,11 +73,12 @@ export function createElement(
   scene: Scene,
   stage: { width: number; height: number },
 ): Element {
+  const shift = (scene.elements.length % CASCADE_WRAP) * CASCADE_STEP;
   return {
     id: freeId(item.id, scene.elements),
     type: item.type,
-    x: stage.width / 2 - item.width / 2,
-    y: stage.height / 2 - item.height / 2,
+    x: withinStage(stage.width / 2 - item.width / 2 + shift, item.width, stage.width),
+    y: withinStage(stage.height / 2 - item.height / 2 + shift, item.height, stage.height),
     width: item.width,
     height: item.height,
     rotation: 0,
