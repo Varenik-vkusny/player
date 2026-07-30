@@ -1,0 +1,1034 @@
+<title>Интерактивные объяснения — карта продукта после Сессии 8</title>
+
+<style>
+  :root {
+    color-scheme: light dark;
+    --ground: #fbfaf8;
+    --raised: #ffffff;
+    --sunken: #f1efeb;
+    --ink: #14171c;
+    --ink-soft: #4a5260;
+    --ink-faint: #7d8794;
+    --rule: #ddd9d2;
+    --accent: #c2451f;
+    --link: #2f5fd0;
+    --word: #5c7a3f;
+    --ok: #3f7a4a;
+    --partial: #9a6a12;
+    --none: #b03a25;
+    --shadow: 0 1px 2px rgba(20, 23, 28, .06), 0 8px 24px rgba(20, 23, 28, .05);
+    --display: 800 1em/1.08 system-ui, "Segoe UI", sans-serif;
+    --body: Georgia, "Times New Roman", serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #0f1115;
+      --raised: #14181e;
+      --sunken: #0a0c10;
+      --ink: #e6edf5;
+      --ink-soft: #aab4c2;
+      --ink-faint: #7d8fa5;
+      --rule: #232b36;
+      --accent: #e4572e;
+      --link: #4c8dff;
+      --word: #a8c686;
+      --ok: #7ea86b;
+      --partial: #d0a03f;
+      --none: #e0614a;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .3);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #0f1115;
+    --raised: #14181e;
+    --sunken: #0a0c10;
+    --ink: #e6edf5;
+    --ink-soft: #aab4c2;
+    --ink-faint: #7d8fa5;
+    --rule: #232b36;
+    --accent: #e4572e;
+    --link: #4c8dff;
+    --word: #a8c686;
+    --ok: #7ea86b;
+    --partial: #d0a03f;
+    --none: #e0614a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .3);
+  }
+
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --ground: #fbfaf8;
+    --raised: #ffffff;
+    --sunken: #f1efeb;
+    --ink: #14171c;
+    --ink-soft: #4a5260;
+    --ink-faint: #7d8794;
+    --rule: #ddd9d2;
+    --accent: #c2451f;
+    --link: #2f5fd0;
+    --word: #5c7a3f;
+    --ok: #3f7a4a;
+    --partial: #9a6a12;
+    --none: #b03a25;
+    --shadow: 0 1px 2px rgba(20, 23, 28, .06), 0 8px 24px rgba(20, 23, 28, .05);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font: 17px/1.65 var(--body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 0 24px 96px;
+  }
+
+  .col { max-width: 68ch; }
+
+  h1, h2, h3, .label { font-family: system-ui, "Segoe UI", sans-serif; }
+
+  h1 {
+    font: var(--display);
+    font-size: clamp(34px, 6vw, 60px);
+    letter-spacing: -.03em;
+    text-wrap: balance;
+    margin: 0 0 16px;
+  }
+
+  h2 {
+    font-weight: 750;
+    font-size: clamp(23px, 3vw, 31px);
+    letter-spacing: -.02em;
+    line-height: 1.15;
+    text-wrap: balance;
+    margin: 0 0 6px;
+  }
+
+  h3 {
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -.01em;
+    margin: 0 0 6px;
+  }
+
+  p { margin: 0 0 16px; }
+  p:last-child { margin-bottom: 0; }
+
+  a { color: var(--link); }
+
+  .label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  header.top {
+    border-bottom: 1px solid var(--rule);
+    padding: 72px 0 40px;
+    margin-bottom: 8px;
+  }
+
+  .lede { font-size: 20px; color: var(--ink-soft); max-width: 62ch; }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 28px;
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  section { padding: 52px 0 0; }
+
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+  .stack-lg { display: flex; flex-direction: column; gap: 32px; }
+
+  /* Полоса «окно внутри дорожки» — буквально то, что появилось в схеме v4:
+     часть занимает участок файла, а не файл целиком. */
+  .window-rule {
+    display: block;
+    height: 10px;
+    margin: 44px 0 0;
+    border-radius: 2px;
+    background:
+      repeating-linear-gradient(90deg, var(--rule) 0 2px, transparent 2px 6px);
+    position: relative;
+  }
+  .window-rule::after {
+    content: "";
+    position: absolute;
+    left: 22%;
+    width: 26%;
+    top: -3px;
+    bottom: -3px;
+    border-radius: 3px;
+    background: var(--accent);
+    opacity: .85;
+  }
+
+  .card {
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow);
+  }
+
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; }
+
+  figure { margin: 0; }
+
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    background: var(--sunken);
+  }
+
+  figcaption {
+    margin-top: 10px;
+    font-size: 14.5px;
+    color: var(--ink-faint);
+    line-height: 1.5;
+  }
+
+  .scroll-x { overflow-x: auto; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-family: system-ui, sans-serif;
+    font-size: 14.5px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+
+  th {
+    font-size: 11.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 700;
+  }
+
+  td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .chip {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: system-ui, sans-serif;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+  .chip.ok { color: var(--ok); }
+  .chip.partial { color: var(--partial); }
+  .chip.none { color: var(--none); }
+
+  pre.mermaid {
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 20px;
+    overflow-x: auto;
+    margin: 0;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: .88em;
+    background: var(--sunken);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  blockquote {
+    margin: 0;
+    padding-left: 18px;
+    border-left: 3px solid var(--accent);
+    color: var(--ink-soft);
+    font-style: italic;
+  }
+
+  ul, ol { margin: 0 0 16px; padding-left: 22px; }
+  li { margin-bottom: 7px; }
+
+  .opt {
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    background: var(--raised);
+    overflow: hidden;
+  }
+  .opt > .opt-head {
+    padding: 18px 22px 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .opt > .opt-body { padding: 18px 22px 22px; display: flex; flex-direction: column; gap: 14px; }
+
+  .mock {
+    background: var(--sunken);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 16px;
+    overflow-x: auto;
+  }
+  .mock svg { display: block; width: 100%; height: auto; min-width: 420px; }
+
+  .pros { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .pros h4 {
+    font-family: system-ui, sans-serif;
+    font-size: 11.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    margin: 0 0 6px;
+    color: var(--ink-faint);
+  }
+  .pros ul { margin: 0; font-size: 15px; }
+
+  .q {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 14px;
+    align-items: start;
+  }
+  .q .n {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--accent);
+    padding-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible { outline: 2px solid var(--link); outline-offset: 3px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="label">Карта продукта · после Сессии 8</div>
+  <h1>Объяснение, которое можно потрогать</h1>
+  <p class="lede">
+    Внешне это видео: голос, таймлайн, движение. Внутри — живой документ,
+    поэтому в нём можно остановиться и ответить. Здесь собрано, из чего продукт
+    состоит сегодня, что в нём работает по-настоящему, и с чего начинать
+    разговор про карту частей.
+  </p>
+  <div class="meta">
+    <span>31 июля 2026</span>
+    <span>схема v4</span>
+    <span>1012 юнитов · 186 e2e · зелёные</span>
+    <span>12 фикстур</span>
+  </div>
+</header>
+
+<section>
+  <div class="col stack">
+    <div class="label">С чего всё начинается</div>
+    <h2>Проект приходит цельным, а делится потом</h2>
+    <p>
+      Не бывает так, что объяснение сразу поделено на части. Автор приносит текст
+      и озвучку — это одна непрерывная дорожка. Деление появляется как результат
+      его действий: он ставит развилку, и повествование разрезается ровно в этой
+      точке.
+    </p>
+    <p>
+      Из этого растёт всё остальное, включая требование к будущей карте:
+      <strong>она обязана быть полезной, когда узел на ней один.</strong> Иначе автор
+      её не откроет, и развилки не появятся никогда.
+    </p>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Конвейер</div>
+    <h2>Путь от материала автора до зрителя</h2>
+    <p>
+      Пунктиром отмечено то, чего в коде ещё нет. Это не оценка важности —
+      транскрибация и загрузка своего аудио сознательно оставлены следующему
+      блоку работ.
+    </p>
+  </div>
+
+  <div class="stack" style="margin-top:22px">
+    <pre class="mermaid">
+flowchart LR
+    T["Текст урока"] --> D
+    A["Озвучка<br/>(файл автора)"] --> D
+    TR["Транскрибация<br/>кнопкой"] -.-> A
+    D["Базовый черновик:<br/>одна дорожка, один текст"] --> E
+
+    subgraph E ["Редактор"]
+        direction TB
+        S["Сцена: элементы,<br/>шаблоны, слайды"]
+        TL["Дорожка: волна,<br/>головка, метки"]
+        ST["Остановки:<br/>вопрос и развилка"]
+        SP["Разрез по развилке"]
+        ST --> SP
+    end
+
+    E --> F["Файл проекта<br/>(схема v4)"]
+    F --> P["Плеер"]
+    P --> V["Зритель"]
+
+    classDef missing stroke-dasharray: 5 4;
+    class TR missing;
+    </pre>
+    <p class="col" style="color:var(--ink-faint); font-size:15px">
+      Файл проекта — единственная граница между редактором и плеером. Всё, что
+      автор сделал, обязано выражаться в нём; всё, что видит зритель, читается
+      только из него.
+    </p>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Модель</div>
+    <h2>Три уровня и две вещи, стоящие особняком</h2>
+    <p>
+      Слайд — не страница, а <em>снимок состояния сцены</em> в момент времени.
+      Он хранит не список элементов, а список их состояний, поэтому переход
+      между соседними слайдами вычисляется сам: элемент есть в обоих — едет,
+      только в предыдущем — уходит, только в следующем — приходит.
+    </p>
+  </div>
+
+  <div class="stack" style="margin-top:22px">
+    <pre class="mermaid">
+classDiagram
+    class Проект {
+        schemaVersion = 4
+        entry: id части
+    }
+    class Часть {
+        id, title
+        audio: src, offset, duration, words
+    }
+    class Слайд {
+        at: метка времени
+        transition: morph | cut
+        states: id элемента → состояние
+    }
+    class Состояние {
+        x, y, width, height
+        rotation, zIndex
+        opacity, visible, style
+    }
+    class Элемент {
+        id, type, content
+    }
+    class Остановка {
+        at: метка времени
+        config: выбор | ввод | дальше
+        recordAs: имя переменной
+    }
+    class Выход {
+        rules: условие → часть
+        default: часть | null
+    }
+
+    Проект "1" --> "много" Часть
+    Часть "1" --> "много" Слайд
+    Часть "1" --> "много" Элемент
+    Часть "1" --> "много" Остановка
+    Часть "1" --> "1" Выход
+    Слайд "1" --> "много" Состояние
+    </pre>
+  </div>
+
+  <div class="grid-2" style="margin-top:18px">
+    <div class="card">
+      <h3>Остановка ничего не решает</h3>
+      <p style="font-size:15.5px; color:var(--ink-soft)">
+        Она записывает ответ в переменную — и всё. Поля для переходов у неё нет
+        вообще, поэтому «остановка перекинула зрителя» невыразимо. Решение, куда
+        идти дальше, принимает <strong>выход части</strong>, когда дорожка доиграла.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Ответы живут на всё объяснение</h3>
+      <p style="font-size:15.5px; color:var(--ink-soft)">
+        Переменная, записанная в первой части, доступна выходу пятой. Поэтому
+        вопросы <em>копят</em> контекст, а развилки его <em>тратят</em>. Это и есть
+        сценарии в духе Ren'Py, и модель для них уже есть.
+      </p>
+    </div>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Две остановки</div>
+    <h2>Вопрос идёт дальше, развилка делит</h2>
+    <p>
+      <strong>Вопрос</strong> — остановка посреди части. Зритель отвечает,
+      повествование продолжается здесь же, на той же дорожке.
+      <strong>Развилка</strong> — остановка в конце. Она всегда в конце, и в модели
+      понятно почему: решение принимает выход части, когда дорожка доиграла.
+      Развилка посреди длинной части заставила бы зрителя дослушивать остаток
+      и только потом уезжать.
+    </p>
+    <p>
+      В схеме это одна и та же сущность, а различие — в одном значении:
+      у развилки нет верного ответа. До этой сессии схема требовала его всегда,
+      и развилка была вынуждена назначать «правильную» ветку — ложь, которая
+      лежала прямо в эталонной фикстуре.
+    </p>
+  </div>
+
+  <div class="stack" style="margin-top:22px">
+    <pre class="mermaid">
+flowchart TB
+    subgraph before ["Было: одна цельная часть"]
+        B1["s-ask · дорожка 0…3 с<br/>развилка на 2-й секунде"]
+    end
+
+    subgraph after ["Стало: разрез по развилке"]
+        H["s-ask · окно 0…2 с<br/>развилка стала последней"]
+        L["Ветка «Налево»<br/>пустая, автор наполнит"]
+        R["Ветка «Направо»<br/>пустая, автор наполнит"]
+        T["Продолжение · окно 2…3 с<br/>первый слайд = снимок сцены"]
+        H -- "куда = opt-no" --> L
+        H -- "куда = opt-yes" --> R
+        L --> T
+        R --> T
+    end
+
+    before --> after
+    </pre>
+    <p class="col" style="color:var(--ink-faint); font-size:15px">
+      Ветки по умолчанию <strong>сходятся обратно</strong> в продолжение. Это самый
+      дешёвый правильный сценарий: автор уводит ветку в сторону, если захочет,
+      а обрыв по умолчанию заставлял бы его чинить объяснение после каждой развилки.
+      Аудиофайл при этом не режется — части ссылаются на один файл разными окнами.
+    </p>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Как это выглядит сегодня</div>
+    <h2>Настоящие снимки, а не описания</h2>
+  </div>
+
+  <div class="stack-lg" style="margin-top:24px">
+    <figure>
+      <img src="{{IMG_EDITOR}}" alt="Редактор: сцена, панель вставки, список элементов, дорожка с метками" />
+      <figcaption>
+        Редактор целиком. Внизу дорожка: волна, головка, две полосы меток —
+        квадраты остановок сверху, ромбы слайдов снизу. Разведение по вертикали
+        появилось в этой сессии: раньше метки лежали друг на друге, и остановку
+        под слайдом нельзя было нажать вовсе.
+      </figcaption>
+    </figure>
+
+    <div class="grid-2">
+      <figure>
+        <img src="{{IMG_FORK_PANEL}}" alt="Панель остановки с переключателем типа и кнопкой разреза" />
+        <figcaption>
+          Панель остановки. Впервые говорит про два типа. У развилки не предлагают
+          выбрать «правильный вариант» — это была бы та же ложь, только на экране.
+        </figcaption>
+      </figure>
+      <figure>
+        <img src="{{IMG_GATE}}" alt="Плеер: открытая остановка с вариантами ответа" />
+        <figcaption>
+          Остановка глазами зрителя. Вне остановки сцена физически недоступна для
+          мыши; справа внизу — честный прогресс «часть 1 из 1».
+        </figcaption>
+      </figure>
+    </div>
+
+    <figure>
+      <img src="{{IMG_AFTER_SPLIT}}" alt="Редактор сразу после разреза: дорожка стала короче" />
+      <figcaption>
+        Сразу после нажатия «Разделить повествование здесь». Дорожка показывает
+        <strong>00:02.0</strong> вместо прежних 00:03.0 — часть кончается на развилке,
+        а остаток уехал в продолжение. Это тот случай, где приёмка глазами нашла
+        дефект: окно провели через плеер и забыли про редактор, и дорожка сначала
+        продолжала показывать длину файла.
+      </figcaption>
+    </figure>
+
+    <div>
+      <div class="label" style="margin-bottom:10px">Раскадровка морфинга</div>
+      <div class="grid-2">
+        <figure>
+          <img src="{{IMG_MORPH_0}}" alt="Морфинг, кадр на 0.000 с" />
+          <figcaption>0.000 — исходный слайд</figcaption>
+        </figure>
+        <figure>
+          <img src="{{IMG_MORPH_12}}" alt="Морфинг, кадр на 1.200 с" />
+          <figcaption>1.200 — элемент едет и растёт</figcaption>
+        </figure>
+        <figure>
+          <img src="{{IMG_MORPH_15}}" alt="Морфинг, кадр на 1.500 с" />
+          <figcaption>1.500 — около 83 % пути</figcaption>
+        </figure>
+        <figure>
+          <img src="{{IMG_MORPH_30}}" alt="Морфинг, кадр на 3.000 с" />
+          <figcaption>3.000 — приехал, пришёл новый элемент</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Главное для разговора</div>
+    <h2>Четыре способа показать карту частей</h2>
+    <p>
+      Ни один из них не реализован — и это намеренно. Ниже — материал для
+      обсуждения, а не предложение внедрить. У каждого варианта названо, что он
+      делает лёгким и что трудным, как он ведёт себя при <strong>одном узле</strong>
+      и где в нём живёт <strong>шарнир</strong>: развилка существует и как последняя
+      остановка на линии, и как точка ветвления на карте одновременно.
+    </p>
+  </div>
+
+  <div class="stack-lg" style="margin-top:26px">
+
+    <article class="opt">
+      <div class="opt-head">
+        <div class="label">Вариант A</div>
+        <h3>Дорожка расщепляется вниз</h3>
+        <p style="margin:6px 0 0; color:var(--ink-soft); font-size:15.5px">
+          Карты как отдельного экрана нет вовсе. Есть одна дорожка, и в точке
+          развилки она раздваивается на две дорожки ниже, которые потом сходятся.
+          Ближе всего к CapCut.
+        </p>
+      </div>
+      <div class="opt-body">
+        <div class="mock">
+          <svg viewBox="0 0 700 200" role="img" aria-label="Схема: дорожка расщепляется на две и сходится обратно">
+            <rect x="20" y="30" width="220" height="26" rx="4" fill="currentColor" opacity=".18"/>
+            <rect x="232" y="24" width="8" height="38" rx="2" fill="#e4572e"/>
+            <rect x="280" y="70" width="180" height="22" rx="4" fill="currentColor" opacity=".14"/>
+            <rect x="280" y="112" width="180" height="22" rx="4" fill="currentColor" opacity=".14"/>
+            <rect x="500" y="30" width="180" height="26" rx="4" fill="currentColor" opacity=".18"/>
+            <path d="M240 43 C260 43 260 81 280 81" stroke="#4c8dff" stroke-width="2" fill="none"/>
+            <path d="M240 43 C260 43 260 123 280 123" stroke="#4c8dff" stroke-width="2" fill="none"/>
+            <path d="M460 81 C480 81 480 43 500 43" stroke="#4c8dff" stroke-width="2" fill="none"/>
+            <path d="M460 123 C480 123 480 43 500 43" stroke="#4c8dff" stroke-width="2" fill="none"/>
+            <text x="20" y="20" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">до развилки</text>
+            <text x="280" y="62" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">ветки</text>
+            <text x="500" y="20" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">продолжение</text>
+            <text x="20" y="170" font-size="11" fill="#e4572e" font-family="system-ui">оранжевая метка — развилка, она же точка ветвления</text>
+          </svg>
+        </div>
+        <div class="pros">
+          <div>
+            <h4>Делает лёгким</h4>
+            <ul>
+              <li>Один вид вместо двух — переключаться некуда, шарнир не раздваивается.</li>
+              <li>При одном узле это просто дорожка, то есть полезна с первой минуты.</li>
+              <li>Длина части видна физически: ветка на 5 секунд короче ветки на 30.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Делает трудным</h4>
+            <ul>
+              <li>Высота растёт с числом веток: пять развилок подряд не помещаются в экран.</li>
+              <li>Ветка, уходящая в сторону и не возвращающаяся, ломает раскладку.</li>
+              <li>Далёкое схождение (ветка сходится через три части) рисуется длинной дугой через весь экран.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <div class="label">Вариант B</div>
+        <h3>Доска узлов, линия открывается внутри</h3>
+        <p style="margin:6px 0 0; color:var(--ink-soft); font-size:15.5px">
+          Классический холст: части — прямоугольники, выходы — стрелки. Двойной
+          щелчок по части открывает её линию. Ближе всего к Twine и Ren'Py.
+        </p>
+      </div>
+      <div class="opt-body">
+        <div class="mock">
+          <svg viewBox="0 0 700 200" role="img" aria-label="Схема: доска с узлами и стрелками">
+            <rect x="30" y="80" width="120" height="46" rx="8" fill="currentColor" opacity=".16" stroke="#e4572e" stroke-width="2"/>
+            <rect x="250" y="26" width="120" height="46" rx="8" fill="currentColor" opacity=".12"/>
+            <rect x="250" y="132" width="120" height="46" rx="8" fill="currentColor" opacity=".12"/>
+            <rect x="470" y="80" width="120" height="46" rx="8" fill="currentColor" opacity=".12"/>
+            <path d="M150 96 L250 55" stroke="#4c8dff" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+            <path d="M150 110 L250 150" stroke="#4c8dff" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+            <path d="M370 55 L470 96" stroke="#4c8dff" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+            <path d="M370 150 L470 110" stroke="#4c8dff" stroke-width="2" fill="none" marker-end="url(#ar)"/>
+            <defs>
+              <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                <path d="M0 0 L10 5 L0 10 z" fill="#4c8dff"/>
+              </marker>
+            </defs>
+            <text x="38" y="106" font-size="11" fill="currentColor" font-family="system-ui">часть с развилкой</text>
+            <text x="262" y="52" font-size="11" fill="currentColor" font-family="system-ui">ветка</text>
+            <text x="262" y="158" font-size="11" fill="currentColor" font-family="system-ui">ветка</text>
+            <text x="478" y="106" font-size="11" fill="currentColor" font-family="system-ui">продолжение</text>
+          </svg>
+        </div>
+        <div class="pros">
+          <div>
+            <h4>Делает лёгким</h4>
+            <ul>
+              <li>Выдерживает любое ветвление: узлов может быть сто.</li>
+              <li>Структура видна целиком — где тупик, где недостижимая часть.</li>
+              <li>Знакомо всем, кто видел Twine, Miro или узловые редакторы.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Делает трудным</h4>
+            <ul>
+              <li><strong>При одном узле бесполезна</strong> — а именно так начинается каждый проект.</li>
+              <li>Шарнир раздваивается: развилка есть и метка на линии, и стрелка на карте; их надо держать согласованными в глазах автора.</li>
+              <li>Время исчезает: часть на 40 секунд и часть на 3 выглядят одинаково.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <div class="label">Вариант C</div>
+        <h3>Оглавление с отступами</h3>
+        <p style="margin:6px 0 0; color:var(--ink-soft); font-size:15.5px">
+          Вертикальный список частей, ветки — вложенные отступы. Никакого холста:
+          это оглавление, как список сцен в сценарии.
+        </p>
+      </div>
+      <div class="opt-body">
+        <div class="mock">
+          <svg viewBox="0 0 700 200" role="img" aria-label="Схема: вертикальный список частей с отступами">
+            <rect x="30" y="20" width="300" height="24" rx="4" fill="currentColor" opacity=".16"/>
+            <rect x="30" y="52" width="300" height="24" rx="4" fill="currentColor" opacity=".16" stroke="#e4572e" stroke-width="2"/>
+            <rect x="70" y="88" width="260" height="22" rx="4" fill="currentColor" opacity=".1"/>
+            <rect x="70" y="118" width="260" height="22" rx="4" fill="currentColor" opacity=".1"/>
+            <rect x="30" y="152" width="300" height="24" rx="4" fill="currentColor" opacity=".16"/>
+            <path d="M46 76 L46 99 L70 99" stroke="#4c8dff" stroke-width="1.5" fill="none"/>
+            <path d="M46 76 L46 129 L70 129" stroke="#4c8dff" stroke-width="1.5" fill="none"/>
+            <text x="360" y="37" font-size="12" fill="currentColor" opacity=".65" font-family="system-ui">Вступление · 0:42</text>
+            <text x="360" y="69" font-size="12" fill="#e4572e" font-family="system-ui">Развилка: «Куда пойти?»</text>
+            <text x="360" y="104" font-size="12" fill="currentColor" opacity=".65" font-family="system-ui">↳ Налево · пусто</text>
+            <text x="360" y="134" font-size="12" fill="currentColor" opacity=".65" font-family="system-ui">↳ Направо · пусто</text>
+            <text x="360" y="169" font-size="12" fill="currentColor" opacity=".65" font-family="system-ui">Продолжение · 0:18</text>
+          </svg>
+        </div>
+        <div class="pros">
+          <div>
+            <h4>Делает лёгким</h4>
+            <ul>
+              <li>При одном узле это одна строка — честно и не стыдно показать.</li>
+              <li>Дёшево построить и дёшево читать; помещается в боковую панель рядом с линией.</li>
+              <li>Хорошо переживает длинные объяснения: список прокручивается, холст — нет.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Делает трудным</h4>
+            <ul>
+              <li>Схождение выражается плохо: три ветки, ведущие в одну часть, — это отступы, которые нужно чем-то соединить.</li>
+              <li>Глубокое ветвление уезжает вправо.</li>
+              <li>Не показывает, что ветки равноправны: верхняя выглядит «главной».</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+    <article class="opt">
+      <div class="opt-head">
+        <div class="label">Вариант D</div>
+        <h3>Линия метро: основной путь и отводы</h3>
+        <p style="margin:6px 0 0; color:var(--ink-soft); font-size:15.5px">
+          Прямая горизонтальная линия — путь по умолчанию; ветки уходят вверх
+          и вниз короткими отводами и возвращаются. Подчёркивает то, что разрез
+          делает по умолчанию: <em>ветки сходятся обратно</em>.
+        </p>
+      </div>
+      <div class="opt-body">
+        <div class="mock">
+          <svg viewBox="0 0 700 200" role="img" aria-label="Схема: горизонтальная линия со станциями и отводами">
+            <path d="M30 100 L670 100" stroke="currentColor" stroke-width="3" opacity=".28"/>
+            <path d="M250 100 C280 100 280 52 320 52 L400 52 C440 52 440 100 470 100" stroke="#4c8dff" stroke-width="3" fill="none"/>
+            <path d="M250 100 C280 100 280 148 320 148 L400 148 C440 148 440 100 470 100" stroke="#4c8dff" stroke-width="3" fill="none"/>
+            <circle cx="90" cy="100" r="9" fill="currentColor" opacity=".35"/>
+            <circle cx="250" cy="100" r="11" fill="#e4572e"/>
+            <circle cx="360" cy="52" r="8" fill="currentColor" opacity=".3"/>
+            <circle cx="360" cy="148" r="8" fill="currentColor" opacity=".3"/>
+            <circle cx="470" cy="100" r="9" fill="currentColor" opacity=".35"/>
+            <circle cx="610" cy="100" r="9" fill="currentColor" opacity=".35"/>
+            <text x="66" y="128" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">вступление</text>
+            <text x="212" y="82" font-size="11" fill="#e4572e" font-family="system-ui">развилка</text>
+            <text x="330" y="40" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">ветка</text>
+            <text x="330" y="172" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">ветка</text>
+            <text x="436" y="128" font-size="11" fill="currentColor" opacity=".6" font-family="system-ui">продолжение</text>
+          </svg>
+        </div>
+        <div class="pros">
+          <div>
+            <h4>Делает лёгким</h4>
+            <ul>
+              <li>Прямо показывает умолчание модели: ветки возвращаются в общий путь.</li>
+              <li>При одном узле — одна станция на линии; при пяти частях без развилок это просто линия, и она осмысленна.</li>
+              <li>Развилка — одна точка, а не два объекта: шарнир не раздваивается.</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Делает трудным</h4>
+            <ul>
+              <li>Ветка, которая <em>не</em> возвращается, метафору ломает — а это законный и желанный случай.</li>
+              <li>Развилка внутри ветки даёт отвод от отвода; двух уровней метафора уже не держит.</li>
+              <li>Требует решать, какой путь «основной», а модель этого различия не знает.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </article>
+
+  </div>
+
+  <div class="col card" style="margin-top:28px">
+    <h3>Что тут важнее выбора варианта</h3>
+    <p style="font-size:15.5px; color:var(--ink-soft); margin-bottom:10px">
+      Любой из четырёх опирается на одну и ту же операцию: <em>разрезать часть
+      по развилке</em>. Она уже сделана, покрыта тестами и не зависит от того,
+      как будет выглядеть холст. То есть выбор вида можно менять сколько угодно
+      раз, не трогая ни схему, ни модель.
+    </p>
+    <p style="font-size:15.5px; color:var(--ink-soft)">
+      Обратное неверно: если начать с холста, придётся одновременно придумывать,
+      что он делает с данными — и это самый дорогой способ ошибиться.
+    </p>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Честный статус</div>
+    <h2>Что работает, что наполовину, чего нет</h2>
+    <p>
+      «Работает» здесь значит «проверено прогоном или руками в браузере»,
+      а не «написан код».
+    </p>
+  </div>
+
+  <div class="scroll-x" style="margin-top:20px">
+    <table>
+      <thead>
+        <tr><th>Кусок продукта</th><th>Статус</th><th>Чем подтверждено и что мешает</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Плеер: время от аудио, остановки, ветвление</td>
+          <td><span class="chip ok">работает</span></td>
+          <td>Остановка точна: перелёт кадра 18.57 мс, позиция 0 мс. Пауза не рвёт звук: 0 разрывов.</td>
+        </tr>
+        <tr>
+          <td>Морфинг между слайдами</td>
+          <td><span class="chip partial">частично</span></td>
+          <td>Движение работает и проверено покадрово. Но картинка слайда наступает на 0.6 с <em>позже</em> самого слайда — противоречие ADR-015 и ADR-016.</td>
+        </tr>
+        <tr>
+          <td>Разрез части по развилке</td>
+          <td><span class="chip ok">работает</span></td>
+          <td>28 юнитов + e2e, доезжающий по обеим веткам нажатием по видимой кнопке.</td>
+        </tr>
+        <tr>
+          <td>Окно дорожки (части делят один файл)</td>
+          <td><span class="chip partial">частично</span></td>
+          <td>Координаты согласованы и проверены. Но что звучит <em>именно нужный</em> участок файла — не измерено ничем: это слышно ухом, а не тестом.</td>
+        </tr>
+        <tr>
+          <td>Редактор: сцена, дорожка, метки, шаблоны</td>
+          <td><span class="chip ok">работает</span></td>
+          <td>Рендер редактора и плеера совпадает: 0 различающихся пикселей.</td>
+        </tr>
+        <tr>
+          <td>Словарь автора в интерфейсе</td>
+          <td><span class="chip ok">работает</span></td>
+          <td>Слова схемы убраны из заголовков, счётчиков, кнопок и подсказок.</td>
+        </tr>
+        <tr>
+          <td>Прогресс зрителя</td>
+          <td><span class="chip ok">работает</span></td>
+          <td>Знаменатель называется только когда известен. Показан в стенде; вид — за вами.</td>
+        </tr>
+        <tr>
+          <td>Карта частей</td>
+          <td><span class="chip none">нет</span></td>
+          <td>Намеренно: модель под ней готова, вид вы придумываете сами.</td>
+        </tr>
+        <tr>
+          <td>Транскрибация и загрузка своего аудио</td>
+          <td><span class="chip none">нет</span></td>
+          <td>Точка входа в продукт, следующий крупный блок работ.</td>
+        </tr>
+        <tr>
+          <td>Развилка, меняющая набор вариантов по прошлым ответам</td>
+          <td><span class="chip none">нет</span></td>
+          <td>Новая механика. Условия умеют выбирать ветку, но не менять список вариантов.</td>
+        </tr>
+        <tr>
+          <td>Сцена редактора следует за головкой дорожки</td>
+          <td><span class="chip none">нет</span></td>
+          <td>Автор описывает переход, которого не может увидеть. Тест-маркер стоит выключенным и ждёт.</td>
+        </tr>
+        <tr>
+          <td>iOS и живой Android</td>
+          <td><span class="chip none">нет</span></td>
+          <td>Устройства нет; эмуляция не воспроизводит аудиополитику.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Пределы моего понимания</div>
+    <h2>Чего я про продукт не знаю</h2>
+    <p>
+      Здесь названо то, где я работал по догадке. Если догадка неверна, сломается
+      именно то, что написано в конце каждого пункта.
+    </p>
+  </div>
+
+  <div class="col stack" style="margin-top:20px">
+    <div class="card">
+      <h3>Что слышит зритель на границе разреза</h3>
+      <p style="font-size:15.5px; color:var(--ink-soft)">
+        Картинка на стыке точно не дёргается — первый слайд продолжения снимок
+        сцены. Но <em>звук</em> на стыке я не слышал ни разу. Части идут одна
+        за другой по расписанию, и по измерению S9 стык планируется без разрыва —
+        однако это измерялось на разных файлах, а не на двух окнах одного.
+        <strong>Если неверно:</strong> на каждом разрезе будет слышен щелчок или
+        микропауза, и виноватой будет выглядеть развилка, а не окно.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Нужна ли автору пустая ветка</h3>
+      <p style="font-size:15.5px; color:var(--ink-soft)">
+        Разрез создаёт ветки пустыми: своей озвучки у них взяться неоткуда, они
+        берут дорожку исходной части по ссылке. Я не знаю, чего автор ждёт в этот
+        момент — тишины, повтора вопроса или сразу перехода дальше.
+        <strong>Если неверно:</strong> зритель услышит кусок уже сказанного текста
+        под пустой сценой, и это будет выглядеть как поломка, а не как заглушка.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Развилка в конце — ограничение или свойство</h3>
+      <p style="font-size:15.5px; color:var(--ink-soft)">
+        Модель требует, чтобы развилка была последней остановкой части. Я считаю
+        это свойством: иначе зритель дослушивает остаток и только потом уезжает.
+        Но возможно, автору естественно ставить развилку в середине и ждать, что
+        продукт сам разрежет.
+        <strong>Если неверно:</strong> «разрезать» останется ручным жестом там, где
+        должно было быть автоматическим следствием.
+      </p>
+    </div>
+    <div class="card">
+      <h3>Считается ли повтор части прогрессом</h3>
+      <p style="font-size:15.5px; color:var(--ink-soft)">
+        Прогресс считает пройденные части ходом. Если объяснение возвращает
+        зрителя в уже виденную часть, номер продолжит расти — «часть 7», хотя
+        частей всего четыре.
+        <strong>Если неверно:</strong> при циклах счётчик будет выглядеть сломанным
+        именно там, где автор задумал повторение.
+      </p>
+    </div>
+  </div>
+  <span class="window-rule"></span>
+</section>
+
+<section>
+  <div class="col stack">
+    <div class="label">Решать вам</div>
+    <h2>Открытые вопросы</h2>
+  </div>
+
+  <div class="col stack" style="margin-top:20px">
+    <div class="q">
+      <span class="n">01</span>
+      <div>
+        <h3>Куда должен идти переход относительно слайда?</h3>
+        <p style="font-size:15.5px; color:var(--ink-soft)">
+          Сейчас переход <em>стартует</em> на слайде и длится 0.6 с после него, то есть
+          картинка приезжает позже своего слова. Разворот (переход заканчивается
+          на слайде) стоит переписывания ядра движка слайдов и всех эталонов
+          морфинга. Это ADR, а не правка.
+        </p>
+      </div>
+    </div>
+    <div class="q">
+      <span class="n">02</span>
+      <div>
+        <h3>Какой из четырёх видов карты берём в работу?</h3>
+        <p style="font-size:15.5px; color:var(--ink-soft)">
+          Или пятый, ваш. Модель под любой из них уже лежит; менять вид можно
+          сколько угодно раз, не трогая схему.
+        </p>
+      </div>
+    </div>
+    <div class="q">
+      <span class="n">03</span>
+      <div>
+        <h3>Что должно звучать в только что созданной ветке?</h3>
+        <p style="font-size:15.5px; color:var(--ink-soft)">
+          Тишина, повтор вопроса или мгновенный переход дальше. Сейчас — кусок
+          исходной дорожки, потому что своей у ветки нет.
+        </p>
+      </div>
+    </div>
+    <div class="q">
+      <span class="n">04</span>
+      <div>
+        <h3>Развилка меняет набор вариантов по прошлым ответам — когда?</h3>
+        <p style="font-size:15.5px; color:var(--ink-soft)">
+          Вы называли это прямо. Предложенная форма — необязательное условие
+          у варианта ответа: он показывается, если условие подошло. Ложится
+          на существующие условия без новой сущности.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
