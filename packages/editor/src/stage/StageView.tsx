@@ -316,12 +316,29 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     [requireNodes, segment.stage.width],
   );
 
-  /** Виден ли элемент на текущем слайде — по тому, что реально нарисовано. */
+  /**
+   * Виден ли элемент на текущем слайде — по тому, что реально нарисовано.
+   *
+   * Спрашивать `opacity` было НЕДОСТАТОЧНО, и это стоило трёх красных e2e.
+   * Скрытый элемент по ADR-015 выражается видимостью, а не нулевой
+   * прозрачностью: миграция переводит кью «opacity 0 → 1» в
+   * `{ visible: false, opacity: 1 }`, а рендер печатает это как
+   * `visibility: hidden` при `opacity: 1`. То есть у скрытого элемента
+   * прозрачность единица, и проверка по ней объявляла его видимым —
+   * клик по видимой карточке выделял лежащую поверх невидимую точку.
+   *
+   * `checkVisibility` без флагов смотрит только на `display`
+   * и `content-visibility` — то есть был бы зелёным на сломанном коде
+   * и красным на верном. Флаги обязательны.
+   *
+   * Порог по прозрачности остаётся сверх этого: `checkVisibility` считает
+   * невидимым только строгий ноль, а на границе перехода значение бывает
+   * вроде 0.002, и такой элемент кликать всё равно не по чему.
+   */
   const isVisible = useCallback((id: string): boolean => {
     const node = previewRef.current?.nodes.get(id);
     if (!node) return false;
-    // Порог, а не строгий ноль: на границе анимации значение бывает
-    // вроде 0.002, и такой элемент кликать всё равно не по чему.
+    if (!node.checkVisibility({ visibilityProperty: true, opacityProperty: true })) return false;
     return Number(getComputedStyle(node).opacity) > 0.01;
   }, []);
 

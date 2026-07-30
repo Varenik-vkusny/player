@@ -11,8 +11,8 @@
       "id": "s-ask",
       "title": "Спрашивает и доигрывает до конца",
       "audio": {
-        "src": "/audio/demo.mp3",
-        "duration": 48.6,
+        "src": "/audio/ask.wav",
+        "duration": 3,
         "words": []
       },
       "elements": [

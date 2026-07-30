@@ -69,8 +69,14 @@ test.describe('правка текста на холсте', () => {
     page,
   }) => {
     await openEditor(page, 'demo');
-    await waitTransportReady(page);
-    await seekTrack(page, 24); // на 24-й секунде title уже виден (editor-authoring.spec.ts)
+    // Дорожку в редакторе v3 перематывать незачем: StageView всегда рисует
+    // ровно один `currentSlide` (`state.currentSlideId`), а не то, что идёт
+    // под головкой транспорта (`packages/editor/src/track/TrackView.tsx`
+    // трогает только `transport.seek`, StageView его не читает). title
+    // проявляется («visible: false → true») на слайде `node-1-slide-3`
+    // (0.8 с) — берём более поздний `node-1-slide-8` (9.2 с), тот же, что
+    // и в e2e/editor.spec.ts, где title и card уже видны.
+    await page.getByTestId('slide-node-1-slide-8').click();
 
     const before = await elementContent(page, 'title');
     const center = await centerOnScreen(page, 'title');
@@ -98,11 +104,13 @@ test.describe('правка текста на холсте', () => {
     page,
   }) => {
     await openEditor(page, 'demo');
-    await waitTransportReady(page);
-    // title анимированно появляется (opacity 0→1) и на нулевой секунде ещё
-    // не виден — StageView.handleStageDoubleClick фильтрует попадание по
-    // видимости, как и одиночный клик (ADR-010, «Выделяется то, что ВИДНО»).
-    await seekTrack(page, 24);
+    // title появляется («visible: false → true») не на первом слайде —
+    // StageView.handleStageDoubleClick фильтрует попадание по видимости,
+    // как и одиночный клик (ADR-010, «Выделяется то, что ВИДНО»). Слайд
+    // выбирается панелью слайдов, а не перемоткой дорожки: та трогает
+    // только звук, сцена в редакторе показывает `currentSlide`, а не то,
+    // что «сейчас звучит» (см. комментарий в первом тесте файла).
+    await page.getByTestId('slide-node-1-slide-8').click();
     const before = await elementContent(page, 'title');
     const center = await centerOnScreen(page, 'title');
 
@@ -126,8 +134,7 @@ test.describe('правка текста на холсте', () => {
 
   test('пока каретка в тексте, Delete не удаляет элемент со сцены', async ({ page }) => {
     await openEditor(page, 'demo');
-    await waitTransportReady(page);
-    await seekTrack(page, 24); // title виден только после появления — см. комментарий выше
+    await page.getByTestId('slide-node-1-slide-8').click(); // title виден только после появления — см. комментарий выше
     const center = await centerOnScreen(page, 'title');
 
     await page.mouse.dblclick(center.x, center.y);
@@ -146,8 +153,7 @@ test.describe('правка текста на холсте', () => {
 
   test('клик мимо коммитит правку так же, как Escape', async ({ page }) => {
     await openEditor(page, 'demo');
-    await waitTransportReady(page);
-    await seekTrack(page, 24); // title виден только после появления — см. комментарий выше
+    await page.getByTestId('slide-node-1-slide-8').click(); // title виден только после появления — см. комментарий выше
     const before = await elementContent(page, 'title');
     const center = await centerOnScreen(page, 'title');
 
@@ -170,11 +176,10 @@ test.describe('правка текста на холсте', () => {
 
   test('двойной клик по фигуре не открывает правку текста', async ({ page }) => {
     await openEditor(page, 'demo');
-    await waitTransportReady(page);
-    // card тоже анимированно появляется — без перемотки двойной клик ничего
-    // бы не нашёл вовсе (ADR-010, «Выделяется то, что ВИДНО»), и тест
+    // card тоже проявляется не сразу — без выбора слайда двойной клик
+    // ничего бы не нашёл вовсе (ADR-010, «Выделяется то, что ВИДНО»), и тест
     // прошёл бы по неверной причине, а не потому что card — не текст.
-    await seekTrack(page, 24);
+    await page.getByTestId('slide-node-1-slide-8').click();
     const center = await centerOnScreen(page, 'card'); // card — shape, не text
 
     await page.mouse.dblclick(center.x, center.y);

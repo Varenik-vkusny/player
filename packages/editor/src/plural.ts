@@ -44,3 +44,4 @@ export function plural(count: number, forms: PluralForms): string {
 export const ELEMENTS: PluralForms = { one: 'элемент', few: 'элемента', many: 'элементов' };
 export const ANIMATIONS: PluralForms = { one: 'анимация', few: 'анимации', many: 'анимаций' };
 export const GATES: PluralForms = { one: 'гейт', few: 'гейта', many: 'гейтов' };
+export const SLIDES: PluralForms = { one: 'слайде', few: 'слайдах', many: 'слайдах' };

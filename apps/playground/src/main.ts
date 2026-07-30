@@ -5,7 +5,14 @@
  * он сообщает, что гейт открыт, и принимает ответ.
  */
 import { loadProject, resolveTimeRef, type Gate } from '@player/core';
-import { entrySegmentOf, Player, segmentOf, type GateAttempt, type UnboundOption } from '@player/player';
+import {
+  entrySegmentOf,
+  Player,
+  segmentOf,
+  type GateAttempt,
+  type Reveal,
+  type UnboundOption,
+} from '@player/player';
 
 const el = <T extends HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -114,6 +121,7 @@ async function main(): Promise<void> {
     },
     onGateOpen: (gate, unboundOptions) => showGate(gate, unboundOptions),
     onGateResolved: (attempt) => showResult(attempt),
+    onRevealOpen: (reveal) => showReveal(reveal),
   });
 
   // Метки гейтов на дорожке: видно, куда плеер приедет.
@@ -207,24 +215,66 @@ async function main(): Promise<void> {
       closeOverlay();
       return;
     }
-    if (attempt.outcome === 'reveal') {
-      feedback.className = 'feedback wrong';
-      feedback.textContent = 'Не угадал. Правильный ответ показан — нажми «дальше».';
-      const next = document.createElement('button');
-      next.className = 'primary';
-      next.textContent = 'Дальше';
-      next.addEventListener('click', () => {
-        closeOverlay();
-        void player.continueAfterReveal();
-      });
-      panel.appendChild(next);
-      return;
-    }
+    // Разбор на месте панель не дописывает, а заменяет целиком: его рисует
+    // showReveal по событию плеера. Так слой один и тот же независимо от
+    // того, была ли панель открыта вообще — у гейта, где все варианты
+    // нарисованы элементами сцены, её нет (ADR-011).
+    if (attempt.outcome === 'reveal') return;
+
     feedback.className = 'feedback wrong';
     const left = attempt.gate.maxAttempts === null
       ? ''
       : ` Осталось попыток: ${attempt.gate.maxAttempts - attempt.attemptsUsed}.`;
     feedback.textContent = `Неверно.${left}`;
+  }
+
+  /**
+   * Разбор на месте: слой ПОВЕРХ сцены, сегмент не покидается.
+   *
+   * Оверлей полупрозрачный намеренно — сцена обязана остаться видимой
+   * под разбором. В этом и смысл `inline-explain`: зритель разбирается
+   * с тем, на что смотрел, а не уходит в отдельную страницу.
+   *
+   * Своего текста у разбора в схеме пока нет (см. Reveal в player.ts),
+   * поэтому оснастка показывает то, что плеер знает точно. `inline-hint`
+   * отличается длиной: подсказка не повторяет вопрос.
+   */
+  function showReveal(reveal: Reveal): void {
+    overlay.dataset['open'] = '1';
+    panel.textContent = '';
+    panel.dataset['reveal'] = reveal.kind;
+
+    const title = document.createElement('h2');
+    title.textContent = reveal.kind === 'inline-hint' ? 'Подсказка' : 'Разбор';
+    panel.appendChild(title);
+
+    if (reveal.kind === 'inline-explain') {
+      const question = document.createElement('div');
+      question.className = 'feedback';
+      question.textContent = reveal.gate.config.kind === 'continue'
+        ? reveal.gate.config.label
+        : reveal.gate.config.prompt;
+      panel.appendChild(question);
+    }
+
+    if (reveal.correctOption) {
+      const right = document.createElement('div');
+      right.className = 'feedback right';
+      right.dataset['correct'] = reveal.correctOption.id;
+      right.textContent = `Правильный ответ: ${reveal.correctOption.label}`;
+      panel.appendChild(right);
+    }
+
+    const next = document.createElement('button');
+    next.className = 'primary';
+    next.id = 'reveal-next';
+    next.textContent = 'Дальше';
+    next.addEventListener('click', () => {
+      closeOverlay();
+      delete panel.dataset['reveal'];
+      void player.continueAfterReveal();
+    });
+    panel.appendChild(next);
   }
 
   async function answer(value: string | undefined): Promise<void> {

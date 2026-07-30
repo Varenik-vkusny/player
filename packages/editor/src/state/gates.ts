@@ -10,7 +10,9 @@
  * и кладёт результат в редьюсер через `updateGate` — сам файл про React
  * и про то, как гейт попадает в проект, не знает.
  */
-import type { Gate, TimeRef } from '@player/core';
+import type { Gate, Slide, TimeRef, Word } from '@player/core';
+import { resolveTimeRef } from '@player/core';
+import { morphSecondsFor } from '@player/player';
 
 import { freeId } from './elements.js';
 
@@ -34,6 +36,38 @@ const DEFAULT_ACCEPT = 'ответ';
  * как её называть. Переименовать переменную (сменить `recordAs`) эта функция
  * не даёт — это отдельная операция уровня `updateGate`, не создания.
  */
+/**
+ * Попал ли гейт ВНУТРЬ перехода между слайдами.
+ *
+ * Продукт такой гейт не роняет: product.md §3 [Р] говорит, что переход
+ * будет доведён до конечного состояния мгновенно, и зритель увидит
+ * законную картинку. Но для АВТОРА это почти всегда промах расстановки:
+ * он ставил вопрос к тому, что сейчас едет по экрану, а зритель увидит
+ * уже приехавшее. Поэтому редактор предупреждает, а не запрещает.
+ *
+ * Ровно на секунде начала перехода — это НЕ «внутри»: там переход ещё
+ * не начинался, и доводить нечего. Ровно на секунде конца — тоже нет.
+ *
+ * Расписание берётся из `morphSecondsFor` плеера, а не считается заново:
+ * два описания одного правила разошлись бы тихо, и первым разошлось бы
+ * урезание перехода по расстоянию до следующего слайда.
+ */
+export function gateInsideTransition(
+  gate: Gate,
+  slides: readonly Slide[],
+  words: readonly Word[],
+): boolean {
+  const at = resolveTimeRef(gate.at, words);
+  const seconds = slides.map((slide) => resolveTimeRef(slide.at, words));
+
+  return slides.some((slide, index) => {
+    const duration = morphSecondsFor(slide.transition, index, seconds);
+    if (duration <= 0) return false;
+    const start = seconds[index]!;
+    return at > start && at < start + duration;
+  });
+}
+
 export function createGate(id: string, at: TimeRef): Gate {
   return {
     id,

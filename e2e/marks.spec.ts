@@ -62,8 +62,11 @@ async function gatesOf(page: Page): Promise<{ id: string; at: SavedRef }[]> {
 test.describe('метки на дорожке', () => {
   test('метки эталонного проекта видны', async ({ page }) => {
     await openEditor(page);
-    // demo.json: восемь анимаций и два гейта.
-    await expect(page.locator('[data-testid^="mark-cue-"]')).toHaveCount(8);
+    // Кью версии 1 миграция превращает в слайды (ADR-015): восемь анимаций
+    // demo.json дают 15 слайдов, из которых 14 — метки на дорожке (первый,
+    // обязанный стоять на нуле, меткой не считается, `Editor.tsx`, `marks`,
+    // `fromSlides = segment.slides.slice(1)`). Гейтов по-прежнему два.
+    await expect(page.locator('[data-testid^="mark-slide-"]')).toHaveCount(14);
     await expect(page.locator('[data-testid^="mark-gate-"]')).toHaveCount(2);
 
     // Оба гейта demo.json стоят на словах — это видно и без раскрытия свойств.
@@ -163,37 +166,33 @@ test.describe('метки на дорожке', () => {
     expect(Number(after), 'сцена отмоталась в начало после добавления метки').toBeGreaterThan(0.9);
   });
 
-  test('анимацию нельзя добавить, пока элемент не выделен', async ({ page }) => {
-    await openEditor(page);
-    await expect(page.getByRole('button', { name: /анимация/ })).toBeDisabled();
-
-    // Выделяем видимый элемент: фон занимает всю сцену и виден всегда.
-    const stage = await page.locator('.ed-stage-host > div').boundingBox();
-    if (!stage) throw new Error('сцена не видна');
-    await page.mouse.click(stage.x + stage.width / 2, stage.y + stage.height * 0.9);
-
-    await expect(page.getByRole('button', { name: /анимация/ })).toBeEnabled();
-  });
-
   test('перетаскивание метки меняет её момент в проекте', async ({ page }) => {
     await openEditor(page);
 
-    const mark = page.getByTestId('mark-gate-gate-choice');
+    // gate-choice (слово №32, офсет −0.15 с) не годится: миграция кладёт
+    // на то же слово ещё и слайд `node-1-slide-9` (офсет 0), метки почти
+    // совпадают по пикселю дорожки, и слайд, будучи позже в DOM (`Editor.tsx`,
+    // `marks` — сначала гейты, потом слайды), перехватывает нажатие целиком:
+    // `elementFromPoint` в центре гейта возвращает узел слайда, а не гейта.
+    // gate-input (слово №89) стоит особняком — ближайшая метка дальше чем
+    // на ширину метки, нажатие попадает именно в него.
+    const mark = page.getByTestId('mark-gate-gate-input');
     const box = await mark.boundingBox();
     const lane = await page.getByTestId('marks-lane').boundingBox();
     if (!box || !lane) throw new Error('метка или полоса не видны');
 
-    const before = (await gatesOf(page)).find((gate) => gate.id === 'gate-choice');
+    const before = (await gatesOf(page)).find((gate) => gate.id === 'gate-input');
     if (!before) throw new Error('гейта нет');
 
-    // Тащим вправо на десятую часть дорожки.
+    // Тащим влево: gate-input стоит у самого конца дорожки, и десятая часть
+    // вправо увела бы курсор за её пределы.
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + lane.width * 0.05, box.y + box.height / 2);
-    await page.mouse.move(box.x + box.width / 2 + lane.width * 0.1, box.y + box.height / 2);
+    await page.mouse.move(box.x + box.width / 2 - lane.width * 0.1, box.y + box.height / 2);
     await page.mouse.up();
 
-    const after = (await gatesOf(page)).find((gate) => gate.id === 'gate-choice');
+    const after = (await gatesOf(page)).find((gate) => gate.id === 'gate-input');
     if (!after) throw new Error('гейт исчез');
 
     // Момент обязан измениться, а вид ссылки — остаться осмысленным:

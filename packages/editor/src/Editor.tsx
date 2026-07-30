@@ -37,11 +37,12 @@ import { SegmentPanel } from './panels/SegmentPanel.js';
 import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
+import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js';
 import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
-import { createGate } from './state/gates.js';
+import { createGate, gateInsideTransition } from './state/gates.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, segmentSlide, type MarkKind } from './state/project.js';
@@ -290,11 +291,22 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'applyTemplate', template: sceneTemplate(templateId) });
   }, []);
 
+  /**
+   * Сообщение о каскаде после удаления элемента.
+   *
+   * Удаление снимает состояние элемента со ВСЕХ слайдов, где оно было.
+   * Без сообщения автор видит, что с дорожки исчезло сразу несколько
+   * вещей, и это выглядит как баг редактора, а не как его собственное
+   * действие. Считается ДО удаления: после него считать уже не по чему.
+   */
+  const [removalMessage, setRemovalMessage] = useState<string | undefined>(undefined);
+
   const handleDeleteSelected = useCallback(() => {
     const id = state.selectedId;
     if (id === undefined) return;
+    setRemovalMessage(formatRemovalMessage(id, statesOnSlides(segment.slides, id)));
     dispatch({ type: 'removeElement', id });
-  }, [state.selectedId]);
+  }, [state.selectedId, segment.slides]);
 
   // Ошибка вставки картинки: файл не картинка, либо кодирование не удалось.
   // Падает громко (CLAUDE.md), но громко — это видимое сообщение автору,
@@ -534,6 +546,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
               Удалить
             </button>
           </div>
+          {removalMessage ? (
+            <span className="ed-notice" role="status" data-testid="removal-message">
+              {removalMessage}
+            </span>
+          ) : null}
           {imageDropError ? (
             <span className="ed-failure" role="alert" data-testid="image-drop-error">
               {imageDropError}
@@ -562,6 +579,8 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           <MarkPanel
             mark={markData}
             elements={segment.elements}
+            gateInsideTransition={markData.kind === 'gate'
+              && gateInsideTransition(markData.gate, segment.slides, segment.words)}
             onUpdateGate={handleUpdateGate}
             onRemove={handleRemoveMark}
           />

@@ -118,18 +118,24 @@ test.describe('панель вставки', () => {
 
 test.describe('список элементов', () => {
   test('элемент, невидимый на текущей секунде, выделяется через список', async ({ page }) => {
+    // Схема v3 разводит «звучит дорожка» (transport, seekTrack) и «какой
+    // слайд сейчас на сцене» (`state.currentSlideId`) — перемотка дорожки
+    // саму сцену не трогает (StageView строит превью ровно одного
+    // `currentSlide`, `packages/editor/src/track/TrackView.tsx` вызывает
+    // только `transport.seek`). Сцена и так открывается на первом слайде
+    // сегмента, а на нём dot ещё не проявился: его кью «opacity 0→1»
+    // миграция превращает в `visible: false` (`packages/core/src/
+    // migrations.ts`, applyProperty) — семь появляющихся элементов demo.json
+    // на нулевом слайде уже невидимы, включая dot. Отдельной перемотки
+    // не требуется.
     await openEditor(page, 'demo');
-    await waitTransportReady(page);
-    // На 24-й секунде demo.json: card видна, dot (её анимация начинается
-    // на слове №58) ещё нет. Установлено в e2e/editor.spec.ts.
-    await seekTrack(page, 24);
 
-    const dotOpacity = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-id="dot"]')!).opacity,
+    // «Невидим» — это `visibility`, а не `opacity`: мигрированное состояние
+    // хранит `opacity: 1` и прячет элемент только `visibility: hidden`.
+    const dotVisibility = await page.evaluate(
+      () => getComputedStyle(document.querySelector('[data-id="dot"]')!).visibility,
     );
-    expect(Number(dotOpacity), 'точка обязана быть невидимой — иначе тест не про то').toBeLessThan(
-      0.01,
-    );
+    expect(dotVisibility, 'точка обязана быть невидимой — иначе тест не про то').toBe('hidden');
 
     // Клика по сцене здесь нет намеренно: клик там, где стоит dot, выделил бы
     // то, что нарисовано поверх него, а не сам dot (StageView.isVisible).
@@ -165,9 +171,11 @@ test.describe('список элементов', () => {
 test.describe('удаление', () => {
   test('кнопка удаления недоступна, пока ничего не выделено', async ({ page }) => {
     await openEditor(page, 'demo');
-    // exact: true — иначе имя совпадает и с «Удалить узел» панели графа
-    // (Задача 9): без exact локатор ловил бы обе кнопки.
-    await expect(page.getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
+    // Область `.ed-delete-row` — кнопка удаления ЭЛЕМЕНТА (Editor.tsx), а не
+    // одна из кнопок удаления СЛАЙДА панели `SlidePanel` (`data-testid=
+    // "slide-remove-*"`), которых теперь по одной на каждый слайд и у
+    // которых тот же текст «Удалить». Без скоупа локатор ловил бы все сразу.
+    await expect(page.locator('.ed-delete-row').getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
   });
 
   test('удаление элемента с анимациями сообщает о каскаде и оставляет проект, который грузится', async ({
@@ -178,10 +186,12 @@ test.describe('удаление', () => {
     await page.getByTestId('element-row-dot').click();
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
 
-    await page.getByRole('button', { name: 'Удалить', exact: true }).click();
+    await page.locator('.ed-delete-row').getByRole('button', { name: 'Удалить', exact: true }).click();
 
+    // Каскад считается в слайдах, а не в кью: кью в схеме v3 нет (ADR-015),
+    // а удаление снимает состояние элемента с каждого слайда, где оно было.
     await expect(page.getByTestId('removal-message')).toContainText('dot');
-    await expect(page.getByTestId('removal-message')).toContainText('2 анимации');
+    await expect(page.getByTestId('removal-message')).toContainText('слайд');
     await expect(page.locator('[data-id="dot"]')).toHaveCount(0);
     await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
 
@@ -192,17 +202,18 @@ test.describe('удаление', () => {
     const file = await download.path();
     if (!file) throw new Error('файл не сохранился');
     // serializeProject прогоняет текст через loadProject перед выдачей файла
-    // (state/save.ts) — если бы каскад не снял осиротевшие cues, скачивание
+    // (state/save.ts) — если бы каскад не снял осиротевшие состояния слайдов,
+    // схема отвергла бы ссылку на несуществующий элемент, и скачивание
     // упало бы раньше, чем этот тест дошёл до чтения файла.
     const saved = JSON.parse(readFileSync(file, 'utf8')) as {
       schemaVersion: number;
-      segments: { elements: { id: string }[]; slides: { id: string }[] }[];
+      segments: { elements: { id: string }[]; slides: { states: Record<string, unknown> }[] }[];
     };
-    expect(saved.schemaVersion).toBe(2);
+    expect(saved.schemaVersion).toBe(3);
     expect(saved.segments[0]!.elements.some((element) => element.id === 'dot')).toBe(false);
-    expect(
-      saved.segments[0]!.slides.some((cue) => cue.id === 'c-dot' || cue.id === 'c-dot-move'),
-    ).toBe(false);
+    // Кью в v3 нет (ADR-015): каскад снимает состояние элемента с каждого
+    // слайда, где оно было, а не запись со своим id.
+    expect(saved.segments[0]!.slides.some((slide) => 'dot' in slide.states)).toBe(false);
   });
 });
 

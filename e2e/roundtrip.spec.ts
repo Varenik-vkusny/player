@@ -15,8 +15,36 @@ import { expect, test, type Page } from '@playwright/test';
 import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 
+import { resolveTimeRef, type Project, type Segment } from '@player/core';
+
 /** Момент, на котором сравниваются картинки. Видны и текст, и фигуры. */
 const PARITY_AT = 24;
+
+/**
+ * Сцена редактора рисует и правит только ОДИН выбранный слайд текущего
+ * сегмента (StageView.tsx, `currentSlide`) — она не морфит по всей дорожке,
+ * как это делает воспроизведение в плеере. `__transport.seek` двигает только
+ * головку плеера на дорожке (переменная вида, см. Editor.tsx), а какой слайд
+ * правится — отдельное состояние `currentSlideId`, которое сеанс не трогает
+ * (packages/editor/src/state/project.ts). Чтобы получить слайд, чьи states
+ * совпадают с тем, что покажет плеер в секунду `seconds`, берём последний
+ * слайд, чьё время не позже неё: между соседними слайдами сцена неизменна.
+ */
+function slideAtOrBefore(segment: Segment, seconds: number): Segment['slides'][number] {
+  let chosen = segment.slides[0]!;
+  for (const slide of segment.slides) {
+    if (resolveTimeRef(slide.at, segment.audio.words) <= seconds) chosen = slide;
+  }
+  return chosen;
+}
+
+/** Первый сегмент текущего проекта редактора — то же, что видит `Editor.tsx`. */
+async function firstSegment(page: Page): Promise<Segment> {
+  return page.evaluate(() => {
+    const project = (window as unknown as { __project: Project }).__project;
+    return project.segments[0]!;
+  });
+}
 
 async function openEditor(page: Page, fixture = 'demo'): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -30,14 +58,32 @@ async function openEditor(page: Page, fixture = 'demo'): Promise<void> {
   );
 }
 
-/** Двигает элемент мышью — так же, как это делает автор. */
-async function dragElement(page: Page, id: string, dx: number, dy: number): Promise<void> {
-  const center = await page.evaluate((elementId) => {
-    const node = document.querySelector<HTMLElement>(`[data-id="${elementId}"]`);
-    if (!node) throw new Error(`нет узла ${elementId}`);
-    const rect = node.getBoundingClientRect();
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-  }, id);
+/**
+ * Двигает элемент мышью — так же, как это делает автор.
+ *
+ * `anchor` — точка внутри бокса элемента (доля ширины/высоты, по умолчанию
+ * центр), с которой берётся жест. Не всегда можно хватать за центр: если на
+ * этом слайде поверх лежит элемент с бо́льшим zIndex, geometry-хиттест
+ * (StageView.tsx, hitElementAt) отдаст жест ему. См. использование в тесте
+ * «сохранённый файл проходит валидацию…» — там это не выбор по вкусу,
+ * а обход конкретного наложения.
+ */
+async function dragElement(
+  page: Page,
+  id: string,
+  dx: number,
+  dy: number,
+  anchor: { x: number; y: number } = { x: 0.5, y: 0.5 },
+): Promise<void> {
+  const center = await page.evaluate(
+    ({ elementId, anchor: a }) => {
+      const node = document.querySelector<HTMLElement>(`[data-id="${elementId}"]`);
+      if (!node) throw new Error(`нет узла ${elementId}`);
+      const rect = node.getBoundingClientRect();
+      return { x: rect.left + rect.width * a.x, y: rect.top + rect.height * a.y };
+    },
+    { elementId: id, anchor },
+  );
   await page.mouse.move(center.x, center.y);
   await page.mouse.down();
   await page.mouse.move(center.x + dx / 2, center.y + dy / 2);
@@ -48,19 +94,37 @@ async function dragElement(page: Page, id: string, dx: number, dy: number): Prom
 test.describe('круг: правка в редакторе — просмотр в плеере', () => {
   test('сохранённый файл проходит валидацию и содержит правки', async ({ page }) => {
     await openEditor(page);
-    // Двигаем элемент, который виден на нулевой секунде и потому попадает
-    // под курсор без перемотки.
-    await page.evaluate(() => {
-      (window as unknown as { __transport: { seek(s: number): void } }).__transport.seek(24);
-    });
-    await dragElement(page, 'card', 80, 40);
 
-    const moved = await page.evaluate(() => {
+    // 'card' на первом слайде demo.json ещё не проявился (его кью
+    // "opacity 0→1" идёт с 8.7 по 9.2 с — fixtures/projects/demo.json) и
+    // потому там `visible: false`: клик сквозь него не попадает
+    // (StageView.tsx, hitElementAt фильтрует по isVisible). Встаём на слайд,
+    // где он уже виден (после 9.2 с), тем же путём, что и автор — кнопкой
+    // панели слайдов.
+    const segment = await firstSegment(page);
+    const slide = slideAtOrBefore(segment, 10);
+    await page.getByTestId(`slide-${slide.id}`).click();
+    await expect(page.locator('[data-id="card"]')).toBeVisible();
+
+    // Хватаем не за центр 'card', а за его верхний левый угол: декоративный
+    // 'dot' геометрически лежит поверх середины карточки (демо-макет,
+    // fixtures/projects/demo.json) и на этом слайде ещё не проявился —
+    // но StageView.tsx.isVisible() решает, попадает ли элемент в хиттест, по
+    // computed opacity, а render.ts (packages/player/src/render.ts:83,98)
+    // держит opacity=1 у СКРЫТЫХ элементов тоже и кодирует скрытость через
+    // visibility:hidden. Поэтому «невидимый» dot всё равно участвует в
+    // геометрическом хиттесте и, будучи выше по zIndex, перехватывает клик
+    // по центру карточки. Это защита от точно такого перехвата не работает —
+    // похоже на дефект продукта (см. отчёт), но эта проверка не про него,
+    // поэтому просто не целимся в перекрытую зону.
+    await dragElement(page, 'card', 80, 40, { x: 0.15, y: 0.15 });
+
+    const moved = await page.evaluate((slideId) => {
       const project = (window as unknown as {
-        __project: { segments: { slides: { states: Record<string, { x: number }> }[] }[] };
+        __project: { segments: { slides: { id: string; states: Record<string, { x: number }> }[] }[] };
       }).__project;
-      return project.segments[0]!.slides[0]!.states['card']?.x;
-    });
+      return project.segments[0]!.slides.find((s) => s.id === slideId)!.states['card']?.x;
+    }, slide.id);
     expect(moved).not.toBe(1240);
 
     const download = await Promise.all([
@@ -72,14 +136,14 @@ test.describe('круг: правка в редакторе — просмотр
     if (!file) throw new Error('файл не сохранился');
     const saved = JSON.parse(readFileSync(file, 'utf8')) as {
       schemaVersion: number;
-      segments: { slides: { states: Record<string, { x: number }> }[] }[];
+      segments: { slides: { id: string; states: Record<string, { x: number }> }[] }[];
     };
 
     // Валидация уже прошла внутри редактора — serializeProject прогоняет
     // текст через loadProject перед выдачей. Здесь проверяется, что в файл
     // попало именно то, что на экране.
     expect(saved.schemaVersion).toBe(3);
-    expect(saved.segments[0]!.slides[0]!.states['card']?.x).toBe(moved);
+    expect(saved.segments[0]!.slides.find((s) => s.id === slide.id)!.states['card']?.x).toBe(moved);
   });
 
   test('правленый проект открывается плеером и доезжает до гейта', async ({ page, context }) => {
@@ -229,6 +293,21 @@ test.describe('круг: правка в редакторе — просмотр
     await page.evaluate((at) => {
       (window as unknown as { __transport: { seek(s: number): void } }).__transport.seek(at);
     }, PARITY_AT);
+
+    // `__transport.seek` двигает только головку плеера на дорожке — сцена
+    // редактора рисует ровно ОДИН выбранный слайд (StageView.tsx), а не то,
+    // что морфинг посчитал бы на этой секунде. Ванильный хост ниже, наоборот,
+    // прогоняет ScenePreview.seek по всему сегменту (apps/playground/src/
+    // preview.ts) — то есть настоящую интерполяцию. Чтобы картинки совпали,
+    // редактор нужно явно поставить на слайд, чьё состояние и есть тот самый
+    // застывший кадр в PARITY_AT (между соседними слайдами сцена неизменна).
+    const segment = await firstSegment(page);
+    const slide = slideAtOrBefore(segment, PARITY_AT);
+    await page.getByTestId(`slide-${slide.id}`).click();
+    // Синхронизация со структурной пересборкой сцены (StageView.tsx,
+    // структурный useLayoutEffect срабатывает на смену currentSlide.id):
+    // 'card' виден только начиная с этого слайда, дальше он не гаснет.
+    await expect(page.locator('[data-id="card"]')).toBeVisible();
 
     // Размер области сцены в редакторе задаёт условия сравнения: ванильный
     // хост открывается ровно в таком вьюпорте, тогда масштаб выходит тот же,

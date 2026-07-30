@@ -51,6 +51,80 @@ interface Anchor {
   mediaTime: number;
 }
 
+export interface ClockStartOptions {
+  /** Насколько вперёд планировать старт. Так делается стык сегментов. */
+  leadTime?: number;
+  rampMs?: number;
+}
+
+/**
+ * ЧАСЫ СЕГМЕНТА — то, что двигает время. Плеер не знает, что внутри.
+ *
+ * Решение [Р] product.md: часы это интерфейс, а не класс, даже пока
+ * реализация одна. Продукт уже назвал ещё две — `timer` для немого
+ * объяснения и `manual` для тренажёра, — и обе обязаны уметь ровно то же
+ * самое: сказать позицию, встать РОВНО на числе и продолжить с него же.
+ *
+ * Почему сейчас, а не когда появится вторая реализация. Пока она одна,
+ * извлечение механическое: ни одна строка плеера не меняет смысла. Когда
+ * появится вторая, ту же работу придётся делать под давлением сроков
+ * и с риском, что интерфейс подгонят под то, что уже написано.
+ *
+ * **Шкала планирования** — намеренно нейтральное имя. У аудио это
+ * контекстное время `AudioContext`, монотонное и общее для всех часов
+ * плеера; у `timer` это будет своё монотонное время. Плееру важно только
+ * одно её свойство: в ней можно назначить событие на будущий момент
+ * и попасть точно. На этом стоит стык сегментов (S9: расписание даёт
+ * 0 разрывов против щелчка раз в двадцать переходов при опросе в кадре).
+ */
+export interface Clock {
+  /** Длительность сегмента, секунды. */
+  readonly duration: number;
+  /** Позиция во времени сегмента, секунды. Это и есть время проекта. */
+  readonly position: number;
+  readonly isFrozen: boolean;
+  readonly isRunning: boolean;
+
+  /** Текущий момент шкалы планирования. */
+  readonly scheduleNow: number;
+  /**
+   * Момент шкалы планирования, в который время кончится.
+   * `null` — старта не было либо часы не умеют планировать вперёд.
+   */
+  readonly scheduleEnd: number | null;
+
+  /** Запускает с позиции. Возвращает момент шкалы, в который стартует. */
+  start(offset?: number, options?: ClockStartOptions): number;
+  /** Останавливает время РОВНО на позиции. */
+  freezeAt(position: number, options?: { rampMs?: number }): Promise<void>;
+  /** Останавливает ДО первого движения времени: для гейта на нулевой секунде. */
+  holdBeforeStart(position: number): void;
+  /** Возобновляет с той же позиции. Перемотки не возникает по построению. */
+  resumeFromFreeze(): Promise<void>;
+  /** Будит часы, усыплённые остановкой. Без этого получишь ТИШИНУ, а не ошибку. */
+  wake(): Promise<void>;
+  stop(): void;
+}
+
+/**
+ * Откуда плеер берёт часы. Он их не конструирует — он их просит.
+ *
+ * Здесь же живёт кэш уже готовых источников: декодирование 49-секундной
+ * дорожки стоит 63 мс, четыре кадра (S9), и ждать этого на стыке нельзя.
+ * Кэш принадлежит источнику часов, а не плееру, потому что «что именно
+ * греется» — свойство реализации: у `manual` греть нечего вовсе.
+ */
+export interface ClockSource {
+  /** Часы для сегмента. Повторный запрос не готовит источник заново. */
+  clockFor(src: string): Promise<Clock>;
+  /** Часы, готовые ПРЯМО СЕЙЧАС, без ожидания. `null` — ещё не готовы. */
+  clockIfReady(src: string): Clock | null;
+  /** Греет источник на опережение. Ошибку откладывает до места, где она мешает. */
+  warm(src: string): void;
+  /** Отпускает всё, что держал. */
+  close(): Promise<void>;
+}
+
 export interface ClockDiagnostics {
   usesOutputTimestamp: boolean;
   outputLatencyMs: number;
@@ -64,7 +138,7 @@ export interface ClockDiagnostics {
  * зафиксированной в момент старта. Благодаря этому пауза через ctx.suspend()
  * переживается без пересчёта: контекстные часы замирают вместе со звуком.
  */
-export class AudioClock {
+export class AudioClock implements Clock {
   readonly #ctx: AudioContext;
   readonly #buffer: AudioBuffer;
   readonly #gain: GainNode;
@@ -96,11 +170,25 @@ export class AudioClock {
    * Считается здесь, а не снаружи, потому что снаружи пришлось бы повторить
    * формулу якоря — а два описания одного вычисления расходятся тихо.
    */
-  get endsAtContextTime(): number | null {
+  get scheduleEnd(): number | null {
     const anchor = this.#anchor;
     if (!anchor) return null;
     return anchor.ctxTime + (this.#buffer.duration - anchor.mediaTime);
   }
+
+  /** Шкала планирования аудиочасов — контекстное время. */
+  get scheduleNow(): number { return this.#ctx.currentTime; }
+
+  /**
+   * Будит контекст, если он усыплён остановкой на гейте.
+   *
+   * Забыть разбудить — получить ТИШИНУ, а не ошибку: источник запустится
+   * в остановленный контекст, и ни один юнит-тест этого не увидит.
+   */
+  async wake(): Promise<void> {
+    if (this.#ctx.state === 'suspended') await this.#ctx.resume();
+  }
+
   get isFrozen(): boolean { return this.#frozenPosition !== null; }
   get isRunning(): boolean { return this.#source !== null && this.#frozenPosition === null; }
 
@@ -145,7 +233,7 @@ export class AudioClock {
    * AudioBufferSourceNode одноразовый: каждый старт создаёт новый узел
    * и заново фиксирует якорь.
    */
-  start(offset = 0, options: { leadTime?: number; rampMs?: number } = {}): number {
+  start(offset = 0, options: ClockStartOptions = {}): number {
     if (this.#source) throw new Error('Источник уже запущен, сначала stop()');
     if (!(offset >= 0 && offset <= this.#buffer.duration)) {
       throw new RangeError(`Позиция ${offset} вне дорожки [0, ${this.#buffer.duration}]`);
@@ -292,6 +380,72 @@ export class AudioClock {
     }
     this.#anchor = null;
     this.#frozenPosition = null;
+  }
+}
+
+/**
+ * Источник аудиочасов: один контекст, кэш декодированных дорожек.
+ *
+ * Контекст один на всю жизнь плеера намеренно: свой на каждый сегмент упёрся
+ * бы в лимит браузера. Кэш живёт здесь, а не в плеере, потому что «дорожка
+ * по пути» — это подробность аудио: часам режима `manual` греть нечего.
+ */
+export class AudioClocks implements ClockSource {
+  #ctx: AudioContext | null = null;
+  readonly #tracks = new Map<string, AudioBuffer>();
+  /** Идёт декодирование — второй раз просить незачем. */
+  readonly #warming = new Map<string, Promise<unknown>>();
+
+  /**
+   * Контекст создаётся лениво, при первом запросе часов.
+   *
+   * Создать его в конструкторе значило бы завести живой аудиоконтекст
+   * у каждого плеера, который построили, но так и не загрузили.
+   */
+  #context(): AudioContext {
+    this.#ctx ??= new AudioContext();
+    return this.#ctx;
+  }
+
+  async clockFor(src: string): Promise<Clock> {
+    const ctx = this.#context();
+    const cached = this.#tracks.get(src);
+    if (cached) return new AudioClock(ctx, cached);
+
+    const track = await loadTrack(ctx, src);
+    this.#tracks.set(src, track.buffer);
+    return new AudioClock(ctx, track.buffer);
+  }
+
+  clockIfReady(src: string): Clock | null {
+    const buffer = this.#tracks.get(src);
+    if (!buffer) return null;
+    return new AudioClock(this.#context(), buffer);
+  }
+
+  /**
+   * Греет дорожку на опережение.
+   *
+   * Ошибка декодирования здесь не глушится, а откладывается до места, где
+   * с ней можно что-то сделать: кэш останется пустым, и `clockFor` бросит
+   * на самом переходе — там, где отсутствие дорожки действительно мешает.
+   * Ронять открытие гейта из-за дорожки, которая понадобится через минуту,
+   * было бы хуже: зритель потерял бы работающее объяснение целиком.
+   */
+  warm(src: string): void {
+    if (this.#tracks.has(src) || this.#warming.has(src)) return;
+    const pending = this.clockFor(src)
+      .catch(() => undefined)
+      .finally(() => { this.#warming.delete(src); });
+    this.#warming.set(src, pending);
+  }
+
+  async close(): Promise<void> {
+    const ctx = this.#ctx;
+    this.#ctx = null;
+    this.#tracks.clear();
+    this.#warming.clear();
+    if (ctx) await ctx.close();
   }
 }
 

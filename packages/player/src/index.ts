@@ -9,7 +9,26 @@
 // он не должен ни в одном сценарии, включая голый HTML без сборщика.
 export { loadProject, ProjectLoadError, type Project } from '@player/core';
 
-export { AudioClock, loadTrack, type ClockDiagnostics, type TrackLoad } from './clock.js';
+export {
+  AudioClock,
+  AudioClocks,
+  loadTrack,
+  type Clock,
+  type ClockDiagnostics,
+  type ClockSource,
+  type ClockStartOptions,
+  type TrackLoad,
+} from './clock.js';
+export {
+  buildMorph,
+  layoutStatesFor,
+  morphSecondsFor,
+  planMorph,
+  MORPH_DURATION_S,
+  type MorphPart,
+  type MorphRole,
+  type MorphTimeline,
+} from './morph.js';
 export {
   applyElement,
   applyFit,
@@ -30,5 +49,6 @@ export {
   type GateAttempt,
   type PlayerEvents,
   type PlayerState,
+  type Reveal,
   type UnboundOption,
 } from './player.js';

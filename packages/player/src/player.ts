@@ -12,12 +12,20 @@ import {
   findSegment,
 } from '@player/core';
 
-import { AudioClock, loadTrack } from './clock.js';
+import { AudioClocks, type Clock, type ClockSource } from './clock.js';
 import { applyFit } from './render.js';
 import { entrySegmentOf, segmentOf, type Segment } from './preview.js';
 import { SlideEngine } from './slides.js';
 
-export type PlayerState = 'idle' | 'loading' | 'ready' | 'playing' | 'at-gate' | 'ended';
+/**
+ * `at-reveal` — открыт разбор на месте: гейт уже отвечен неверно, ответ
+ * записан, зритель читает объяснение и жмёт «дальше». Это НЕ то же, что
+ * `at-gate`: отвечать больше нечего, и сцена снова недоступна для мыши.
+ * Без отдельного состояния зритель мог бы кликнуть по варианту ответа
+ * поверх открытого разбора и потратить попытку, которой уже нет.
+ */
+export type PlayerState =
+  | 'idle' | 'loading' | 'ready' | 'playing' | 'at-gate' | 'at-reveal' | 'ended';
 
 /** Ответ зрителя: id варианта, введённое слово либо ничего для «дальше». */
 export type GateAnswer = string | undefined;
@@ -42,6 +50,27 @@ export interface UnboundOption {
   readonly label: string;
 }
 
+/**
+ * Разбор на месте: что показать зрителю, не покидая сегмент.
+ *
+ * Плеер отвечает за ПОВЕДЕНИЕ разбора — дорожка стоит, сцена недоступна,
+ * продолжение только по `continueAfterReveal`. Чем именно заполнен слой,
+ * решает оснастка: у плеера нет и не должно быть представления о вёрстке
+ * (ADR-011, тот же раздел ответственности, что и у вариантов ответа).
+ *
+ * Своего текста разбора в схеме v3 нет намеренно: содержимое разбора —
+ * это блок из библиотеки, а библиотеки ещё нет. Пока плеер отдаёт то,
+ * что знает точно: какой гейт, насколько подробно объяснять и какой
+ * вариант был верным.
+ */
+export interface Reveal {
+  readonly gate: Gate;
+  /** Полный разбор или короткая подсказка. Разные `onWrong` — разная длина. */
+  readonly kind: 'inline-explain' | 'inline-hint';
+  /** Верный вариант — только у гейта-выбора. У ввода и «дальше» его нет. */
+  readonly correctOption: { readonly id: string; readonly label: string } | undefined;
+}
+
 export interface PlayerEvents {
   onStateChange?: (state: PlayerState) => void;
   /**
@@ -52,6 +81,8 @@ export interface PlayerEvents {
    */
   onGateOpen?: (gate: Gate, unboundOptions: readonly UnboundOption[]) => void;
   onGateResolved?: (attempt: GateAttempt) => void;
+  /** Открылся разбор на месте. Слой рисует оснастка, время держит плеер. */
+  onRevealOpen?: (reveal: Reveal) => void;
   onFrame?: (positionSeconds: number) => void;
 }
 
@@ -87,21 +118,13 @@ export class Player {
   #segment: Segment;
 
   /**
-   * Аудиоконтекст один на всю жизнь плеера, а часы — свои у каждого узла.
+   * Откуда берутся часы. Плеер их НЕ конструирует — он их просит.
    *
-   * Контекст переиспользуется намеренно: свой на каждый узел упёрся бы
-   * в лимит браузера, а `destroy()` закрывает его один раз.
+   * Долг §13.1 закрыт здесь: пока реализация одна, извлечение механическое,
+   * а когда появится вторая (`timer` для немого объяснения, `manual` для
+   * тренажёра), это станет переписыванием под давлением.
    */
-  #ctx: AudioContext | null = null;
-
-  /**
-   * Декодированные дорожки по `src`.
-   *
-   * Дорожка следующего узла греется на открытии гейта, где время стоит,
-   * а не на стыке. S9: декодирование 49-секундной дорожки — 63 мс, четыре
-   * кадра; трёхсекундной — 4.8 мс. Ждать этого на стыке нельзя.
-   */
-  #tracks = new Map<string, AudioBuffer>();
+  readonly #clocks: ClockSource;
 
   /**
    * Часы следующего узла, запланированные РОВНО на конец текущего.
@@ -111,10 +134,7 @@ export class Player {
    * `outputLatency`, а не длина кадра) и щелчок на одном переходе
    * из двадцати. Расписание даёт ноль и по разрывам, и по задержке.
    */
-  #pending: { clock: AudioClock; nodeId: string; startsAt: number } | null = null;
-
-  /** Идёт декодирование дорожки следующего узла — второй раз просить незачем. */
-  #warming: Promise<unknown> | null = null;
+  #pending: { clock: Clock; nodeId: string; startsAt: number } | null = null;
 
   /** Исход последней разобранной попытки: им выбирается ребро графа. */
   /**
@@ -127,9 +147,8 @@ export class Player {
    */
   #answers: Record<string, Answer> = {};
 
-  #clock: AudioClock | null = null;
+  #clock: Clock | null = null;
   #slides: SlideEngine | null = null;
-  #nodes: Map<string, HTMLElement> = new Map();
   #gates: ScheduledGate[] = [];
   #nextGateIndex = 0;
   #attempts = new Map<string, number>();
@@ -138,9 +157,25 @@ export class Player {
   #resizeObserver: ResizeObserver | null = null;
   /** id вариантов, помеченных сейчас как кликабельные элементы гейта — снимается при выходе. */
   #markedOptionIds: string[] = [];
+  #reveal: Reveal | null = null;
 
-  constructor(host: HTMLElement, project: Project, events: PlayerEvents = {}) {
+  /**
+   * Часы передаются четвёртым аргументом со значением по умолчанию.
+   *
+   * Умолчание оставлено осознанно и ровно ради инварианта №9: встраивание
+   * в голый HTML обязано оставаться одной строкой, а не сборкой трёх
+   * объектов вручную. Ключевое требование долга §13.1 при этом выполнено —
+   * ВНУТРИ плеера `new AudioClock` больше не встречается ни разу, поэтому
+   * вторая реализация подставляется без единой правки здесь.
+   */
+  constructor(
+    host: HTMLElement,
+    project: Project,
+    events: PlayerEvents = {},
+    clocks: ClockSource = new AudioClocks(),
+  ) {
     this.#host = host;
+    this.#clocks = clocks;
     // Единственная точка чтения project.audio и project.scene (ADR-003,
     // ADR-011): переход на граф сегментов поменял segmentOf, а не Player.
     this.#project = project;
@@ -164,8 +199,19 @@ export class Player {
   get state(): PlayerState { return this.#state; }
   get stageElement(): HTMLElement { return this.#stage; }
   get positionSeconds(): number { return this.#clock?.position ?? 0; }
+  /** Гейт, на котором стоим: и пока отвечают, и пока читают разбор. */
   get currentGate(): Gate | undefined {
-    return this.#state === 'at-gate' ? this.#gates[this.#nextGateIndex]?.gate : undefined;
+    if (this.#state !== 'at-gate' && this.#state !== 'at-reveal') return undefined;
+    return this.#gates[this.#nextGateIndex]?.gate;
+  }
+  /** Открытый разбор на месте. `undefined` — разбора сейчас нет. */
+  get currentReveal(): Reveal | undefined { return this.#reveal ?? undefined; }
+
+  /** Узлы сцены. Читаются у движка слайдов, а не копируются: переход
+   * пересобирает сцену, когда уходящие элементы догорают, и снимок карты
+   * после этого указывал бы на узлы, которых в документе уже нет. */
+  get #nodes(): ReadonlyMap<string, HTMLElement> {
+    return this.#slides?.nodes ?? new Map();
   }
 
   #setState(state: PlayerState): void {
@@ -183,25 +229,10 @@ export class Player {
     this.#resizeObserver = new ResizeObserver(() => this.#fit());
     this.#resizeObserver.observe(this.#host);
 
-    const ctx = new AudioContext();
-    this.#ctx = ctx;
-    this.#clock = new AudioClock(ctx, await this.#trackFor(this.#segment.src));
+    this.#clock = await this.#clocks.clockFor(this.#segment.src);
 
     this.#mountSegment();
     this.#setState('ready');
-  }
-
-  /** Декодированная дорожка по пути. Повторный запрос не декодирует заново. */
-  async #trackFor(src: string): Promise<AudioBuffer> {
-    const cached = this.#tracks.get(src);
-    if (cached) return cached;
-
-    const ctx = this.#ctx;
-    if (!ctx) throw new Error('Нет аудиоконтекста: сначала load()');
-
-    const track = await loadTrack(ctx, src);
-    this.#tracks.set(src, track.buffer);
-    return track.buffer;
   }
 
   /**
@@ -221,7 +252,6 @@ export class Player {
       words: this.#segment.words,
       stage: this.#segment.stage,
     });
-    this.#nodes = new Map(this.#slides.nodes);
     // Пометки кликабельных вариантов жили на элементах прошлой сцены,
     // а её больше нет: движок слайдов очищает контейнер.
     this.#markedOptionIds = [];
@@ -331,7 +361,7 @@ export class Player {
       throw new Error('Нельзя продолжить, пока гейт не пройден');
     }
 
-    await clock.context.resume();
+    await clock.wake();
 
     // Гейт ровно на нулевой секунде: остановиться надо ДО первого звука,
     // иначе зритель услышит начало фразы, к которой относится вопрос.
@@ -403,11 +433,10 @@ export class Player {
    * (S9), а планировать можно только тогда, когда буфер уже в руках.
    */
   #maybeSchedulePending(position: number): void {
-    if (this.#pending || this.#warming) return;
+    if (this.#pending) return;
 
-    const ctx = this.#ctx;
     const clock = this.#clock;
-    if (!ctx || !clock) return;
+    if (!clock) return;
 
     const next = nextSegment(findSegment(this.#project, this.#nodeId), this.#answers);
     if (next === null) return;
@@ -416,25 +445,26 @@ export class Player {
     if (remaining > PRELOAD_AHEAD_S) return;
 
     const src = segmentOf(this.#project, next).src;
-    if (!this.#tracks.has(src)) {
-      this.#warmTrack(src);
+    if (remaining > SCHEDULE_AHEAD_S) {
+      this.#clocks.warm(src);
       return;
     }
-    if (remaining > SCHEDULE_AHEAD_S) return;
 
-    const endsAt = clock.endsAtContextTime;
+    const endsAt = clock.scheduleEnd;
     if (endsAt === null) return;
 
-    const leadTime = endsAt - ctx.currentTime;
+    const leadTime = endsAt - clock.scheduleNow;
     // Не успели запланировать — конец узла обработает #reachEndOfNode
     // остановленным переходом. Это не заглушка, а второй настоящий путь:
     // он даёт паузу вместо щелчка, и оба измерены в S9.
     if (leadTime <= 0) return;
 
-    const buffer = this.#tracks.get(src);
-    if (!buffer) return;
+    // Часы просим ПОСЛЕДНИМ шагом, когда всё остальное уже сошлось: каждый
+    // запрос строит живой узел усиления, и спрашивать их кадр за кадром
+    // значило бы копить их в аудиографе десятками.
+    const pendingClock = this.#clocks.clockIfReady(src);
+    if (!pendingClock) return;
 
-    const pendingClock = new AudioClock(ctx, buffer);
     const startsAt = pendingClock.start(0, { leadTime });
     this.#pending = { clock: pendingClock, nodeId: next, startsAt };
   }
@@ -442,8 +472,8 @@ export class Player {
   /** Подменяет сцену и часы, когда запланированный узел начал звучать. */
   #promotePendingIfStarted(): boolean {
     const pending = this.#pending;
-    const ctx = this.#ctx;
-    if (!pending || !ctx || ctx.currentTime < pending.startsAt) return false;
+    const clock = this.#clock;
+    if (!pending || !clock || clock.scheduleNow < pending.startsAt) return false;
 
     this.#clock?.stop();
     this.#clock = pending.clock;
@@ -461,21 +491,6 @@ export class Player {
     if (!pending) return;
     pending.clock.stop();
     this.#pending = null;
-  }
-
-  /**
-   * Греет дорожку на опережение.
-   *
-   * Ошибка декодирования здесь не глушится, а откладывается до места, где
-   * с ней можно что-то сделать: кэш останется пустым, и `#trackFor` бросит
-   * на самом переходе — там, где отсутствие дорожки действительно мешает.
-   * Ронять открытие гейта из-за дорожки, которая понадобится через минуту,
-   * было бы хуже: зритель потерял бы работающее объяснение целиком.
-   */
-  #warmTrack(src: string): void {
-    this.#warming = this.#trackFor(src)
-      .catch(() => undefined)
-      .finally(() => { this.#warming = null; });
   }
 
   /**
@@ -501,19 +516,18 @@ export class Player {
    * следующего узла ничем не отличается от начала воспроизведения.
    */
   async #goToNode(nodeId: string): Promise<void> {
-    const ctx = this.#requireContext();
     this.#stopFrameLoop();
     this.#dropPending();
-
-    // Контекст подвешен freezeAt (clock.ts). Забыть разбудить — получить
-    // ТИШИНУ, а не ошибку: источник запустится в остановленный контекст,
-    // и ни один юнит-тест этого не увидит.
-    if (ctx.state === 'suspended') await ctx.resume();
 
     this.#clock?.stop();
     this.#nodeId = nodeId;
     this.#segment = segmentOf(this.#project, nodeId);
-    this.#clock = new AudioClock(ctx, await this.#trackFor(this.#segment.src));
+    this.#clock = await this.#clocks.clockFor(this.#segment.src);
+
+    // Часы усыплены остановкой на гейте (clock.ts). Забыть разбудить —
+    // получить ТИШИНУ, а не ошибку: источник запустится в остановленное
+    // время, и ни один юнит-тест этого не увидит.
+    await this.#clock.wake();
 
     this.#mountSegment();
     this.#clock.start(0);
@@ -535,6 +549,17 @@ export class Player {
     // пересечение: обнаружение ограничено длиной кадра (ADR-005).
     await clock.freezeAt(scheduled.at);
     slides.seekSeconds(scheduled.at);
+
+    /**
+     * Незавершённый переход доводится до конца МГНОВЕННО — решение [Р]
+     * product.md §3. Зритель не отвечает поверх едущих элементов: пока
+     * они едут, непонятно даже, по чему именно кликать.
+     *
+     * Буквальное «доиграть переход» стоило бы 300–900 мс лишнего звука
+     * после точки остановки, то есть нарушило бы инвариант №4 в полсотни
+     * раз грубее, чем измеренный перелёт кадра 18.57 мс.
+     */
+    slides.settle();
     this.#openGate();
   }
 
@@ -557,9 +582,9 @@ export class Player {
   #warmExitTargets(): void {
     const segment = findSegment(this.#project, this.#nodeId);
     for (const target of preloadTargetsOfExit(segment)) {
-      const src = segmentOf(this.#project, target).src;
-      if (this.#tracks.has(src)) continue;
-      this.#warmTrack(src);
+      // Повторный прогрев одного и того же пути источник часов отсекает
+      // сам: знание о том, что уже готово, принадлежит ему, а не плееру.
+      this.#clocks.warm(segmentOf(this.#project, target).src);
     }
   }
 
@@ -596,17 +621,45 @@ export class Player {
     this.#events.onGateResolved?.(attempt);
 
     if (outcome === 'continue') await this.#leaveGate();
+    else if (outcome === 'reveal') this.#openReveal(gate);
     return attempt;
   }
 
-  /** Продолжает после гейта, у которого исход был `reveal`. */
+  /**
+   * Открывает разбор на месте: сегмент не покидается, дорожка стоит.
+   *
+   * Сцена снова становится недоступной для мыши. Это не перестраховка:
+   * варианты ответа нарисованы элементами сцены (ADR-011), и без этого
+   * зритель мог бы ткнуть в них поверх открытого разбора — а `answer`
+   * там уже не примут, потому что попытка разобрана.
+   */
+  #openReveal(gate: Gate): void {
+    this.#unmarkAnswerElements();
+    this.#stage.style.pointerEvents = 'none';
+
+    const config = gate.config;
+    this.#reveal = {
+      gate,
+      kind: gate.onWrong === 'inline-hint' ? 'inline-hint' : 'inline-explain',
+      correctOption: config.kind === 'choice'
+        ? config.options.find((option) => option.id === config.correctId)
+        : undefined,
+    };
+    this.#setState('at-reveal');
+    this.#events.onRevealOpen?.(this.#reveal);
+  }
+
+  /** Продолжает после разбора на месте. Дорожка идёт дальше с той же позиции. */
   async continueAfterReveal(): Promise<void> {
-    if (this.#state !== 'at-gate') throw new Error('Нет открытого гейта');
+    if (this.#state !== 'at-reveal') {
+      throw new Error(`Разбор не открыт: состояние ${this.#state}`);
+    }
     await this.#leaveGate();
   }
 
   async #leaveGate(): Promise<void> {
     const clock = this.#requireClock();
+    this.#reveal = null;
     this.#unmarkAnswerElements();
     this.#stage.style.pointerEvents = 'none';
 
@@ -641,17 +694,13 @@ export class Player {
     this.#dropPending();
     this.#resizeObserver?.disconnect();
     this.#clock?.stop();
-    void this.#clock?.context.close();
+    this.#slides?.destroy();
+    void this.#clocks.close();
     this.#stage.remove();
     this.#setState('idle');
   }
 
-  #requireContext(): AudioContext {
-    if (!this.#ctx) throw new Error('Плеер не загружен: сначала load()');
-    return this.#ctx;
-  }
-
-  #requireClock(): AudioClock {
+  #requireClock(): Clock {
     if (!this.#clock) throw new Error('Плеер не загружен: сначала load()');
     return this.#clock;
   }

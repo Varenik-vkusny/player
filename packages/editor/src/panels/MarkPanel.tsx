@@ -53,16 +53,37 @@ export interface MarkPanelProps {
   mark: SelectedMarkData;
   /** Для привязки варианта ответа (ADR-011). */
   elements: readonly Element[];
+  /**
+   * Гейт стоит внутри перехода между слайдами.
+   *
+   * Не ошибка: продукт доведёт переход до конца мгновенно и покажет
+   * законную картинку (product.md §3 [Р]). Но автор почти наверняка
+   * промахнулся — он ставил вопрос к тому, что сейчас едет, а зритель
+   * увидит уже приехавшее. Поэтому предупреждение, а не запрет.
+   */
+  gateInsideTransition?: boolean;
   onUpdateGate: (gate: Gate) => void;
   /** Действие `removeMark`/`removeSlide` в редьюсере уже есть — эта кнопка его вызывает. */
   onRemove: () => void;
 }
 
-export function MarkPanel({ mark, elements, onUpdateGate, onRemove }: MarkPanelProps): ReactElement {
+export function MarkPanel({
+  mark,
+  elements,
+  gateInsideTransition = false,
+  onUpdateGate,
+  onRemove,
+}: MarkPanelProps): ReactElement {
   return (
     <aside className="ed-inspector" data-testid="mark-panel">
       <h2 className="ed-insp-title">{mark.kind === 'gate' ? 'Гейт' : 'Слайд'}</h2>
       <div className="ed-insp-body">
+        {mark.kind === 'gate' && gateInsideTransition ? (
+          <p className="ed-warning" data-testid="gate-in-transition">
+            Гейт стоит внутри перехода между слайдами. Зритель увидит переход
+            уже доведённым до конца — вопрос будет задан не к тому, что едет.
+          </p>
+        ) : null}
         {mark.kind === 'gate' ? (
           // key по id: при выборе другой метки виджеты (и их внутренние
           // черновики, см. AcceptListField) пересоздаются с нуля, как

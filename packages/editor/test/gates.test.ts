@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { loadProject } from '@player/core';
-import type { Element, Gate, Project } from '@player/core';
+import type { Element, Gate, Project, Slide } from '@player/core';
 
 import {
   addOption,
   bindOption,
   createGate,
+  gateInsideTransition,
   promptOf,
   removeOption,
   setAccept,
@@ -648,5 +649,66 @@ describe('охранник схемы: сериализованный файл �
     const canonical = loadProject(JSON.parse(text));
 
     expect(findExtraKeys(raw, canonical, 'project')).toEqual([]);
+  });
+});
+
+/**
+ * Предупреждение автору про гейт внутри перехода.
+ *
+ * Не запрет: product.md §3 [Р] говорит, что переход будет доведён до конца
+ * мгновенно и зритель увидит законную картинку. Но автор почти наверняка
+ * промахнулся — он ставил вопрос к тому, что сейчас едет по экрану.
+ */
+describe('гейт внутри перехода между слайдами', () => {
+  const slide = (id: string, t: number, transition: 'morph' | 'cut' = 'morph'): Slide => ({
+    id,
+    at: { kind: 'seconds', t },
+    transition,
+    states: {},
+  });
+
+  const at = (t: number): Gate => continueGate({ at: { kind: 'seconds', t } });
+
+  const slides = [slide('s-1', 0), slide('s-2', 1), slide('s-3', 3)];
+
+  it('гейт до перехода — тихо', () => {
+    expect(gateInsideTransition(at(0.5), slides, [])).toBe(false);
+  });
+
+  it('гейт посреди перехода — предупреждение', () => {
+    expect(gateInsideTransition(at(1.3), slides, [])).toBe(true);
+  });
+
+  /**
+   * Ровно на секунде начала переход ещё не начинался, доводить нечего —
+   * это законная и частая расстановка «вопрос к новому слайду».
+   */
+  it('гейт ровно на начале слайда — тихо', () => {
+    expect(gateInsideTransition(at(1), slides, [])).toBe(false);
+  });
+
+  it('гейт после конца перехода — тихо', () => {
+    expect(gateInsideTransition(at(1.7), slides, [])).toBe(false);
+  });
+
+  it('срез перехода не создаёт: гейт на нём тихий', () => {
+    const cut = [slide('s-1', 0), slide('s-2', 1, 'cut')];
+    expect(gateInsideTransition(at(1.3), cut, [])).toBe(false);
+  });
+
+  /**
+   * Переход урезается расстоянием до следующего слайда, и предупреждение
+   * обязано считать по тому же правилу: иначе редактор ругался бы на гейт,
+   * который на самом деле стоит уже после короткого перехода.
+   */
+  it('урезанный переход укорачивает и окно предупреждения', () => {
+    // Третий слайд — срез намеренно: иначе его собственный переход
+    // (1.2 … 1.8) накрыл бы проверяемую точку, и тест был бы зелёным
+    // по неправильной причине. На этом уже споткнулись при написании.
+    const tight = [slide('s-1', 0), slide('s-2', 1), slide('s-3', 1.2, 'cut')];
+    expect(gateInsideTransition(at(1.1), tight, [])).toBe(true);
+    // Полный переход шёл бы до 1.6 — но следующий слайд обрезал его на 1.2.
+    expect(gateInsideTransition(at(1.25), tight, [])).toBe(false);
+    expect(gateInsideTransition(at(1.5), tight, [])).toBe(false);
   });
 });

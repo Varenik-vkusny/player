@@ -28,8 +28,13 @@ test.describe('плеер: сквозной сценарий', () => {
 
     expect(await stateOf(page)).toBe('ready');
     await expect(page.locator('.player-stage > *')).toHaveCount(7);
-    // Первый кадр отрисован: зритель видит сцену, а не пустоту.
-    await expect(page.locator('[data-id="title"]')).toBeVisible();
+    // Первый кадр отрисован: зритель видит сцену, а не пустоту. `title` и
+    // остальные элементы демо-сцены проявляются собственными слайдами по ходу
+    // дорожки (fixtures/projects/e2e.json — те же cue "opacity: 0 → 1", что
+    // и в demo.json) и потому на нулевой секунде ещё скрыты (`visible: false`,
+    // packages/core/src/migrations.ts:232). `bg` — единственный элемент без
+    // такого кью, поэтому именно он гарантированно виден без перемотки.
+    await expect(page.locator('[data-id="bg"]')).toBeVisible();
   });
 
   test('вне гейта ни один элемент сцены не получает клики', async ({ page }) => {

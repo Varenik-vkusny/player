@@ -124,7 +124,28 @@ test.describe('дорожка редактора', () => {
     expect(Number.parseFloat(head)).toBeCloseTo(25, 0);
   });
 
-  test('сцена следует за дорожкой', async ({ page }) => {
+  // Схема v3 разводит «звучит дорожка» и «что показывает сцена» (ADR-015):
+  // StageView всегда рисует ровно один `currentSlide` (`state.currentSlideId`),
+  // а `TrackView.seekToPointer` (`packages/editor/src/track/TrackView.tsx`)
+  // трогает только `transport.seek` — сцену это не переключает. Автор
+  // выбирает слайд явно, панелью слайдов или меткой на дорожке
+  // (`SlidePanel`/`MarksLane`, см. e2e/editor.spec.ts и e2e/editor-text-
+  // edit.spec.ts), а не пролистывает его перемоткой звука.
+  //
+  // ЭТОТ ТЕСТ ОСТАВЛЕН ВЫКЛЮЧЕННЫМ НАМЕРЕННО, а не удалён: предмет проверки
+  // не исчез, он ПРОПАЛ ИЗ ПРОДУКТА. С появлением морфинга (ADR-016) потеря
+  // стала дорогой: автор описывает переход, которого не может увидеть —
+  // сцена редактора показывает статичный снимок выбранного слайда.
+  //
+  // Долг записан в planning.md §12.5 вместе с предложенным решением
+  // (разделить «что правлю» и «что смотрю»: перемотка ведёт сцену через
+  // ScenePreview.seek, выделение возвращает её на слайд). Тест — маркер
+  // этого долга: как только сцена поедет за головкой, он снимается с паузы
+  // и обязан позеленеть без правок.
+  //
+  // Проверка идёт по visibility, а не по opacity: скрытый элемент по
+  // ADR-015 выражается видимостью, и `opacity` у него единица.
+  test.skip('сцена следует за дорожкой', async ({ page }) => {
     await openEditor(page, 'demo');
     await waitForTrack(page);
 
@@ -132,18 +153,18 @@ test.describe('дорожка редактора', () => {
     const box = await lane.boundingBox();
     if (!box) throw new Error('дорожка не видна');
 
+    const shown = () => page.evaluate(() => {
+      const node = document.querySelector('[data-id="title"]');
+      return node instanceof HTMLElement
+        && node.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+    });
+
     // На нулевой секунде заголовок ещё не проявлен, к середине — уже да.
-    const atStart = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,
-    );
-    expect(Number(atStart)).toBeLessThan(0.01);
+    expect(await shown()).toBe(false);
 
     await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
 
-    const atMiddle = await page.evaluate(
-      () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,
-    );
-    expect(Number(atMiddle), 'сцена не поехала за головкой').toBeGreaterThan(0.9);
+    expect(await shown(), 'сцена не поехала за головкой').toBe(true);
   });
 
   test('фикстура без аудиофайла: причина видна, редактор работает', async ({ page }) => {

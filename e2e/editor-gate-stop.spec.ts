@@ -13,8 +13,16 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
-/** Гейт `gate-start` фикстуры развилки: слово №3, смещение 0. */
-const GATE_SECONDS = 1.175;
+/**
+ * Гейт `gate-start` фикстуры развилки: слово №97 «борьбу», смещение 0
+ * (`fixtures/projects/branching.json`, `nodes[0].scene.gates`). Проверено
+ * в браузере через `window.__project` после миграции: секунды совпадают
+ * с тем, что даёт `resolveTimeRef` по факту — брать их из комментария
+ * на глаз здесь нельзя, декодированная длительность `demo.mp3` (48.96 с)
+ * на 0.36 с больше объявленной в фикстуре (48.6 с, тот же эффект уже
+ * измерен и описан в CLAUDE.md).
+ */
+const GATE_SECONDS = 46.875;
 
 interface Snapshot {
   readonly position: number;
@@ -70,9 +78,29 @@ function waitStopped(page: Page): Promise<unknown> {
   );
 }
 
+/**
+ * Перемотка нажатием по дорожке — тем же жестом, каким это делает автор.
+ *
+ * Гейт стоит на 46.875 с из 48.96 — играть от нуля значило бы ждать
+ * настоящих сорок шесть секунд реального звука на каждый прогон. Автор,
+ * которому нужно проверить остановку, промотал бы дорожку рядом с гейтом
+ * сам; тест делает то же самое, а не подставляет позицию в обход интерфейса.
+ */
+async function seekTrack(page: Page, seconds: number): Promise<void> {
+  const box = await page.getByTestId('track-lane').boundingBox();
+  if (!box) throw new Error('дорожка не видна');
+  const duration = await page.evaluate(
+    () =>
+      (window as unknown as { __transport: { durationSeconds: number } }).__transport
+        .durationSeconds,
+  );
+  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2);
+}
+
 test.describe('гейт останавливает предпросмотр редактора', () => {
   test('дорожка встаёт на гейте, а не проезжает его', async ({ page }) => {
     await openEditor(page, 'branching');
+    await seekTrack(page, GATE_SECONDS - 1.5);
 
     await page.getByRole('button', { name: 'Играть' }).click();
     await waitPlaying(page);
@@ -89,6 +117,7 @@ test.describe('гейт останавливает предпросмотр ре
 
   test('второе нажатие «играть» проезжает гейт дальше, а не держит на нём', async ({ page }) => {
     await openEditor(page, 'branching');
+    await seekTrack(page, GATE_SECONDS - 1.5);
 
     await page.getByRole('button', { name: 'Играть' }).click();
     await waitPlaying(page);

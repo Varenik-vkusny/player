@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 import { expect, test, type Page } from '@playwright/test';
+import { migrateToCurrent } from '@player/core';
 
 const BUNDLE_PATH = new URL('../apps/playground/public/bundle/player.js', import.meta.url);
 
@@ -65,11 +66,28 @@ test.describe('инвариант №9: самостоятельный банд�
   test('валидация действует и в голом HTML', async ({ page }) => {
     // Подменяем ответ сервера битым проектом: загрузка обязана упасть громко,
     // а не открыть «что получилось».
+    //
+    // demo.json на диске — ещё схема v1, миграция в v3 идёт при загрузке
+    // (packages/core/src/load.ts: migrateToCurrent, потом валидация). Портить
+    // v1-кью (cue.targetId на несуществующий элемент) больше не годится:
+    // миграция сама отбрасывает такую ссылку молча — `applyProperty` вызывается
+    // только `if (state && from)` (packages/core/src/migrations.ts:329), а раз
+    // элемента с таким id нет, `state` не находится, и запись в `states`
+    // просто не создаётся. Ссылка на несуществующий элемент в v1-кью поэтому
+    // больше не доходит до валидации как ошибка.
+    //
+    // Портим поэтому уже МИГРИРОВАННЫЙ v3-проект: дописываем слайду состояние
+    // элемента, которого нет в списке элементов сегмента. Эту ссылку схема v3
+    // проверяет явно (packages/core/src/schema.ts:443-451).
     await page.route('**/fixtures/demo.json', async (route) => {
       const original = await route.fetch();
-      const project = await original.json();
-      project.scene.cues[0].targetId = 'элемента-с-таким-id-нет';
-      await route.fulfill({ json: project });
+      const raw = await original.json();
+      const migrated = migrateToCurrent(raw) as {
+        segments: { slides: { states: Record<string, unknown> }[] }[];
+      };
+      const states = migrated.segments[0]!.slides[0]!.states;
+      states['элемента-с-таким-id-нет'] = states['card'];
+      await route.fulfill({ json: migrated });
     });
 
     const failures: string[] = [];
@@ -78,7 +96,7 @@ test.describe('инвариант №9: самостоятельный банд�
     await page.goto('/bare.html', { waitUntil: 'load' });
     await expect
       .poll(() => failures.join('\n'), { timeout: 15_000 })
-      .toContain('несуществующий элемент');
+      .toContain('которого нет в сегменте');
 
     const ready = await page.evaluate(() => document.documentElement.dataset['ready']);
     expect(ready, 'битый проект не должен доходить до готовности').toBeUndefined();

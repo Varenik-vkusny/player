@@ -62,20 +62,29 @@ async function centerOnScreen(page: Page, id: string): Promise<{ x: number; y: n
   }, id);
 }
 
-/** Геометрия элемента в сохраняемом проекте. */
+/**
+ * Геометрия элемента в сохраняемом проекте.
+ *
+ * Схема v3 разнесла элемент (кто это) и его состояние (где он и как
+ * выглядит, `ElementStateSchema`) по разным местам: геометрия живёт
+ * в `segments[0].slides[i].states[id]`, а не на самом элементе. Все тесты
+ * этого файла открывают сегмент и не переключают слайд, поэтому текущий —
+ * всегда первый (`state.currentSlideId` по умолчанию — `firstSlideId`,
+ * `state/editorHistory.ts`), то есть `slides[0]`.
+ */
 async function geometryOf(page: Page, id: string): Promise<Geometry> {
   return page.evaluate((elementId) => {
     const project = (window as unknown as {
-      __project: { segments: { elements: (Geometry & { id: string })[] }[] };
+      __project: { segments: { slides: { states: Record<string, Geometry> }[] }[] };
     }).__project;
-    const element = project.segments[0]!.elements.find((candidate) => candidate.id === elementId);
-    if (!element) throw new Error(`в проекте нет элемента ${elementId}`);
+    const state = project.segments[0]!.slides[0]!.states[elementId];
+    if (!state) throw new Error(`в проекте нет состояния элемента ${elementId} на первом слайде`);
     return {
-      x: element.x,
-      y: element.y,
-      width: element.width,
-      height: element.height,
-      rotation: element.rotation,
+      x: state.x,
+      y: state.y,
+      width: state.width,
+      height: state.height,
+      rotation: state.rotation,
     };
   }, id);
 }
@@ -92,20 +101,6 @@ async function inlineGeometry(page: Page, id: string): Promise<Record<string, st
       height: node.style.height,
     };
   }, id);
-}
-
-/**
- * Перемотка так, как это делает человек: нажатием по дорожке.
- *
- * Через дорожку, а не подстановкой значения в состояние: перевод «пиксель
- * по дорожке → секунда» — часть продукта, и проверять его надо тем же
- * способом, которым им пользуются.
- */
-async function seekTrack(page: Page, seconds: number, duration: number): Promise<void> {
-  const lane = page.getByTestId('track-lane');
-  const box = await lane.boundingBox();
-  if (!box) throw new Error('дорожка не видна');
-  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2);
 }
 
 async function drag(page: Page, from: { x: number; y: number }, dx: number, dy: number): Promise<void> {
@@ -154,24 +149,37 @@ test.describe('редактор: выделение и перетаскиван�
     // появилась: её анимация начинается на слове №58. Клик по видимой
     // карточке выделял невидимую точку — геометрия про прозрачность
     // не знает, а знать обязан слой выделения.
+    //
+    // Схема v3 разносит «где элемент» (слайд, `state.currentSlideId`) и
+    // «звучит ли сейчас дорожка» (`transport.positionSeconds`) — редактор
+    // не перематывает сцену кликом по дорожке (StageView строит превью
+    // ровно одного `currentSlide`, TrackView.seekToPointer трогает только
+    // `transport`, см. `packages/editor/src/track/TrackView.tsx`). Слайд,
+    // на котором карточка уже проявилась (`visible: true`), а точка ещё
+    // нет, выбирается через панель слайдов — `node-1-slide-8` на 9.2 с,
+    // это первый после начала анимации карточки (слово №20) и до начала
+    // анимации точки (слово №58, ≈27.7 с). Id устойчив: он выведен из
+    // структуры demo.json (кью и их порядка), а не подобран на глаз.
     await openEditor(page, 'demo');
-    // Длительность demo.json — 48.6 с; на 24-й секунде карточка уже
-    // проявилась, а точка ещё нет.
-    await seekTrack(page, 24, 48.6);
+    await page.getByTestId('slide-node-1-slide-8').click();
 
+    // «Видно» на этом слайде значит `visibility`, а не `opacity`: миграция
+    // v1→v3 превращает кью «opacity 0→1» в `visible: false→true`
+    // (`packages/core/src/migrations.ts`, applyProperty) и оставляет
+    // `opacity: 1` — само по себе число ничего не говорит о появлении.
     const visible = await page.evaluate(() => {
       const dot = document.querySelector<HTMLElement>('[data-id="dot"]');
       const card = document.querySelector<HTMLElement>('[data-id="card"]');
       if (!dot || !card) throw new Error('нет узлов dot или card');
       return {
-        dot: Number(getComputedStyle(dot).opacity),
-        card: Number(getComputedStyle(card).opacity),
+        dot: getComputedStyle(dot).visibility,
+        card: getComputedStyle(card).visibility,
       };
     });
     // Без этого тест ничего не проверяет: он держится на том, что одна
     // фигура действительно невидима, а вторая действительно видна.
-    expect(visible.dot, 'точка обязана быть невидимой на этой секунде').toBeLessThan(0.01);
-    expect(visible.card, 'карточка обязана быть видимой').toBeGreaterThan(0.9);
+    expect(visible.dot, 'точка обязана быть невидимой на этом слайде').toBe('hidden');
+    expect(visible.card, 'карточка обязана быть видимой').toBe('visible');
 
     const center = await centerOnScreen(page, 'dot');
     await page.mouse.click(center.x, center.y);

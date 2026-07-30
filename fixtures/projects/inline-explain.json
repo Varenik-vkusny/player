@@ -41,6 +41,28 @@
               }
             }
           }
+        },
+        {
+          "id": "e-2",
+          "at": { "kind": "seconds", "t": 1.5 },
+          "transition": "morph",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "prompt": {
+              "x": 140, "y": 700, "width": 1640, "height": 160,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "72px",
+                "font-weight": "700",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
         }
       ],
       "gates": [
