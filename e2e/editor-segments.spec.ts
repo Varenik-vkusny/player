@@ -145,3 +145,62 @@ test.describe('части: панель сегментов', () => {
     expect(shown.join(' | ')).toContain('Концовка: нет');
   });
 });
+
+/**
+ * known-bugs §8: панели «Слайды» и «Части» выдавливало за нижнюю границу
+ * колонки.
+ *
+ * Замерено в Сессии 7 на 1440×860: колонка 615 px, панель слайдов начинается
+ * на 528-й. Три подпанели со своими потолками по 180 px плюс вставка
+ * и шаблоны в колонку не помещаются, а у самой колонки стояли ОБА правила —
+ * overflow-y: auto и ниже overflow: hidden. Второе перебивало первое, и всё
+ * лишнее не прокручивалось, а обрезалось.
+ *
+ * Проверяется доступность, а не красота: до автора должна доезжать
+ * последняя панель колонки, иначе кнопки «добавить часть» для него
+ * не существует.
+ */
+test.describe('колонка редактора прокручивается до последней панели', () => {
+  test('колонку можно прокрутить колесом мыши до нижней панели', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 860 });
+    await openEditor(page, 'demo');
+
+    // Ждём, пока колонка наполнится: панель частей — последняя в ней, и пока
+    // её нет, содержимое помещается, прокручивать нечего и проверка была бы
+    // зелена впустую.
+    await expect(page.getByTestId('segment-add')).toBeAttached();
+
+    const column = page.locator('.ed-elements-panel');
+    const box = await column.boundingBox();
+    if (!box) throw new Error('колонка не видна');
+
+    const overflow = await column.evaluate((el) => el.scrollHeight - el.clientHeight);
+    expect(overflow, 'содержимое обязано не помещаться, иначе проверять нечего')
+      .toBeGreaterThan(0);
+
+    // Настоящий жест зрителя, а НЕ scrollIntoViewIfNeeded: программная
+    // прокрутка работает и в контейнере с overflow: hidden, поэтому такой
+    // проверкой дефект не поймать — она была зелёной и на сломанном коде.
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 600);
+
+    const scrolled = await column.evaluate((el) => el.scrollTop);
+    expect(scrolled, 'колонка обязана прокручиваться колесом').toBeGreaterThan(0);
+  });
+
+  test('кнопка «добавить часть» доезжает до автора и работает', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 860 });
+    await openEditor(page, 'demo');
+
+    const before = await page.evaluate(() =>
+      (window as unknown as { __project: { segments: unknown[] } }).__project.segments.length);
+
+    const add = page.getByTestId('segment-add');
+    await add.scrollIntoViewIfNeeded();
+    await add.click();
+
+    const after = await page.evaluate(() =>
+      (window as unknown as { __project: { segments: unknown[] } }).__project.segments.length);
+    expect(after).toBe(before + 1);
+  });
+});

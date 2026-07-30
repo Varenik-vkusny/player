@@ -205,3 +205,51 @@ test.describe('метки на дорожке', () => {
     }
   });
 });
+
+/**
+ * known-bugs §7: метку остановки нельзя было нажать, если на том же слове
+ * стоит слайд.
+ *
+ * Слайд рисуется позже остановки (`Editor.tsx`, `marks` — сначала гейты,
+ * потом слайды) и перехватывал нажатие ЦЕЛИКОМ: `elementFromPoint` в центре
+ * остановки возвращал узел слайда. Автор физически не мог открыть настройки
+ * такой остановки, а случай частый — миграция ставит слайд на каждое слово
+ * с кью.
+ *
+ * Вылечено разведением по вертикали: остановки в свою полосу, слайды в свою.
+ * Не z-index'ом — порядок наложения решает, кто сверху, но обе метки
+ * продолжали бы занимать один пиксель, и недоступной стала бы просто другая.
+ */
+test.describe('метки не перекрывают друг друга', () => {
+  test('остановку на том же слове, что слайд, можно выбрать нажатием', async ({ page }) => {
+    await openEditor(page);
+
+    // demo.json: gate-choice стоит на слове №32, и миграция кладёт на то же
+    // слово слайд node-1-slide-9. Ровно тот случай, что был недоступен.
+    const gate = page.getByTestId('mark-gate-gate-choice');
+    await expect(gate).toBeVisible();
+
+    // Нажатие по ВИДИМОЙ метке, а не вызов обработчика: дефект был именно
+    // в том, что до обработчика нажатие не доходило.
+    await gate.click();
+
+    await expect(page.getByTestId('mark-panel')).toBeVisible();
+    // Открылась панель именно этой остановки, а не соседнего слайда.
+    // Идентификатор лежит в значении поля, а не в тексте панели.
+    await expect(page.getByTestId('mark-panel').getByRole('textbox', { name: 'Идентификатор' }))
+      .toHaveValue('gate-choice');
+  });
+
+  test('слайд на том же слове тоже остаётся доступен', async ({ page }) => {
+    await openEditor(page);
+
+    // Обратная сторона: разведение не должно было отобрать доступ у слайда.
+    const slide = page.getByTestId('mark-slide-node-1-slide-9');
+    await expect(slide).toBeVisible();
+    await slide.click();
+
+    await expect(page.getByTestId('mark-panel')).toBeVisible();
+    await expect(page.getByTestId('mark-panel').getByRole('textbox', { name: 'Идентификатор' }))
+      .toHaveValue('node-1-slide-9');
+  });
+});
