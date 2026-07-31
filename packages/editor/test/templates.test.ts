@@ -32,7 +32,7 @@ function emptySegment(): Segment {
 
 function projectAround(segment: Segment): Project {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height },
     entry: segment.id,
     segments: [segment],
@@ -208,7 +208,7 @@ describe('шаблон «вопрос»: варианты действитель
     const optionIds = gate.config.kind === 'choice' ? gate.config.options.map((option) => option.id) : [];
     return {
       project: {
-        schemaVersion: 5,
+        schemaVersion: 6,
         meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
         entry: 'n1',
         segments: [

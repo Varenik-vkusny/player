@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>§14.11, второй заход — канва</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; padding: 26px 30px 70px; background: #0e1117; color: #e6edf3;
+    font: 14px/1.5 system-ui, sans-serif; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .sub { color: #8b98a5; margin: 0 0 20px; max-width: 940px; }
+  .idea { display: flex; gap: 14px; margin: 0 0 24px; flex-wrap: wrap; }
+  .idea div { flex: 1 1 260px; background: #12161d; border: 1px solid #232b35;
+    border-radius: 8px; padding: 11px 14px; font-size: 13px; color: #b6c2ce; }
+  .idea b { color: #e6edf3; display: block; margin-bottom: 3px; }
+  .controls { display: flex; gap: 18px; align-items: center; margin-bottom: 24px;
+    padding: 11px 15px; background: #161b22; border: 1px solid #262d36; border-radius: 8px; }
+  .controls label { color: #8b98a5; margin-right: 5px; }
+  select { background: #0e1117; color: #e6edf3; border: 1px solid #30363d;
+    border-radius: 5px; padding: 5px 8px; font: inherit; }
+  .variant { margin-bottom: 38px; padding: 17px 20px 20px; background: #12161d;
+    border: 1px solid #232b35; border-radius: 10px; }
+  .tagline { color: #8b98a5; font-size: 13px; margin: 0 0 15px; max-width: 940px; }
+  .wrap { overflow-x: auto; padding-bottom: 6px; }
+  .lane { position: relative; background: #0b0e13; border: 1px solid #262d36; border-radius: 6px; }
+  .wave i { position: absolute; bottom: 50%; width: 2px; background: #2f6f9f;
+    transform: translateY(50%); border-radius: 1px; opacity: .5; }
+  .mark { position: absolute; margin-left: -9px; width: 18px; height: 18px;
+    display: grid; place-items: center; font-size: 15px; color: #6ea8fe;
+    background: none; border: 0; padding: 0; cursor: pointer; }
+  .mark-gate { color: #e4572e; }
+  .tail { position: absolute; height: 3px; background: #6ea8fe; opacity: .45; border-radius: 2px; }
+  .tick { position: absolute; width: 1px; background: #6ea8fe; opacity: .5; }
+  .stem { position: absolute; background: #6ea8fe; opacity: .55; }
+
+  .card { position: absolute; border-radius: 4px; border: 1px solid #39414c;
+    background: #11141a; overflow: hidden; box-shadow: 0 2px 10px #0007; }
+  .card.sel { border-color: #6ea8fe; box-shadow: 0 0 0 1px #6ea8fe88, 0 2px 12px #0009; }
+  .card .scene { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+  .card .scene > div { position: absolute; }
+  .card .cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 5px;
+    background: #0b0e13e8; font-size: 10px; line-height: 1.25; color: #b6c2ce;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card .sec { position: absolute; top: 0; left: 0; padding: 1px 4px; font-size: 10px;
+    background: #0b0e13cc; color: #7d8b99; border-bottom-right-radius: 4px;
+    font-variant-numeric: tabular-nums; }
+  .dim .scene > div { filter: grayscale(1); opacity: .18; }
+  .dim .scene > div.hot { filter: none; opacity: 1; outline: 2px solid #e4572e; outline-offset: 1px; }
+  .nochange { position: absolute; inset: 0; display: grid; place-items: center;
+    background: #0b0e13cc; color: #6b7785; font-size: 10px; text-align: center; }
+
+  .grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); }
+  .grid .card { position: relative; height: 84px; }
+  .cluster { border: 1px dashed #303a46; border-radius: 8px; padding: 8px; }
+  .cluster > .lbl { font-size: 11px; color: #7d8b99; margin-bottom: 6px;
+    font-variant-numeric: tabular-nums; }
+
+  table.honest { border-collapse: collapse; margin-top: 16px; width: 100%; max-width: 1010px; }
+  table.honest td { border-top: 1px solid #232b35; padding: 7px 10px 7px 0;
+    vertical-align: top; font-size: 13px; }
+  table.honest td:first-child { color: #8b98a5; width: 205px; white-space: nowrap; }
+  .bad { color: #f0846c; } .ok { color: #7ee2a8; } .num { font-variant-numeric: tabular-nums; }
+  code { background: #1b222c; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<h1>§14.11, второй заход — канва вместо ряда миниатюр</h1>
+<p class="sub">
+  Первые четыре вида спорили о том, куда положить картинку. Эти четыре
+  спорят о том, что на ней должно быть нарисовано и чья это обязанность —
+  дорожки или канвы.
+</p>
+
+<div class="idea">
+  <div><b>1 · Слайд опознаётся разницей</b>
+    Из 14 переходов demo.json шесть не меняют ничего, шесть меняют
+    <code>visible</code> одного элемента. Полная сцена показывает 90 %
+    одинакового и прячет то, ради чего слайд создан.</div>
+  <div><b>2 · Скопления разводить по Y</b>
+    Сдвиг вдоль времени врёт про время всегда. Сдвиг поперёк — никогда.
+    У канвы есть вторая ось, у полосы меток её не было.</div>
+  <div><b>3 · Время на дорожке, смысл на канве</b>
+    Ставка №9: «канва для слайдов, для меток отдельное». Двусторонняя
+    связка головки и выбора уже сделана в Сессии 12.</div>
+</div>
+
+<div class="controls">
+  <div><label for="set">Набор</label>
+    <select id="set">
+      <option value="demo">demo.json — 15 слайдов, 2 гейта</option>
+      <option value="dense">плотный — 40 слайдов</option>
+    </select></div>
+  <div><label for="w">Ширина</label>
+    <select id="w"><option>1400</option><option>900</option><option>600</option></select></div>
+  <div><label for="mode">Картинка</label>
+    <select id="mode">
+      <option value="diff">разница с предыдущим</option>
+      <option value="full">полная сцена</option>
+    </select></div>
+  <div id="stats" class="num" style="color:#8b98a5"></div>
+</div>
+
+<div id="variants"></div>
+
+<script>
+const DATA = {"duration":48.6,"stageW":1920,"stageH":1080,"content":{"bg":"","title":"Объяснение, которое останавливается","accent":"","lead":"Звук замирает, картинка ждёт, и внимание возвращается к тому, что происходит на экране.","card":"","dot":"","footer":"Возобновление — с той же секунды. Перемотки не происходит."},"slides":[{"i":0,"t":0,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"bg","how":"появляется"},{"id":"title","how":"появляется"},{"id":"accent","how":"появляется"},{"id":"lead","how":"появляется"},{"id":"card","how":"появляется"},{"id":"dot","how":"появляется"},{"id":"footer","how":"появляется"}],"first":true},{"i":1,"t":0.1,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false},{"i":2,"t":0.7999999999999999,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"title","how":"появляется"}],"first":false},{"i":3,"t":3.712,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false},{"i":4,"t":4.112,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"accent","how":"появляется"}],"first":false},{"i":5,"t":4.312,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"accent","how":"едет"}],"first":false},{"i":6,"t":8.7,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false},{"i":7,"t":9.2,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"card","how":"появляется"}],"first":false},{"i":8,"t":14.537,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false},{"i":9,"t":15.137,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"lead","how":"появляется"}],"first":false},{"i":10,"t":27.675,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false},{"i":11,"t":28.075,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"dot","how":"появляется"}],"first":false},{"i":12,"t":28.575,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":440,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"dot","how":"едет"}],"first":false},{"i":13,"t":40.063,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":440,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false},{"i":14,"t":40.563,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":440,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"footer","how":"появляется"}],"first":false}],"gates":[{"t":14.387},{"t":44.187999999999995}]};
+const MORPH = 0.6;
+
+const el = (t, c, s) => { const n = document.createElement(t); if (c) n.className = c;
+  if (s) Object.assign(n.style, s); return n; };
+
+function sceneCard(slide, w, h, mode) {
+  const box = el('div', 'card' + (mode === 'diff' ? ' dim' : ''),
+    { width: w + 'px', height: h + 'px' });
+  const k = w / DATA.stageW;
+  const scene = el('div', 'scene', { width: DATA.stageW + 'px', height: DATA.stageH + 'px',
+    transform: 'scale(' + k + ')' });
+  const hot = new Set((slide.changed || []).map(c => c.id));
+  const order = Object.keys(slide.states)
+    .sort((a, b) => (slide.states[a].zIndex ?? 0) - (slide.states[b].zIndex ?? 0));
+  for (const id of order) {
+    const s = slide.states[id];
+    if (s.visible === false && !(mode === 'diff' && hot.has(id))) continue;
+    const d = el('div', mode === 'diff' && hot.has(id) ? 'hot' : null, {
+      left: s.x + 'px', top: s.y + 'px', width: s.width + 'px', height: s.height + 'px',
+      opacity: String(s.opacity ?? 1), overflow: 'hidden',
+    });
+    Object.assign(d.style, s.style || {});
+    if (DATA.content[id]) d.textContent = DATA.content[id];
+    scene.appendChild(d);
+  }
+  box.appendChild(scene);
+
+  const sec = el('div', 'sec'); sec.textContent = slide.t.toFixed(1);
+  box.appendChild(sec);
+
+  if (mode === 'diff') {
+    const ch = slide.changed || [];
+    if (!ch.length && !slide.first) {
+      const n = el('div', 'nochange');
+      n.textContent = 'ничего не меняет';
+      box.appendChild(n);
+    } else {
+      const cap = el('div', 'cap');
+      cap.textContent = slide.first ? 'первый кадр'
+        : ch.map(c => c.how + ' ' + c.id).join(', ');
+      box.appendChild(cap);
+    }
+  }
+  return box;
+}
+
+function laneInto(host, W, H, marks, gates, opts) {
+  // Дорожка обязана стоять там же, где её метки, иначе ножки карточек
+  // приходят в пустоту — так и было в первом прогоне.
+  const lane = el('div', 'lane', {
+    position: 'absolute', left: '0', top: opts.top + 'px',
+    width: W + 'px', height: H + 'px',
+  });
+  const wave = el('div');
+  for (let x = 0; x < W; x += 3) {
+    const a = Math.abs(Math.sin(x / 17) * Math.sin(x / 43) * Math.sin(x / 7));
+    wave.appendChild(el('i', null, { position: 'absolute', left: x + 'px',
+      height: (3 + a * (H - 8)).toFixed(1) + 'px', bottom: '50%' }));
+  }
+  wave.className = 'wave';
+  Object.assign(wave.style, { position: 'absolute', inset: '0' });
+  lane.appendChild(wave);
+  host.appendChild(lane);
+  const px = t => (t / DATA.duration) * W;
+  if (opts.marks !== false) {
+    for (const m of marks) {
+      host.appendChild(el('div', 'tail', {
+        left: px(Math.max(0, m.t - MORPH)) + 'px',
+        width: (px(m.t) - px(Math.max(0, m.t - MORPH))) + 'px',
+        top: (opts.top + H - 12) + 'px',
+      }));
+      const b = el('button', 'mark', { left: px(m.t) + 'px', top: (opts.top + H - 34) + 'px' });
+      b.textContent = '◆'; host.appendChild(b);
+    }
+  }
+  for (const g of gates) {
+    const b = el('button', 'mark mark-gate', { left: px(g.t) + 'px', top: (opts.top + 4) + 'px' });
+    b.textContent = '▮'; host.appendChild(b);
+  }
+  return lane;
+}
+
+function build() {
+  const W = +document.getElementById('w').value;
+  const mode = document.getElementById('mode').value;
+  const dense = document.getElementById('set').value === 'dense';
+  const slides = dense
+    ? Array.from({ length: 40 }, (_, i) => {
+        const src = DATA.slides[i % DATA.slides.length];
+        return { ...src, i, t: Math.min(DATA.duration - 0.05,
+          (i / 40) * DATA.duration + (((i * 7919) % 100) / 100 - 0.5) * 0.9) };
+      }).sort((a, b) => a.t - b.t)
+    : DATA.slides;
+  const px = t => (t / DATA.duration) * W;
+  const CW = 96, CH = Math.round(CW * DATA.stageH / DATA.stageW);
+
+  const gaps = [];
+  for (let i = 1; i < slides.length; i++) gaps.push(px(slides[i].t) - px(slides[i - 1].t));
+  const sorted = gaps.slice().sort((a, b) => a - b);
+  document.getElementById('stats').textContent =
+    (W / DATA.duration).toFixed(1) + ' px/с · зазоры мин ' + (sorted[0] ?? 0).toFixed(0) +
+    ' / медиана ' + (sorted[Math.floor(sorted.length / 2)] ?? 0).toFixed(0) + ' px';
+
+  const root = document.getElementById('variants'); root.textContent = '';
+
+  const variants = [
+    {
+      t: 'E · Канва-стопка: X — настоящая секунда, скопление уходит вверх',
+      tag: 'Карточка стоит РОВНО над своей секундой, ни на пиксель в сторону. Там, где метки сбились в кучу, стопка растёт вверх, и ножка каждой карточки приходит на свою засечку.',
+      draw(host) {
+        const H = 72, rows = [];
+        const placed = slides.map(s => {
+          const x = px(s.t) - CW / 2;
+          let r = 0;
+          while (rows[r] !== undefined && x < rows[r] + 6) r++;
+          rows[r] = x + CW;
+          return { s, x, r };
+        });
+        const maxRow = Math.max(...placed.map(p => p.r));
+        const top = (maxRow + 1) * (CH + 8) + 14;
+        laneInto(host, W, H, slides, DATA.gates, { top });
+        for (const { s, x, r } of placed) {
+          const y = (maxRow - r) * (CH + 8);
+          const c = sceneCard(s, CW, CH, mode);
+          Object.assign(c.style, { left: Math.max(0, Math.min(W - CW, x)) + 'px', top: y + 'px' });
+          host.appendChild(c);
+          host.appendChild(el('div', 'stem', { left: px(s.t) + 'px', top: (y + CH) + 'px',
+            width: '1px', height: (top - y - CH) + 'px' }));
+        }
+        host.style.height = (top + H + 8) + 'px';
+        host.dataset.rows = String(maxRow + 1);
+      },
+      honest: (host) => [
+        ['врёт ли про время',
+         '<span class="ok">Нет, никогда.</span> X карточки — её собственная секунда. Единственный сдвиг — по Y, а по Y времени нет.'],
+        ['скопления',
+         'Уходят в стопку: <span class="num">' + host.dataset.rows + ' ряда</span> на этом наборе. Высота растёт с плотностью, ширина — нет.'],
+        ['хвост окна движения', '<span class="ok">Цел.</span> Полоса меток осталась своей высоты, карточки над ней.'],
+        ['остановки', '<span class="ok">Гейт остаётся ромбом</span> на верхней полосе и в стопку не идёт.'],
+        ['чем плох',
+         '<span class="bad">Высота непредсказуема.</span> Один плотный кусок задирает всю дорожку: ' +
+         '<span class="num">' + ((+host.dataset.rows) * (CH + 8) + 14 + 72) + ' px</span> на этом наборе.'],
+      ],
+    },
+    {
+      t: 'F · Плёнка: кадры ровные, время — отдельной линейкой',
+      tag: 'Карточки не притворяются, что стоят на времени. Они выстроены ровным рядом, как кадры плёнки, а линейка сверху показывает, на какой секунде каждый из них.',
+      draw(host) {
+        const H = 54;
+        laneInto(host, W, H, slides, DATA.gates, { top: 0, marks: true });
+        const stripTop = H + 34;
+        const step = Math.max(CW + 6, Math.min(160, W / slides.length));
+        slides.forEach((s, i) => {
+          const x = i * step;
+          const c = sceneCard(s, CW, CH, mode);
+          Object.assign(c.style, { left: x + 'px', top: stripTop + 'px' });
+          host.appendChild(c);
+          const from = px(s.t), to = x + CW / 2;
+          host.appendChild(el('div', 'tick', { left: from + 'px', top: (H + 2) + 'px', height: '10px' }));
+          host.appendChild(el('div', 'stem', { left: Math.min(from, to) + 'px',
+            top: (H + 12) + 'px', width: Math.abs(to - from) + 'px', height: '1px' }));
+          host.appendChild(el('div', 'stem', { left: to + 'px', top: (H + 12) + 'px',
+            width: '1px', height: (stripTop - H - 12) + 'px' }));
+        });
+        host.style.width = Math.max(W, slides.length * step) + 'px';
+        host.style.height = (stripTop + CH + 10) + 'px';
+        host.dataset.strip = String(Math.round(slides.length * step));
+      },
+      honest: (host) => [
+        ['врёт ли про время',
+         '<span class="ok">Не притворяется вовсе.</span> Ряд — это порядок, а не время; время говорит линейка и её засечки.'],
+        ['скопления',
+         '<span class="ok">Вопроса нет.</span> Шаг ряда постоянный, плотность времени видна по тому, как сходятся выносные линии.'],
+        ['хвост окна движения', '<span class="ok">Цел.</span>'],
+        ['остановки', '<span class="ok">Ромб на дорожке.</span> В плёнку не попадает — она только про слайды.'],
+        ['чем плох',
+         '<span class="bad">Прокрутка.</span> Лента длиннее окна: <span class="num">' +
+         host.dataset.strip + ' px</span> против ' + W + '. Дорожка и лента едут раздельно, и связь глазом рвётся.'],
+      ],
+    },
+    {
+      t: 'G · Канва по скоплениям: группа — то, что автор и так воспринимает вместе',
+      tag: 'Слайды, стоящие ближе секунды друг к другу, — это один жест автора, а не пятнадцать независимых. Канва группирует их в карточки-пачки, подписанные диапазоном времени.',
+      draw(host) {
+        const H = 54;
+        laneInto(host, W, H, slides, DATA.gates, { top: 0 });
+        const groups = [];
+        for (const s of slides) {
+          const g = groups[groups.length - 1];
+          if (g && s.t - g[g.length - 1].t < 1.0) g.push(s);
+          else groups.push([s]);
+        }
+        const board = el('div', 'grid', { paddingTop: (H + 20) + 'px' });
+        for (const g of groups) {
+          const cl = el('div', 'cluster');
+          const lbl = el('div', 'lbl');
+          lbl.textContent = g.length === 1
+            ? g[0].t.toFixed(1) + ' с'
+            : g[0].t.toFixed(1) + '–' + g[g.length - 1].t.toFixed(1) + ' с · ' + g.length + ' слайда';
+          cl.appendChild(lbl);
+          const row = el('div', null, { display: 'flex', gap: '6px', flexWrap: 'wrap' });
+          for (const s of g) {
+            const c = sceneCard(s, 118, Math.round(118 * DATA.stageH / DATA.stageW), mode);
+            c.style.position = 'relative';
+            row.appendChild(c);
+          }
+          cl.appendChild(row);
+          board.appendChild(cl);
+        }
+        board.style.gridTemplateColumns = 'repeat(auto-fill, minmax(150px, 1fr))';
+        host.appendChild(board);
+        host.style.height = 'auto';
+        host.dataset.groups = String(groups.length);
+      },
+      honest: (host) => [
+        ['врёт ли про время',
+         '<span class="ok">Нет.</span> Канва про время не говорит совсем — говорит дорожка. Пачка подписана диапазоном.'],
+        ['скопления',
+         '<span class="ok">Стали единицей смысла.</span> ' + slides.length + ' слайдов свернулись в ' +
+         '<span class="num">' + host.dataset.groups + ' пачек</span> — столько жестов автор и делал.'],
+        ['хвост окна движения', '<span class="ok">Цел, дорожка не тронута.</span>'],
+        ['остановки', '<span class="ok">Ромб на дорожке.</span>'],
+        ['чем плох',
+         '<span class="bad">Порог группировки — новая настройка.</span> Здесь 1.0 с; сдвинь его, и картина рассыпается или слипается.'],
+      ],
+    },
+    {
+      t: 'H · Дорожка не меняется вообще: канва сбоку, связка двусторонняя',
+      tag: 'Самое скромное предложение. Дорожка остаётся ромбами до пикселя, канва живёт отдельной областью и показывает слайды крупно. Выбор в одной ведёт другую — связка уже сделана в Сессии 12.',
+      draw(host) {
+        const H = 72;
+        laneInto(host, W, H, slides, DATA.gates, { top: 0 });
+        const board = el('div', 'grid', { paddingTop: (H + 18) + 'px' });
+        const BW = 168;
+        slides.forEach((s, i) => {
+          const c = sceneCard(s, BW, Math.round(BW * DATA.stageH / DATA.stageW), mode);
+          c.style.position = 'relative';
+          if (i === 4) c.classList.add('sel');
+          board.appendChild(c);
+        });
+        board.style.gridTemplateColumns = 'repeat(auto-fill, minmax(' + BW + 'px, 1fr))';
+        host.appendChild(board);
+        host.style.height = 'auto';
+      },
+      honest: () => [
+        ['врёт ли про время', '<span class="ok">Дорожка не тронута ни на пиксель.</span> Риск сломать время равен нулю.'],
+        ['скопления', '<span class="ok">Не касается канвы.</span> На дорожке ромбы перекрываются ровно как сегодня — задача остаётся, но не ухудшается.'],
+        ['хвост окна движения', '<span class="ok">Цел.</span>'],
+        ['остановки', '<span class="ok">Всё как сейчас.</span>'],
+        ['размер карточки',
+         'Ширина <span class="num">168 px</span> против 96 — заголовок читается кеглем ' +
+         '<span class="ok num">' + (68 * 168 / DATA.stageW).toFixed(1) + ' px</span>. Это <b>единственный</b> вид, где рост карточки ничем не ограничен.'],
+        ['чем плох',
+         '<span class="bad">Место.</span> Канва занимает область экрана, которой у редактора сейчас нет, и спорит за неё со сценой.'],
+      ],
+    },
+  ];
+
+  for (const v of variants) {
+    const card = el('div', 'variant');
+    const h2 = el('h2'); h2.textContent = v.t; card.appendChild(h2);
+    const tg = el('p', 'tagline'); tg.textContent = v.tag; card.appendChild(tg);
+    const wrap = el('div', 'wrap');
+    const host = el('div', null, { position: 'relative', width: W + 'px' });
+    v.draw(host);
+    wrap.appendChild(host); card.appendChild(wrap);
+    const table = el('table', 'honest');
+    for (const [k, val] of v.honest(host)) {
+      const tr = el('tr');
+      const a = el('td'); a.textContent = k;
+      const b = el('td'); b.innerHTML = val;
+      tr.append(a, b); table.appendChild(tr);
+    }
+    card.appendChild(table);
+    root.appendChild(card);
+  }
+}
+
+for (const id of ['set', 'w', 'mode']) document.getElementById(id).addEventListener('change', build);
+build();
+</script>
+</body>
+</html>

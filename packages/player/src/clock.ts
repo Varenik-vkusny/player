@@ -4,6 +4,7 @@
  * Перенесено из spikes/lib/audio-clock.mjs, где измерено спайками S0b, S2, S3.
  * Решение и обоснование — docs/adr/ADR-002-time-and-animation.md.
  */
+import { releaseAudioUrl, resolveAudioUrl, type AudioSource } from './assets.js';
 
 /** Насколько расхождение getOutputTimestamp с currentTime считается разумным. */
 const SANITY_LIMIT_S = 1;
@@ -116,13 +117,25 @@ export interface Clock {
  */
 export interface ClockSource {
   /** Часы для сегмента. Повторный запрос не готовит источник заново. */
-  clockFor(src: string): Promise<Clock>;
+  clockFor(source: AudioSource): Promise<Clock>;
   /** Часы, готовые ПРЯМО СЕЙЧАС, без ожидания. `null` — ещё не готовы. */
-  clockIfReady(src: string): Clock | null;
+  clockIfReady(source: AudioSource): Clock | null;
   /** Греет источник на опережение. Ошибку откладывает до места, где она мешает. */
-  warm(src: string): void;
+  warm(source: AudioSource): void;
   /** Отпускает всё, что держал. */
   close(): Promise<void>;
+}
+
+/**
+ * Ключ кэша декодированных дорожек.
+ *
+ * Живёт ТОЛЬКО в памяти и никогда не попадает в проект. Именно поэтому здесь
+ * допустима строка с префиксом, хотя в схеме она была бы ошибкой: в схеме
+ * такая строка пережила бы сохранение и разъехалась бы по читателям,
+ * а этот ключ не покидает карту внутри одного источника часов.
+ */
+function cacheKey(source: AudioSource): string {
+  return source.kind === 'url' ? `url:${source.url}` : `file:${source.fileId}`;
 }
 
 export interface ClockDiagnostics {
@@ -407,18 +420,28 @@ export class AudioClocks implements ClockSource {
     return this.#ctx;
   }
 
-  async clockFor(src: string): Promise<Clock> {
+  async clockFor(source: AudioSource): Promise<Clock> {
     const ctx = this.#context();
-    const cached = this.#tracks.get(src);
+    const key = cacheKey(source);
+    const cached = this.#tracks.get(key);
     if (cached) return new AudioClock(ctx, cached);
 
-    const track = await loadTrack(ctx, src);
-    this.#tracks.set(src, track.buffer);
-    return new AudioClock(ctx, track.buffer);
+    // Единственное место во всём плеере, где источник превращается в адрес.
+    // Адрес загруженного файла отзывается сразу после декодирования: дальше
+    // живёт AudioBuffer, а удержанный blob-адрес держал бы в памяти ещё
+    // и байты файла целиком.
+    const url = await resolveAudioUrl(source);
+    try {
+      const track = await loadTrack(ctx, url);
+      this.#tracks.set(key, track.buffer);
+      return new AudioClock(ctx, track.buffer);
+    } finally {
+      releaseAudioUrl(source, url);
+    }
   }
 
-  clockIfReady(src: string): Clock | null {
-    const buffer = this.#tracks.get(src);
+  clockIfReady(source: AudioSource): Clock | null {
+    const buffer = this.#tracks.get(cacheKey(source));
     if (!buffer) return null;
     return new AudioClock(this.#context(), buffer);
   }
@@ -432,12 +455,13 @@ export class AudioClocks implements ClockSource {
    * Ронять открытие гейта из-за дорожки, которая понадобится через минуту,
    * было бы хуже: зритель потерял бы работающее объяснение целиком.
    */
-  warm(src: string): void {
-    if (this.#tracks.has(src) || this.#warming.has(src)) return;
-    const pending = this.clockFor(src)
+  warm(source: AudioSource): void {
+    const key = cacheKey(source);
+    if (this.#tracks.has(key) || this.#warming.has(key)) return;
+    const pending = this.clockFor(source)
       .catch(() => undefined)
-      .finally(() => { this.#warming.delete(src); });
-    this.#warming.set(src, pending);
+      .finally(() => { this.#warming.delete(key); });
+    this.#warming.set(key, pending);
   }
 
   async close(): Promise<void> {

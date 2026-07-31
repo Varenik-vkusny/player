@@ -324,7 +324,7 @@ describe('интеграция со схемой: результат подст�
 
   function baseProject(headlineStyle: ElementStyle, panelStyle: ElementStyle): Project {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

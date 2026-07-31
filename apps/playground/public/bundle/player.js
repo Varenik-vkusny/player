@@ -3229,6 +3229,7 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 	source: ka([
 		"alignment",
 		"tts",
+		"asr",
 		"manual"
 	]),
 	confidence: R().min(0).max(1).optional()
@@ -3352,11 +3353,12 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 	id: B,
 	title: I().default(""),
 	audio: z({
-		src: I().min(1),
+		src: I().min(1).optional(),
+		fileId: I().min(1).optional(),
 		offset: to.default(0),
 		duration: R().finite().positive(),
 		words: va(no)
-	}),
+	}).refine((e) => e.src === void 0 != (e.fileId === void 0), { message: "У дорожки должен быть ровно один источник: либо src (файл на сервере), либо fileId (файл, загруженный автором). Ни ноль, ни два." }),
 	elements: va(ao),
 	slides: va(so).min(1),
 	gates: va(lo).default([]),
@@ -3367,7 +3369,7 @@ z({
 	segments: va(fo).min(1)
 });
 var po = z({
-	schemaVersion: ja(5),
+	schemaVersion: ja(6),
 	meta: z({
 		title: I(),
 		stageWidth: R().int().positive().default(1920),
@@ -3785,6 +3787,15 @@ var So = Object.freeze({
 			entry: t.entry,
 			segments: n
 		};
+	},
+	5: (e) => {
+		let t = e;
+		return {
+			schemaVersion: 6,
+			meta: t.meta,
+			entry: t.entry,
+			segments: t.segments
+		};
 	}
 }), wo = class extends Error {
 	found;
@@ -3800,9 +3811,9 @@ function To(e) {
 }
 function Eo(e) {
 	let t = To(e);
-	if (t > 5) throw new wo(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 5. Обновите приложение.`, t);
+	if (t > 6) throw new wo(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 6. Обновите приложение.`, t);
 	let n = e;
-	for (; t < 5;) {
+	for (; t < 6;) {
 		let e = Co[t];
 		if (!e) throw new wo(`Нет миграции с версии ${t} на ${t + 1}. Каждая версия схемы обязана иметь миграцию (инвариант №7).`, t);
 		n = e(n), t = To(n);
@@ -3897,9 +3908,70 @@ function Ro(e) {
 	return n.data;
 }
 //#endregion
+//#region packages/player/src/assets.ts
+var zo = "player-assets", Bo = 1, Vo = "audio";
+function Ho() {
+	return new Promise((e, t) => {
+		let n = indexedDB.open(zo, Bo);
+		n.onupgradeneeded = () => {
+			let e = n.result;
+			e.objectStoreNames.contains(Vo) || e.createObjectStore(Vo);
+		}, n.onsuccess = () => {
+			e(n.result);
+		}, n.onerror = () => {
+			t(n.error ?? /* @__PURE__ */ Error(`Не удалось открыть базу ${zo}`));
+		};
+	});
+}
+async function Uo(e) {
+	let t = `aud-${crypto.randomUUID()}`, n = await Ho();
+	try {
+		await new Promise((r, i) => {
+			let a = n.transaction(Vo, "readwrite");
+			a.objectStore(Vo).put({
+				...e,
+				addedAt: Date.now()
+			}, t), a.oncomplete = () => {
+				r();
+			}, a.onerror = () => {
+				i(a.error ?? /* @__PURE__ */ Error("Не удалось сохранить озвучку"));
+			}, a.onabort = () => {
+				i(a.error ?? /* @__PURE__ */ Error("Запись озвучки отменена браузером"));
+			};
+		});
+	} finally {
+		n.close();
+	}
+	return t;
+}
+async function Wo(e) {
+	let t = await Ho();
+	try {
+		return await new Promise((n, r) => {
+			let i = t.transaction(Vo, "readonly").objectStore(Vo).get(e);
+			i.onsuccess = () => {
+				n(i.result ?? null);
+			}, i.onerror = () => {
+				r(i.error ?? /* @__PURE__ */ Error(`Не удалось прочитать озвучку ${e}`));
+			};
+		});
+	} finally {
+		t.close();
+	}
+}
+async function Go(e) {
+	if (e.kind === "url") return e.url;
+	let t = await Wo(e.fileId);
+	if (!t) throw Error(`Озвучка ${e.fileId} не найдена в хранилище этого браузера. Проект ссылается на файл, который был загружен в другом браузере или удалён вместе с данными сайта.`);
+	return URL.createObjectURL(new Blob([t.bytes], { type: t.type || "audio/mpeg" }));
+}
+function Ko(e, t) {
+	e.kind === "file" && URL.revokeObjectURL(t);
+}
+//#endregion
 //#region packages/player/src/clock.ts
-var zo = 1, Bo = 8, Vo = .02;
-async function Ho(e, t) {
+var qo = 1, Jo = 8, Yo = .02;
+async function Xo(e, t) {
 	let n = await fetch(t);
 	if (!n.ok) throw Error(`Не удалось загрузить дорожку ${t}: HTTP ${n.status}`);
 	let r = await n.arrayBuffer(), i = performance.now(), a = await e.decodeAudioData(r);
@@ -3910,7 +3982,10 @@ async function Ho(e, t) {
 		decodedBytes: a.length * a.numberOfChannels * 4
 	};
 }
-var Uo = class {
+function Zo(e) {
+	return e.kind === "url" ? `url:${e.url}` : `file:${e.fileId}`;
+}
+var Qo = class {
 	#e;
 	#t;
 	#n;
@@ -3919,7 +3994,7 @@ var Uo = class {
 	#a = null;
 	#o = null;
 	constructor(e, t) {
-		this.#e = e, this.#t = t, this.#n = e.createGain(), this.#n.connect(e.destination), this.#r = Go(e);
+		this.#e = e, this.#t = t, this.#n = e.createGain(), this.#n.connect(e.destination), this.#r = es(e);
 	}
 	get context() {
 		return this.#e;
@@ -3966,7 +4041,7 @@ var Uo = class {
 	start(e = 0, t = {}) {
 		if (this.#i) throw Error("Источник уже запущен, сначала stop()");
 		if (!(e >= 0 && e <= this.#t.duration)) throw RangeError(`Позиция ${e} вне дорожки [0, ${this.#t.duration}]`);
-		let n = t.leadTime ?? Vo, r = t.rampMs ?? Bo, i = this.#e.createBufferSource();
+		let n = t.leadTime ?? Yo, r = t.rampMs ?? Jo, i = this.#e.createBufferSource();
 		i.buffer = this.#t, i.connect(this.#n);
 		let a = this.#e.currentTime + n;
 		return this.#n.gain.cancelScheduledValues(a), this.#n.gain.setValueAtTime(0, a), this.#n.gain.linearRampToValueAtTime(1, a + r / 1e3), i.start(a, e), this.#i = i, this.#a = {
@@ -3977,7 +4052,7 @@ var Uo = class {
 	async freezeAt(e, t = {}) {
 		let n = this.#i, r = this.#a;
 		if (!n || !r) throw Error("Нечего останавливать: источник не запущен");
-		let i = (t.rampMs ?? Bo) / 1e3, a = this.#e.currentTime, o = r.ctxTime + (e - r.mediaTime), s = Math.max(a + .001, o);
+		let i = (t.rampMs ?? Jo) / 1e3, a = this.#e.currentTime, o = r.ctxTime + (e - r.mediaTime), s = Math.max(a + .001, o);
 		this.#n.gain.cancelScheduledValues(a), this.#n.gain.setValueAtTime(this.#n.gain.value, Math.max(a, s - i)), this.#n.gain.linearRampToValueAtTime(0, s), this.#o = e, n.stop(s), n.disconnect(), this.#i = null, await this.#e.suspend();
 	}
 	holdBeforeStart(e) {
@@ -4002,7 +4077,7 @@ var Uo = class {
 	stop() {
 		this.#i &&= (this.#i.stop(), this.#i.disconnect(), null), this.#a = null, this.#o = null;
 	}
-}, Wo = class {
+}, $o = class {
 	#e = null;
 	#t = /* @__PURE__ */ new Map();
 	#n = /* @__PURE__ */ new Map();
@@ -4010,36 +4085,42 @@ var Uo = class {
 		return this.#e ??= new AudioContext(), this.#e;
 	}
 	async clockFor(e) {
-		let t = this.#r(), n = this.#t.get(e);
-		if (n) return new Uo(t, n);
-		let r = await Ho(t, e);
-		return this.#t.set(e, r.buffer), new Uo(t, r.buffer);
+		let t = this.#r(), n = Zo(e), r = this.#t.get(n);
+		if (r) return new Qo(t, r);
+		let i = await Go(e);
+		try {
+			let e = await Xo(t, i);
+			return this.#t.set(n, e.buffer), new Qo(t, e.buffer);
+		} finally {
+			Ko(e, i);
+		}
 	}
 	clockIfReady(e) {
-		let t = this.#t.get(e);
-		return t ? new Uo(this.#r(), t) : null;
+		let t = this.#t.get(Zo(e));
+		return t ? new Qo(this.#r(), t) : null;
 	}
 	warm(e) {
-		if (this.#t.has(e) || this.#n.has(e)) return;
-		let t = this.clockFor(e).catch(() => void 0).finally(() => {
-			this.#n.delete(e);
+		let t = Zo(e);
+		if (this.#t.has(t) || this.#n.has(t)) return;
+		let n = this.clockFor(e).catch(() => void 0).finally(() => {
+			this.#n.delete(t);
 		});
-		this.#n.set(e, t);
+		this.#n.set(t, n);
 	}
 	async close() {
 		let e = this.#e;
 		this.#e = null, this.#t.clear(), this.#n.clear(), e && await e.close();
 	}
 };
-function Go(e) {
+function es(e) {
 	let t = e.getOutputTimestamp?.();
 	if (!t || typeof t.contextTime != "number") return console.warn("[clock] getOutputTimestamp недоступен, беру запасную формулу"), !1;
 	let n = Math.abs(t.contextTime - e.currentTime);
-	return n < zo ? !0 : (console.warn(`[clock] getOutputTimestamp невменяем: contextTime=${t.contextTime}, currentTime=${e.currentTime}, расхождение ${n.toFixed(3)} с. Беру запасную формулу.`), !1);
+	return n < qo ? !0 : (console.warn(`[clock] getOutputTimestamp невменяем: contextTime=${t.contextTime}, currentTime=${e.currentTime}, расхождение ${n.toFixed(3)} с. Беру запасную формулу.`), !1);
 }
 //#endregion
 //#region node_modules/.pnpm/animejs@4.5.0/node_modules/animejs/dist/modules/core/consts.js
-var Ko = typeof window < "u", qo = Ko ? window : null, Jo = Ko ? document : null, V = {
+var ts = typeof window < "u", ns = ts ? window : null, rs = ts ? document : null, V = {
 	OBJECT: 0,
 	ATTRIBUTE: 1,
 	CSS: 2,
@@ -4050,7 +4131,7 @@ var Ko = typeof window < "u", qo = Ko ? window : null, Jo = Ko ? document : null
 	UNIT: 1,
 	COLOR: 2,
 	COMPLEX: 3
-}, Yo = {
+}, is = {
 	NONE: 0,
 	AUTO: 1,
 	FORCE: 2
@@ -4058,10 +4139,10 @@ var Ko = typeof window < "u", qo = Ko ? window : null, Jo = Ko ? document : null
 	replace: 0,
 	none: 1,
 	blend: 2
-}, Xo = Symbol(), Zo = Symbol(), Qo = Symbol(), $o = Symbol(), es = Symbol(), W = 1e-11, ts = 0xe8d4a51000, ns = 1e3, rs = [], is = /*#__PURE__*/ (() => {
+}, as = Symbol(), os = Symbol(), ss = Symbol(), cs = Symbol(), ls = Symbol(), W = 1e-11, us = 0xe8d4a51000, ds = 1e3, fs = [], ps = /*#__PURE__*/ (() => {
 	let e = /* @__PURE__ */ new Map();
 	return e.set("x", "translateX"), e.set("y", "translateY"), e.set("z", "translateZ"), e;
-})(), as = [
+})(), ms = [
 	"perspective",
 	"translateX",
 	"translateY",
@@ -4077,10 +4158,10 @@ var Ko = typeof window < "u", qo = Ko ? window : null, Jo = Ko ? document : null
 	"skew",
 	"skewX",
 	"skewY"
-], os = /*#__PURE__*/ as.reduce((e, t) => ({
+], hs = /*#__PURE__*/ ms.reduce((e, t) => ({
 	...e,
 	[t]: t + "("
-}), {}), ss = () => {}, cs = (e) => e, ls = /\)\s*[-.\d]/, us = /(^#([\da-f]{3}){1,2}$)|(^#([\da-f]{4}){1,2}$)/i, ds = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i, fs = /rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(-?\d+|-?\d*.\d+)\s*\)/i, ps = /hsl\(\s*(-?\d+|-?\d*.\d+)\s*,\s*(-?\d+|-?\d*.\d+)%\s*,\s*(-?\d+|-?\d*.\d+)%\s*\)/i, ms = /hsla\(\s*(-?\d+|-?\d*.\d+)\s*,\s*(-?\d+|-?\d*.\d+)%\s*,\s*(-?\d+|-?\d*.\d+)%\s*,\s*(-?\d+|-?\d*.\d+)\s*\)/i, hs = /[-+]?\d*\.?\d+(?:e[-+]?\d)?/gi, gs = /^([-+]?\d*\.?\d+(?:e[-+]?\d+)?)([a-z]+|%)$/i, _s = /([a-z])([A-Z])/g, vs = /(\*=|\+=|-=)/, ys = /var\(\s*(--[\w-]+)(?:\s*,\s*([^)]+))?\s*\)/, bs = {
+}), {}), gs = () => {}, _s = (e) => e, vs = /\)\s*[-.\d]/, ys = /(^#([\da-f]{3}){1,2}$)|(^#([\da-f]{4}){1,2}$)/i, bs = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/i, xs = /rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(-?\d+|-?\d*.\d+)\s*\)/i, Ss = /hsl\(\s*(-?\d+|-?\d*.\d+)\s*,\s*(-?\d+|-?\d*.\d+)%\s*,\s*(-?\d+|-?\d*.\d+)%\s*\)/i, Cs = /hsla\(\s*(-?\d+|-?\d*.\d+)\s*,\s*(-?\d+|-?\d*.\d+)%\s*,\s*(-?\d+|-?\d*.\d+)%\s*,\s*(-?\d+|-?\d*.\d+)\s*\)/i, ws = /[-+]?\d*\.?\d+(?:e[-+]?\d)?/gi, Ts = /^([-+]?\d*\.?\d+(?:e[-+]?\d+)?)([a-z]+|%)$/i, Es = /([a-z])([A-Z])/g, Ds = /(\*=|\+=|-=)/, Os = /var\(\s*(--[\w-]+)(?:\s*,\s*([^)]+))?\s*\)/, ks = {
 	id: null,
 	keyframes: null,
 	playbackEase: null,
@@ -4091,42 +4172,42 @@ var Ko = typeof window < "u", qo = Ko ? window : null, Jo = Ko ? document : null
 	alternate: !1,
 	autoplay: !0,
 	persist: !1,
-	duration: ns,
+	duration: ds,
 	delay: 0,
 	loopDelay: 0,
 	ease: "out(2)",
 	composition: U.replace,
-	modifier: cs,
-	onBegin: ss,
-	onBeforeUpdate: ss,
-	onUpdate: ss,
-	onLoop: ss,
-	onPause: ss,
-	onComplete: ss,
-	onRender: ss
-}, xs = {
+	modifier: _s,
+	onBegin: gs,
+	onBeforeUpdate: gs,
+	onUpdate: gs,
+	onLoop: gs,
+	onPause: gs,
+	onComplete: gs,
+	onRender: gs
+}, As = {
 	current: null,
-	root: Jo
+	root: rs
 }, G = {
-	defaults: bs,
+	defaults: ks,
 	precision: 4,
 	timeScale: 1,
 	tickThreshold: 200,
 	editor: null
-}, Ss = {
+}, js = {
 	version: "4.5.0",
 	engine: null
 };
-Ko && (qo.AnimeJS ||= [], qo.AnimeJS.push(Ss));
+ts && (ns.AnimeJS ||= [], ns.AnimeJS.push(js));
 //#endregion
 //#region node_modules/.pnpm/animejs@4.5.0/node_modules/animejs/dist/modules/core/helpers.js
-var Cs = (e) => e.replace(_s, "$1-$2").toLowerCase(), ws = (e, t) => e.indexOf(t) === 0, Ts = Date.now, Es = Array.isArray, Ds = (e) => e && e.constructor === Object, Os = (e) => typeof e == "number" && !isNaN(e), ks = (e) => typeof e == "string", As = (e) => typeof e == "function", K = (e) => e === void 0, js = (e) => K(e) || e === null, Ms = (e) => Ko && e instanceof SVGElement, Ns = (e) => us.test(e), Ps = (e) => ws(e, "rgb"), Fs = (e) => ws(e, "hsl"), Is = (e) => Ns(e) || (Ps(e) || Fs(e)) && (e[e.length - 1] === ")" || !ls.test(e)), Ls = (e) => !G.defaults.hasOwnProperty(e), Rs = [
+var Ms = (e) => e.replace(Es, "$1-$2").toLowerCase(), Ns = (e, t) => e.indexOf(t) === 0, Ps = Date.now, Fs = Array.isArray, Is = (e) => e && e.constructor === Object, Ls = (e) => typeof e == "number" && !isNaN(e), Rs = (e) => typeof e == "string", zs = (e) => typeof e == "function", K = (e) => e === void 0, Bs = (e) => K(e) || e === null, Vs = (e) => ts && e instanceof SVGElement, Hs = (e) => ys.test(e), Us = (e) => Ns(e, "rgb"), Ws = (e) => Ns(e, "hsl"), Gs = (e) => Hs(e) || (Us(e) || Ws(e)) && (e[e.length - 1] === ")" || !vs.test(e)), Ks = (e) => !G.defaults.hasOwnProperty(e), qs = [
 	"opacity",
 	"rotate",
 	"overflow",
 	"color"
-], zs = (e, t) => {
-	if (Rs.includes(t)) return !1;
+], Js = (e, t) => {
+	if (qs.includes(t)) return !1;
 	if (e.getAttribute(t) || t in e) {
 		if (t === "scale") {
 			let t = e.parentNode;
@@ -4134,12 +4215,12 @@ var Cs = (e) => e.replace(_s, "$1-$2").toLowerCase(), ws = (e, t) => e.indexOf(t
 		}
 		return !0;
 	}
-}, Bs = Math.pow, Vs = Math.sqrt, Hs = Math.sin, Us = Math.cos, Ws = Math.floor, Gs = Math.asin, Ks = Math.PI, qs = Math.round, Js = (e, t, n) => e < t ? t : e > n ? n : e, q = (e, t) => {
+}, Ys = Math.pow, Xs = Math.sqrt, Zs = Math.sin, Qs = Math.cos, $s = Math.floor, ec = Math.asin, tc = Math.PI, nc = Math.round, rc = (e, t, n) => e < t ? t : e > n ? n : e, q = (e, t) => {
 	if (t < 0) return e;
-	if (!t) return qs(e);
+	if (!t) return nc(e);
 	let n = 10 ** t;
-	return qs(e * n) / n;
-}, Ys = (e, t, n) => n === 1 ? t : n === 0 ? e : e + (t - e) * n, Xs = (e) => e === Infinity ? ts : e === -Infinity ? -ts : e, Zs = (e) => e <= 1e-11 ? W : Xs(q(e, 11)), J = (e) => Es(e) ? [...e] : e, Qs = (e, t) => {
+	return nc(e * n) / n;
+}, ic = (e, t, n) => n === 1 ? t : n === 0 ? e : e + (t - e) * n, ac = (e) => e === Infinity ? us : e === -Infinity ? -us : e, oc = (e) => e <= 1e-11 ? W : ac(q(e, 11)), J = (e) => Fs(e) ? [...e] : e, sc = (e, t) => {
 	let n = { ...e };
 	for (let r in t) {
 		let i = e[r];
@@ -4152,18 +4233,18 @@ var Cs = (e) => e.replace(_s, "$1-$2").toLowerCase(), ws = (e, t) => e.indexOf(t
 		let e = a[o];
 		t(a), a = e;
 	}
-}, $s = (e, t, n = "_prev", r = "_next") => {
+}, cc = (e, t, n = "_prev", r = "_next") => {
 	let i = t[n], a = t[r];
 	i ? i[r] = a : e._head = a, a ? a[n] = i : e._tail = i, t[n] = null, t[r] = null;
-}, ec = (e, t, n, r = "_prev", i = "_next") => {
+}, lc = (e, t, n, r = "_prev", i = "_next") => {
 	let a = e._tail;
 	for (; a && n && n(a, t);) a = a[r];
 	let o = a ? a[i] : e._head;
 	a ? a[i] = t : e._head = t, o ? o[r] = t : e._tail = t, t[r] = a, t[i] = o;
-}, tc = (e, t, n) => {
+}, uc = (e, t, n) => {
 	let r = e.style.transform;
 	if (r) {
-		let i = e[$o], a = 0, o = r.length, s;
+		let i = e[cs], a = 0, o = r.length, s;
 		for (; a < o;) {
 			for (; a < o && r.charCodeAt(a) === 32;) a++;
 			if (a >= o) break;
@@ -4182,11 +4263,11 @@ var Cs = (e) => e.replace(_s, "$1-$2").toLowerCase(), ws = (e, t) => e.indexOf(t
 		let c = i[t];
 		if (!K(c)) return n && (n[t] = c), c;
 	}
-	return t === "translate3d" ? "0px, 0px, 0px" : t === "rotate3d" ? "0, 0, 0, 0deg" : ws(t, "scale") ? "1" : ws(t, "rotate") || ws(t, "skew") ? "0deg" : "0px";
-}, nc = (e) => {
+	return t === "translate3d" ? "0px, 0px, 0px" : t === "rotate3d" ? "0, 0, 0, 0deg" : Ns(t, "scale") ? "1" : Ns(t, "rotate") || Ns(t, "skew") ? "0deg" : "0px";
+}, dc = (e) => {
 	let t = "";
-	for (let n = 0, r = as.length; n < r; n++) {
-		let r = as[n], i = e[r];
+	for (let n = 0, r = ms.length; n < r; n++) {
+		let r = ms[n], i = e[r];
 		if (i !== void 0) {
 			if (r === "translateX") {
 				let r = e.translateY;
@@ -4204,17 +4285,17 @@ var Cs = (e) => e.replace(_s, "$1-$2").toLowerCase(), ws = (e, t) => e.indexOf(t
 					continue;
 				}
 			}
-			t += `${os[r]}${i}) `;
+			t += `${hs[r]}${i}) `;
 		}
 		r === "rotateZ" && e.rotate3d !== void 0 && (t += `rotate3d(${e.rotate3d}) `);
 	}
 	return e.matrix !== void 0 && (t += `matrix(${e.matrix}) `), e.matrix3d !== void 0 && (t += `matrix3d(${e.matrix3d}) `), t;
-}, rc = [];
-function ic(e, t) {
+}, fc = [];
+function pc(e, t) {
 	if (!e) return null;
-	let n = rc.length;
+	let n = fc.length;
 	outer: for (let r = 0; r < n; r++) {
-		let n = rc[r];
+		let n = fc[r];
 		if (n.detect && !n.detect(e)) continue;
 		let i = n.targetAdapters;
 		for (let n = 0, r = i.length; n < r; n++) {
@@ -4227,7 +4308,7 @@ function ic(e, t) {
 		}
 	}
 	for (let r = 0; r < n; r++) {
-		let n = rc[r];
+		let n = fc[r];
 		if (n.detect && !n.detect(e)) continue;
 		let i = n.propertyResolvers;
 		for (let n = 0, r = i.length; n < r; n++) {
@@ -4239,15 +4320,15 @@ function ic(e, t) {
 }
 //#endregion
 //#region node_modules/.pnpm/animejs@4.5.0/node_modules/animejs/dist/modules/core/colors.js
-var ac = (e) => {
-	let t = ds.exec(e) || fs.exec(e), n = K(t[4]) ? 1 : +t[4];
+var mc = (e) => {
+	let t = bs.exec(e) || xs.exec(e), n = K(t[4]) ? 1 : +t[4];
 	return [
 		+t[1],
 		+t[2],
 		+t[3],
 		n
 	];
-}, oc = (e) => {
+}, hc = (e) => {
 	let t = e.length, n = t === 4 || t === 5;
 	return [
 		+("0x" + e[1] + e[n ? 1 : 2]),
@@ -4255,12 +4336,12 @@ var ac = (e) => {
 		+("0x" + e[n ? 3 : 5] + e[n ? 3 : 6]),
 		t === 5 || t === 9 ? +(("0x" + e[n ? 4 : 7] + e[n ? 4 : 8]) / 255).toFixed(3) : 1
 	];
-}, sc = (e, t, n) => (n < 0 && (n += 1), n > 1 && --n, n < 1 / 6 ? e + (t - e) * 6 * n : n < 1 / 2 ? t : n < 2 / 3 ? e + (t - e) * (2 / 3 - n) * 6 : e), cc = (e) => {
-	let t = ps.exec(e) || ms.exec(e), n = t[1] / 360, r = t[2] / 100, i = t[3] / 100, a = K(t[4]) ? 1 : +t[4], o, s, c;
+}, gc = (e, t, n) => (n < 0 && (n += 1), n > 1 && --n, n < 1 / 6 ? e + (t - e) * 6 * n : n < 1 / 2 ? t : n < 2 / 3 ? e + (t - e) * (2 / 3 - n) * 6 : e), _c = (e) => {
+	let t = Ss.exec(e) || Cs.exec(e), n = t[1] / 360, r = t[2] / 100, i = t[3] / 100, a = K(t[4]) ? 1 : +t[4], o, s, c;
 	if (r === 0) o = s = c = i;
 	else {
 		let e = i < .5 ? i * (1 + r) : i + r - i * r, t = 2 * i - e;
-		o = q(sc(t, e, n + 1 / 3) * 255, 0), s = q(sc(t, e, n) * 255, 0), c = q(sc(t, e, n - 1 / 3) * 255, 0);
+		o = q(gc(t, e, n + 1 / 3) * 255, 0), s = q(gc(t, e, n) * 255, 0), c = q(gc(t, e, n - 1 / 3) * 255, 0);
 	}
 	return [
 		o,
@@ -4268,16 +4349,16 @@ var ac = (e) => {
 		c,
 		a
 	];
-}, lc = (e) => Ps(e) ? ac(e) : Ns(e) ? oc(e) : Fs(e) ? cc(e) : [
+}, vc = (e) => Us(e) ? mc(e) : Hs(e) ? hc(e) : Ws(e) ? _c(e) : [
 	0,
 	0,
 	0,
 	1
-], X = (e, t) => K(e) ? t : e, uc = (e, t) => {
-	let n = e.match(ys), r = t[Zo] ? t : document.documentElement, i = getComputedStyle(r)?.getPropertyValue(n[1]);
+], X = (e, t) => K(e) ? t : e, yc = (e, t) => {
+	let n = e.match(Os), r = t[os] ? t : document.documentElement, i = getComputedStyle(r)?.getPropertyValue(n[1]);
 	return (!i || i.trim() === "") && n[2] && (i = n[2].trim()), i || 0;
-}, dc = (e, t, n, r, i, a) => {
-	if (As(e)) {
+}, bc = (e, t, n, r, i, a) => {
+	if (zs(e)) {
 		if (!i) {
 			let i = e(t, n, r, a);
 			return isNaN(+i) ? i || 0 : +i;
@@ -4288,19 +4369,19 @@ var ac = (e) => {
 		};
 		return i.func = o, o();
 	}
-	if (ks(e) && ws(e, "var(")) {
-		if (!i) return uc(e, t);
-		let n = () => uc(e, t);
+	if (Rs(e) && Ns(e, "var(")) {
+		if (!i) return yc(e, t);
+		let n = () => yc(e, t);
 		return i.func = n, n();
 	}
 	return e;
-}, fc = (e, t) => e[Zo] ? e[Qo] && zs(e, t) ? V.ATTRIBUTE : as.includes(t) || is.get(t) ? V.TRANSFORM : ws(t, "--") ? V.CSS_VAR : t in e.style ? V.CSS : t in e ? V.OBJECT : V.ATTRIBUTE : V.OBJECT, pc = (e, t, n) => {
+}, xc = (e, t) => e[os] ? e[ss] && Js(e, t) ? V.ATTRIBUTE : ms.includes(t) || ps.get(t) ? V.TRANSFORM : Ns(t, "--") ? V.CSS_VAR : t in e.style ? V.CSS : t in e ? V.OBJECT : V.ATTRIBUTE : V.OBJECT, Sc = (e, t, n) => {
 	let r = e.style[t];
 	r && n && (n[t] = r);
-	let i = r || getComputedStyle(e[es] || e).getPropertyValue(t);
+	let i = r || getComputedStyle(e[ls] || e).getPropertyValue(t);
 	return i === "auto" ? "0" : i;
-}, mc = (e, t, n, r) => {
-	let i = K(n) ? fc(e, t) : n, a = ic(e, t);
+}, Cc = (e, t, n, r) => {
+	let i = K(n) ? xc(e, t) : n, a = pc(e, t);
 	if (a) {
 		let n = a.get(e);
 		return n && r && (r[t] = n), n ?? 0;
@@ -4313,77 +4394,77 @@ var ac = (e) => {
 		let n = e.getAttribute(t);
 		return n && r && (r[t] = n), n;
 	}
-	return i === V.TRANSFORM ? tc(e, t, r) : i === V.CSS_VAR ? pc(e, t, r).trimStart() : pc(e, t, r);
-}, hc = (e, t, n) => n === "-" ? e - t : n === "+" ? e + t : e * t, gc = () => ({
+	return i === V.TRANSFORM ? uc(e, t, r) : i === V.CSS_VAR ? Sc(e, t, r).trimStart() : Sc(e, t, r);
+}, wc = (e, t, n) => n === "-" ? e - t : n === "+" ? e + t : e * t, Tc = () => ({
 	t: H.NUMBER,
 	n: 0,
 	u: null,
 	o: null,
 	d: null,
 	s: null
-}), _c = (e, t) => {
+}), Ec = (e, t) => {
 	if (t.t = H.NUMBER, t.n = 0, t.u = null, t.o = null, t.d = null, t.s = null, !e) return t;
 	let n = +e;
 	if (!isNaN(n)) return t.n = n, t;
 	let r = e;
 	r[1] === "=" && (t.o = r[0], r = r.slice(2));
-	let i = !r.includes(" ") && gs.exec(r);
+	let i = !r.includes(" ") && Ts.exec(r);
 	if (i) return t.t = H.UNIT, t.n = +i[1], t.u = i[2], t;
 	if (t.o) return t.n = +r, t;
-	if (Is(r)) return t.t = H.COLOR, t.d = lc(r), t;
+	if (Gs(r)) return t.t = H.COLOR, t.d = vc(r), t;
 	{
-		let e = r.match(hs);
-		return t.t = H.COMPLEX, t.d = e ? e.map(Number) : [], t.s = r.split(hs) || [], t;
+		let e = r.match(ws);
+		return t.t = H.COMPLEX, t.d = e ? e.map(Number) : [], t.s = r.split(ws) || [], t;
 	}
-}, vc = (e, t) => (t.t = e._valueType, t.n = e._toNumber, t.u = e._unit, t.o = null, t.d = J(e._toNumbers), t.s = J(e._strings), t), yc = gc(), bc = (e, t, n) => {
+}, Dc = (e, t) => (t.t = e._valueType, t.n = e._toNumber, t.u = e._unit, t.o = null, t.d = J(e._toNumbers), t.s = J(e._strings), t), Oc = Tc(), kc = (e, t, n) => {
 	let r = e._modifier, i = e._fromNumbers, a = e._toNumbers, o = e._strings, s = o[0];
 	for (let c = 0, l = a.length; c < l; c++) {
-		let l = r(q(Ys(i[c], a[c], t), n)), u = o[c + 1];
+		let l = r(q(ic(i[c], a[c], t), n)), u = o[c + 1];
 		s += `${u ? l + u : l}`, e._numbers[c] = l;
 	}
 	return s;
-}, xc = (e, t, n, r, i) => {
-	let a = e.parent, o = e.duration, s = e.completed, c = e.iterationDuration, l = e.iterationCount, u = e._currentIteration, d = e._loopDelay, f = e._reversed, p = e._alternate, m = e._hasChildren, h = e._delay, g = e._currentTime, _ = h + c, v = t - h, y = Js(g, -h, o), b = Js(v, -h, o), x = v - g, S = b > 0, C = b >= o, ee = o <= W, w = i === Yo.FORCE, T = 0, te = v, ne = 0;
+}, Ac = (e, t, n, r, i) => {
+	let a = e.parent, o = e.duration, s = e.completed, c = e.iterationDuration, l = e.iterationCount, u = e._currentIteration, d = e._loopDelay, f = e._reversed, p = e._alternate, m = e._hasChildren, h = e._delay, g = e._currentTime, _ = h + c, v = t - h, y = rc(g, -h, o), b = rc(v, -h, o), x = v - g, S = b > 0, C = b >= o, ee = o <= W, w = i === is.FORCE, T = 0, te = v, ne = 0;
 	if (l > 1) {
 		let t = c + (C ? 0 : d), n = ~~(b / t);
-		e._currentIteration = Js(n, 0, l), C && e._currentIteration--, T = e._currentIteration % 2, te = b - n * t || 0;
+		e._currentIteration = rc(n, 0, l), C && e._currentIteration--, T = e._currentIteration % 2, te = b - n * t || 0;
 	}
 	let re = f ^ (p && T), E = e._ease, D = C ? re ? 0 : o : re ? c - te : te;
 	E && (D = c * E(D / c) || 0);
 	let ie = (a ? a.backwards : v < g) ? !re : !!re;
-	if (e._currentTime = v, e._iterationTime = D, e.backwards = ie, S && !e.began ? (e.began = !0, !n && !(a && (ie || !a.began)) && e.onBegin(e)) : v <= 0 && (e.began = !1), !n && !m && S && e._currentIteration !== u && e.onLoop(e), w || i === Yo.AUTO && (t >= (a && h > 0 ? 0 : h) && t <= _ || t <= h && y > h || t >= _ && y !== o) || D >= _ && y !== o || D <= h && y > 0 && !C || t <= y && y === o && s || C && !s && ee) {
+	if (e._currentTime = v, e._iterationTime = D, e.backwards = ie, S && !e.began ? (e.began = !0, !n && !(a && (ie || !a.began)) && e.onBegin(e)) : v <= 0 && (e.began = !1), !n && !m && S && e._currentIteration !== u && e.onLoop(e), w || i === is.AUTO && (t >= (a && h > 0 ? 0 : h) && t <= _ || t <= h && y > h || t >= _ && y !== o) || D >= _ && y !== o || D <= h && y > 0 && !C || t <= y && y === o && s || C && !s && ee) {
 		if (S && (e.computeDeltaTime(y), n || e.onBeforeUpdate(e)), !m) {
 			let t = w || (ie ? x * -1 : x) >= G.tickThreshold, i = q(e._offset + (a ? a._offset : 0) + h + D, 12), o = e._head, s, c, l, u, d = 0;
 			for (; o;) {
 				let e = o._composition, n = o._currentTime, a = o._changeDuration, f = o._absoluteStartTime + o._changeDuration, p = o._nextRep, m = o._prevRep, h = e !== U.none, g = m ? m._absoluteStartTime + m._changeDuration : 0, _ = m && m.parent !== o.parent, v = !p || p._isOverridden ? f : p.parent === o.parent ? f + p._delay : p._absoluteStartTime < p._absoluteUpdateStartTime ? p._absoluteStartTime : p._absoluteUpdateStartTime;
 				if ((t || (n !== a || i <= v || m && !_ && (!p || p.parent !== o.parent)) && (n !== 0 || i >= o._absoluteStartTime || _ && !o._hasFromValue && !m._isOverridden && i >= g || p && !p._isOverridden && p.parent === o.parent && p._currentTime !== 0 && D < p._startTime)) && (!m || _ || D >= o._startTime) && (!h || !o._isOverridden && (!o._isOverlapped || i <= f) && (!p || p._isOverridden || i <= v) && (!m || m._isOverridden || (_ ? i >= o._absoluteStartTime || !o._hasFromValue && i >= g : i >= g + o._delay)))) {
-					let t = o._currentTime = Js(D - o._startTime, 0, a), n = o._ease(t / o._updateDuration), i = o._modifier, f = o._valueType, p = o._tweenType, m = p === V.OBJECT, g = f === H.NUMBER, _ = g && m || n === 0 || n === 1 ? -1 : G.precision, v, y;
-					if (g) v = y = i(q(Ys(o._fromNumber, o._toNumber, n), _));
-					else if (f === H.UNIT) y = i(q(Ys(o._fromNumber, o._toNumber, n), _)), v = `${y}${o._unit}`;
+					let t = o._currentTime = rc(D - o._startTime, 0, a), n = o._ease(t / o._updateDuration), i = o._modifier, f = o._valueType, p = o._tweenType, m = p === V.OBJECT, g = f === H.NUMBER, _ = g && m || n === 0 || n === 1 ? -1 : G.precision, v, y;
+					if (g) v = y = i(q(ic(o._fromNumber, o._toNumber, n), _));
+					else if (f === H.UNIT) y = i(q(ic(o._fromNumber, o._toNumber, n), _)), v = `${y}${o._unit}`;
 					else if (f === H.COLOR) {
 						let e = o._numbers, t = o._fromNumbers, a = o._toNumbers, s = 1 - n, c = t[0], l = t[1], u = t[2], d = a[0], f = a[1], p = a[2];
-						e[0] = i(Math.sqrt(c * c * s + d * d * n)), e[1] = i(Math.sqrt(l * l * s + f * f * n)), e[2] = i(Math.sqrt(u * u * s + p * p * n)), e[3] = i(Ys(t[3], a[3], n)), (!o._setter || r) && (v = `rgba(${q(e[0], 0)},${q(e[1], 0)},${q(e[2], 0)},${e[3]})`);
-					} else f === H.COMPLEX && (v = bc(o, n, _));
+						e[0] = i(Math.sqrt(c * c * s + d * d * n)), e[1] = i(Math.sqrt(l * l * s + f * f * n)), e[2] = i(Math.sqrt(u * u * s + p * p * n)), e[3] = i(ic(t[3], a[3], n)), (!o._setter || r) && (v = `rgba(${q(e[0], 0)},${q(e[1], 0)},${q(e[2], 0)},${e[3]})`);
+					} else f === H.COMPLEX && (v = kc(o, n, _));
 					if (h && (o._number = y), !r && e !== U.blend) {
 						let e = o.property;
-						s = o.target, o._setter ? o._setter(s, y, o) : m ? s[e] = v : p === V.ATTRIBUTE ? s.setAttribute(e, v) : (c = s.style, p === V.TRANSFORM ? (s !== l && (l = s, u = s[$o]), u[e] = v, d = 1) : p === V.CSS ? c[e] = v : p === V.CSS_VAR && c.setProperty(e, v)), S && (ne = 1);
+						s = o.target, o._setter ? o._setter(s, y, o) : m ? s[e] = v : p === V.ATTRIBUTE ? s.setAttribute(e, v) : (c = s.style, p === V.TRANSFORM ? (s !== l && (l = s, u = s[cs]), u[e] = v, d = 1) : p === V.CSS ? c[e] = v : p === V.CSS_VAR && c.setProperty(e, v)), S && (ne = 1);
 					} else o._value = v;
 				} else n && m && !_ && D < o._startTime && (o._currentTime = 0);
-				d && o._renderTransforms && (c.transform = nc(u), d = 0), o = o._next;
+				d && o._renderTransforms && (c.transform = dc(u), d = 0), o = o._next;
 			}
 			!n && ne && e.onRender(e);
 		}
 		!n && S && e.onUpdate(e);
 	}
 	return a && ee ? !n && (a.began && !ie && v > 0 && !s || ie && v <= 1e-11 && s) && (e.onComplete(e), e.completed = !ie) : S && C ? l === Infinity ? e._startTime += e.duration : e._currentIteration >= l - 1 && (e.paused = !0, !s && !m && (e.completed = !0, !n && !(a && (ie || !a.began)) && (e.onComplete(e), e._resolve(e)))) : e.completed = !1, ne;
-}, Sc = (e, t, n, r, i) => {
+}, jc = (e, t, n, r, i) => {
 	let a = e._currentIteration;
-	if (xc(e, t, n, r, i), e._hasChildren) {
-		let o = e, s = o.backwards, c = r ? t : o._iterationTime, l = Ts(), u = 0, d = !0;
+	if (Ac(e, t, n, r, i), e._hasChildren) {
+		let o = e, s = o.backwards, c = r ? t : o._iterationTime, l = Ps(), u = 0, d = !0;
 		if (!r && o._currentIteration !== a) {
 			let e = o.iterationDuration;
 			Y(o, (t) => {
-				if (!s) !t.completed && !t.backwards && t._currentTime < t.iterationDuration && xc(t, e, n, 1, Yo.FORCE), t.began = !1, t.completed = !1;
+				if (!s) !t.completed && !t.backwards && t._currentTime < t.iterationDuration && Ac(t, e, n, 1, is.FORCE), t.began = !1, t.completed = !1;
 				else {
 					let r = t.duration, i = t._offset + t._delay, a = i + r;
 					!n && r <= 1e-11 && (!i || a === e) && t.onComplete(t);
@@ -4394,58 +4475,58 @@ var ac = (e) => {
 			let t = q((c - e._offset) * e._speed, 12);
 			if (s && t > e._delay + e.duration) return;
 			let a = e._fps < o._fps ? e.requestTick(l) : i;
-			u += xc(e, t, n, r, a), !e.completed && d && (d = !1);
+			u += Ac(e, t, n, r, a), !e.completed && d && (d = !1);
 		}, s), !n && u && o.onRender(o), (d || s) && o._currentTime >= o.duration && (o.paused = !0, o.completed || (o.completed = !0, n || (o.onComplete(o), o._resolve(o))));
 	}
-}, Cc = {}, wc = (e, t, n) => {
-	if (n === V.TRANSFORM) return is.get(e) || e;
-	if (n === V.CSS || n === V.ATTRIBUTE && Ms(t) && e in t.style) {
-		let t = Cc[e];
+}, Mc = {}, Nc = (e, t, n) => {
+	if (n === V.TRANSFORM) return ps.get(e) || e;
+	if (n === V.CSS || n === V.ATTRIBUTE && Vs(t) && e in t.style) {
+		let t = Mc[e];
 		if (t) return t;
 		{
-			let t = e && Cs(e);
-			return Cc[e] = t, t;
+			let t = e && Ms(e);
+			return Mc[e] = t, t;
 		}
 	} else return e;
-}, Tc = (e, t = !1) => {
-	if (e._hasChildren) Y(e, (e) => Tc(e, t), !0);
+}, Pc = (e, t = !1) => {
+	if (e._hasChildren) Y(e, (e) => Pc(e, t), !0);
 	else {
 		let n = e;
 		n.pause(), Y(n, (e) => {
-			let r = e.property, i = e.target, a = e._tweenType, o = e._inlineValue, s = js(o) || o === "";
+			let r = e.property, i = e.target, a = e._tweenType, o = e._inlineValue, s = Bs(o) || o === "";
 			if (e._setter) {
 				if (!t && !s) {
-					if (_c(o, yc), yc.d) {
-						let t = yc.d, n = e._numbers;
+					if (Ec(o, Oc), Oc.d) {
+						let t = Oc.d, n = e._numbers;
 						for (let e = 0, r = t.length; e < r; e++) n[e] = t[e];
-					} else e._number = yc.n;
+					} else e._number = Oc.n;
 					e._setter(e.target, e._number, e);
 				}
 			} else if (a === V.OBJECT) !t && !s && (i[r] = o);
-			else if (i[Zo]) if (a === V.ATTRIBUTE) t || (s ? i.removeAttribute(r) : i.setAttribute(r, o));
+			else if (i[os]) if (a === V.ATTRIBUTE) t || (s ? i.removeAttribute(r) : i.setAttribute(r, o));
 			else {
 				let t = i.style;
 				if (a === V.TRANSFORM) {
-					let n = i[$o];
-					s ? delete n[r] : n[r] = o, e._renderTransforms && (Object.keys(n).length ? t.transform = nc(n) : t.removeProperty("transform"));
-				} else s ? t.removeProperty(Cs(r)) : t[r] = o;
+					let n = i[cs];
+					s ? delete n[r] : n[r] = o, e._renderTransforms && (Object.keys(n).length ? t.transform = dc(n) : t.removeProperty("transform"));
+				} else s ? t.removeProperty(Ms(r)) : t[r] = o;
 			}
-			i[Zo] && n._tail === e && n.targets.forEach((e) => {
+			i[os] && n._tail === e && n.targets.forEach((e) => {
 				e.getAttribute && e.getAttribute("style") === "" && e.removeAttribute("style");
 			});
 		});
 	}
 	return e;
-}, Ec = class {
+}, Fc = class {
 	constructor(e = 0) {
-		this.deltaTime = 0, this._currentTime = e, this._lastTickTime = e, this._startTime = e, this._lastTime = e, this._frameDuration = ns / 240, this._fps = 240, this._speed = 1, this._hasChildren = !1, this._head = null, this._tail = null;
+		this.deltaTime = 0, this._currentTime = e, this._lastTickTime = e, this._startTime = e, this._lastTime = e, this._frameDuration = ds / 240, this._fps = 240, this._speed = 1, this._hasChildren = !1, this._head = null, this._tail = null;
 	}
 	get fps() {
 		return this._fps;
 	}
 	set fps(e) {
-		let t = +e, n = t < 1e-11 ? W : t, r = ns / n;
-		n > bs.frameRate && (bs.frameRate = n), this._fps = n, this._frameDuration = r;
+		let t = +e, n = t < 1e-11 ? W : t, r = ds / n;
+		n > ks.frameRate && (ks.frameRate = n), this._fps = n, this._frameDuration = r;
 	}
 	get speed() {
 		return this._speed;
@@ -4456,25 +4537,25 @@ var ac = (e) => {
 	}
 	requestTick(e) {
 		let t = this._frameDuration, n = e - this._lastTickTime, r = t * .25;
-		return n + (r < 4 ? r : 4) < t ? Yo.NONE : (this._lastTickTime = n >= t ? e - n % t : e, Yo.AUTO);
+		return n + (r < 4 ? r : 4) < t ? is.NONE : (this._lastTickTime = n >= t ? e - n % t : e, is.AUTO);
 	}
 	computeDeltaTime(e) {
 		let t = e - this._lastTime;
 		return this.deltaTime = t, this._lastTime = e, t;
 	}
-}, Dc = {
+}, Ic = {
 	animation: null,
-	update: ss
-}, Oc = (e) => {
-	let t = Dc.animation;
+	update: gs
+}, Lc = (e) => {
+	let t = Ic.animation;
 	return t || (t = {
 		duration: W,
-		computeDeltaTime: ss,
+		computeDeltaTime: gs,
 		_offset: 0,
 		_delay: 0,
 		_head: null,
 		_tail: null
-	}, Dc.animation = t, Dc.update = () => {
+	}, Ic.animation = t, Ic.update = () => {
 		e.forEach((e) => {
 			for (let t in e) {
 				let n = e[t], r = n._head;
@@ -4488,35 +4569,35 @@ var ac = (e) => {
 					r._toNumber = i, r._toNumbers = t;
 				}
 			}
-		}), xc(t, 1, 1, 0, Yo.FORCE);
+		}), Ac(t, 1, 1, 0, is.FORCE);
 	}), t;
-}, kc = Ko ? requestAnimationFrame : setImmediate, Ac = Ko ? cancelAnimationFrame : clearImmediate, jc = class extends Ec {
+}, Rc = ts ? requestAnimationFrame : setImmediate, zc = ts ? cancelAnimationFrame : clearImmediate, Bc = class extends Fc {
 	constructor(e) {
-		super(e), this.useDefaultMainLoop = !0, this.pauseOnDocumentHidden = !0, this.defaults = bs, this.paused = !0, this.reqId = 0;
+		super(e), this.useDefaultMainLoop = !0, this.pauseOnDocumentHidden = !0, this.defaults = ks, this.paused = !0, this.reqId = 0;
 	}
 	update() {
-		let e = this._currentTime = Ts();
+		let e = this._currentTime = Ps();
 		if (this.requestTick(e)) {
 			this.computeDeltaTime(e);
 			let t = this._speed, n = this._fps, r = this._head;
 			for (; r;) {
 				let i = r._next;
-				r.paused ? ($s(this, r), this._hasChildren = !!this._tail, r._running = !1, r.completed && !r._cancelled && r.cancel()) : Sc(r, (e - r._startTime) * r._speed * t, 0, 0, r._fps < n ? r.requestTick(e) : Yo.AUTO), r = i;
+				r.paused ? (cc(this, r), this._hasChildren = !!this._tail, r._running = !1, r.completed && !r._cancelled && r.cancel()) : jc(r, (e - r._startTime) * r._speed * t, 0, 0, r._fps < n ? r.requestTick(e) : is.AUTO), r = i;
 			}
-			Dc.update();
+			Ic.update();
 		}
 	}
 	wake() {
-		return this.useDefaultMainLoop && !this.reqId && (this.requestTick(Ts()), this.reqId = kc(Mc)), this;
+		return this.useDefaultMainLoop && !this.reqId && (this.requestTick(Ps()), this.reqId = Rc(Vc)), this;
 	}
 	pause() {
-		if (this.reqId) return this.paused = !0, Nc();
+		if (this.reqId) return this.paused = !0, Hc();
 	}
 	resume() {
 		if (this.paused) return this.paused = !1, Y(this, (e) => e.resetTime()), this.wake();
 	}
 	get speed() {
-		return this._speed * (G.timeScale === 1 ? 1 : ns);
+		return this._speed * (G.timeScale === 1 ? 1 : ds);
 	}
 	set speed(e) {
 		let t = e * G.timeScale;
@@ -4529,7 +4610,7 @@ var ac = (e) => {
 		let t = .001, n = e === "s", r = n ? t : 1;
 		if (G.timeScale !== r) {
 			G.timeScale = r, G.tickThreshold = 200 * r;
-			let e = n ? t : ns;
+			let e = n ? t : ds;
 			this.defaults.duration *= e, this._speed *= e;
 		}
 	}
@@ -4540,40 +4621,40 @@ var ac = (e) => {
 		G.precision = e;
 	}
 }, Z = /*#__PURE__*/ (() => {
-	let e = new jc(Ts());
-	return Ko && (Ss.engine = e, Jo.addEventListener("visibilitychange", () => {
-		e.pauseOnDocumentHidden && (Jo.hidden ? e.pause() : e.resume());
+	let e = new Bc(Ps());
+	return ts && (js.engine = e, rs.addEventListener("visibilitychange", () => {
+		e.pauseOnDocumentHidden && (rs.hidden ? e.pause() : e.resume());
 	})), e;
-})(), Mc = () => {
-	Z._head ? (Z.reqId = kc(Mc), Z.update()) : Z.reqId = 0;
-}, Nc = () => (Ac(Z.reqId), Z.reqId = 0, Z), Pc = {
+})(), Vc = () => {
+	Z._head ? (Z.reqId = Rc(Vc), Z.update()) : Z.reqId = 0;
+}, Hc = () => (zc(Z.reqId), Z.reqId = 0, Z), Uc = {
 	_rep: /* @__PURE__ */ new WeakMap(),
 	_add: /* @__PURE__ */ new Map()
-}, Fc = (e, t, n = "_rep") => {
-	let r = Pc[n], i = r.get(e);
+}, Wc = (e, t, n = "_rep") => {
+	let r = Uc[n], i = r.get(e);
 	return i || (i = {}, r.set(e, i)), i[t] ? i[t] : i[t] = {
 		_head: null,
 		_tail: null
 	};
-}, Ic = (e, t) => e._isOverridden || e._absoluteStartTime > t._absoluteStartTime, Lc = (e) => {
+}, Gc = (e, t) => e._isOverridden || e._absoluteStartTime > t._absoluteStartTime, Kc = (e) => {
 	e._isOverlapped = 1, e._isOverridden = 1, e._changeDuration = W, e._currentTime = W;
-}, Rc = (e, t) => {
+}, qc = (e, t) => {
 	let n = e._composition;
 	if (n === U.replace) {
 		let n = e._absoluteStartTime;
-		ec(t, e, Ic, "_prevRep", "_nextRep");
+		lc(t, e, Gc, "_prevRep", "_nextRep");
 		let r = e._prevRep;
 		if (r) {
 			let t = r.parent, i = r._absoluteEndTime;
 			if (e.parent.id !== t.id && t.iterationCount > 1 && i + (t.duration - t.iterationDuration) > n) {
-				Lc(r);
+				Kc(r);
 				let e = r._prevRep;
-				for (; e && e.parent.id === t.id;) Lc(e), e = e._prevRep;
+				for (; e && e.parent.id === t.id;) Kc(e), e = e._prevRep;
 			}
 			let a = e._absoluteUpdateStartTime;
 			if (i > a) {
 				let e = r._startTime, t = q(a - (i - (e + r._updateDuration)) - e, 12);
-				r._changeDuration = t, r._currentTime = t, r._isOverlapped = 1, t < 1e-11 && Lc(r);
+				r._changeDuration = t, r._currentTime = t, r._isOverlapped = 1, t < 1e-11 && Kc(r);
 			}
 			let o = e.parent.parent;
 			if (!o || o !== t.parent) {
@@ -4594,8 +4675,8 @@ var ac = (e) => {
 			}
 		}
 	} else if (n === U.blend) {
-		let t = Fc(e.target, e.property, "_add"), n = Oc(Pc._add), r = t._head;
-		r || (r = { ...e }, r._composition = U.replace, r._updateDuration = W, r._startTime = 0, r._numbers = J(e._fromNumbers), r._number = 0, r._next = null, r._prev = null, ec(t, r), ec(n, r));
+		let t = Wc(e.target, e.property, "_add"), n = Lc(Uc._add), r = t._head;
+		r || (r = { ...e }, r._composition = U.replace, r._updateDuration = W, r._startTime = 0, r._numbers = J(e._fromNumbers), r._number = 0, r._next = null, r._prev = null, lc(t, r), lc(n, r));
 		let i = e._toNumber;
 		if (e._fromNumber = r._fromNumber - i, e._toNumber = 0, e._numbers = J(e._fromNumbers), e._number = 0, r._fromNumber = i, e._toNumbers.length) {
 			let t = J(e._toNumbers);
@@ -4603,21 +4684,21 @@ var ac = (e) => {
 				e._fromNumbers[n] = r._fromNumbers[n] - t, e._toNumbers[n] = 0;
 			}), r._fromNumbers = t;
 		}
-		ec(t, e, null, "_prevAdd", "_nextAdd");
+		lc(t, e, null, "_prevAdd", "_nextAdd");
 	}
 	return e;
-}, zc = (e) => {
+}, Jc = (e) => {
 	let t = e._composition;
 	if (t !== U.none) {
-		let n = e.target, r = e.property, i = Pc._rep.get(n)[r];
-		if ($s(i, e, "_prevRep", "_nextRep"), t === U.blend) {
-			let t = Pc._add, i = t.get(n);
+		let n = e.target, r = e.property, i = Uc._rep.get(n)[r];
+		if (cc(i, e, "_prevRep", "_nextRep"), t === U.blend) {
+			let t = Uc._add, i = t.get(n);
 			if (!i) return;
-			let a = i[r], o = Dc.animation;
-			$s(a, e, "_prevAdd", "_nextAdd");
+			let a = i[r], o = Ic.animation;
+			cc(a, e, "_prevAdd", "_nextAdd");
 			let s = a._head;
 			if (s && s === a._tail) {
-				$s(a, s, "_prevAdd", "_nextAdd"), $s(o, s);
+				cc(a, s, "_prevAdd", "_nextAdd"), cc(o, s);
 				let e = !0;
 				for (let t in i) if (i[t]._head) {
 					e = !1;
@@ -4628,38 +4709,38 @@ var ac = (e) => {
 		}
 	}
 	return e;
-}, Bc = (e, t, n) => {
+}, Yc = (e, t, n) => {
 	let r = !1;
 	return Y(t, (i) => {
 		let a = i.target;
 		if (e.includes(a)) {
-			let e = i.property, o = i._tweenType, s = wc(n, a, o);
-			(!s || s && s === e) && (i.parent._tail === i && i._tweenType === V.TRANSFORM && i._prev && i._prev._tweenType === V.TRANSFORM && (i._prev._renderTransforms = 1), $s(t, i), zc(i), r = !0);
+			let e = i.property, o = i._tweenType, s = Nc(n, a, o);
+			(!s || s && s === e) && (i.parent._tail === i && i._tweenType === V.TRANSFORM && i._prev && i._prev._tweenType === V.TRANSFORM && (i._prev._renderTransforms = 1), cc(t, i), Jc(i), r = !0);
 		}
 	}, !0), r;
-}, Vc = (e, t, n) => {
+}, Xc = (e, t, n) => {
 	let r = t || Z, i;
 	if (r._hasChildren) {
 		let t = 0;
 		Y(r, (a) => {
-			if (!a._hasChildren) if (i = Bc(e, a, n), i && !a._head) a.cancel(), $s(r, a);
+			if (!a._hasChildren) if (i = Yc(e, a, n), i && !a._head) a.cancel(), cc(r, a);
 			else {
 				let e = a._offset + a._delay + a.duration;
 				e > t && (t = e);
 			}
-			a._head ? Vc(e, a, n) : a._hasChildren = !1;
+			a._head ? Xc(e, a, n) : a._hasChildren = !1;
 		}, !0), K(r.iterationDuration) || (r.iterationDuration = t);
-	} else i = Bc(e, r, n);
+	} else i = Yc(e, r, n);
 	i && !r._head && (r._hasChildren = !1, r.cancel && r.cancel());
-}, Hc = (e) => (e.paused = !0, e.began = !1, e.completed = !1, e), Uc = (e) => e._cancelled ? (e._hasChildren ? Y(e, Uc) : Y(e, (e) => {
-	e._composition !== U.none && Rc(e, Fc(e.target, e.property));
-}), e._cancelled = 0, e) : e, Wc = 0, Gc = (e, t) => e._priority > t._priority, Kc = class extends Ec {
+}, Zc = (e) => (e.paused = !0, e.began = !1, e.completed = !1, e), Qc = (e) => e._cancelled ? (e._hasChildren ? Y(e, Qc) : Y(e, (e) => {
+	e._composition !== U.none && qc(e, Wc(e.target, e.property));
+}), e._cancelled = 0, e) : e, $c = 0, el = (e, t) => e._priority > t._priority, tl = class extends Fc {
 	constructor(e = {}, t = null, n = 0) {
-		super(0), ++Wc;
+		super(0), ++$c;
 		let { id: r, delay: i, duration: a, reversed: o, alternate: s, loop: c, loopDelay: l, autoplay: u, frameRate: d, playbackRate: f, priority: p, onComplete: m, onLoop: h, onPause: g, onBegin: _, onBeforeUpdate: v, onUpdate: y } = e;
-		xs.current && xs.current.register(this);
-		let b = t ? 0 : Z._lastTickTime, x = t ? t.defaults : G.defaults, S = As(i) || K(i) ? x.delay : +i, C = As(a) || K(a) ? Infinity : +a, ee = X(c, x.loop), w = X(l, x.loopDelay), T = ee === !0 || ee === Infinity || ee < 0 ? Infinity : ee + 1, te = 0;
-		t ? te = n : (Z.reqId || Z.requestTick(Ts()), te = (Z._lastTickTime - Z._startTime) * G.timeScale), this.id = K(r) ? Wc : r, this.parent = t, this.duration = Xs((C + w) * T - w) || 1e-11, this.backwards = !1, this.paused = !0, this.began = !1, this.completed = !1, this.onBegin = _ || x.onBegin, this.onBeforeUpdate = v || x.onBeforeUpdate, this.onUpdate = y || x.onUpdate, this.onLoop = h || x.onLoop, this.onPause = g || x.onPause, this.onComplete = m || x.onComplete, this.iterationDuration = C, this.iterationCount = T, this._autoplay = !t && X(u, x.autoplay), this._offset = te, this._delay = S, this._loopDelay = w, this._iterationTime = 0, this._currentIteration = 0, this._resolve = ss, this._running = !1, this._reversed = +X(o, x.reversed), this._reverse = this._reversed, this._cancelled = 0, this._alternate = X(s, x.alternate), this._prev = null, this._next = null, this._lastTickTime = b, this._startTime = b, this._lastTime = b, this._fps = X(d, x.frameRate), this._speed = X(f, x.playbackRate), this._priority = +X(p, 1);
+		As.current && As.current.register(this);
+		let b = t ? 0 : Z._lastTickTime, x = t ? t.defaults : G.defaults, S = zs(i) || K(i) ? x.delay : +i, C = zs(a) || K(a) ? Infinity : +a, ee = X(c, x.loop), w = X(l, x.loopDelay), T = ee === !0 || ee === Infinity || ee < 0 ? Infinity : ee + 1, te = 0;
+		t ? te = n : (Z.reqId || Z.requestTick(Ps()), te = (Z._lastTickTime - Z._startTime) * G.timeScale), this.id = K(r) ? $c : r, this.parent = t, this.duration = ac((C + w) * T - w) || 1e-11, this.backwards = !1, this.paused = !0, this.began = !1, this.completed = !1, this.onBegin = _ || x.onBegin, this.onBeforeUpdate = v || x.onBeforeUpdate, this.onUpdate = y || x.onUpdate, this.onLoop = h || x.onLoop, this.onPause = g || x.onPause, this.onComplete = m || x.onComplete, this.iterationDuration = C, this.iterationCount = T, this._autoplay = !t && X(u, x.autoplay), this._offset = te, this._delay = S, this._loopDelay = w, this._iterationTime = 0, this._currentIteration = 0, this._resolve = gs, this._running = !1, this._reversed = +X(o, x.reversed), this._reverse = this._reversed, this._cancelled = 0, this._alternate = X(s, x.alternate), this._prev = null, this._next = null, this._lastTickTime = b, this._startTime = b, this._lastTime = b, this._fps = X(d, x.frameRate), this._speed = X(f, x.playbackRate), this._priority = +X(p, 1);
 	}
 	get cancelled() {
 		return !!this._cancelled;
@@ -4668,26 +4749,26 @@ var ac = (e) => {
 		e ? this.cancel() : this.reset(!0).play();
 	}
 	get currentTime() {
-		return Js(q(this._currentTime, G.precision), -this._delay, this.duration);
+		return rc(q(this._currentTime, G.precision), -this._delay, this.duration);
 	}
 	set currentTime(e) {
 		let t = this.paused;
 		this.pause().seek(+e), t || this.resume();
 	}
 	get iterationCurrentTime() {
-		return Js(q(this._iterationTime, G.precision), 0, this.iterationDuration);
+		return rc(q(this._iterationTime, G.precision), 0, this.iterationDuration);
 	}
 	set iterationCurrentTime(e) {
 		this.currentTime = this.iterationDuration * this._currentIteration + e;
 	}
 	get progress() {
-		return Js(q(this._currentTime / this.duration, 10), 0, 1);
+		return rc(q(this._currentTime / this.duration, 10), 0, 1);
 	}
 	set progress(e) {
 		this.currentTime = this.duration * e;
 	}
 	get iterationProgress() {
-		return Js(q(this._iterationTime / this.iterationDuration, 10), 0, 1);
+		return rc(q(this._iterationTime / this.iterationDuration, 10), 0, 1);
 	}
 	set iterationProgress(e) {
 		let t = this.iterationDuration;
@@ -4697,7 +4778,7 @@ var ac = (e) => {
 		return this._currentIteration;
 	}
 	set currentIteration(e) {
-		this.currentTime = this.iterationDuration * Js(+e, 0, this.iterationCount - 1);
+		this.currentTime = this.iterationDuration * rc(+e, 0, this.iterationCount - 1);
 	}
 	get reversed() {
 		return !!this._reversed;
@@ -4712,33 +4793,33 @@ var ac = (e) => {
 		super.speed = e, this.resetTime();
 	}
 	reset(e = !1) {
-		return Uc(this), this._reversed && !this._reverse && (this.reversed = !1), this._iterationTime = this.iterationDuration, Sc(this, 0, 1, ~~e, Yo.FORCE), Hc(this), this._hasChildren && Y(this, Hc), this;
+		return Qc(this), this._reversed && !this._reverse && (this.reversed = !1), this._iterationTime = this.iterationDuration, jc(this, 0, 1, ~~e, is.FORCE), Zc(this), this._hasChildren && Y(this, Zc), this;
 	}
 	init(e = !1) {
-		this.fps = this._fps, this.speed = this._speed, !e && this._hasChildren && Sc(this, this.duration, 1, ~~e, Yo.FORCE), this.reset(e);
+		this.fps = this._fps, this.speed = this._speed, !e && this._hasChildren && jc(this, this.duration, 1, ~~e, is.FORCE), this.reset(e);
 		let t = this._autoplay;
 		return t === !0 ? this.resume() : t && !K(t.linked) && t.link(this), this;
 	}
 	resetTime() {
 		let e = 1 / (this._speed * Z._speed);
-		return this._startTime = Ts() - (this._currentTime + this._delay) * e, this;
+		return this._startTime = Ps() - (this._currentTime + this._delay) * e, this;
 	}
 	pause() {
 		return this.paused ? this : (this.paused = !0, this.onPause(this), this);
 	}
 	resume() {
-		return this.paused ? (this.paused = !1, this.duration <= 1e-11 && !this._hasChildren ? Sc(this, W, 0, 0, Yo.FORCE) : (this._running ||= (ec(Z, this, Gc), Z._hasChildren = !0, !0), this.resetTime(), this._startTime -= 12, Z.wake()), this) : this;
+		return this.paused ? (this.paused = !1, this.duration <= 1e-11 && !this._hasChildren ? jc(this, W, 0, 0, is.FORCE) : (this._running ||= (lc(Z, this, el), Z._hasChildren = !0, !0), this.resetTime(), this._startTime -= 12, Z.wake()), this) : this;
 	}
 	restart() {
 		return this.reset().resume();
 	}
 	seek(e, t = 0, n = 0) {
-		Uc(this), this.completed = !1;
+		Qc(this), this.completed = !1;
 		let r = this.paused;
-		return this.paused = !0, Sc(this, e + this._delay, ~~t, ~~n, Yo.AUTO), r ? this : this.resume();
+		return this.paused = !0, jc(this, e + this._delay, ~~t, ~~n, is.AUTO), r ? this : this.resume();
 	}
 	alternate() {
-		let e = this._reversed, t = this.iterationCount, n = this.iterationDuration, r = t === Infinity ? Ws(ts / n) : t;
+		let e = this._reversed, t = this.iterationCount, n = this.iterationDuration, r = t === Infinity ? $s(us / n) : t;
 		return this._reversed = +(this._alternate && !(r % 2) ? e : !e), t === Infinity ? this.iterationProgress = this._reversed ? 1 - this.iterationProgress : this.iterationProgress : this.seek(n * r - this._currentTime), this.resetTime(), this;
 	}
 	play() {
@@ -4748,47 +4829,47 @@ var ac = (e) => {
 		return this._reversed || this.alternate(), this.resume();
 	}
 	cancel() {
-		return this._hasChildren ? Y(this, (e) => e.cancel(), !0) : Y(this, zc), this._cancelled = 1, this.pause();
+		return this._hasChildren ? Y(this, (e) => e.cancel(), !0) : Y(this, Jc), this._cancelled = 1, this.pause();
 	}
 	stretch(e) {
-		let t = this.duration, n = Zs(e);
+		let t = this.duration, n = oc(e);
 		if (t === n) return this;
 		let r = e / t, i = e <= W;
-		return this.duration = i ? W : n, this.iterationDuration = i ? W : Zs(this.iterationDuration * r), this._offset *= r, this._delay *= r, this._loopDelay *= r, this;
+		return this.duration = i ? W : n, this.iterationDuration = i ? W : oc(this.iterationDuration * r), this._offset *= r, this._delay *= r, this._loopDelay *= r, this;
 	}
 	revert() {
-		Sc(this, 0, 1, 0, Yo.AUTO);
+		jc(this, 0, 1, 0, is.AUTO);
 		let e = this._autoplay;
 		return e && e.linked && e.linked === this && e.revert(), this.cancel();
 	}
 	complete(e = 0) {
 		return this.seek(this.duration, e).cancel();
 	}
-	then(e = ss) {
+	then(e = gs) {
 		let t = this.then, n = () => {
-			this.then = null, e(this), this.then = t, this._resolve = ss;
+			this.then = null, e(this), this.then = t, this._resolve = gs;
 		};
 		return new Promise((e) => (this._resolve = () => e(n()), this.completed && this._resolve(), this));
 	}
 };
 //#endregion
 //#region node_modules/.pnpm/animejs@4.5.0/node_modules/animejs/dist/modules/core/targets.js
-function qc(e) {
-	let t = ks(e) ? xs.root.querySelectorAll(e) : e;
+function nl(e) {
+	let t = Rs(e) ? As.root.querySelectorAll(e) : e;
 	if (t instanceof NodeList || t instanceof HTMLCollection) return t;
 }
-function Jc(e) {
-	if (js(e)) return [];
-	if (!Ko) return Es(e) && e.flat(Infinity) || [e];
-	if (Es(e)) {
+function rl(e) {
+	if (Bs(e)) return [];
+	if (!ts) return Fs(e) && e.flat(Infinity) || [e];
+	if (Fs(e)) {
 		let t = e.flat(Infinity), n = [];
 		for (let e = 0, r = t.length; e < r; e++) {
 			let r = t[e];
-			if (!js(r)) {
-				let e = qc(r);
+			if (!Bs(r)) {
+				let e = nl(r);
 				if (e) for (let t = 0, r = e.length; t < r; t++) {
 					let r = e[t];
-					if (!js(r)) {
+					if (!Bs(r)) {
 						let e = !1;
 						for (let t = 0, i = n.length; t < i; t++) if (n[t] === r) {
 							e = !0;
@@ -4809,37 +4890,37 @@ function Jc(e) {
 		}
 		return n;
 	}
-	let t = qc(e);
+	let t = nl(e);
 	return t ? Array.from(t) : [e];
 }
-function Yc(e) {
-	let t = Jc(e), n = t.length;
+function il(e) {
+	let t = rl(e), n = t.length;
 	for (let e = 0; e < n; e++) {
 		let n = t[e];
-		if (!n[Xo]) {
-			n[Xo] = !0;
-			let e = Ms(n);
-			(n.nodeType || e) && (n[Zo] = !0, n[Qo] = e, n[$o] = {});
+		if (!n[as]) {
+			n[as] = !0;
+			let e = Vs(n);
+			(n.nodeType || e) && (n[os] = !0, n[ss] = e, n[cs] = {});
 		}
 	}
 	return t;
 }
 //#endregion
 //#region node_modules/.pnpm/animejs@4.5.0/node_modules/animejs/dist/modules/core/units.js
-var Xc = {
+var al = {
 	deg: 1,
-	rad: 180 / Ks,
+	rad: 180 / tc,
 	turn: 360
-}, Zc = {}, Qc = (e, t, n, r = !1) => {
+}, ol = {}, sl = (e, t, n, r = !1) => {
 	let i = t.u, a = t.n;
 	if (t.t === H.UNIT && i === n) return t;
-	let o = a + i + n, s = Zc[o];
+	let o = a + i + n, s = ol[o];
 	if (!K(s) && !r) t.n = s;
 	else {
 		let r;
-		if (i in Xc) r = a * Xc[i] / Xc[n];
+		if (i in al) r = a * al[i] / al[n];
 		else {
-			let t = e.cloneNode(), o = e.parentNode, s = o && o !== Jo ? o : Jo.body;
+			let t = e.cloneNode(), o = e.parentNode, s = o && o !== rs ? o : rs.body;
 			s.appendChild(t);
 			let c = t.style;
 			c.width = 100 + i;
@@ -4848,76 +4929,76 @@ var Xc = {
 			let u = l / (t.offsetWidth || 100);
 			s.removeChild(t), r = u * a;
 		}
-		t.n = r, Zc[o] = r;
+		t.n = r, ol[o] = r;
 	}
 	return t.t, H.UNIT, t.u = n, t;
-}, $c = (e) => e, el = (e = 1.68) => (t) => Bs(t, +e), tl = {
+}, cl = (e) => e, ll = (e = 1.68) => (t) => Ys(t, +e), ul = {
 	in: (e) => (t) => e(t),
 	out: (e) => (t) => 1 - e(1 - t),
 	inOut: (e) => (t) => t < .5 ? e(t * 2) / 2 : 1 - e(t * -2 + 2) / 2,
 	outIn: (e) => (t) => t < .5 ? (1 - e(1 - t * 2)) / 2 : (e(t * 2 - 1) + 1) / 2
-}, nl = Ks / 2, rl = Ks * 2, il = {
-	"": el,
-	Quad: el(2),
-	Cubic: el(3),
-	Quart: el(4),
-	Quint: el(5),
-	Sine: (e) => 1 - Us(e * nl),
-	Circ: (e) => 1 - Vs(1 - e * e),
-	Expo: (e) => e ? Bs(2, 10 * e - 10) : 0,
+}, dl = tc / 2, fl = tc * 2, pl = {
+	"": ll,
+	Quad: ll(2),
+	Cubic: ll(3),
+	Quart: ll(4),
+	Quint: ll(5),
+	Sine: (e) => 1 - Qs(e * dl),
+	Circ: (e) => 1 - Xs(1 - e * e),
+	Expo: (e) => e ? Ys(2, 10 * e - 10) : 0,
 	Bounce: (e) => {
 		let t, n = 4;
-		for (; e < ((t = Bs(2, --n)) - 1) / 11;);
-		return 1 / Bs(4, 3 - n) - 7.5625 * Bs((t * 3 - 2) / 22 - e, 2);
+		for (; e < ((t = Ys(2, --n)) - 1) / 11;);
+		return 1 / Ys(4, 3 - n) - 7.5625 * Ys((t * 3 - 2) / 22 - e, 2);
 	},
 	Back: (e = 1.7) => (t) => (+e + 1) * t * t * t - +e * t * t,
 	Elastic: (e = 1, t = .3) => {
-		let n = Js(+e, 1, 10), r = Js(+t, W, 2), i = r / rl * Gs(1 / n), a = rl / r;
-		return (e) => e === 0 || e === 1 ? e : -n * Bs(2, -10 * (1 - e)) * Hs((1 - e - i) * a);
+		let n = rc(+e, 1, 10), r = rc(+t, W, 2), i = r / fl * ec(1 / n), a = fl / r;
+		return (e) => e === 0 || e === 1 ? e : -n * Ys(2, -10 * (1 - e)) * Zs((1 - e - i) * a);
 	}
-}, al = /*#__PURE__ */ (() => {
+}, ml = /*#__PURE__ */ (() => {
 	let e = {
-		linear: $c,
-		none: $c
+		linear: cl,
+		none: cl
 	};
-	for (let t in tl) for (let n in il) {
-		let r = il[n], i = tl[t];
+	for (let t in ul) for (let n in pl) {
+		let r = pl[n], i = ul[t];
 		e[t + n] = n === "" || n === "Back" || n === "Elastic" ? (e, t) => i(r(e, t)) : i(r);
 	}
 	return e;
-})(), ol = {
-	linear: $c,
-	none: $c
-}, sl = (e) => {
-	if (ol[e]) return ol[e];
+})(), hl = {
+	linear: cl,
+	none: cl
+}, gl = (e) => {
+	if (hl[e]) return hl[e];
 	if (e.indexOf("(") <= -1) {
-		let t = tl[e] || e.includes("Back") || e.includes("Elastic") ? al[e]() : al[e];
-		return t ? ol[e] = t : $c;
+		let t = ul[e] || e.includes("Back") || e.includes("Elastic") ? ml[e]() : ml[e];
+		return t ? hl[e] = t : cl;
 	} else {
-		let t = e.slice(0, -1).split("("), n = al[t[0]];
-		return n ? ol[e] = n(...t[1].split(",")) : $c;
+		let t = e.slice(0, -1).split("("), n = ml[t[0]];
+		return n ? hl[e] = n(...t[1].split(",")) : cl;
 	}
-}, cl = [
+}, _l = [
 	"steps(",
 	"irregular(",
 	"linear(",
 	"cubicBezier("
-], ll = (e) => {
-	if (ks(e)) {
-		for (let t = 0, n = cl.length; t < n; t++) if (ws(e, cl[t])) return console.warn(`String syntax for \`ease: "${e}"\` has been removed from the core and replaced by importing and passing the easing function directly: \`ease: ${e}\``), $c;
+], vl = (e) => {
+	if (Rs(e)) {
+		for (let t = 0, n = _l.length; t < n; t++) if (Ns(e, _l[t])) return console.warn(`String syntax for \`ease: "${e}"\` has been removed from the core and replaced by importing and passing the easing function directly: \`ease: ${e}\``), cl;
 	}
-	return As(e) ? e : ks(e) ? sl(e) : $c;
-}, Q = gc(), $ = gc(), ul = {}, dl = { func: null }, fl = { func: null }, pl = [null], ml = [null, null], hl = { to: null }, gl = 0, _l = 0, vl, yl, bl = (e, t) => {
+	return zs(e) ? e : Rs(e) ? gl(e) : cl;
+}, Q = Tc(), $ = Tc(), yl = {}, bl = { func: null }, xl = { func: null }, Sl = [null], Cl = [null, null], wl = { to: null }, Tl = 0, El = 0, Dl, Ol, kl = (e, t) => {
 	let n = {};
-	if (Es(e)) {
-		let t = [].concat(...e.map((e) => Object.keys(e))).filter(Ls);
+	if (Fs(e)) {
+		let t = [].concat(...e.map((e) => Object.keys(e))).filter(Ks);
 		for (let r = 0, i = t.length; r < i; r++) {
 			let i = t[r];
 			n[i] = e.map((e) => {
 				let t = {};
 				for (let n in e) {
 					let r = e[n];
-					Ls(n) ? n === i && (t.to = r) : t[n] = r;
+					Ks(n) ? n === i && (t.to = r) : t[n] = r;
 				}
 				return t;
 			});
@@ -4929,7 +5010,7 @@ var Xc = {
 			p: e[t]
 		})).sort((e, t) => e.o - t.o).forEach((e) => {
 			let t = e.o, i = e.p;
-			for (let e in i) if (Ls(e)) {
+			for (let e in i) if (Ks(e)) {
 				let a = n[e];
 				a ||= n[e] = [];
 				let o = t * r, s = a.length, c = a[s - 1], l = { to: i[e] }, u = 0;
@@ -4948,43 +5029,43 @@ var Xc = {
 		}
 	}
 	return n;
-}, xl = class extends Kc {
+}, Al = class extends tl {
 	constructor(e, t, n, r, i = !1, a = 0, o) {
-		super(t, n, r), this._head, this._tail, ++_l;
-		let s = Yc(e), c = s.length, l = t.keyframes, u = l ? Qs(bl(l, t), t) : t, { id: d, delay: f, duration: p, ease: m, playbackEase: h, modifier: g, composition: _, onRender: v } = u, y = n ? n.defaults : G.defaults, b = X(m, y.ease), x = X(h, y.playbackEase), S = x ? ll(x) : null, C = !K(b.ease), ee = C ? b.ease : X(m, S ? "linear" : y.ease), w = C ? b.settlingDuration : X(p, y.duration), T = X(f, y.delay), te = g || y.modifier, ne = K(_) && c >= 1e3 ? U.none : K(_) ? y.composition : _, re = this._offset + (n ? n._offset : 0);
+		super(t, n, r), this._head, this._tail, ++El;
+		let s = il(e), c = s.length, l = t.keyframes, u = l ? sc(kl(l, t), t) : t, { id: d, delay: f, duration: p, ease: m, playbackEase: h, modifier: g, composition: _, onRender: v } = u, y = n ? n.defaults : G.defaults, b = X(m, y.ease), x = X(h, y.playbackEase), S = x ? vl(x) : null, C = !K(b.ease), ee = C ? b.ease : X(m, S ? "linear" : y.ease), w = C ? b.settlingDuration : X(p, y.duration), T = X(f, y.delay), te = g || y.modifier, ne = K(_) && c >= 1e3 ? U.none : K(_) ? y.composition : _, re = this._offset + (n ? n._offset : 0);
 		C && (b.parent = this);
 		let E = NaN, D = NaN, ie = 0, ae = 0;
 		for (let e = 0; e < c; e++) {
 			let t = s[e], r = a || e, c = o || s, l = NaN, d = NaN;
-			for (let e in u) if (Ls(e)) {
-				let a = fc(t, e), o = ic(t, e), s = wc(e, t, a), f = u[e], p = Es(f);
-				if (i && !p && (ml[0] = f, ml[1] = f, f = ml), p) {
-					let e = f.length, t = !Ds(f[0]);
-					e === 2 && t ? (hl.to = f, pl[0] = hl, vl = pl) : e > 2 && t ? (vl = [], f.forEach((e, t) => {
-						t ? t === 1 ? (ml[1] = e, vl.push(ml)) : vl.push(e) : ml[0] = e;
-					})) : vl = f;
-				} else pl[0] = f, vl = pl;
+			for (let e in u) if (Ks(e)) {
+				let a = xc(t, e), o = pc(t, e), s = Nc(e, t, a), f = u[e], p = Fs(f);
+				if (i && !p && (Cl[0] = f, Cl[1] = f, f = Cl), p) {
+					let e = f.length, t = !Is(f[0]);
+					e === 2 && t ? (wl.to = f, Sl[0] = wl, Dl = Sl) : e > 2 && t ? (Dl = [], f.forEach((e, t) => {
+						t ? t === 1 ? (Cl[1] = e, Dl.push(Cl)) : Dl.push(e) : Cl[0] = e;
+					})) : Dl = f;
+				} else Sl[0] = f, Dl = Sl;
 				let m = null, h = null, g = NaN, _ = 0, v = 0;
-				for (let e = vl.length; v < e; v++) {
-					let i = vl[v];
-					Ds(i) ? yl = i : (hl.to = i, yl = hl), dl.func = null, fl.func = null;
-					let l = dc(X(yl.composition, ne), t, r, c, null, null), u = Os(l) ? l : U[l];
-					!m && u !== U.none && (m = Fc(t, s));
-					let d = m ? m._tail : null, f = n && d && d.parent.parent === n ? d : h, p = dc(yl.to, t, r, c, dl, f), y;
-					Ds(p) && !K(p.to) ? (yl = p, y = p.to) : y = p;
-					let b = dc(yl.from, t, r, c, fl, f), x = yl.ease || ee, S = dc(x, t, r, c, null, f), C = As(S) || ks(S) ? S : x, E = !K(C) && !K(C.ease), D = E ? C.ease : C, oe = E ? C.settlingDuration : dc(X(yl.duration, e > 1 ? dc(w, t, r, c, null, f) / e : w), t, r, c, null, f), se = dc(X(yl.delay, v ? 0 : T), t, r, c, null, f), ce = yl.modifier || te, le = !K(b), ue = !K(y), de = Es(y), fe = de || le && ue, pe = h ? _ : 0, me = h ? _ + se : se, he = q(re + me, 12), ge = q(re + pe, 12);
+				for (let e = Dl.length; v < e; v++) {
+					let i = Dl[v];
+					Is(i) ? Ol = i : (wl.to = i, Ol = wl), bl.func = null, xl.func = null;
+					let l = bc(X(Ol.composition, ne), t, r, c, null, null), u = Ls(l) ? l : U[l];
+					!m && u !== U.none && (m = Wc(t, s));
+					let d = m ? m._tail : null, f = n && d && d.parent.parent === n ? d : h, p = bc(Ol.to, t, r, c, bl, f), y;
+					Is(p) && !K(p.to) ? (Ol = p, y = p.to) : y = p;
+					let b = bc(Ol.from, t, r, c, xl, f), x = Ol.ease || ee, S = bc(x, t, r, c, null, f), C = zs(S) || Rs(S) ? S : x, E = !K(C) && !K(C.ease), D = E ? C.ease : C, oe = E ? C.settlingDuration : bc(X(Ol.duration, e > 1 ? bc(w, t, r, c, null, f) / e : w), t, r, c, null, f), se = bc(X(Ol.delay, v ? 0 : T), t, r, c, null, f), ce = Ol.modifier || te, le = !K(b), ue = !K(y), de = Fs(y), fe = de || le && ue, pe = h ? _ : 0, me = h ? _ + se : se, he = q(re + me, 12), ge = q(re + pe, 12);
 					!ae && (le || de) && (ae = 1);
 					let O = h;
 					if (u !== U.none) {
 						let e = m._head;
-						for (; e && e._absoluteStartTime <= he;) if (e._isOverridden || (O = e), e = e._nextRep, e && e._absoluteStartTime >= he) for (; e;) Lc(e), e = e._nextRep;
+						for (; e && e._absoluteStartTime <= he;) if (e._isOverridden || (O = e), e = e._nextRep, e && e._absoluteStartTime >= he) for (; e;) Kc(e), e = e._nextRep;
 					}
 					if (fe) {
-						_c(de ? dc(y[0], t, r, c, fl, f) : b, Q), _c(de ? dc(y[1], t, r, c, dl, f) : y, $);
-						let e = mc(t, s, a, ul);
-						Q.t === H.NUMBER && (O ? O._valueType === H.UNIT && (Q.t = H.UNIT, Q.u = O._unit) : (_c(e, yc), yc.t === H.UNIT && (Q.t = H.UNIT, Q.u = yc.u)));
-					} else ue ? _c(y, $) : h ? vc(h, $) : _c(n && O && O.parent.parent === n ? O._value : mc(t, s, a, ul), $), le ? _c(b, Q) : h ? vc(h, Q) : _c(n && O && O.parent.parent === n ? O._value : mc(t, s, a, ul), Q);
-					if (Q.o && (Q.n = hc(O ? O._toNumber : _c(mc(t, s, a, ul), yc).n, Q.n, Q.o)), $.o && ($.n = hc(Q.n, $.n, $.o)), Q.t !== $.t) {
+						Ec(de ? bc(y[0], t, r, c, xl, f) : b, Q), Ec(de ? bc(y[1], t, r, c, bl, f) : y, $);
+						let e = Cc(t, s, a, yl);
+						Q.t === H.NUMBER && (O ? O._valueType === H.UNIT && (Q.t = H.UNIT, Q.u = O._unit) : (Ec(e, Oc), Oc.t === H.UNIT && (Q.t = H.UNIT, Q.u = Oc.u)));
+					} else ue ? Ec(y, $) : h ? Dc(h, $) : Ec(n && O && O.parent.parent === n ? O._value : Cc(t, s, a, yl), $), le ? Ec(b, Q) : h ? Dc(h, Q) : Ec(n && O && O.parent.parent === n ? O._value : Cc(t, s, a, yl), Q);
+					if (Q.o && (Q.n = wc(O ? O._toNumber : Ec(Cc(t, s, a, yl), Oc).n, Q.n, Q.o)), $.o && ($.n = wc(Q.n, $.n, $.o)), Q.t !== $.t) {
 						if (Q.t === H.COMPLEX || $.t === H.COMPLEX) {
 							let e = Q.t === H.COMPLEX ? Q : $, t = Q.t === H.COMPLEX ? $ : Q;
 							t.t = H.COMPLEX, t.s = J(e.s), t.d = e.d.map(() => t.n);
@@ -4998,31 +5079,31 @@ var Xc = {
 					}
 					if (Q.u !== $.u) {
 						let e = $.u ? Q : $;
-						e = Qc(t, e, $.u ? $.u : Q.u, !1);
+						e = sl(t, e, $.u ? $.u : Q.u, !1);
 					}
 					if ($.d && Q.d && $.d.length !== Q.d.length) {
 						let e = Q.d.length > $.d.length ? Q : $, t = e === Q ? $ : Q;
 						t.d = e.d.map((e, n) => K(t.d[n]) ? 0 : t.d[n]), t.s = J(e.s);
 					}
-					let _e = q(+oe || 1e-11, 12), ve = ul[s];
-					js(ve) || (ul[s] = null);
+					let _e = q(+oe || 1e-11, 12), ve = yl[s];
+					Bs(ve) || (yl[s] = null);
 					let ye = o ? o.set : null;
 					_ = q(me + _e, 12);
 					let be = Q.d, xe = $.d, Se = $.s, k = {
 						parent: this,
-						id: gl++,
+						id: Tl++,
 						property: s,
 						target: t,
 						_value: null,
-						_toFunc: dl.func,
-						_fromFunc: fl.func,
-						_ease: ll(D),
-						_fromNumbers: be ? J(be) : rs,
-						_toNumbers: xe ? J(xe) : rs,
-						_strings: Se ? J(Se) : rs,
+						_toFunc: bl.func,
+						_fromFunc: xl.func,
+						_ease: vl(D),
+						_fromNumbers: be ? J(be) : fs,
+						_toNumbers: xe ? J(xe) : fs,
+						_strings: Se ? J(Se) : fs,
 						_fromNumber: Q.n,
 						_toNumber: $.n,
-						_numbers: be ? J(be) : rs,
+						_numbers: be ? J(be) : fs,
 						_number: Q.n,
 						_unit: $.u,
 						_modifier: ce,
@@ -5050,22 +5131,22 @@ var Xc = {
 						_prev: null,
 						_next: null
 					};
-					u !== U.none && Rc(k, m);
+					u !== U.none && qc(k, m);
 					let Ce = k._valueType;
-					if (Ce === H.COMPLEX) k._value = bc(k, 1, -1);
+					if (Ce === H.COMPLEX) k._value = kc(k, 1, -1);
 					else if (Ce === H.UNIT) k._value = `${ce(k._toNumber)}${k._unit}`;
 					else if (Ce === H.COLOR) {
 						let e = $.d;
 						k._value = `rgba(${q(e[0], 0)},${q(e[1], 0)},${q(e[2], 0)},${e[3]})`;
 					} else k._value = ce(k._toNumber);
-					isNaN(g) && (g = k._startTime), h = k, ie++, ec(this, k);
+					isNaN(g) && (g = k._startTime), h = k, ie++, lc(this, k);
 				}
 				(isNaN(D) || g < D) && (D = g), (isNaN(E) || _ > E) && (E = _), a === V.TRANSFORM && (l = ie - v, d = ie);
 			}
 			if (!isNaN(l)) {
 				let e = 0;
 				Y(this, (t) => {
-					e >= l && e < d && (t._renderTransforms = 1, t._composition === U.blend && Y(Dc.animation, (e) => {
+					e >= l && e < d && (t._renderTransforms = 1, t._composition === U.blend && Y(Ic.animation, (e) => {
 						e.id === t.id && (e._renderTransforms = 1);
 					})), e++;
 				});
@@ -5073,83 +5154,83 @@ var Xc = {
 		}
 		c || console.warn("No target found. Make sure the element you're trying to animate is accessible before creating your animation."), D ? (Y(this, (e) => {
 			e._startTime - e._delay || (e._delay -= D), e._startTime -= D;
-		}), E -= D) : D = 0, E || (E = W, this.iterationCount = 0), this.targets = s, this.id = K(d) ? _l : d, this.duration = E === 1e-11 ? W : Xs((E + this._loopDelay) * this.iterationCount - this._loopDelay) || 1e-11, this.onRender = v || y.onRender, this._ease = S, this._delay = D, this.iterationDuration = E, !this._autoplay && ae && this.onRender(this);
+		}), E -= D) : D = 0, E || (E = W, this.iterationCount = 0), this.targets = s, this.id = K(d) ? El : d, this.duration = E === 1e-11 ? W : ac((E + this._loopDelay) * this.iterationCount - this._loopDelay) || 1e-11, this.onRender = v || y.onRender, this._ease = S, this._delay = D, this.iterationDuration = E, !this._autoplay && ae && this.onRender(this);
 	}
 	stretch(e) {
 		let t = this.duration;
-		if (t === Zs(e)) return this;
+		if (t === oc(e)) return this;
 		let n = e / t;
 		return Y(this, (e) => {
-			e._updateDuration = Zs(e._updateDuration * n), e._changeDuration = Zs(e._changeDuration * n), e._currentTime *= n, e._delay *= n, e._startTime *= n, e._absoluteStartTime *= n, e._absoluteUpdateStartTime *= n, e._absoluteEndTime *= n;
+			e._updateDuration = oc(e._updateDuration * n), e._changeDuration = oc(e._changeDuration * n), e._currentTime *= n, e._delay *= n, e._startTime *= n, e._absoluteStartTime *= n, e._absoluteUpdateStartTime *= n, e._absoluteEndTime *= n;
 		}), super.stretch(e);
 	}
 	refresh() {
 		return Y(this, (e) => {
 			let t = e._toFunc, n = e._fromFunc;
-			(t || n) && (n ? (_c(n(), Q), Q.u !== e._unit && e.target[Zo] && Qc(e.target, Q, e._unit, !0), e._fromNumbers = J(Q.d), e._fromNumber = Q.n) : t && (_c(mc(e.target, e.property, e._tweenType), yc), e._fromNumbers = J(yc.d), e._fromNumber = yc.n), t && (_c(t(), $), e._toNumbers = J($.d), e._strings = J($.s), e._toNumber = $.o ? hc(e._fromNumber, $.n, $.o) : $.n));
+			(t || n) && (n ? (Ec(n(), Q), Q.u !== e._unit && e.target[os] && sl(e.target, Q, e._unit, !0), e._fromNumbers = J(Q.d), e._fromNumber = Q.n) : t && (Ec(Cc(e.target, e.property, e._tweenType), Oc), e._fromNumbers = J(Oc.d), e._fromNumber = Oc.n), t && (Ec(t(), $), e._toNumbers = J($.d), e._strings = J($.s), e._toNumber = $.o ? wc(e._fromNumber, $.n, $.o) : $.n));
 		}), this.duration === 1e-11 && this.restart(), this;
 	}
 	revert() {
-		return super.revert(), Tc(this);
+		return super.revert(), Pc(this);
 	}
 	then(e) {
 		return super.then(e);
 	}
-}, Sl = (e, t) => {
-	if (ws(t, "<")) {
+}, jl = (e, t) => {
+	if (Ns(t, "<")) {
 		let n = t[1] === "<", r = e._tail, i = r ? r._offset + r._delay : 0;
 		return n ? i : i + r.duration;
 	}
-}, Cl = (e, t) => {
+}, Ml = (e, t) => {
 	let n = e.iterationDuration;
 	if (n === 1e-11 && (n = 0), K(t)) return n;
-	if (Os(+t)) return +t;
-	let r = t, i = e ? e.labels : null, a = !js(i), o = Sl(e, r), s = !K(o), c = vs.exec(r);
+	if (Ls(+t)) return +t;
+	let r = t, i = e ? e.labels : null, a = !Bs(i), o = jl(e, r), s = !K(o), c = Ds.exec(r);
 	if (c) {
 		let e = c[0], t = r.split(e), l = a && t[0] ? i[t[0]] : n;
-		return hc(s ? o : a ? l : n, +t[1], e[0]);
+		return wc(s ? o : a ? l : n, +t[1], e[0]);
 	} else return s ? o : a ? K(i[r]) ? n : i[r] : n;
 };
 //#endregion
 //#region node_modules/.pnpm/animejs@4.5.0/node_modules/animejs/dist/modules/timeline/timeline.js
-function wl(e) {
-	return Xs((e.iterationDuration + e._loopDelay) * e.iterationCount - e._loopDelay) || 1e-11;
+function Nl(e) {
+	return ac((e.iterationDuration + e._loopDelay) * e.iterationCount - e._loopDelay) || 1e-11;
 }
-function Tl(e, t, n, r, i, a) {
-	let o = Os(e.duration) && e.duration <= 1e-11 ? n - W : n;
-	t.composition && Sc(t, o, 1, 1, Yo.AUTO);
-	let s = r ? new xl(r, e, t, o, !1, i, a) : new Kc(e, t, o);
-	return t.composition && s.init(!0), ec(t, s), Y(t, (e) => {
+function Pl(e, t, n, r, i, a) {
+	let o = Ls(e.duration) && e.duration <= 1e-11 ? n - W : n;
+	t.composition && jc(t, o, 1, 1, is.AUTO);
+	let s = r ? new Al(r, e, t, o, !1, i, a) : new tl(e, t, o);
+	return t.composition && s.init(!0), lc(t, s), Y(t, (e) => {
 		let n = e._offset + e._delay + e.duration;
 		n > t.iterationDuration && (t.iterationDuration = n);
-	}), t.duration = wl(t), t;
+	}), t.duration = Nl(t), t;
 }
-var El = 0, Dl = class extends Kc {
+var Fl = 0, Il = class extends tl {
 	constructor(e = {}) {
-		super(e, null, 0), ++El, this.id = K(e.id) ? El : e.id, this.duration = 0, this.labels = {};
+		super(e, null, 0), ++Fl, this.id = K(e.id) ? Fl : e.id, this.duration = 0, this.labels = {};
 		let t = e.defaults, n = G.defaults;
-		this.defaults = t ? Qs(t, n) : n, this.composition = X(e.composition, !0), this.onRender = e.onRender || n.onRender;
+		this.defaults = t ? sc(t, n) : n, this.composition = X(e.composition, !0), this.onRender = e.onRender || n.onRender;
 		let r = X(e.playbackEase, n.playbackEase);
-		this._ease = r ? ll(r) : null, this.iterationDuration = 0;
+		this._ease = r ? vl(r) : null, this.iterationDuration = 0;
 	}
 	add(e, t, n) {
-		let r = Ds(t), i = Ds(e);
+		let r = Is(t), i = Is(e);
 		if (r || i) {
 			if (this._hasChildren = !0, r) {
-				let r = t, i = G.editor && G.editor.addTimelineChild, a = n && n.type === "Stagger" && G.editor, o = As(n) ? n : null;
+				let r = t, i = G.editor && G.editor.addTimelineChild, a = n && n.type === "Stagger" && G.editor, o = zs(n) ? n : null;
 				if (o || a) {
-					let t = Jc(e), a = this.duration, s = this.iterationDuration, c = r.id, l = 0, u = t.length, d = i ? i(e, r, this.id, n, u) : null, f = o || G.editor.resolveStagger(n.defaultValue);
+					let t = rl(e), a = this.duration, s = this.iterationDuration, c = r.id, l = 0, u = t.length, d = i ? i(e, r, this.id, n, u) : null, f = o || G.editor.resolveStagger(n.defaultValue);
 					t.forEach((e) => {
 						let n = { ...d || r };
 						this.duration = a, this.iterationDuration = s, K(c) || (n.id = c + "-" + l);
-						let i = Cl(this, f(e, l, t, null, this));
-						Tl(n, this, i, e, l, t), l++;
+						let i = Ml(this, f(e, l, t, null, this));
+						Pl(n, this, i, e, l, t), l++;
 					});
 				} else {
 					let t = i ? i(e, r, this.id, n) : r, a = n && n.type ? n.defaultValue : n;
-					Tl(t, this, Cl(this, a), e);
+					Pl(t, this, Ml(this, a), e);
 				}
-			} else Tl(e, this, Cl(this, t));
+			} else Pl(e, this, Ml(this, t));
 			return this.composition && this.init(!0), this;
 		}
 	}
@@ -5173,21 +5254,21 @@ var El = 0, Dl = class extends Kc {
 		return K(t) ? this : (t.duration = W, t.composition = U.replace, this.add(e, t, n));
 	}
 	call(e, t) {
-		return K(e) || e && !As(e) ? this : (G.editor && G.editor.addTimelineCall && (t = G.editor.addTimelineCall(e, t, this.id)), this.add({
+		return K(e) || e && !zs(e) ? this : (G.editor && G.editor.addTimelineCall && (t = G.editor.addTimelineCall(e, t, this.id)), this.add({
 			duration: 0,
 			delay: 0,
 			onComplete: () => e(this)
 		}, t));
 	}
 	label(e, t) {
-		return K(e) || e && !ks(e) ? this : (G.editor && G.editor.addTimelineLabel && (t = G.editor.addTimelineLabel(e, t, this.id)), this.labels[e] = Cl(this, t), this);
+		return K(e) || e && !Rs(e) ? this : (G.editor && G.editor.addTimelineLabel && (t = G.editor.addTimelineLabel(e, t, this.id)), this.labels[e] = Ml(this, t), this);
 	}
 	remove(e, t) {
-		return Vc(Jc(e), this, t), this;
+		return Xc(rl(e), this, t), this;
 	}
 	stretch(e) {
 		let t = this.duration;
-		if (t === Zs(e)) return this;
+		if (t === oc(e)) return this;
 		let n = e / t, r = this.labels;
 		Y(this, (e) => e.stretch(e.duration * n));
 		for (let e in r) r[e] *= n;
@@ -5199,24 +5280,24 @@ var El = 0, Dl = class extends Kc {
 		}), this;
 	}
 	revert() {
-		return super.revert(), Y(this, (e) => e.revert, !0), Tc(this);
+		return super.revert(), Y(this, (e) => e.revert, !0), Pc(this);
 	}
 	then(e) {
 		return super.then(e);
 	}
-}, Ol = (e) => G.editor ? G.editor.addTimeline(e) : new Dl(e).init(), kl = .6, Al = .5;
-function jl(e, t, n) {
+}, Ll = (e) => G.editor ? G.editor.addTimeline(e) : new Il(e).init(), Rl = .6, zl = .5;
+function Bl(e, t, n) {
 	if (t === 0 || e === "cut") return 0;
 	let r = n[t] - n[t - 1];
-	return Math.max(0, Math.min(kl, r));
+	return Math.max(0, Math.min(Rl, r));
 }
-function Ml(e, t) {
+function Vl(e, t) {
 	let n = 0;
 	for (let r = 0; r < e.length && e[r].seconds <= t; r++) n = r;
 	return n;
 }
-function Nl(e, t) {
-	let n = Ml(e, t), r = e[n + 1];
+function Hl(e, t) {
+	let n = Vl(e, t), r = e[n + 1];
 	return r && r.morphSeconds > 0 && t > r.seconds - r.morphSeconds ? {
 		kind: "morph",
 		index: n + 1
@@ -5225,7 +5306,7 @@ function Nl(e, t) {
 		index: n
 	};
 }
-function Pl(e, t, n) {
+function Ul(e, t, n) {
 	let r = [];
 	for (let i of e) {
 		let e = t[i], a = n[i], o;
@@ -5238,7 +5319,7 @@ function Pl(e, t, n) {
 	}
 	return r;
 }
-function Fl(e) {
+function Wl(e) {
 	let t = {};
 	for (let n of e) {
 		let e = n.role === "leaves" ? n.from : n.to;
@@ -5246,22 +5327,22 @@ function Fl(e) {
 	}
 	return t;
 }
-function Il(e) {
+function Gl(e) {
 	return e.visible ? e.opacity : 0;
 }
-function Ll(e, t) {
+function Kl(e, t) {
 	return t > 0 ? e / t : 1;
 }
-function Rl(e, t, n, r) {
+function ql(e, t, n, r) {
 	return e + t / 2 - (n + r / 2);
 }
-var zl = !1;
-function Bl() {
-	zl ||= (Z.useDefaultMainLoop = !1, !0);
+var Jl = !1;
+function Yl() {
+	Jl ||= (Z.useDefaultMainLoop = !1, !0);
 }
-function Vl(e, t, n) {
-	Bl();
-	let r = n * 1e3, i = r * Al, a = Ol({ autoplay: !1 });
+function Xl(e, t, n) {
+	Yl();
+	let r = n * 1e3, i = r * zl, a = Ll({ autoplay: !1 });
 	for (let n of e) {
 		if (n.role === "absent") continue;
 		let e = t.get(n.id);
@@ -5270,12 +5351,12 @@ function Vl(e, t, n) {
 			case "moves": {
 				let t = n.from, i = n.to;
 				a.add(e, {
-					x: [Rl(t.x, t.width, i.x, i.width), 0],
-					y: [Rl(t.y, t.height, i.y, i.height), 0],
-					scaleX: [Ll(t.width, i.width), 1],
-					scaleY: [Ll(t.height, i.height), 1],
+					x: [ql(t.x, t.width, i.x, i.width), 0],
+					y: [ql(t.y, t.height, i.y, i.height), 0],
+					scaleX: [Kl(t.width, i.width), 1],
+					scaleY: [Kl(t.height, i.height), 1],
 					rotate: [t.rotation, i.rotation],
-					opacity: [Il(t), Il(i)],
+					opacity: [Gl(t), Gl(i)],
 					duration: r,
 					ease: "inOutQuad"
 				}, 0);
@@ -5284,7 +5365,7 @@ function Vl(e, t, n) {
 			case "enters": {
 				let t = n.to;
 				a.add(e, {
-					opacity: [0, Il(t)],
+					opacity: [0, Gl(t)],
 					duration: r - i,
 					ease: "outQuad"
 				}, i);
@@ -5293,7 +5374,7 @@ function Vl(e, t, n) {
 			case "leaves": {
 				let t = n.from;
 				a.add(e, {
-					opacity: [Il(t), 0],
+					opacity: [Gl(t), 0],
 					duration: i,
 					ease: "inQuad"
 				}, 0);
@@ -5318,17 +5399,17 @@ function Vl(e, t, n) {
 }
 //#endregion
 //#region packages/player/src/render.ts
-var Hl = 1920, Ul = 1080;
-function Wl(e, t, n) {
+var Zl = 1920, Ql = 1080;
+function $l(e, t, n) {
 	if (!(e > 0) || !(t > 0)) throw RangeError(`Некорректный размер контейнера: ${e}x${t}`);
 	let r = Math.min(e / n.width, t / n.height);
 	return {
 		scale: r,
-		offsetX: (e - n.width * r) / 2,
-		offsetY: (t - n.height * r) / 2
+		offsetX: Math.round((e - n.width * r) / 2),
+		offsetY: Math.round((t - n.height * r) / 2)
 	};
 }
-function Gl(e, t, n) {
+function eu(e, t, n) {
 	e.className = `scene-el scene-${t.type}`, e.dataset.id = t.id;
 	let r = e.style;
 	r.position = "absolute", r.left = `${n.x}px`, r.top = `${n.y}px`, r.width = `${n.width}px`, r.height = `${n.height}px`, r.zIndex = String(n.zIndex), r.opacity = String(n.opacity), r.transform = n.rotation ? `rotate(${n.rotation}deg)` : "", r.margin = "0", r.boxSizing = "border-box", r.visibility = n.visible ? "" : "hidden";
@@ -5345,9 +5426,9 @@ function Gl(e, t, n) {
 			break;
 	}
 }
-function Kl(e, t, n, r = {
-	width: Hl,
-	height: Ul
+function tu(e, t, n, r = {
+	width: Zl,
+	height: Ql
 }) {
 	e.textContent = "", e.style.position = "relative", e.style.width = `${r.width}px`, e.style.height = `${r.height}px`, e.style.transformOrigin = "0 0", e.style.overflow = "hidden";
 	let i = /* @__PURE__ */ new Map();
@@ -5355,23 +5436,23 @@ function Kl(e, t, n, r = {
 		let t = n[r.id];
 		if (!t) continue;
 		let a = document.createElement("div");
-		Gl(a, r, t), e.appendChild(a), i.set(r.id, a);
+		eu(a, r, t), e.appendChild(a), i.set(r.id, a);
 	}
 	return i;
 }
-function ql(e, t, n, r = {
-	width: Hl,
-	height: Ul
+function nu(e, t, n, r = {
+	width: Zl,
+	height: Ql
 }) {
-	let i = Wl(t, n, r);
+	let i = $l(t, n, r);
 	return e.style.transform = `translate(${i.offsetX}px, ${i.offsetY}px) scale(${i.scale})`, i;
 }
 //#endregion
 //#region packages/player/src/slides.ts
-function Jl(e, t) {
+function ru(e, t) {
 	return e !== null && e.kind === t.kind && e.index === t.index;
 }
-var Yl = class {
+var iu = class {
 	#e;
 	#t;
 	#n;
@@ -5386,7 +5467,7 @@ var Yl = class {
 		this.#i = e.slides.map((e, n) => ({
 			seconds: t[n],
 			slide: e,
-			morphSeconds: jl(e.transition, n, t)
+			morphSeconds: Bl(e.transition, n, t)
 		})), this.#a = /* @__PURE__ */ new Map(), this.renderAt(0);
 	}
 	get nodes() {
@@ -5396,20 +5477,20 @@ var Yl = class {
 		return this.#s !== null;
 	}
 	indexAt(e) {
-		return Ml(this.#i, e);
+		return Vl(this.#i, e);
 	}
 	slideAt(e) {
 		return this.#i[this.indexAt(e)].slide;
 	}
 	transitionAt(e) {
-		return Nl(this.#i, e).kind === "morph";
+		return Hl(this.#i, e).kind === "morph";
 	}
 	seekSeconds(e) {
-		let t = Nl(this.#i, e);
-		Jl(this.#o, t) || this.#l(t), this.#c(e);
+		let t = Hl(this.#i, e);
+		ru(this.#o, t) || this.#l(t), this.#c(e);
 	}
 	renderAt(e) {
-		this.#s = null, this.#o = null, this.#l(Nl(this.#i, e)), this.#c(e);
+		this.#s = null, this.#o = null, this.#l(Hl(this.#i, e)), this.#c(e);
 	}
 	settle() {
 		let e = this.#s;
@@ -5430,11 +5511,11 @@ var Yl = class {
 			this.#s = null, this.#d(this.#i[e.index].slide.states);
 			return;
 		}
-		let t = this.#i[e.index], n = this.#i[e.index - 1].slide.states, r = Pl(this.#n, n, t.slide.states);
-		this.#d(Fl(r)), this.#u(r), this.#s = {
+		let t = this.#i[e.index], n = this.#i[e.index - 1].slide.states, r = Ul(this.#n, n, t.slide.states);
+		this.#d(Wl(r)), this.#u(r), this.#s = {
 			index: e.index,
 			startSeconds: t.seconds - t.morphSeconds,
-			timeline: Vl(r, this.#a, t.morphSeconds)
+			timeline: Xl(r, this.#a, t.morphSeconds)
 		};
 	}
 	#u(e) {
@@ -5449,11 +5530,11 @@ var Yl = class {
 		if (this.#a.size === t.size && [...this.#a.keys()].every((e) => t.has(e))) {
 			for (let t of this.#t) {
 				let n = this.#a.get(t.id), r = e[t.id];
-				n && r && Gl(n, t, r);
+				n && r && eu(n, t, r);
 			}
 			return;
 		}
-		this.#a = Kl(this.#e, this.#t, e, this.#r);
+		this.#a = tu(this.#e, this.#t, e, this.#r);
 	}
 	destroy() {
 		this.#e.textContent = "", this.#a = /* @__PURE__ */ new Map(), this.#o = null, this.#s = null;
@@ -5461,10 +5542,16 @@ var Yl = class {
 };
 //#endregion
 //#region packages/player/src/preview.ts
-function Xl(e, t) {
-	let n = Ao(e, t);
+function au(e, t) {
+	let n = Ao(e, t), { src: r, fileId: i } = n.audio;
 	return {
-		src: n.audio.src,
+		source: r === void 0 ? {
+			kind: "file",
+			fileId: i
+		} : {
+			kind: "url",
+			url: r
+		},
 		offset: n.audio.offset,
 		words: n.audio.words,
 		duration: n.audio.duration,
@@ -5477,10 +5564,10 @@ function Xl(e, t) {
 		}
 	};
 }
-function Zl(e) {
+function ou(e) {
 	return e.entry;
 }
-var Ql = class {
+var su = class {
 	#e;
 	#t;
 	#n;
@@ -5509,19 +5596,19 @@ var Ql = class {
 		this.#o();
 		let n = this.#n.nodes.get(e.id);
 		if (!n) throw Error(`Элемента «${e.id}» нет на сцене: обновлять нечего`);
-		Gl(n, e, t);
+		eu(n, e, t);
 	}
 	rebuild(e) {
 		this.#o(), this.#t = e, this.#n.destroy(), this.#n = this.#a(e), this.#n.renderAt(this.#r);
 	}
 	fit(e, t) {
-		return this.#o(), ql(this.#e, e, t, this.#t.stage);
+		return this.#o(), nu(this.#e, e, t, this.#t.stage);
 	}
 	destroy() {
 		this.#i ||= (this.#n.destroy(), !0);
 	}
 	#a(e) {
-		return new Yl({
+		return new iu({
 			host: this.#e,
 			elements: e.elements,
 			slides: e.slides,
@@ -5532,7 +5619,7 @@ var Ql = class {
 	#o() {
 		if (this.#i) throw Error("ScenePreview уже уничтожен");
 	}
-}, $l = 2, eu = .4, tu = class {
+}, cu = 2, lu = .4, uu = class {
 	#e;
 	#t;
 	#n;
@@ -5554,8 +5641,8 @@ var Ql = class {
 	#v = [];
 	#y = null;
 	#b = 0;
-	constructor(e, t, n = {}, r = new Wo(), i = {}) {
-		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? Zl(t), this.#a = Xl(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
+	constructor(e, t, n = {}, r = new $o(), i = {}) {
+		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? ou(t), this.#a = au(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
 	}
 	get state() {
 		return this.#m;
@@ -5593,10 +5680,10 @@ var Ql = class {
 		this.#m !== e && (this.#m = e, this.#r.onStateChange?.(e));
 	}
 	async load() {
-		this.#w("loading"), this.#g = new ResizeObserver(() => this.#E()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.src), this.#T(), this.#w("ready");
+		this.#w("loading"), this.#g = new ResizeObserver(() => this.#E()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.source), this.#T(), this.#w("ready");
 	}
 	#T() {
-		this.#G(), this.#u?.destroy(), this.#u = new Yl({
+		this.#G(), this.#u?.destroy(), this.#u = new iu({
 			host: this.#t,
 			elements: this.#a.elements,
 			slides: this.#a.slides,
@@ -5608,7 +5695,7 @@ var Ql = class {
 		})).sort((e, t) => e.at - t.at), this.#f = 0, this.#p.clear(), this.#u.renderAt(0);
 	}
 	#E() {
-		ql(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
+		nu(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
 	}
 	#D = (e) => {
 		if (this.#m !== "at-gate") return;
@@ -5696,9 +5783,9 @@ var Ql = class {
 		let n = Po(Ao(this.#n, this.#i), this.#c);
 		if (n === null) return;
 		let r = this.#a.duration - e;
-		if (r > $l) return;
-		let i = Xl(this.#n, n), a = i.src;
-		if (r > eu) {
+		if (r > cu) return;
+		let i = au(this.#n, n), a = i.source;
+		if (r > lu) {
 			this.#o.warm(a);
 			return;
 		}
@@ -5717,7 +5804,7 @@ var Ql = class {
 	}
 	#P() {
 		let e = this.#s, t = this.#l;
-		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = Xl(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#T(), !0);
+		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = au(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#T(), !0);
 	}
 	#F() {
 		let e = this.#s;
@@ -5732,7 +5819,7 @@ var Ql = class {
 		await this.#L(e);
 	}
 	async #L(e) {
-		this.#W(), this.#F(), this.#l?.stop(), this.#i = e, this.#a = Xl(this.#n, e), this.#b += 1, this.#l = await this.#o.clockFor(this.#a.src), await this.#l.wake(), this.#T(), this.#l.start(this.#S(0)), this.#w("playing"), this.#M();
+		this.#W(), this.#F(), this.#l?.stop(), this.#i = e, this.#a = au(this.#n, e), this.#b += 1, this.#l = await this.#o.clockFor(this.#a.source), await this.#l.wake(), this.#T(), this.#l.start(this.#S(0)), this.#w("playing"), this.#M();
 	}
 	async #R() {
 		let e = this.#G(), t = this.#K(), n = this.#d[this.#f];
@@ -5748,7 +5835,7 @@ var Ql = class {
 	}
 	#B() {
 		let e = Ao(this.#n, this.#i);
-		for (let t of Io(e)) this.#o.warm(Xl(this.#n, t).src);
+		for (let t of Io(e)) this.#o.warm(au(this.#n, t).source);
 	}
 	async answer(e) {
 		if (this.#m !== "at-gate") throw Error(`Ответ вне гейта: состояние ${this.#m}`);
@@ -5761,7 +5848,7 @@ var Ql = class {
 		}
 		let r = (this.#p.get(n.id) ?? 0) + 1;
 		this.#p.set(n.id, r);
-		let i = nu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
+		let i = du(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
 		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
 		let s = {
 			gate: n,
@@ -5812,7 +5899,7 @@ var Ql = class {
 		return this.#u;
 	}
 };
-function nu(e, t) {
+function du(e, t) {
 	let n = e.config;
 	switch (n.kind) {
 		case "continue": return !0;
@@ -5825,4 +5912,4 @@ function nu(e, t) {
 	}
 }
 //#endregion
-export { Uo as AudioClock, Wo as AudioClocks, Ul as DEFAULT_STAGE_HEIGHT, Hl as DEFAULT_STAGE_WIDTH, kl as MORPH_DURATION_S, tu as Player, Lo as ProjectLoadError, Ql as ScenePreview, Yl as SlideEngine, Gl as applyElement, ql as applyFit, Vl as buildMorph, Zl as entrySegmentOf, Wl as fitStage, Ml as indexAt, nu as isCorrect, Fl as layoutStatesFor, Ro as loadProject, Ho as loadTrack, jl as morphSecondsFor, Nl as phaseAt, Pl as planMorph, Kl as renderScene, Xl as segmentOf };
+export { Qo as AudioClock, $o as AudioClocks, Ql as DEFAULT_STAGE_HEIGHT, Zl as DEFAULT_STAGE_WIDTH, Rl as MORPH_DURATION_S, uu as Player, Lo as ProjectLoadError, su as ScenePreview, iu as SlideEngine, eu as applyElement, nu as applyFit, Xl as buildMorph, ou as entrySegmentOf, $l as fitStage, Wo as getAudio, Vl as indexAt, du as isCorrect, Wl as layoutStatesFor, Ro as loadProject, Xo as loadTrack, Bl as morphSecondsFor, Hl as phaseAt, Ul as planMorph, Uo as putAudio, Ko as releaseAudioUrl, tu as renderScene, Go as resolveAudioUrl, au as segmentOf };

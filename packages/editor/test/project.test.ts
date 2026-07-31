@@ -4,12 +4,13 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadProject } from '@player/core';
-import type { Element, ElementState, Gate, Project, Segment, Slide } from '@player/core';
+import type { Element, ElementState, Gate, Project, Segment, Slide, Word } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
 import { libraryItem } from '../src/state/library.js';
 import { editorReducer, initialState, segmentSlide } from '../src/state/project.js';
 import { serializeProject } from '../src/state/save.js';
+import { timeRefAt } from '../src/track/marks.js';
 
 /**
  * Ссылочная целостность здесь не педантизм: StageView решает, пересобирать
@@ -39,7 +40,7 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
@@ -442,7 +443,7 @@ describe('removeMark', () => {
 describe('редьюсер: переключение сегмента открывает его для правки', () => {
   function twoSegments(): Project {
     return {
-      schemaVersion: 5,
+      schemaVersion: 6,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [
@@ -691,5 +692,120 @@ describe('слайд рождается при правке на голом ме
     expect(segmentOf(next.project).slides).toHaveLength(2);
     expect(segmentOf(next.project).slides[1]!.states['title']!.x).toBe(500);
     expect(segmentOf(state.project).slides).toHaveLength(1);
+  });
+});
+
+function word(text: string, start: number, end: number): Word {
+  return { text, start, end, source: 'alignment' };
+}
+
+const WORDS: readonly Word[] = [
+  word('Привет', 1.0, 1.5),
+  word('мир', 1.5, 1.9),
+  word('дальше', 5.0, 5.4),
+];
+
+/** Проект с реальной расшифровкой: слайд №2 и гейт стоят на слове, а не на секунде. */
+function projectWithWords(): Project {
+  const base = baseProject();
+  const segment = base.segments[0]!;
+  return {
+    ...base,
+    segments: [
+      {
+        ...segment,
+        audio: { ...segment.audio, words: [...WORDS] },
+        slides: [
+          segment.slides[0]!,
+          {
+            id: 'slide-2',
+            at: timeRefAt(WORDS, 1.5), // на слове «мир»
+            transition: 'morph',
+            states: {},
+          },
+        ],
+        gates: [{ ...gate('gate-1'), at: timeRefAt(WORDS, 5.0) }], // на слове «дальше»
+      },
+    ],
+  };
+}
+
+describe('replaceSegmentAudio', () => {
+  it('слова, привязанные к слову, переезжают на СЕКУНДЫ, на которых стояли', () => {
+    const state = initialState(projectWithWords());
+
+    const next = editorReducer(state, { type: 'replaceSegmentAudio', fileId: 'aud-1', duration: 20 });
+
+    const segment = segmentOf(next.project);
+    // Момент на дорожке не сдвинулся: 1.5 и 5.0 — те же секунды, на которых
+    // слова стояли ДО замены (см. WORDS выше), просто это уже не привязка,
+    // а число.
+    expect(segment.slides[1]!.at).toEqual({ kind: 'seconds', t: 1.5 });
+    expect(segment.gates[0]!.at).toEqual({ kind: 'seconds', t: 5.0 });
+  });
+
+  it('первый слайд (стоит на нуле, kind: seconds) не трогает — retargetMark на seconds→seconds no-op', () => {
+    const state = initialState(projectWithWords());
+    const before = segmentOf(state.project).slides[0]!;
+
+    const next = editorReducer(state, { type: 'replaceSegmentAudio', fileId: 'aud-1', duration: 20 });
+
+    expect(segmentOf(next.project).slides[0]).toBe(before);
+  });
+
+  it('пишет новый источник: fileId вместо src, offset 0, длительность из декодера', () => {
+    const state = baseState();
+
+    const next = editorReducer(state, { type: 'replaceSegmentAudio', fileId: 'aud-42', duration: 12.34 });
+
+    expect(segmentOf(next.project).audio).toEqual({
+      src: undefined,
+      fileId: 'aud-42',
+      offset: 0,
+      duration: 12.34,
+      words: [],
+    });
+  });
+
+  it('audio.words очищается в пустой массив', () => {
+    const state = initialState(projectWithWords());
+
+    const next = editorReducer(state, { type: 'replaceSegmentAudio', fileId: 'aud-1', duration: 20 });
+
+    expect(segmentOf(next.project).audio.words).toEqual([]);
+  });
+
+  it('метки, уже стоявшие на секунде, не меняются', () => {
+    // gate-1 в baseProject уже { kind: 'seconds', t: 2 } — замена озвучки
+    // не обязана его трогать, только слова.
+    const state = baseState();
+
+    const next = editorReducer(state, { type: 'replaceSegmentAudio', fileId: 'aud-1', duration: 20 });
+
+    expect(segmentOf(next.project).gates[0]!.at).toEqual({ kind: 'seconds', t: 2 });
+  });
+});
+
+describe('setSegmentWords', () => {
+  it('кладёт слова в audio.words как есть, без поправки таймингов', () => {
+    const state = baseState();
+    const asrWords: readonly Word[] = [
+      { text: 'Привет', start: 0.3, end: 0.9, source: 'asr', confidence: 0.98 },
+    ];
+
+    const next = editorReducer(state, { type: 'setSegmentWords', words: asrWords });
+
+    expect(segmentOf(next.project).audio.words).toEqual(asrWords);
+  });
+
+  it('не трогает слайды и гейты — метки перепривязывает только автор вручную', () => {
+    const state = initialState(projectWithWords());
+    const gatesBefore = segmentOf(state.project).gates;
+    const slidesBefore = segmentOf(state.project).slides;
+
+    const next = editorReducer(state, { type: 'setSegmentWords', words: [] });
+
+    expect(segmentOf(next.project).gates).toBe(gatesBefore);
+    expect(segmentOf(next.project).slides).toBe(slidesBefore);
   });
 });

@@ -12,9 +12,10 @@
  * сравнением ссылок. Если редьюсер начнёт пересоздавать неизменившиеся
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
-import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, TimeRef } from '@player/core';
+import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, TimeRef, Word } from '@player/core';
 import { resolveTimeRef } from '@player/core';
 
+import { retargetMark } from '../track/marks.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
 import * as slidesApi from './slides.js';
@@ -112,7 +113,17 @@ export type EditorAction =
   // текущую часть и рождает несколько новых, и разложить это на addSegment +
   // connect + правку гейта значило бы отдать автору полуразрезанное состояние
   // на каждом промежуточном Ctrl+Z.
-  | { readonly type: 'splitAtGate'; readonly gateId: string };
+  | { readonly type: 'splitAtGate'; readonly gateId: string }
+  // Автор загрузил свой файл озвучки и подтвердил замену (см. state/audio.ts:
+  // wordMarkCount/replaceAudioConfirmMessage — подтверждение строит вызывающий
+  // ДО отправки этого действия). fileId уже лежит в хранилище плеера
+  // (putAudio), duration — из декодера, а не из File и не из схемы.
+  | { readonly type: 'replaceSegmentAudio'; readonly fileId: string; readonly duration: number }
+  // Расшифровка вернула слова — кладём их как есть, без поправки таймингов
+  // (S5: медиана расхождения +30 мс, вычитание «систематической» поправки
+  // делает хуже). Не трогает метки: они остаются там, где стояли раньше,
+  // и автор перепривязывает их к слову вручную через MarkPanel, если хочет.
+  | { readonly type: 'setSegmentWords'; readonly words: readonly Word[] };
 
 export function initialState(project: Project): EditorState {
   const segment = requireSegment(project, project.entry);
@@ -461,6 +472,44 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         currentSlideId: requireFirstSlide(head).id,
         selectedId: undefined,
       };
+    }
+
+    case 'replaceSegmentAudio': {
+      const segment = currentSegment(state);
+      // Слова — СТАРЫЕ, той озвучки, которую заменяем. Перепривязка обязана
+      // прочитать их до того, как ниже audio.words станет пустым массивом:
+      // markSeconds (через retargetMark) без слов ничего не разрешит.
+      const words = segment.audio.words;
+      const slides = segment.slides.map((slide) =>
+        slide.at.kind === 'word' ? { ...slide, at: retargetMark(slide.at, words, 'seconds') } : slide,
+      );
+      const gates = segment.gates.map((gate) =>
+        gate.at.kind === 'word' ? { ...gate, at: retargetMark(gate.at, words, 'seconds') } : gate,
+      );
+      return replaceSegment(state, {
+        ...segment,
+        slides,
+        gates,
+        audio: {
+          src: undefined,
+          fileId: action.fileId,
+          offset: 0,
+          duration: action.duration,
+          words: [],
+        },
+      });
+    }
+
+    case 'setSegmentWords': {
+      const segment = currentSegment(state);
+      // Копия, а не присвоение readonly-массива: audio.words в схеме — Word[]
+      // (мутабельный), а action.words нарочно readonly — это чужой результат
+      // (ответ /api/transcribe), который зовущий код не обязан ни менять,
+      // ни делить хранение со стейтом редактора.
+      return replaceSegment(state, {
+        ...segment,
+        audio: { ...segment.audio, words: [...action.words] },
+      });
     }
   }
 }

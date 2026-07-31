@@ -565,11 +565,42 @@ const migrateV4toV5: Migration = (input) => {
   };
 };
 
+interface ProjectV5 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+}
+
+/**
+ * v5 → v6: у дорожки появился второй возможный источник — файл, загруженный
+ * автором (`audio.fileId`), и `audio.src` перестал быть обязательным.
+ *
+ * Данные не переносятся, и это не признак лишней миграции. В версии 5 `src`
+ * обязателен, значит любой проект версии 5 уже удовлетворяет новому правилу
+ * «ровно один источник»: `src` есть, `fileId` нет. Работа миграции здесь —
+ * поднять номер версии, и инвариант №7 требует, чтобы она существовала явно,
+ * а не подразумевалась.
+ *
+ * Обратной дороги нет: проект с `fileId` версией 5 непредставим. Это ожидаемо
+ * и совпадает с поведением всех предыдущих миграций.
+ */
+const migrateV5toV6: Migration = (input) => {
+  const v5 = input as ProjectV5;
+
+  return {
+    schemaVersion: 6,
+    meta: v5.meta,
+    entry: v5.entry,
+    segments: v5.segments,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
   3: migrateV3toV4,
   4: migrateV4toV5,
+  5: migrateV5toV6,
 });
 
 export class SchemaVersionError extends Error {

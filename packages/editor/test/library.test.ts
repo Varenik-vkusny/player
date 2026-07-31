@@ -222,7 +222,7 @@ describe('фигура библиотеки может быть варианто
     };
 
     const project = {
-      schemaVersion: 5 as const,
+      schemaVersion: 6 as const,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

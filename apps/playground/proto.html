@@ -80,6 +80,9 @@ h1,h2,h3,h4{margin:0;font-weight:600}
   color:var(--dim);font-size:12.5px;line-height:1.5;
   border-left:2px solid var(--line);padding-left:9px;margin:9px 0 0;
 }
+/* Пометка «это уже работает в продукте». Без своего правила класс был бы
+   молча декоративным: видимость не равна наличию. */
+.note.ok{border-left-color:var(--ok);color:var(--ok)}
 .todo{
   display:none;font-size:11px;padding:1px 6px;border-radius:5px;
   border:1px dashed var(--warn);color:var(--warn);white-space:nowrap;
@@ -512,7 +515,7 @@ function viewStart(){
     s+='<div class="step '+(i<k?"done":(i===k?"on":""))+'"><b>Шаг '+(i+1)+'</b>'+steps[i]+'</div>';
   s+='</div>';
 
-  s+='<div class="panel"><div class="ph">Новое объяснение<span class="spacer"></span><span class="dim tiny">этого экрана в продукте нет</span> <span class="todo">нет в продукте</span></div><div class="pb">';
+  s+='<div class="panel"><div class="ph">Новое объяснение<span class="spacer"></span><span class="dim tiny">мастера нет, но шаги 2 и 3 работают в редакторе</span> <span class="todo">частично</span></div><div class="pb">';
 
   if(k===0){
     s+='<label class="f">О чём объяснение</label><input type="text" value="Дроби" data-act="noop">';
@@ -529,13 +532,14 @@ function viewStart(){
     s+='<button class="btn" data-act="start-next">Озвучить синтезом начерно</button>';
     s+='<button class="btn" data-act="noop">Записать голосом с суфлёром</button></div>';
     s+='<div class="note">Черновая озвучка синтезом делается сразу, чтобы работа не стояла в ожидании живой записи. Запись — по абзацам, а не одним куском: тогда переписывается тридцать секунд, а не десять минут.</div>';
+    s+='<div class="note ok">СДЕЛАНО в Сессии 13, но не мастером: свой файл выбирается прямо в редакторе, на дорожке. Длительность берётся из декодера, байты — в IndexedDB, в проекте только ключ (схема v6, ADR-021). Синтеза и записи голосом по-прежнему нет.</div>';
   }
   if(k===2){
     s+='<div class="waveform">'+wavebars(120)+'</div>';
     s+='<div class="row dim tiny" style="margin-top:6px"><span>озвучка.wav</span><span class="spacer"></span><span>'+FILE_LEN.toFixed(1)+' с</span></div>';
     s+='<div class="row" style="margin-top:13px"><button class="btn pri" data-act="start-next">Расшифровать текст</button></div>';
     s+='<div class="note">Расшифровка нужна не ради текста, а ради слов со временем: метки встают на слова, а не на секунды. Замена голоса или скорости после этого не ломает разметку — меняется только длина.</div>';
-    s+='<div class="dim tiny" style="margin-top:9px">В прототипе это просто кнопка. По-настоящему тут работает распознавание.</div>';
+    s+='<div class="note ok">СДЕЛАНО в Сессии 13: кнопка расшифровки в редакторе действительно зовёт распознавание и кладёт слова в audio.words с пометкой source: asr. Без ключа API загрузка файла продолжает работать — это законный случай, а не поломка.</div>';
   }
   if(k===3){
     s+='<div class="okbox">Черновик собран. Одна непрерывная дорожка, один текст, ни одной части и ни одного слайда, кроме нулевого.</div>';

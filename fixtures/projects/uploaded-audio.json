@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 6,
+  "meta": {
+    "title": "Своя озвучка: дорожка адресуется через fileId, а не src",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-uploaded",
+  "segments": [
+    {
+      "id": "s-uploaded",
+      "title": "Дорожка, загруженная автором",
+      "audio": {
+        "fileId": "aud-fixture-demo",
+        "offset": 0,
+        "duration": 48.96,
+        "words": [
+          { "text": "Представь,", "start": 0.24, "end": 0.96, "source": "asr" },
+          { "text": "что", "start": 0.96, "end": 1.12, "source": "asr" },
+          { "text": "ты", "start": 1.12, "end": 1.28, "source": "asr" },
+          { "text": "смотришь", "start": 1.28, "end": 1.68, "source": "asr" }
+        ]
+      },
+      "elements": [
+        { "id": "bg", "type": "shape", "content": "" },
+        { "id": "title", "type": "text", "content": "Своя озвучка" }
+      ],
+      "slides": [
+        {
+          "id": "slide-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "title": {
+              "x": 140, "y": 420, "width": 1200, "height": 160,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "64px", "font-family": "system-ui, sans-serif" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

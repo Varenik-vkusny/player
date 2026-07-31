@@ -15,7 +15,7 @@ import { conditionHolds, conditionsHold, nextSegment, findSegment } from '../src
 import type { Answers } from '../src/graph.js';
 import { loadProject } from '../src/load.js';
 import { migrateToCurrent } from '../src/migrations.js';
-import { GateSchema } from '../src/schema.js';
+import { GateSchema, SCHEMA_VERSION } from '../src/schema.js';
 
 const DIR = fileURLToPath(new URL('../../../fixtures/projects/', import.meta.url));
 const raw = (name: string): unknown => JSON.parse(readFileSync(join(DIR, name), 'utf8'));
@@ -38,7 +38,9 @@ describe('миграция v4 → v5', () => {
 
     const after = migrateToCurrent(before) as { schemaVersion: number; segments: any[] };
 
-    expect(after.schemaVersion).toBe(5);
+    // Константа, а не литерал: migrateToCurrent доводит до ТЕКУЩЕЙ версии,
+    // и предмет этого теста — превращение условия в список, а не номер.
+    expect(after.schemaVersion).toBe(SCHEMA_VERSION);
     const rules = after.segments[0].exit.rules;
     expect(rules[0].when).toEqual([{ kind: 'equals', variable: 'куда', value: 'opt-yes' }]);
     expect(rules[1].when).toEqual([{ kind: 'equals', variable: 'куда', value: 'opt-no' }]);
