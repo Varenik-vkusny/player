@@ -42,7 +42,7 @@ import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
-import { variableRenameProblem } from './state/exits.js';
+import { answerVariables, variableRenameProblem } from './state/exits.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
@@ -245,6 +245,41 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     (gateId: string) => dispatch({ type: 'splitAtGate', gateId }),
     [],
   );
+
+  // Кого автор изображает, открывая предпросмотр: переменная → id варианта.
+  // Пустая строка значит «не отвечал», и это состояние по умолчанию —
+  // настоящий зритель приходит без ответов.
+  const [viewAs, setViewAs] = useState<Record<string, string>>({});
+  const viewAsVariables = useMemo(
+    () => answerVariables(currentProject).filter((variable) => variable.options.length > 0),
+    [currentProject],
+  );
+
+  /**
+   * Адрес предпросмотра с изображаемыми ответами.
+   *
+   * `correct` считается ЗДЕСЬ, а не в плеере: правильность — свойство ответа
+   * в момент, когда он дан, и плееру неоткуда взять её для ответа, которого
+   * зритель не давал. У развилки `correctId` равен null, и тогда неверных
+   * ответов нет вовсе.
+   */
+  const previewUrl = useMemo(() => {
+    const answers: Record<string, { value: string; correct: boolean }> = {};
+    for (const variable of viewAsVariables) {
+      const chosen = viewAs[variable.name];
+      if (chosen === undefined || chosen === '') continue;
+      answers[variable.name] = {
+        value: chosen,
+        correct: variable.correctId === null ? true : variable.correctId === chosen,
+      };
+    }
+    if (Object.keys(answers).length === 0) return '/?from=editor';
+    // Стартуем с ТЕКУЩЕЙ части автора, а не с начала объяснения. Иначе плеер
+    // переспросит ту же переменную и затрёт заданный ответ своим — режим
+    // не сработал бы ровно там, ради чего заведён.
+    return `/?from=editor&at=${encodeURIComponent(state.currentSegmentId)}`
+      + `&as=${encodeURIComponent(JSON.stringify(answers))}`;
+  }, [viewAs, viewAsVariables, state.currentSegmentId]);
 
   const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
   const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
@@ -564,7 +599,43 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           >
             Сохранить
           </button>
-          <button type="button" className="ed-action" onClick={() => openInPlayer(currentProject)}>
+          {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
+              Без него условные варианты ответа физически непроверяемы: редактор
+              показывает автору все варианты, а зритель видит часть, и увидеть
+              эту часть автору больше негде. */}
+          {viewAsVariables.length > 0 ? (
+            <span className="ed-view-as" data-testid="view-as">
+              <span className="ed-view-as-title">смотреть как ответивший</span>
+              {viewAsVariables.map((variable) => (
+                <label key={variable.name} className="ed-view-as-item">
+                  {/* Имя переменной подписью, а не внутри каждого пункта:
+                      иначе селект растягивается по самому длинному пункту
+                      и выдавливает соседей из шапки. Проверено глазами. */}
+                  <span className="ed-view-as-name">{variable.name}</span>
+                  <select
+                    className="ed-view-as-select"
+                    data-testid={`view-as-${variable.name}`}
+                    value={viewAs[variable.name] ?? ''}
+                    onChange={(event) =>
+                      setViewAs((previous) => ({ ...previous, [variable.name]: event.target.value }))
+                    }
+                  >
+                    <option value="">не отвечал</option>
+                    {variable.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="ed-action"
+            onClick={() => openInPlayer(currentProject, previewUrl)}
+          >
             Открыть в плеере
           </button>
         </span>

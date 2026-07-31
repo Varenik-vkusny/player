@@ -5540,8 +5540,8 @@ var Yl = class {
 	#v = [];
 	#y = null;
 	#b = 0;
-	constructor(e, t, n = {}, r = new Wo()) {
-		this.#e = e, this.#o = r, this.#n = t, this.#i = Jl(t), this.#a = ql(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
+	constructor(e, t, n = {}, r = new Wo(), i = {}) {
+		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? Jl(t), this.#a = ql(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
 	}
 	get state() {
 		return this.#m;

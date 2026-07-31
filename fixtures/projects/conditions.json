@@ -11,9 +11,9 @@
       "id": "s-count",
       "title": "Считает и запоминает ответ числом",
       "audio": {
-        "src": "/audio/count.wav",
+        "src": "/audio/ask.wav",
         "offset": 0,
-        "duration": 4,
+        "duration": 3,
         "words": []
       },
       "elements": [
@@ -47,7 +47,7 @@
       "gates": [
         {
           "id": "g-count",
-          "at": { "kind": "seconds", "t": 3 },
+          "at": { "kind": "seconds", "t": 2 },
           "config": {
             "kind": "choice",
             "prompt": "Сколько будет два плюс два?",
@@ -69,9 +69,9 @@
       "id": "s-next",
       "title": "Спрашивает, куда двигаться, и часть вариантов прячет",
       "audio": {
-        "src": "/audio/next.wav",
+        "src": "/audio/branch-yes.wav",
         "offset": 0,
-        "duration": 4,
+        "duration": 3,
         "words": []
       },
       "elements": [
@@ -94,7 +94,7 @@
       "gates": [
         {
           "id": "g-next",
-          "at": { "kind": "seconds", "t": 3 },
+          "at": { "kind": "seconds", "t": 2 },
           "config": {
             "kind": "choice",
             "prompt": "Что дальше?",
@@ -131,7 +131,7 @@
     {
       "id": "s-deep",
       "title": "Углубление для тех, кто посчитал верно и не остановился",
-      "audio": { "src": "/audio/deep.wav", "offset": 0, "duration": 3, "words": [] },
+      "audio": { "src": "/audio/branch-no.wav", "offset": 0, "duration": 3, "words": [] },
       "elements": [{ "id": "d-bg", "type": "shape", "content": "" }],
       "slides": [
         {
@@ -153,7 +153,7 @@
     {
       "id": "s-end",
       "title": "Общая концовка",
-      "audio": { "src": "/audio/end.wav", "offset": 0, "duration": 3, "words": [] },
+      "audio": { "src": "/audio/ask.wav", "offset": 0, "duration": 3, "words": [] },
       "elements": [{ "id": "e-bg", "type": "shape", "content": "" }],
       "slides": [
         {

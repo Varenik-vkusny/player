@@ -4,7 +4,7 @@
  * Это единственное место, где живёт UI гейта. Сам плеер про кнопки не знает —
  * он сообщает, что гейт открыт, и принимает ответ.
  */
-import { loadProject, resolveTimeRef, type Gate } from '@player/core';
+import { loadProject, resolveTimeRef, type Answer, type Gate } from '@player/core';
 import {
   entrySegmentOf,
   Player,
@@ -119,12 +119,51 @@ async function readProject(): Promise<unknown> {
   return response.json();
 }
 
+/**
+ * Ответы, с которыми автор просит открыть предпросмотр.
+ *
+ * Через адресную строку, а не через IndexedDB: набор переменных короток,
+ * а канал хранилища заведён под проект, который в URL не помещается. Смешивать
+ * их значило бы поднимать версию базы ради десятка строк.
+ *
+ * Битый параметр — это опечатка в ссылке, а не штатный случай, и он падает
+ * громко: тихо открыть предпросмотр «как обычный зритель» значило бы показать
+ * автору не то, что он просил, ничего об этом не сказав.
+ */
+function readAssumption(): {
+  readonly answers?: Readonly<Record<string, Answer>>;
+  readonly startSegmentId?: string;
+} {
+  const search = new URLSearchParams(location.search);
+  const raw = search.get('as');
+  const from = search.get('at');
+
+  const assumption: {
+    answers?: Readonly<Record<string, Answer>>;
+    startSegmentId?: string;
+  } = {};
+
+  if (raw !== null) {
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      throw new Error(`Параметр as должен быть объектом «переменная → ответ», получено: ${raw}`);
+    }
+    assumption.answers = parsed as Readonly<Record<string, Answer>>;
+  }
+  if (from !== null) assumption.startSegmentId = from;
+
+  return assumption;
+}
+
 async function main(): Promise<void> {
   // Валидация обязательна и падает громко: битый проект не открывается.
   // Для проекта из редактора это ещё и проверка того, что редактор
   // не испортил его правками.
   const project = loadProject(await readProject());
-  const segment = segmentOf(project, entrySegmentOf(project));
+  const assumption = readAssumption();
+  // Метки и длина дорожки берутся у той части, с которой плеер СТАРТУЕТ,
+  // а не у входной: иначе предпросмотр «с этой части» рисовал бы чужие метки.
+  const segment = segmentOf(project, assumption.startSegmentId ?? entrySegmentOf(project));
   const duration = segment.duration;
 
   const player = new Player(host, project, {
@@ -142,7 +181,7 @@ async function main(): Promise<void> {
     onGateOpen: (gate, unboundOptions) => showGate(gate, unboundOptions),
     onGateResolved: (attempt) => showResult(attempt),
     onRevealOpen: (reveal) => showReveal(reveal),
-  });
+  }, undefined, assumption);
 
   // Метки гейтов на дорожке: видно, куда плеер приедет.
   for (const gate of segment.gates) {

@@ -133,6 +133,44 @@ export const EDITOR_STYLES = `
 }
 .ed-action:hover { border-color: #4c8dff; }
 
+/* Режим «смотреть как зритель, ответивший X».
+   Тот же закон, что у выделения: панель не имеет права выдавливать кнопки
+   из шапки. Первая сборка это нарушила — второй селект уехал за край экрана
+   и лёг поверх кнопки, и увидеть это можно было только глазами. */
+.ed-view-as {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ed-view-as-title {
+  color: #7d8fa5;
+  white-space: nowrap;
+}
+
+.ed-view-as-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ed-view-as-name {
+  color: #7d8fa5;
+  white-space: nowrap;
+}
+
+.ed-view-as-select {
+  max-width: 140px;
+  background: #141922;
+  color: #e6ecf3;
+  border: 1px solid #2a3444;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
 .ed-selection {
   color: #7d8fa5;
   font-variant-numeric: tabular-nums;

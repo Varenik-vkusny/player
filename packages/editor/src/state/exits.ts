@@ -453,6 +453,43 @@ export function emptySegments(project: Project): readonly Segment[] {
   );
 }
 
+/** Переменная объяснения: что про неё можно спросить и чем она бывает. */
+export interface AnswerVariable {
+  readonly name: string;
+  readonly kind: 'choice' | 'input' | 'continue';
+  readonly options: readonly { readonly id: string; readonly label: string }[];
+  /** id верного варианта, либо null у развилки: у неё верного ответа нет. */
+  readonly correctId: string | null;
+}
+
+/**
+ * Переменные ВСЕГО объяснения, в порядке появления.
+ *
+ * Не одной части: ответы живут на всё объяснение, и правило десятой части
+ * вправе смотреть на ответ, данный во второй (`authoring-flow.md` §8).
+ * Повтор имени схема запрещает отдельно, поэтому первый выигрывает.
+ */
+export function answerVariables(project: Project): readonly AnswerVariable[] {
+  const found: AnswerVariable[] = [];
+  const seen = new Set<string>();
+  for (const segment of project.segments) {
+    for (const gate of segment.gates) {
+      if (seen.has(gate.recordAs)) continue;
+      seen.add(gate.recordAs);
+      const config = gate.config;
+      found.push({
+        name: gate.recordAs,
+        kind: config.kind,
+        options: config.kind === 'choice'
+          ? config.options.map((option) => ({ id: option.id, label: option.label }))
+          : [],
+        correctId: config.kind === 'choice' ? config.correctId : null,
+      });
+    }
+  }
+  return found;
+}
+
 /** Где стоит условие, которое не сработает никогда. */
 export type DeadComparisonPlace =
   | { readonly kind: 'rule'; readonly ruleId: string }

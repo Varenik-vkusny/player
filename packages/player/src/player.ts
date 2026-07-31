@@ -206,13 +206,34 @@ export class Player {
     project: Project,
     events: PlayerEvents = {},
     clocks: ClockSource = new AudioClocks(),
+    /**
+     * Кем плеер должен притвориться. У настоящего зрителя пусто всегда.
+     *
+     * Непусто только в режиме автора «смотреть как зритель, ответивший X»:
+     * без него условные варианты ответа физически непроверяемы — редактор
+     * показывает все, а зритель видит часть, и увидеть эту часть автору
+     * иначе негде.
+     *
+     * `startSegmentId` здесь не удобство, а условие работоспособности.
+     * Начав с самого начала, плеер ПЕРЕСПРОСИТ ту же переменную и затрёт
+     * заданный ответ своим — то есть режим не сработал бы ровно в том
+     * сценарии, ради которого заведён. Найдено проверкой в браузере,
+     * а не рассуждением.
+     */
+    assume: {
+      readonly answers?: Readonly<Record<string, Answer>>;
+      readonly startSegmentId?: string;
+    } = {},
   ) {
+    this.#answers = { ...assume.answers };
     this.#host = host;
     this.#clocks = clocks;
     // Единственная точка чтения project.audio и project.scene (ADR-003,
     // ADR-011): переход на граф сегментов поменял segmentOf, а не Player.
     this.#project = project;
-    this.#nodeId = entrySegmentOf(project);
+    // Несуществующая часть — это опечатка в ссылке предпросмотра, и
+    // findSegment внутри segmentOf упадёт на ней громко и по имени.
+    this.#nodeId = assume.startSegmentId ?? entrySegmentOf(project);
     this.#segment = segmentOf(project, this.#nodeId);
     this.#events = events;
 
