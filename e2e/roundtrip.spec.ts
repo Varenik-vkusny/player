@@ -104,7 +104,7 @@ test.describe('круг: правка в редакторе — просмотр
     const segment = await firstSegment(page);
     const slide = slideAtOrBefore(segment, 10);
     await page.getByTestId(`slide-${slide.id}`).click();
-    await expect(page.locator('[data-id="card"]')).toBeVisible();
+    await expect(page.locator('.ed-stage-host [data-id="card"]')).toBeVisible();
 
     // Хватаем не за центр 'card', а за его верхний левый угол: декоративный
     // 'dot' геометрически лежит поверх середины карточки (демо-макет,
@@ -310,7 +310,7 @@ test.describe('круг: правка в редакторе — просмотр
     // Синхронизация со структурной пересборкой сцены (StageView.tsx,
     // структурный useLayoutEffect срабатывает на смену currentSlide.id):
     // 'card' виден только начиная с этого слайда, дальше он не гаснет.
-    await expect(page.locator('[data-id="card"]')).toBeVisible();
+    await expect(page.locator('.ed-stage-host [data-id="card"]')).toBeVisible();
 
     // Размер области сцены в редакторе задаёт условия сравнения: ванильный
     // хост открывается ровно в таком вьюпорте, тогда масштаб выходит тот же,

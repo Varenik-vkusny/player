@@ -51,6 +51,7 @@ import { freeId, segmentSlide, type MarkKind } from './state/project.js';
 import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
+import { WatchStage } from './stage/WatchStage.js';
 import { markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
 import { TrackView } from './track/TrackView.js';
@@ -645,6 +646,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       </header>
 
       <div className="ed-main">
+        {/* Две сцены рядом — решение владельца 31.07.2026 и закрытие долга
+            §12.5, открытого с Сессии 7. Слева «правлю»: один слайд, жесты,
+            выделение. Справа «смотрю»: полный сегмент в секунду головки —
+            единственное место, где автор видит сам ПЕРЕХОД. */}
+        <div className="ed-stages">
         <StageView
           ref={stageRef}
           segment={segment}
@@ -657,6 +663,13 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           onImageDrop={handleImageDrop}
           onReady={handleReady}
         />
+        <div className="ed-watch" aria-label="Как это выглядит на дорожке">
+          <span className="ed-watch-title">
+            смотрю · {transport.positionSeconds.toFixed(2)} с
+          </span>
+          <WatchStage segment={segment} seconds={transport.positionSeconds} />
+        </div>
+        </div>
         <aside className="ed-elements-panel" aria-label="Элементы сцены">
           <InsertPanel onInsert={handleInsert} />
           <TemplatesPanel onApply={handleApplyTemplate} />

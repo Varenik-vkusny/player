@@ -178,11 +178,11 @@ test.describe('работа без мыши', () => {
     expect(await elementX(page, id)).toBe(before + 11);
 
     await page.keyboard.press('Delete');
-    await expect(page.locator(`[data-id="${id}"]`)).toHaveCount(0);
+    await expect(page.locator(`.ed-stage-host [data-id="${id}"]`)).toHaveCount(0);
     await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
 
     await page.keyboard.press('Control+z');
-    await expect(page.locator(`[data-id="${id}"]`)).toHaveCount(1);
+    await expect(page.locator(`.ed-stage-host [data-id="${id}"]`)).toHaveCount(1);
 
     await page.getByTestId(`element-row-${id}`).click();
     await expect(page.getByTestId('selection-readout')).toContainText(id);

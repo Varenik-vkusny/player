@@ -197,6 +197,44 @@ export const EDITOR_STYLES = `
   border-bottom: 1px solid #1c242f;
 }
 
+/* Две сцены рядом: «правлю» и «смотрю» (долг §12.5).
+
+   Колонки равные, а не 2fr/1fr: правая показывает ПЕРЕХОД, ради которого
+   всё и затевалось, и уменьшать её значило бы вернуть автора к разглядыванию
+   миниатюры. min-width: 0 обязателен обоим — без него сцена с фиксированным
+   отношением сторон распирает грид и выдавливает панели, а видно это только
+   глазами. */
+.ed-stages {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ed-watch {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid #1c242f;
+}
+
+.ed-watch-title {
+  padding: 2px 8px;
+  color: #7d8fa5;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ed-watch-host {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  min-height: 0;
+}
+
 .ed-inspector { border-left: 1px solid #1c242f; }
 
 /* Панель элементов: вставка и удаление сверху, список — снизу и растягивается.
