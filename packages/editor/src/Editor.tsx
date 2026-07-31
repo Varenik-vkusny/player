@@ -27,7 +27,7 @@ import {
 
 import type { Condition, Element, ElementState, Gate, Project, Slide, TimeRef } from '@player/core';
 import { findSegment } from '@player/core';
-import { segmentOf, type ScenePreview } from '@player/player';
+import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
 import { ELEMENTS, GATES, plural } from './plural.js';
@@ -305,7 +305,20 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'selectSegment', id });
   }, []);
 
-  const handleSelectSlide = useCallback((id: string) => dispatch({ type: 'selectSlide', id }), []);
+  /**
+   * Выбор слайда в ленте ВЕДЁТ головку на его метку.
+   *
+   * Решение владельца 31.07.2026: головка — единственный указатель «где я».
+   * Без связки автор выбирает слайд 2, двигает элемент, и правка рождает
+   * слайд там, где осталась головка, — то есть выбор молча теряется.
+   * Заодно сходятся обе сцены: «правлю» показывает выбранный слайд,
+   * «смотрю» идёт за головкой, и оба показывают один момент.
+   */
+  const handleSelectSlide = useCallback((id: string) => {
+    dispatch({ type: 'selectSlide', id });
+    const slide = currentSegment.slides.find((candidate) => candidate.id === id);
+    if (slide) transport.seek(markSeconds(slide.at, segment.words));
+  }, [currentSegment.slides, segment.words, transport]);
 
   const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
 
@@ -339,10 +352,34 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'replaceElement', element });
   }, []);
 
-  /** Одношаговая правка состояния элемента на текущем слайде (цвет, чекбокс). */
+  /**
+   * Куда смотрит головка — в виде ссылки на время (инвариант №10).
+   *
+   * Правка сцены ложится в слайд под этой меткой, а если метки там нет,
+   * слайд рождается (§14.9). `timeRefAt` возвращает ссылку, разрешающуюся
+   * ровно в ту же секунду: привязка к слову хранит смещение от начала
+   * слова, а не само начало, — поэтому метка встаёт ТОЧНО на головку,
+   * и вторая правка попадает в уже рождённый слайд, а не рядом с ним.
+   */
+  const headTimeRef = useCallback(
+    (): TimeRef => timeRefAt(segment.words, transport.positionSeconds),
+    [segment.words, transport.positionSeconds],
+  );
+
+  /**
+   * Позиция, замороженная на время жеста.
+   *
+   * Нужна ровно для одного случая: автор тащит элемент на ИГРАЮЩЕЙ дорожке.
+   * Головка в этот момент едет, и каждое событие жеста просилось бы в свою
+   * секунду — вместо одного слайда получилась бы дорожка из слайдов, по
+   * одному на кадр перетаскивания.
+   */
+  const gestureAtRef = useRef<TimeRef | null>(null);
+
+  /** Одношаговая правка состояния элемента (цвет, чекбокс, стрелки). */
   const handleElementStateChange = useCallback((elementId: string, patch: Partial<ElementState>) => {
-    dispatch({ type: 'setElementState', elementId, patch });
-  }, []);
+    dispatch({ type: 'setElementState', elementId, patch, at: headTimeRef() });
+  }, [headTimeRef]);
 
   /**
    * Живое событие уже идущего жеста — перетаскивание на сцене, набор числа
@@ -350,11 +387,15 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
    * ставит `handleCommitHistory` (см. `state/editorHistory.ts`).
    */
   const handleElementStateChangeLive = useCallback((elementId: string, patch: Partial<ElementState>) => {
-    dispatch({ type: 'setElementState', elementId, patch, commit: false });
-  }, []);
+    gestureAtRef.current ??= headTimeRef();
+    dispatch({ type: 'setElementState', elementId, patch, at: gestureAtRef.current, commit: false });
+  }, [headTimeRef]);
 
   /** Завершает жест, открытый `handleElementStateChangeLive`/`handleMoveMark`. */
-  const handleCommitHistory = useCallback(() => dispatch({ type: 'commit' }), []);
+  const handleCommitHistory = useCallback(() => {
+    gestureAtRef.current = null;
+    dispatch({ type: 'commit' });
+  }, []);
 
   const handleInsert = useCallback(
     (itemId: string) => {
@@ -364,9 +405,9 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         currentSlide.states,
         segment.stage,
       );
-      dispatch({ type: 'addElement', element, state: elementState });
+      dispatch({ type: 'addElement', element, state: elementState, at: headTimeRef() });
     },
-    [currentSegment, currentSlide.states, segment.stage],
+    [currentSegment, currentSlide.states, segment.stage, headTimeRef],
   );
 
   /**
@@ -411,7 +452,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             segment.stage,
             encoded,
           );
-          dispatch({ type: 'addElement', element, state: elementState });
+          dispatch({ type: 'addElement', element, state: elementState, at: headTimeRef() });
         })
         .catch((error: unknown) => {
           setImageDropError(error instanceof Error ? error.message : String(error));
@@ -441,17 +482,31 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       id: gate.id,
       seconds: markSeconds(gate.at, words),
       onWord: gate.at.kind === 'word',
+      // Остановка ни к чему не едет: окна движения у неё нет.
+      morphSeconds: 0,
       // Подсказка автору при наведении: словами продукта, а не схемы.
       // Развилка от вопроса отличается отсутствием верного ответа.
       title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} «${gate.id}»`,
     }));
-    const fromSlides = segment.slides.slice(1).map((slide): Mark => ({
-      kind: 'slide',
-      id: slide.id,
-      seconds: markSeconds(slide.at, words),
-      onWord: slide.at.kind === 'word',
-      title: `Слайд «${slide.id}»: переход ${slide.transition === 'morph' ? 'плавный' : 'разрез'}`,
-    }));
+
+    // Секунды всех слайдов, включая нулевой: длительность перехода урезана
+    // расстоянием до ПРЕДЫДУЩЕЙ метки (ADR-020), а предыдущей у второго
+    // слайда как раз нулевой — выкинув его, получили бы не то число.
+    const slideSeconds = segment.slides.map((slide) => markSeconds(slide.at, words));
+    const fromSlides = segment.slides.slice(1).map((slide, offset): Mark => {
+      const index = offset + 1;
+      const morphSeconds = morphSecondsFor(slide.transition, index, slideSeconds);
+      return {
+        kind: 'slide',
+        id: slide.id,
+        seconds: slideSeconds[index]!,
+        onWord: slide.at.kind === 'word',
+        morphSeconds,
+        title: slide.transition === 'morph'
+          ? `Слайд «${slide.id}»: плавный переход, движение ${morphSeconds.toFixed(2)} с до метки`
+          : `Слайд «${slide.id}»: разрез, без движения`,
+      };
+    });
     return [...fromGates, ...fromSlides];
   }, [segment]);
 
@@ -544,6 +599,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             type: 'setElementState',
             elementId: id,
             patch: { x: currentState.x + intent.dx, y: currentState.y + intent.dy },
+            at: headTimeRef(),
           });
           return;
         }
