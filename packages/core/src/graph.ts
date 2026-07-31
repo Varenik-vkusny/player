@@ -62,14 +62,63 @@ export function findSegment(project: Project, segmentId: string): Segment {
  */
 export function conditionHolds(condition: Condition, answers: Answers): boolean {
   const answer = answers[condition.variable];
+  // Переменной нет — не подошло НИ ОДНО условие, включая `notEquals`.
+  // Это не самоочевидно: «ответ не равен красному» у зрителя, который вообще
+  // не отвечал, читается как правда. Но тогда правило с `≠` тихо вело бы
+  // по ветке, условие которой зритель не выполнял. → ADR-019
   if (!answer) return false;
 
   switch (condition.kind) {
     case 'equals': return answer.value === condition.value;
+    case 'notEquals': return answer.value !== condition.value;
     case 'correct': return answer.correct;
     case 'wrong': return !answer.correct;
-    default: return false;
+    case 'compare': return compareHolds(condition.op, answer.value, condition.value);
+    default: {
+      // Не `default: return false`: тот глушил проверку полноты, и забытый
+      // вид условия молча не срабатывал бы — дефект, невидимый ни в тесте,
+      // ни в консоли. Теперь забытый вид ломает сборку.
+      const unreachable: never = condition;
+      throw new Error(`Неизвестный вид условия: ${JSON.stringify(unreachable)}`);
+    }
   }
+}
+
+/**
+ * Сравнение ответа с числом.
+ *
+ * Переменная хранит СТРОКУ — id выбранного варианта. Если она не приводится
+ * к числу, условие просто не подошло: сравнить «красный» с тройкой нельзя,
+ * но это законное состояние данных зрителя, а не ошибка кода. Автора про
+ * такое правило предупреждает панель проблем — оно не сработает никогда.
+ */
+function compareHolds(op: 'gt' | 'gte' | 'lt' | 'lte', value: string, against: number): boolean {
+  // `Number('')` даёт 0, а пустая строка — это «зритель нажал „дальше“»,
+  // а не «ответил нулём». Такое сравнивать не с чем.
+  if (value.trim() === '') return false;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return false;
+
+  switch (op) {
+    case 'gt': return number > against;
+    case 'gte': return number >= against;
+    case 'lt': return number < against;
+    case 'lte': return number <= against;
+    default: {
+      const unreachable: never = op;
+      throw new Error(`Неизвестный оператор сравнения: ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+/**
+ * Подошёл ли ВЕСЬ набор условий: они соединены через И.
+ *
+ * Пустого набора не бывает — схема требует непустой список, потому что
+ * правило без условий это `default`, а он уже есть отдельным полем.
+ */
+export function conditionsHold(conditions: readonly Condition[], answers: Answers): boolean {
+  return conditions.every((condition) => conditionHolds(condition, answers));
 }
 
 /**
@@ -84,7 +133,7 @@ export function conditionHolds(condition: Condition, answers: Answers): boolean 
  */
 export function nextSegment(segment: Segment, answers: Answers): string | null {
   for (const rule of segment.exit.rules) {
-    if (conditionHolds(rule.when, answers)) return rule.goto;
+    if (conditionsHold(rule.when, answers)) return rule.goto;
   }
   return segment.exit.default;
 }

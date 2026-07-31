@@ -513,10 +513,63 @@ const migrateV3toV4: Migration = (input) => {
   };
 };
 
+interface ProjectV4 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+}
+
+/**
+ * v4 → v5: у правила выхода одно условие превращается в список из одного.
+ *
+ * Тривиальна по построению, и это свойство проверялось до того, как язык
+ * условий проектировался: если бы миграция получалась нетривиальной, форма
+ * была бы выбрана неверно. Ни `notEquals`, ни `compare`, ни условие
+ * на варианте ответа в данных версии 4 возникнуть не могут — значит больше
+ * миграции делать нечего. → ADR-019
+ */
+const migrateV4toV5: Migration = (input) => {
+  const v4 = input as ProjectV4;
+
+  const segments = Array.isArray(v4.segments)
+    ? v4.segments.map((segment) => {
+      if (typeof segment !== 'object' || segment === null) return segment;
+      const exit = (segment as { exit?: unknown }).exit;
+      // Битый или отсутствующий выход доводим до Zod нетронутым: внятное
+      // сообщение с путём полезнее падения миграции своим TypeError.
+      if (typeof exit !== 'object' || exit === null) return segment;
+      const rules = (exit as { rules?: unknown }).rules;
+      if (!Array.isArray(rules)) return segment;
+
+      return {
+        ...segment,
+        exit: {
+          ...exit,
+          rules: rules.map((rule) => {
+            if (typeof rule !== 'object' || rule === null) return rule;
+            const when = (rule as { when?: unknown }).when;
+            // Уже список — не оборачиваем повторно.
+            if (when === undefined || Array.isArray(when)) return rule;
+            return { ...rule, when: [when] };
+          }),
+        },
+      };
+    })
+    : v4.segments;
+
+  return {
+    schemaVersion: 5,
+    meta: v4.meta,
+    entry: v4.entry,
+    segments,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
   3: migrateV3toV4,
+  4: migrateV4toV5,
 });
 
 export class SchemaVersionError extends Error {

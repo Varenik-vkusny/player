@@ -26,7 +26,7 @@ const segment = (id: string, exit: Segment['exit']): Segment => ({
 });
 
 const project = (segments: Segment[]): Project => ({
-  schemaVersion: 4,
+  schemaVersion: 5,
   meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
   entry: segments[0]!.id,
   segments,
@@ -75,8 +75,8 @@ describe('условие против накопленных ответов', ()
 describe('следующий сегмент', () => {
   const развилка = segment('start', {
     rules: [
-      { id: 'r1', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'да' },
-      { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'no' }, goto: 'нет' },
+      { id: 'r1', when: [{ kind: 'equals', variable: 'q', value: 'yes' }], goto: 'да' },
+      { id: 'r2', when: [{ kind: 'equals', variable: 'q', value: 'no' }], goto: 'нет' },
     ],
     default: null,
   });
@@ -89,8 +89,8 @@ describe('следующий сегмент', () => {
   it('порядок правил — это семантика, а не оформление', () => {
     const оба = segment('s', {
       rules: [
-        { id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'первый' },
-        { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'второй' },
+        { id: 'r1', when: [{ kind: 'correct', variable: 'q' }], goto: 'первый' },
+        { id: 'r2', when: [{ kind: 'equals', variable: 'q', value: 'yes' }], goto: 'второй' },
       ],
       default: 'запасной',
     });
@@ -100,7 +100,7 @@ describe('следующий сегмент', () => {
 
   it('ни одно правило не подошло — идём в запасной выход', () => {
     const с_запасным = segment('s', {
-      rules: [{ id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'верно' }],
+      rules: [{ id: 'r1', when: [{ kind: 'correct', variable: 'q' }], goto: 'верно' }],
       default: 'дальше',
     });
     expect(nextSegment(с_запасным, answered('q', 'no', false))).toBe('дальше');
@@ -121,9 +121,9 @@ describe('что греть заранее', () => {
   it('все возможные продолжения без повторов', () => {
     const s = segment('s', {
       rules: [
-        { id: 'r1', when: { kind: 'equals', variable: 'q', value: 'a' }, goto: 'один' },
-        { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'b' }, goto: 'два' },
-        { id: 'r3', when: { kind: 'equals', variable: 'q', value: 'c' }, goto: 'один' },
+        { id: 'r1', when: [{ kind: 'equals', variable: 'q', value: 'a' }], goto: 'один' },
+        { id: 'r2', when: [{ kind: 'equals', variable: 'q', value: 'b' }], goto: 'два' },
+        { id: 'r3', when: [{ kind: 'equals', variable: 'q', value: 'c' }], goto: 'один' },
       ],
       default: 'два',
     });
@@ -171,8 +171,8 @@ describe('сколько частей осталось', () => {
     // которого ещё нет.
     project.segments[0]!.exit = {
       rules: [
-        { id: 'r1', when: { kind: 'equals', variable: 'v', value: 'x' }, goto: 'b' },
-        { id: 'r2', when: { kind: 'equals', variable: 'v', value: 'y' }, goto: 'c' },
+        { id: 'r1', when: [{ kind: 'equals', variable: 'v', value: 'x' }], goto: 'b' },
+        { id: 'r2', when: [{ kind: 'equals', variable: 'v', value: 'y' }], goto: 'c' },
       ],
       default: null,
     };
@@ -183,8 +183,8 @@ describe('сколько частей осталось', () => {
     const project = line();
     project.segments[1]!.exit = {
       rules: [
-        { id: 'r1', when: { kind: 'equals', variable: 'v', value: 'x' }, goto: 'c' },
-        { id: 'r2', when: { kind: 'equals', variable: 'v', value: 'y' }, goto: 'a' },
+        { id: 'r1', when: [{ kind: 'equals', variable: 'v', value: 'x' }], goto: 'c' },
+        { id: 'r2', when: [{ kind: 'equals', variable: 'v', value: 'y' }], goto: 'a' },
       ],
       default: null,
     };
@@ -196,8 +196,8 @@ describe('сколько частей осталось', () => {
     const project = line();
     project.segments[0]!.exit = {
       rules: [
-        { id: 'r1', when: { kind: 'equals', variable: 'v', value: 'x' }, goto: 'b' },
-        { id: 'r2', when: { kind: 'equals', variable: 'v', value: 'y' }, goto: 'b' },
+        { id: 'r1', when: [{ kind: 'equals', variable: 'v', value: 'x' }], goto: 'b' },
+        { id: 'r2', when: [{ kind: 'equals', variable: 'v', value: 'y' }], goto: 'b' },
       ],
       default: null,
     };

@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 5,
+  "meta": {
+    "title": "Язык условий: цепочка через И, сравнение с числом, условный вариант",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-count",
+  "segments": [
+    {
+      "id": "s-count",
+      "title": "Считает и запоминает ответ числом",
+      "audio": {
+        "src": "/audio/count.wav",
+        "offset": 0,
+        "duration": 4,
+        "words": []
+      },
+      "elements": [
+        { "id": "bg", "type": "shape", "content": "" },
+        { "id": "ask", "type": "text", "content": "Сколько будет два плюс два?" }
+      ],
+      "slides": [
+        {
+          "id": "c-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "ask": {
+              "x": 140, "y": 200, "width": 1640, "height": 160,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "72px",
+                "font-weight": "700",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-count",
+          "at": { "kind": "seconds", "t": 3 },
+          "config": {
+            "kind": "choice",
+            "prompt": "Сколько будет два плюс два?",
+            "options": [
+              { "id": "3", "label": "Три" },
+              { "id": "4", "label": "Четыре" },
+              { "id": "5", "label": "Пять" }
+            ],
+            "correctId": "4"
+          },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "счёт"
+        }
+      ],
+      "exit": { "rules": [], "default": "s-next" }
+    },
+    {
+      "id": "s-next",
+      "title": "Спрашивает, куда двигаться, и часть вариантов прячет",
+      "audio": {
+        "src": "/audio/next.wav",
+        "offset": 0,
+        "duration": 4,
+        "words": []
+      },
+      "elements": [
+        { "id": "n-bg", "type": "shape", "content": "" }
+      ],
+      "slides": [
+        {
+          "id": "n-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "n-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#1b2430" }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-next",
+          "at": { "kind": "seconds", "t": 3 },
+          "config": {
+            "kind": "choice",
+            "prompt": "Что дальше?",
+            "options": [
+              { "id": "opt-on", "label": "Идём дальше" },
+              { "id": "opt-skip", "label": "Хватит на сегодня" },
+              {
+                "id": "opt-again",
+                "label": "Разобрать ещё раз",
+                "when": [{ "kind": "compare", "variable": "счёт", "op": "lt", "value": 4 }]
+              }
+            ],
+            "correctId": null
+          },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "дальше"
+        }
+      ],
+      "exit": {
+        "rules": [
+          {
+            "id": "r-deep",
+            "when": [
+              { "kind": "compare", "variable": "счёт", "op": "gte", "value": 4 },
+              { "kind": "notEquals", "variable": "дальше", "value": "opt-skip" }
+            ],
+            "goto": "s-deep"
+          }
+        ],
+        "default": "s-end"
+      }
+    },
+    {
+      "id": "s-deep",
+      "title": "Углубление для тех, кто посчитал верно и не остановился",
+      "audio": { "src": "/audio/deep.wav", "offset": 0, "duration": 3, "words": [] },
+      "elements": [{ "id": "d-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "d-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "d-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#10b981" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    },
+    {
+      "id": "s-end",
+      "title": "Общая концовка",
+      "audio": { "src": "/audio/end.wav", "offset": 0, "duration": 3, "words": [] },
+      "elements": [{ "id": "e-bg", "type": "shape", "content": "" }],
+      "slides": [
+        {
+          "id": "e-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "e-bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

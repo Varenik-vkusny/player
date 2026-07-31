@@ -201,8 +201,8 @@ describe('рёбра гейтов становятся правилами вых
     const rules = segment.exit.rules;
     expect(rules.length).toBe(2);
     for (const rule of rules) {
-      expect(rule.when.kind).toBe('equals');
-      expect(rule.when.variable).toBe(segment.gates[0]!.recordAs);
+      expect(rule.when[0]!.kind).toBe('equals');
+      expect(rule.when[0]!.variable).toBe(segment.gates[0]!.recordAs);
     }
     expect(rules.map((r) => r.goto).sort()).toEqual(['n-no', 'n-yes']);
   });

@@ -69,7 +69,7 @@ describe('выход без правил', () => {
 
 describe('выход с правилами обязан быть тотальным', () => {
   const rule = (value: string, goto: string) =>
-    ({ id: `r-${value}`, when: { kind: 'equals', variable: 'q', value }, goto });
+    ({ id: `r-${value}`, when: [{ kind: 'equals', variable: 'q', value }], goto });
 
   it('запасной выход делает тотальным что угодно', () => {
     expect(ok(explanation(
@@ -95,8 +95,8 @@ describe('выход с правилами обязан быть тотальн�
   it('пара «верно» и «неверно» тотальна сама по себе', () => {
     expect(ok(explanation({
       rules: [
-        { id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'да' },
-        { id: 'r2', when: { kind: 'wrong', variable: 'q' }, goto: 'нет' },
+        { id: 'r1', when: [{ kind: 'correct', variable: 'q' }], goto: 'да' },
+        { id: 'r2', when: [{ kind: 'wrong', variable: 'q' }], goto: 'нет' },
       ],
       default: null,
     }, [choice('q', 'yes', 'no')]))).toBe(true);
@@ -104,7 +104,7 @@ describe('выход с правилами обязан быть тотальн�
 
   it('одно только «верно» без запасного выхода — тупик для неверного ответа', () => {
     expect(why(explanation({
-      rules: [{ id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'да' }],
+      rules: [{ id: 'r1', when: [{ kind: 'correct', variable: 'q' }], goto: 'да' }],
       default: null,
     }, [choice('q', 'yes', 'no')]))).toMatch(/не покрывают все исходы/);
   });
@@ -114,8 +114,8 @@ describe('выход с правилами обязан быть тотальн�
     // остаётся возможным, и вести зрителя некуда.
     expect(why(explanation({
       rules: [
-        { id: 'r1', when: { kind: 'correct', variable: 'q' }, goto: 'да' },
-        { id: 'r2', when: { kind: 'wrong', variable: 'w' }, goto: 'нет' },
+        { id: 'r1', when: [{ kind: 'correct', variable: 'q' }], goto: 'да' },
+        { id: 'r2', when: [{ kind: 'wrong', variable: 'w' }], goto: 'нет' },
       ],
       default: null,
     }, [choice('q', 'yes', 'no'), choice('w', 'a', 'b')]))).toMatch(/не покрывают все исходы/);
@@ -126,7 +126,7 @@ describe('охранник тотальности сам по себе не пу
   it('проверка ловит нарушение, а не молчит всегда', () => {
     // Мутация: если убрать правило тотальности, этот тест обязан упасть.
     expect(ok(explanation(
-      { rules: [{ id: 'r1', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'да' }], default: null },
+      { rules: [{ id: 'r1', when: [{ kind: 'equals', variable: 'q', value: 'yes' }], goto: 'да' }], default: null },
       [choice('q', 'yes', 'no')],
     ))).toBe(false);
   });
@@ -140,8 +140,8 @@ describe('правило выхода не может указывать на и
     expect(why(explanation(
       {
         rules: [
-          { id: 'r1', when: { kind: 'equals', variable: 'q', value: 'yes' }, goto: 'да' },
-          { id: 'r2', when: { kind: 'equals', variable: 'q', value: 'исчез' }, goto: 'нет' },
+          { id: 'r1', when: [{ kind: 'equals', variable: 'q', value: 'yes' }], goto: 'да' },
+          { id: 'r2', when: [{ kind: 'equals', variable: 'q', value: 'исчез' }], goto: 'нет' },
         ],
         default: 'да',
       },
@@ -151,7 +151,7 @@ describe('правило выхода не может указывать на и
 
   it('живой вариант проверку проходит', () => {
     expect(ok(explanation(
-      { rules: [{ id: 'r1', when: { kind: 'equals', variable: 'q', value: 'no' }, goto: 'нет' }], default: 'да' },
+      { rules: [{ id: 'r1', when: [{ kind: 'equals', variable: 'q', value: 'no' }], goto: 'нет' }], default: 'да' },
       [choice('q', 'yes', 'no')],
     ))).toBe(true);
   });
