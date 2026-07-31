@@ -40,10 +40,10 @@ const UNMATCHED_FRACTION = 0.5;
 /**
  * Сколько длится переход к слайду `index`, секунды. Ноль — срез.
  *
- * Урезается расстоянием до следующего слайда. Переход, переживший смену
- * слайда, начал бы следующий не с текущей картинки, а с состояния прошлого
- * слайда — то есть скачком назад ровно в тот момент, когда зритель смотрит
- * на движение.
+ * Окно перехода ЗАКАНЧИВАЕТСЯ на метке слайда (`product.md` §2б [Р],
+ * ADR-020), поэтому урезается оно расстоянием до ПРЕДЫДУЩЕЙ метки.
+ * Переход, начавшийся раньше неё, наложился бы на чужой переход и стартовал
+ * бы не с той картинки, которая в тот момент на экране.
  */
 export function morphSecondsFor(
   transition: 'morph' | 'cut',
@@ -52,9 +52,56 @@ export function morphSecondsFor(
 ): number {
   // Первому слайду ехать неоткуда: предыдущего состояния не существует.
   if (index === 0 || transition === 'cut') return 0;
-  const next = seconds[index + 1];
-  const gap = next === undefined ? Number.POSITIVE_INFINITY : next - seconds[index]!;
+  const gap = seconds[index]! - seconds[index - 1]!;
   return Math.max(0, Math.min(MORPH_DURATION_S, gap));
+}
+
+/** Расписание одного слайда: когда его метка и сколько едут К ней. */
+export interface SlideSchedule {
+  readonly seconds: number;
+  readonly morphSeconds: number;
+}
+
+/**
+ * Что происходит на сцене в заданную секунду.
+ *
+ * `still` — сцена равна снимку слайда `index`.
+ * `morph` — идёт переход К слайду `index`, окно кончается на его метке.
+ */
+export type Phase =
+  | { readonly kind: 'still'; readonly index: number }
+  | { readonly kind: 'morph'; readonly index: number };
+
+/** Индекс слайда, чья метка уже наступила. */
+export function indexAt(schedule: readonly SlideSchedule[], seconds: number): number {
+  let index = 0;
+  for (let i = 0; i < schedule.length; i++) {
+    if (schedule[i]!.seconds <= seconds) index = i;
+    else break;
+  }
+  return index;
+}
+
+/**
+ * Фаза сцены в секунду `seconds` — единственное описание расписания.
+ *
+ * До разворота (ADR-016) момент смены слайда и момент старта перехода
+ * совпадали, поэтому хватало одного индекса. Теперь они разные: на
+ * `T − длительность` уже надо строить переход, хотя слайд ещё предыдущий.
+ * Индексом это не выражается — нужна фаза.
+ *
+ * **Оба конца окна открыты.** Ровно на метке `T` окно уже кончилось —
+ * сцена равна снимку, ради чего разворот и делался. Ровно на предыдущей
+ * метке окно ещё не началось — сцена равна предыдущему снимку. Метка всегда
+ * означает снимок, с какой бы стороны к ней ни подошли.
+ */
+export function phaseAt(schedule: readonly SlideSchedule[], seconds: number): Phase {
+  const index = indexAt(schedule, seconds);
+  const next = schedule[index + 1];
+  if (next && next.morphSeconds > 0 && seconds > next.seconds - next.morphSeconds) {
+    return { kind: 'morph', index: index + 1 };
+  }
+  return { kind: 'still', index };
 }
 
 /** Что происходит с элементом на переходе. */

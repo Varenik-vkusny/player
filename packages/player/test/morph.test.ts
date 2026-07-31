@@ -9,7 +9,14 @@
 import { describe, expect, it } from 'vitest';
 import type { ElementState } from '@player/core';
 
-import { layoutStatesFor, morphSecondsFor, planMorph, MORPH_DURATION_S } from '@player/player';
+import {
+  layoutStatesFor,
+  morphSecondsFor,
+  phaseAt,
+  planMorph,
+  MORPH_DURATION_S,
+  type SlideSchedule,
+} from '@player/player';
 
 function state(patch: Partial<ElementState> = {}): ElementState {
   return {
@@ -111,16 +118,82 @@ describe('morphSecondsFor: расписание перехода', () => {
   });
 
   /**
-   * Урезание по расстоянию до следующего слайда — не оптимизация.
-   * Переход, переживший смену слайда, начал бы следующий не с текущей
-   * картинки, а с состояния прошлого слайда: скачок назад ровно тогда,
-   * когда зритель смотрит на движение.
+   * Урезание по расстоянию до ПРЕДЫДУЩЕЙ метки — не оптимизация (ADR-020).
+   * Окно кончается на метке; начавшись раньше предыдущей, оно наложилось бы
+   * на чужой переход и стартовало бы не с той картинки, что на экране.
    */
-  it('переход не переживает следующий слайд: урезается по расстоянию до него', () => {
-    expect(morphSecondsFor('morph', 1, [0, 1, 1.2])).toBeCloseTo(0.2, 10);
+  it('переход не залезает за предыдущую метку: урезается по расстоянию до неё', () => {
+    expect(morphSecondsFor('morph', 2, [0, 1, 1.2])).toBeCloseTo(0.2, 10);
   });
 
-  it('последнему слайду урезать не по чему', () => {
-    expect(morphSecondsFor('morph', 2, [0, 1, 2])).toBe(MORPH_DURATION_S);
+  it('следующий слайд на урезание больше не влияет', () => {
+    // Слайды 1 и 2 стоят вплотную, но переход К слайду 1 меряется отрезком
+    // 0 → 1, а не 1 → 1.2. До разворота здесь было 0.2.
+    expect(morphSecondsFor('morph', 1, [0, 1, 1.2])).toBe(MORPH_DURATION_S);
+  });
+});
+
+/**
+ * Расписание целиком: где сцена равна снимку, а где едет.
+ *
+ * Проверяется отдельно от `SlideEngine`, потому что это правило времени,
+ * а не работа с узлами. Ошибка здесь даёт правдоподобную картинку
+ * на неправильной секунде — то, чего скриншот на другой секунде не увидит.
+ */
+describe('phaseAt: где снимок, а где движение', () => {
+  /** Метки 0, 1, 2 с переходом 0.6 к каждой, кроме первой. */
+  const schedule: readonly SlideSchedule[] = [
+    { seconds: 0, morphSeconds: 0 },
+    { seconds: 1, morphSeconds: 0.6 },
+    { seconds: 2, morphSeconds: 0.6 },
+  ];
+
+  it('на метке слайда сцена равна снимку, а не едет к нему', () => {
+    // Ради этого разворот и делался: метка объявляет «здесь сцена равна
+    // снимку N», и в момент метки утверждение обязано быть истинным.
+    expect(phaseAt(schedule, 1)).toEqual({ kind: 'still', index: 1 });
+    expect(phaseAt(schedule, 2)).toEqual({ kind: 'still', index: 2 });
+  });
+
+  it('окно кончается на метке, а начинается за длительность до неё', () => {
+    expect(phaseAt(schedule, 0.5)).toEqual({ kind: 'morph', index: 1 });
+    expect(phaseAt(schedule, 0.999)).toEqual({ kind: 'morph', index: 1 });
+  });
+
+  it('ровно на начале окна перехода ещё нет: оба конца открыты', () => {
+    expect(phaseAt(schedule, 0.4)).toEqual({ kind: 'still', index: 0 });
+  });
+
+  it('между переходами сцена стоит на снимке', () => {
+    expect(phaseAt(schedule, 0.2)).toEqual({ kind: 'still', index: 0 });
+  });
+
+  it('до первой метки и после последней движения нет', () => {
+    expect(phaseAt(schedule, 0)).toEqual({ kind: 'still', index: 0 });
+    expect(phaseAt(schedule, 9)).toEqual({ kind: 'still', index: 2 });
+  });
+
+  it('срез окна не даёт вовсе', () => {
+    const cut: readonly SlideSchedule[] = [
+      { seconds: 0, morphSeconds: 0 },
+      { seconds: 1, morphSeconds: 0 },
+    ];
+    expect(phaseAt(cut, 0.5)).toEqual({ kind: 'still', index: 0 });
+    expect(phaseAt(cut, 1)).toEqual({ kind: 'still', index: 1 });
+  });
+
+  /**
+   * Соседние окна не могут наложиться: урезание по предыдущей метке —
+   * то самое правило, которое это гарантирует.
+   */
+  it('плотно стоящие слайды дают короткие окна, но не наложение', () => {
+    const dense: readonly SlideSchedule[] = [
+      { seconds: 0, morphSeconds: 0 },
+      { seconds: 1, morphSeconds: morphSecondsFor('morph', 1, [0, 1, 1.2]) },
+      { seconds: 1.2, morphSeconds: morphSecondsFor('morph', 2, [0, 1, 1.2]) },
+    ];
+    expect(phaseAt(dense, 1)).toEqual({ kind: 'still', index: 1 });
+    expect(phaseAt(dense, 1.1)).toEqual({ kind: 'morph', index: 2 });
+    expect(phaseAt(dense, 1.2)).toEqual({ kind: 'still', index: 2 });
   });
 });

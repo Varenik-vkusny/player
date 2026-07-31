@@ -14,6 +14,10 @@
  * fixtures/projects/morph.json: три слайда; `mover` едет и растёт, `label`
  * проявляется из `visible: false` на своём месте, `leaver` уходит,
  * `comer` приходит.
+ *
+ * Окна перехода после разворота (ADR-020) кончаются на метке: к слайду
+ * `m-2` (метка 1.0 с) сцена едет по (0.4, 1.0), к `m-3` (метка 2.0 с) —
+ * по (1.4, 2.0). Метки стоят на 0/1/2 с, длительность перехода 0.6 с.
  */
 import { expect, test, type Page } from '@playwright/test';
 
@@ -59,8 +63,11 @@ test.describe('морфинг между слайдами', () => {
     await openPreview(page, 0);
 
     const shifts: number[] = [];
-    // Переход к слайду m-2 начинается на 1.0 с. Шаг 16.7 мс — кадр при 60 Гц.
-    for (let ms = 1000; ms <= 1620; ms += 17) {
+    // Переход к слайду m-2 идёт по (0.4, 1.0), и обход начинается ВНУТРИ
+    // окна: ровно на 0.4 сцена ещё стоит на снимке, смещение там ноль,
+    // и первый же шаг выглядел бы прыжком во всю дистанцию.
+    // Шаг 16.7 мс — кадр при 60 Гц.
+    for (let ms = 405; ms <= 1000; ms += 17) {
       shifts.push(await shiftAt(page, ms / 1000));
     }
 
@@ -76,14 +83,19 @@ test.describe('морфинг между слайдами', () => {
     expect(Math.max(...steps)).toBeLessThan(total / 5);
   });
 
-  test('переход заканчивается ровно в конечном состоянии, без рывка', async ({ page }) => {
+  /**
+   * Разворот проверяется здесь: конечное состояние наступает НА метке,
+   * а не через 0.6 с после неё. До ADR-020 на секунде 1.000 элемент стоял
+   * ещё в снимке предыдущего слайда — метка обещала снимок и врала.
+   */
+  test('переход заканчивается ровно на метке слайда, без рывка', async ({ page }) => {
     await openPreview(page, 0);
 
-    const almost = await shiftAt(page, 1.59);
-    const settled = await shiftAt(page, 1.62);
+    const almost = await shiftAt(page, 0.99);
+    const onMark = await shiftAt(page, 1.0);
 
-    expect(Math.abs(almost), 'к концу перехода смещение почти нулевое').toBeLessThan(2);
-    expect(settled, 'после перехода трансформация приведена к схемной').toBe(0);
+    expect(Math.abs(almost), 'к концу окна смещение почти нулевое').toBeLessThan(2);
+    expect(onMark, 'на метке слайда трансформация приведена к схемной').toBe(0);
   });
 
   /**
@@ -94,7 +106,7 @@ test.describe('морфинг между слайдами', () => {
   test('момент не зависит от истории: обход вперёд и назад совпадает', async ({ page }) => {
     await openPreview(page, 0);
 
-    const moments = [1.1, 1.3, 1.5, 2.1, 2.4];
+    const moments = [0.5, 0.7, 0.9, 1.5, 1.8];
     const forward: number[] = [];
     for (const t of moments) forward.push(await shiftAt(page, t));
 
@@ -123,21 +135,25 @@ test.describe('морфинг между слайдами', () => {
       return Number(getComputedStyle(node).opacity);
     }, id);
 
-    // Первый переход, четверть пути: скрытый `label` уже проявляется.
-    await shiftAt(page, 1.15);
+    // Первый переход (0.4, 1.0), четверть пути: скрытый `label` уже проявляется.
+    await shiftAt(page, 0.55);
     const labelEarly = await opacity('label');
     expect(labelEarly, 'скрытый элемент проявляется сразу').toBeGreaterThan(0);
     expect(labelEarly).toBeLessThan(1);
 
-    // Второй переход, четверть пути: пришедший `comer` ещё не начал.
-    await shiftAt(page, 2.15);
+    // Второй переход (1.4, 2.0), четверть пути: пришедший `comer` ещё не начал.
+    await shiftAt(page, 1.55);
     expect(await opacity('comer'), 'пришедший ждёт, пока совпавшие едут').toBe(0);
 
     // Второй переход, три четверти: теперь проявляется.
-    await shiftAt(page, 2.45);
+    await shiftAt(page, 1.85);
     const comerLate = await opacity('comer');
     expect(comerLate).toBeGreaterThan(0);
     expect(comerLate).toBeLessThan(1);
+
+    // И финиширует ровно на метке — требование §2б, а не следствие.
+    await shiftAt(page, 2.0);
+    expect(await opacity('comer'), 'приходящий финиширует на метке').toBe(1);
   });
 
   /**
@@ -149,10 +165,10 @@ test.describe('морфинг между слайдами', () => {
 
     const countLeaver = () => page.locator('[data-id="leaver"]').count();
 
-    await shiftAt(page, 2.1);
+    await shiftAt(page, 1.5);
     expect(await countLeaver(), 'на переходе уходящий ещё в документе').toBe(1);
 
-    await shiftAt(page, 2.7);
-    expect(await countLeaver(), 'после перехода уходящего в документе нет').toBe(0);
+    await shiftAt(page, 2.1);
+    expect(await countLeaver(), 'после метки уходящего в документе нет').toBe(0);
   });
 });

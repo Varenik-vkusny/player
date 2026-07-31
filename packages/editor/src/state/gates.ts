@@ -12,7 +12,7 @@
  */
 import type { Gate, Slide, TimeRef, Word } from '@player/core';
 import { resolveTimeRef } from '@player/core';
-import { morphSecondsFor } from '@player/player';
+import { morphSecondsFor, phaseAt } from '@player/player';
 
 import { freeId } from './elements.js';
 
@@ -47,10 +47,10 @@ const DEFAULT_ACCEPT = 'ответ';
  *
  * Ровно на секунде начала перехода — это НЕ «внутри»: там переход ещё
  * не начинался, и доводить нечего. Ровно на секунде конца — тоже нет.
+ * После разворота (ADR-020) конец окна — это и есть метка слайда.
  *
- * Расписание берётся из `morphSecondsFor` плеера, а не считается заново:
- * два описания одного правила разошлись бы тихо, и первым разошлось бы
- * урезание перехода по расстоянию до следующего слайда.
+ * Ответ даёт `phaseAt` плеера, а не своя формула: два описания одного
+ * расписания разошлись бы тихо, и первым разошлось бы урезание перехода.
  */
 export function gateInsideTransition(
   gate: Gate,
@@ -59,13 +59,12 @@ export function gateInsideTransition(
 ): boolean {
   const at = resolveTimeRef(gate.at, words);
   const seconds = slides.map((slide) => resolveTimeRef(slide.at, words));
+  const schedule = slides.map((slide, index) => ({
+    seconds: seconds[index]!,
+    morphSeconds: morphSecondsFor(slide.transition, index, seconds),
+  }));
 
-  return slides.some((slide, index) => {
-    const duration = morphSecondsFor(slide.transition, index, seconds);
-    if (duration <= 0) return false;
-    const start = seconds[index]!;
-    return at > start && at < start + duration;
-  });
+  return phaseAt(schedule, at).kind === 'morph';
 }
 
 export function createGate(id: string, at: TimeRef): Gate {
