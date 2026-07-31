@@ -73,4 +73,17 @@ test.describe('@shots снимки продукта', () => {
     await page.waitForTimeout(1500);
     await page.screenshot({ path: `${OUT}/bare.png` });
   });
+
+  test('крупный план полосы меток', async ({ page }) => {
+    await openEditor(page, 'demo');
+    const lane = page.getByTestId('marks-lane');
+    const box = await lane.boundingBox();
+    if (!box) throw new Error('полоса меток не видна');
+    // Кусок дорожки слева, где метки стоят кучно: так видно и форму, и то,
+    // что остановки и слайды лежат в разных полосах.
+    await page.screenshot({
+      path: `${OUT}/marks-zoom.png`,
+      clip: { x: box.x, y: box.y - 46, width: 470, height: box.height + 56 },
+    });
+  });
 });
