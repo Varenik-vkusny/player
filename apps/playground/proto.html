@@ -1,0 +1,1563 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Прототип продукта · сверка понимания</title>
+<!--
+  ПРОТОТИП ДЛЯ СВЕРКИ. Не продукт.
+
+  Тут всё замокано: ни звука, ни схемы проекта, ни настоящего рендера,
+  ни разреза. Данные вшиты ниже. Нажатие «Разделить повествование»
+  раздваивает дорожку НА ЭКРАНЕ, а в продукте не происходит ничего.
+
+  Файл самодостаточный: ни одного импорта, ни одного внешнего запроса.
+  Открывается тремя способами — через pnpm dev по /proto.html,
+  двойным щелчком с диска и опубликованным артефактом.
+-->
+<style>
+:root{
+  color-scheme: dark;
+  --bg:#0b0e13; --panel:#141922; --panel2:#1b2230; --line:#28313f;
+  --ink:#e6edf7; --dim:#8b97ab; --dim2:#5d6979;
+  --acc:#4c9aff; --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+  --slide:#c9a227; --stop:#c46bd8;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:var(--bg); color:var(--ink);
+  font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  overflow-y:scroll;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,select,textarea{font:inherit;color:inherit}
+h1,h2,h3,h4{margin:0;font-weight:600}
+
+/* ---------- каркас ---------- */
+.wrap{max-width:1340px;margin:0 auto;padding:0 16px 64px}
+.topbar{
+  position:sticky;top:0;z-index:50;background:rgba(11,14,19,.94);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  padding:10px 16px;margin:0 -16px 18px;
+}
+.brand{font-weight:600;white-space:nowrap}
+.brand small{color:var(--dim);font-weight:400;margin-left:6px}
+.nav{display:flex;gap:4px;flex-wrap:wrap}
+.chip{
+  padding:5px 11px;border-radius:7px;border:1px solid var(--line);
+  color:var(--dim);white-space:nowrap;
+}
+.chip:hover{color:var(--ink);border-color:var(--dim2)}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#04101f;font-weight:600}
+.spacer{flex:1}
+.toggle{display:flex;align-items:center;gap:7px;color:var(--dim);white-space:nowrap}
+.toggle input{accent-color:var(--acc)}
+
+/* ---------- общее ---------- */
+.btn{
+  padding:6px 12px;border-radius:7px;border:1px solid var(--line);
+  background:var(--panel2);white-space:nowrap;
+}
+.btn:hover{border-color:var(--dim2)}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#04101f;font-weight:600}
+.btn.pri:hover{filter:brightness(1.08)}
+.btn.danger{color:var(--bad)}
+.btn[disabled]{opacity:.42;cursor:not-allowed}
+.btn.sm{padding:3px 8px;font-size:12.5px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:11px}
+.ph{
+  padding:9px 12px;border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;
+}
+.ph .spacer{flex:1}
+.pb{padding:11px 12px}
+.dim{color:var(--dim)}
+.tiny{font-size:12px}
+.note{
+  color:var(--dim);font-size:12.5px;line-height:1.5;
+  border-left:2px solid var(--line);padding-left:9px;margin:9px 0 0;
+}
+.todo{
+  display:none;font-size:11px;padding:1px 6px;border-radius:5px;
+  border:1px dashed var(--warn);color:var(--warn);white-space:nowrap;
+  vertical-align:middle;
+}
+body.show-todo .todo{display:inline-block}
+.row{display:flex;align-items:center;gap:8px}
+.row+.row{margin-top:7px}
+.grow{flex:1;min-width:0}
+label.f{display:block;color:var(--dim);font-size:12px;margin-bottom:3px}
+input[type=text],input[type=number],select,textarea{
+  width:100%;background:#0c1017;border:1px solid var(--line);
+  border-radius:6px;padding:5px 8px;
+}
+input[type=range]{width:100%;accent-color:var(--acc)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+/* ---------- A. вход ---------- */
+.steps{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.step{
+  flex:1;min-width:150px;padding:9px 12px;border-radius:9px;
+  border:1px solid var(--line);background:var(--panel);color:var(--dim);
+}
+.step.on{border-color:var(--acc);color:var(--ink)}
+.step.done{border-color:var(--ok);color:var(--ok)}
+.step b{display:block;font-size:12px;font-weight:600}
+.dropzone{
+  border:1px dashed var(--line);border-radius:11px;padding:26px;
+  text-align:center;color:var(--dim);
+}
+.waveform{display:flex;align-items:center;gap:1px;height:44px}
+.waveform i{flex:1;background:var(--dim2);border-radius:1px;min-width:1px}
+
+/* ---------- редактор ---------- */
+.ed{display:grid;grid-template-columns:190px minmax(0,1fr) 300px;gap:12px}
+.edcol{display:flex;flex-direction:column;gap:12px;min-width:0}
+.stagewrap{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:12px}
+.stage{
+  container-type:size;position:relative;aspect-ratio:16/9;width:100%;
+  background:#0e1319;border:1px solid var(--line);border-radius:7px;overflow:hidden;
+}
+.el{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer}
+.el.sel{outline:1.5px solid var(--acc);outline-offset:1px}
+.hnd{position:absolute;width:8px;height:8px;background:var(--acc);border-radius:2px}
+.rot{position:absolute;width:9px;height:9px;border:1.5px solid var(--acc);border-radius:50%;background:var(--bg)}
+.elist{max-height:210px;overflow:auto}
+.elist div{padding:4px 7px;border-radius:6px;cursor:pointer;display:flex;gap:7px;align-items:center;white-space:nowrap}
+.elist div>span:first-child{overflow:hidden;text-overflow:ellipsis}
+.elist div:hover{background:var(--panel2)}
+.elist div.on{background:var(--acc);color:#04101f;font-weight:600}
+.ins{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.ins button{padding:5px 4px;border:1px solid var(--line);border-radius:6px;font-size:12.5px}
+.ins button:hover{border-color:var(--acc)}
+.tpl button{display:block;width:100%;text-align:left;padding:5px 8px;border:1px solid var(--line);border-radius:6px;font-size:12.5px}
+.tpl button+button{margin-top:5px}
+.tpl button:hover{border-color:var(--acc)}
+
+/* лента слайдов */
+.strip{display:flex;gap:8px;overflow-x:auto;padding:2px}
+.sl{
+  flex:0 0 118px;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel2);padding:5px;cursor:pointer;
+}
+.sl.on{border-color:var(--slide);box-shadow:0 0 0 1px var(--slide)}
+.sl .mini{position:relative;height:56px;background:#0e1319;border-radius:4px;overflow:hidden;container-type:size}
+.sl .cap{font-size:11px;color:var(--dim);margin-top:4px;display:flex;justify-content:space-between}
+
+/* ---------- C. дорожка ---------- */
+.track{position:relative;user-select:none}
+.ruler{position:relative;height:17px;border-bottom:1px solid var(--line);margin-bottom:2px}
+.ruler i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.ruler i b{position:absolute;top:1px;left:3px;font-size:10px;color:var(--dim2);font-weight:400}
+.lane{position:relative;height:19px;margin-top:3px}
+.lane.wave{height:46px;background:#0c1017;border:1px solid var(--line);border-radius:5px;overflow:hidden;display:flex;align-items:center;gap:1px;padding:0 1px}
+.lane.wave i{flex:1;background:#2f3a4c;border-radius:1px;min-width:1px}
+.lanehint{font-size:11px;color:var(--dim2);margin-bottom:3px}
+/* Часть без озвучки: вместо волны — штриховка со словами. Пустое место
+   читалось бы как «не загрузилось», а это законное состояние. */
+.lane.silent{height:46px;border:1px dashed var(--line);border-radius:5px;
+  background:repeating-linear-gradient(45deg,#0c1017,#0c1017 7px,#101722 7px,#101722 14px);
+  display:flex;align-items:center;justify-content:center}
+.lane.silent span{font-size:11.5px;color:var(--dim2)}
+/* Настройки выбранного слайда под лентой: переход и привязка метки. */
+.slset{margin-top:12px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:#0c1017}
+/* Экран «на выбор»: варианты ответа на открытые вопросы, рядом друг с другом.
+   Именно рядом: сравнить два вида по очереди человек не может. */
+.ogrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin-top:11px}
+.ocard{border:1px solid var(--line);border-radius:9px;padding:11px 12px;background:#0c1017;position:relative}
+.ocard .otag{position:absolute;top:-9px;left:11px;background:var(--acc);color:#fff;
+  font-size:11px;font-weight:600;border-radius:4px;padding:1px 7px}
+.ocard>b{display:block;margin-top:4px;font-size:13px}
+.omock{margin-top:9px;border:1px solid var(--line);border-radius:6px;padding:9px;background:#0e1319;min-height:96px}
+.mk-stage{height:44px;border:1px solid var(--line);border-radius:4px;display:flex;align-items:center;
+  justify-content:center;font-size:11px;color:var(--dim);background:#0a0e14}
+.mk-stage.sm{height:38px;flex:1}
+.mk-stage.ghost{border-style:dashed;color:var(--slide)}
+.mk-two{display:flex;gap:6px}
+.mk-row{display:flex;gap:4px;margin-top:7px}
+.mk-row i{flex:1;height:15px;border-radius:3px;background:#1a2230;border:1px solid var(--line)}
+.mk-row i.on{border-color:var(--slide);background:#2a2410}
+.mk-canvas{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.mk-card{height:26px;border:1px solid var(--line);border-radius:4px;display:flex;align-items:center;
+  justify-content:center;font-size:11px;color:var(--dim);background:#0a0e14}
+.mk-card.on{border-color:var(--slide);color:var(--slide)}
+.mk-cap{margin-top:7px;font-size:10.5px;color:var(--dim2)}
+.mk-line{font-size:12px;color:var(--fg)}
+.mk-line.dim{color:var(--dim2)}
+.mk-toast{margin-top:8px;font-size:11px;border-radius:5px;padding:6px 8px;border:1px solid var(--line)}
+.mk-toast.ok{border-color:rgba(74,163,96,.5);color:var(--ok)}
+.mk-toast.warn{border-color:rgba(201,162,39,.5);color:var(--warn)}
+.mk-toast.bad{border-color:rgba(190,72,72,.5);color:var(--bad)}
+/* лупа: тот же участок дорожки, растянутый, чтобы окно перехода было видно */
+.zoom{margin-top:13px;border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:#0c1017}
+.zoom .zt{position:relative;height:74px;margin-top:6px}
+.zoom .zruler{position:absolute;left:0;right:0;top:0;height:15px;border-bottom:1px solid var(--line)}
+.zoom .zruler i{position:absolute;top:0;bottom:0;width:1px;background:var(--line)}
+.zoom .zruler i b{position:absolute;top:1px;left:3px;font-size:10px;color:var(--dim2);font-weight:400}
+.zoom .zwin{position:absolute;top:24px;height:16px;border-radius:4px;
+  background:linear-gradient(90deg,rgba(201,162,39,.10),rgba(201,162,39,.70));
+  border:1px solid rgba(201,162,39,.6);border-right:0}
+.zoom .zdia{position:absolute;top:26px;width:13px;height:13px;margin-left:-6.5px;background:var(--slide);transform:rotate(45deg);border-radius:2px}
+.zoom .zstop{position:absolute;top:22px;width:11px;height:21px;margin-left:-5.5px;background:var(--stop);border-radius:2px}
+.zoom .zlab{position:absolute;font-size:10.5px;color:var(--dim);white-space:nowrap}
+/* головка живёт только над полосами, в область веток не спускается:
+   у веток своя дорожка со своим нулём, и общего времени с ней нет */
+.head{position:absolute;top:0;height:118px;width:2px;background:var(--bad);z-index:9;pointer-events:none}
+.head::after{content:"";position:absolute;top:-4px;left:-4px;border:5px solid transparent;border-top-color:var(--bad)}
+.stopm{
+  position:absolute;top:0;width:11px;height:17px;margin-left:-5px;cursor:grab;
+  background:var(--stop);border-radius:2px;
+}
+.stopm.fork{background:var(--warn)}
+.stopm.on{outline:2px solid #fff;outline-offset:1px}
+.win{
+  position:absolute;top:6px;height:7px;background:linear-gradient(90deg,rgba(201,162,39,.12),rgba(201,162,39,.62));
+  border-radius:3px 0 0 3px;pointer-events:none;
+}
+.dia{
+  position:absolute;top:4px;width:11px;height:11px;margin-left:-5.5px;
+  background:var(--slide);transform:rotate(45deg);cursor:grab;border-radius:2px;
+}
+.dia.on{outline:2px solid #fff;outline-offset:1px}
+.dia.zero{background:var(--dim2)}
+.bindbar{position:absolute;top:16px;width:2px;height:5px;margin-left:-1px}
+.bind-word{background:var(--ok)}
+.bind-sec{background:var(--dim2)}
+
+/* расщепление вниз: отвод от развилки, шина, ветки под ней */
+.brset{position:relative;margin-top:4px}
+.drop{position:absolute;top:0;width:2px;height:15px;background:var(--warn);margin-left:-1px}
+.beam{position:absolute;top:13px;left:11px;height:2px;background:var(--line)}
+.brlist{border-left:2px solid var(--line);margin-left:10px;padding-left:13px;padding-top:4px}
+.brow{display:flex;align-items:center;gap:9px;height:27px;position:relative}
+.brow::before{content:"";position:absolute;left:-13px;top:13px;width:11px;height:2px;background:var(--line)}
+.bbar{
+  height:16px;border-radius:4px;background:var(--panel2);border:1px solid var(--line);
+  display:flex;align-items:center;padding:0 8px;font-size:11.5px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;min-width:70px;
+}
+.bbar:hover{border-color:var(--acc);color:var(--ink)}
+.bbar.on{border-color:var(--acc);color:var(--ink)}
+.bbar.empty{border-style:dashed;border-color:var(--warn);color:var(--warn)}
+.bbar.away{border-color:var(--dim2)}
+.bbar.cont{border-color:var(--acc);color:var(--ink)}
+.btail{font-size:11px;color:var(--warn);white-space:nowrap}
+.more{font-size:11.5px;color:var(--acc);padding:2px 8px;border:1px dashed var(--line);border-radius:6px}
+
+/* транскрипт */
+.tr{margin-top:9px;line-height:2;font-size:13.5px}
+.tr w{padding:1px 3px;border-radius:4px;cursor:pointer}
+.tr w:hover{background:var(--panel2)}
+.tr w.now{background:var(--acc);color:#04101f}
+.tr w.anch{box-shadow:inset 0 -2px 0 var(--ok)}
+
+/* ---------- E/F панели ---------- */
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{flex:1;padding:5px 8px;font-size:12.5px;color:var(--dim)}
+.seg button.on{background:var(--acc);color:#04101f;font-weight:600}
+.opt{border:1px solid var(--line);border-radius:8px;padding:7px 8px;margin-top:7px;background:var(--panel2)}
+.opt.correct{border-color:var(--ok)}
+.opt.cond{border-color:var(--acc)}
+.opt .oh{display:flex;align-items:center;gap:7px}
+.cond-line{margin-top:6px;font-size:12px;color:var(--acc);display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.warnbox{border:1px solid var(--warn);border-radius:8px;padding:8px 10px;color:var(--warn);font-size:12.5px;margin-top:9px}
+.badbox{border:1px solid var(--bad);border-radius:8px;padding:8px 10px;color:var(--bad);font-size:12.5px;margin-top:9px}
+.okbox{border:1px solid var(--ok);border-radius:8px;padding:8px 10px;color:var(--ok);font-size:12.5px;margin-top:9px}
+.prob{display:flex;gap:9px;padding:7px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+.prob:last-child{border-bottom:0}
+.prob b{font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:5px;flex:0 0 8px}
+.dot.bad{background:var(--bad)}.dot.warn{background:var(--warn)}.dot.ok{background:var(--ok)}
+.emptybox{
+  border:1px dashed var(--warn);border-radius:10px;padding:18px;text-align:center;color:var(--warn);
+}
+
+/* ---------- G/H зритель ---------- */
+.viewer{max-width:940px;margin:0 auto}
+.vbar{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.prog2{flex:1;min-width:220px}
+.prog2 .lvl1{display:flex;gap:3px;margin-bottom:4px}
+.prog2 .lvl1 i{flex:1;height:4px;border-radius:2px;background:var(--line)}
+.prog2 .lvl1 i.done{background:var(--acc)}
+.prog2 .lvl1 i.now{background:var(--ink)}
+.prog2 .lvl2{height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.prog2 .lvl2 i{display:block;height:100%;background:var(--acc)}
+.ansbtn{
+  display:block;width:100%;text-align:left;padding:10px 13px;margin-top:8px;
+  border:1px solid var(--line);border-radius:9px;background:var(--panel2);
+}
+.ansbtn:hover{border-color:var(--acc)}
+.overlay{
+  position:absolute;inset:0;background:rgba(8,11,16,.9);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:24px;text-align:center;
+}
+.authorbar{
+  border:1px solid var(--acc);border-radius:9px;padding:8px 11px;margin-bottom:11px;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12.5px;
+}
+.authorbar .tag{background:var(--acc);color:#04101f;font-weight:600;padding:2px 7px;border-radius:5px}
+@media (max-width:1100px){ .ed{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   ДАННЫЕ. Всё вшито. Ни один байт не приходит извне.
+   ============================================================ */
+
+var FILE_LEN = 48.6;          // длина файла озвучки целиком
+var HEAD_END = 41.0;          // где стоит развилка = конец головной части
+var PART_END = 44.0;          // конец окна головной части в файле
+
+var WORDS = [
+  [0.30,"Дробь"],[0.80,"это"],[1.10,"часть"],[1.60,"целого."],
+  [2.40,"Возьмём"],[3.00,"круг"],[3.50,"и"],[3.70,"разделим"],[4.40,"его"],[4.80,"пополам."],
+  [6.20,"Каждая"],[6.80,"часть"],[7.40,"называется"],[8.30,"одна"],[8.80,"вторая."],
+  [10.20,"Сколько"],[10.90,"половин"],[11.70,"помещается"],[12.40,"в"],[12.60,"целом?"],
+  [15.60,"Записывают"],[16.50,"её"],[16.80,"так:"],[17.80,"единица"],[18.50,"дробь"],[19.00,"два."],
+  [26.00,"Теперь"],[26.60,"разделим"],[27.30,"круг"],[27.80,"на"],[28.10,"четыре"],[28.80,"части."],
+  [30.20,"Каждая"],[30.80,"такая"],[31.40,"часть"],[32.30,"одна"],[32.90,"четвёртая."],
+  [38.00,"Что"],[38.50,"разобрать"],[39.40,"подробнее?"]
+];
+
+/* элементы головной части: id, что это, подпись */
+var ELEMENTS = [
+  {id:"e-title", kind:"Текст",    name:"Заголовок"},
+  {id:"e-circle",kind:"Круг",     name:"Круг"},
+  {id:"e-half",  kind:"Фигура",   name:"Закрашенная доля"},
+  {id:"e-cap",   kind:"Текст",    name:"Подпись «одна вторая»"},
+  {id:"e-num",   kind:"Текст",    name:"Запись 1/2"}
+];
+
+/* состояния элементов по слайдам. x,y,w,h — в поле 960x540 */
+function st(x,y,w,h,o){ return {x:x,y:y,w:w,h:h,o:(o===undefined?1:o)}; }
+/* tr — переход: "morph" плавно (по умолчанию) или "cut" резко.
+   В схеме и плеере это было всегда, в редакторе появилось в Сессии 10. */
+var SLIDES = [
+  {id:"s0", at:0.0,  bind:null,       tr:"morph", states:{ "e-title":st(180,230,600,80) }},
+  {id:"s1", at:6.2,  bind:"Каждая",   tr:"morph", states:{ "e-title":st(180,60,600,54),  "e-circle":st(400,180,220,220) }},
+  {id:"s2", at:12.9, bind:null,       tr:"morph", states:{ "e-title":st(180,60,600,54),  "e-circle":st(400,180,220,220), "e-half":st(400,180,110,220) }},
+  {id:"s2b",at:13.7, bind:null,       tr:"morph", states:{ "e-title":st(180,60,600,54),  "e-circle":st(400,180,220,220), "e-half":st(400,180,110,220), "e-cap":st(330,420,300,44) }},
+  {id:"s3", at:26.0, bind:"Теперь",   tr:"morph", states:{ "e-title":st(180,60,600,54),  "e-circle":st(300,180,180,180), "e-half":st(300,180,90,180),  "e-cap":st(250,400,280,40), "e-num":st(600,220,180,110) }},
+  {id:"s3b",at:26.3, bind:null,       tr:"cut",   states:{ "e-title":st(180,60,600,54),  "e-circle":st(310,190,170,170), "e-half":st(310,190,85,170),  "e-cap":st(250,400,280,40), "e-num":st(600,220,180,110) }},
+  {id:"s4", at:38.0, bind:"Что",      tr:"morph", states:{ "e-title":st(180,180,600,80,1) }}
+];
+
+var STOPS = [
+  {
+    id:"q1", at:13.5, bind:null, kind:"question",
+    recordAs:"половины",
+    prompt:"Сколько половин помещается в целом?",
+    onWrong:"explain", attempts:2,
+    options:[
+      {id:"o-2", text:"Две",    correct:true },
+      {id:"o-3", text:"Три",    correct:false},
+      {id:"o-4", text:"Четыре", correct:false}
+    ]
+  },
+  {
+    id:"f1", at:41.0, bind:null, kind:"fork",
+    recordAs:"что разбираем",
+    prompt:"Что разобрать подробнее?",
+    onWrong:"—", attempts:1,
+    options:[
+      {id:"x-half",   text:"Про половину",       to:"b-half"},
+      {id:"x-quarter",text:"Про четверть",       to:"b-quarter"},
+      {id:"x-third",  text:"Про треть",          to:"b-third"},
+      {id:"x-table",  text:"Показать таблицу",   to:"b-static"},
+      {id:"x-lost",   text:"Я совсем запутался", to:"b-lost"},
+      {id:"x-again",  text:"Вернуть к началу",   to:"p1", cond:{v:"половины", op:"неверно"}}
+    ]
+  }
+];
+
+/* части после разреза. len — длина своей дорожки */
+var PARTS = {
+  "p1":       {title:"Что такое дробь",  len:41.0, kind:"head",   slides:7},
+  "b-half":   {title:"Разбор: половина", len:12.0, kind:"branch", slides:3, back:"p-cont"},
+  "b-quarter":{title:"Разбор: четверть", len:9.0,  kind:"branch", slides:2, back:"p-cont"},
+  "b-third":  {title:"Разбор: треть",    len:0,    kind:"branch", slides:1, back:"p-cont", empty:true},
+  /* Ветка без озвучки — законный случай, а не ошибка (product.md §2в [Р]):
+     статичный разбор, звука нет, метки ставятся только по секундам. */
+  "b-static": {title:"Таблица долей",    len:6.0,  kind:"branch", slides:3, back:"p-cont", noAudio:true},
+  "b-lost":   {title:"Совсем запутался", len:15.0, kind:"branch", slides:4, back:"p-final", away:true},
+  "p1-again": {title:"↩ повтор части «Что такое дробь»", len:41.0, kind:"repeat", slides:7, back:"p-cont"},
+  "p-cont":   {title:"Продолжение",      len:3.0,  kind:"tail",   slides:1},
+  "p-final":  {title:"Итог",             len:8.0,  kind:"tail",   slides:2}
+};
+var BRANCH_ORDER = ["b-half","b-quarter","b-third","b-static","b-lost","p1-again"];
+
+var INSERTS = ["Текст","Фигура","Картинка","Круг","Стрелка","Рамка","Линия","Скобка","Выноска"];
+var TEMPLATES = ["Заголовок","Заголовок и текст","Сравнение двух колонок","Список пунктов","Вопрос с вариантами"];
+
+/* ============================================================
+   СОСТОЯНИЕ. Одно на всё. Всё рисуется от него.
+   ============================================================ */
+
+var S = {
+  screen: "start",          // start | editor | preview | player
+  showTodo: false,
+
+  /* A */
+  startStep: 0,             // 0 текст · 1 озвучка · 2 расшифровка · 3 черновик
+  scriptText: "Дробь это часть целого. Возьмём круг и разделим его пополам.\nКаждая часть называется одна вторая. Сколько половин помещается в целом?\nЗаписывают её так: единица дробь два.\nТеперь разделим круг на четыре части. Каждая такая часть одна четвёртая.\nЧто разобрать подробнее?",
+
+  /* редактор */
+  partId: "p1",
+  slideIdx: 3,
+  selEl: null,
+  panel: "props",           // props | stop | problems
+  stopId: null,
+  playhead: 13.7,
+  dragging: null,
+
+  /* структура */
+  split: false,
+  collapsed: true,
+  emptyFilled: false,
+  optionDeleted: false,     // «осиротевшее правило» получается отсюда
+
+  /* G/H */
+  viewAs: null,             // как зритель, ответивший X (id варианта вопроса)
+  vPart: "p1",
+  vT: 0,
+  vPhase: "play",           // play | stop | reveal | fork | end
+  vAnswer: null,
+  vWrong: 0,
+  vVisited: ["p1"],
+  vRepeat: false
+};
+
+/* ============================================================
+   ПОМОЩНИКИ
+   ============================================================ */
+
+function h(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function pct(t,len){ return (t/len*100); }
+function fmt(t){ return t.toFixed(2).replace(".",",")+" с"; }
+
+/* окно перехода: заканчивается НА метке, длится не дольше, чем до предыдущей метки */
+var MORPH = 0.6;
+function windowOf(i){
+  if(i===0) return 0;
+  /* Резкий переход — окно нулевое: элементы не едут, а встают мгновенно.
+     Ровно так это и работает в плеере (morph.ts), просто в редакторе
+     до Сессии 10 значение было только для чтения. */
+  if(SLIDES[i].tr==="cut") return 0;
+  var prev = SLIDES[i-1].at, at = SLIDES[i].at;
+  return Math.min(MORPH, at - prev);
+}
+function slideIndexAt(t){
+  var k=0; for(var i=0;i<SLIDES.length;i++){ if(SLIDES[i].at<=t) k=i; } return k;
+}
+function stopById(id){ for(var i=0;i<STOPS.length;i++) if(STOPS[i].id===id) return STOPS[i]; return null; }
+function forkStop(){ return stopById("f1"); }
+
+/* остановка внутри окна перехода — почти всегда ошибка расстановки */
+function stopInsideWindow(stop){
+  for(var i=1;i<SLIDES.length;i++){
+    var at=SLIDES[i].at, w=windowOf(i);
+    if(stop.at>at-w && stop.at<at) return SLIDES[i];
+  }
+  return null;
+}
+
+/* варианты развилки, видимые зрителю с данным ответом на вопрос */
+function visibleOptions(stop, answerState){
+  var out=[];
+  for(var i=0;i<stop.options.length;i++){
+    var o=stop.options[i];
+    if(o.deleted) continue;
+    if(!o.cond){ out.push(o); continue; }
+    if(answerState===null||answerState===undefined) continue;
+    if(o.cond.op===answerState) out.push(o);
+  }
+  return out;
+}
+
+/* проверки перед публикацией */
+function problems(){
+  var p=[];
+  if(S.split && !S.emptyFilled)
+    p.push({lvl:"bad", t:"Пустая ветка", d:"«Разбор: треть» — ветка есть, а внутри ничего нет. Длительность ноль, зритель прошёл бы её насквозь.", act:"goEmpty", actLabel:"Открыть ветку"});
+  if(S.split && S.optionDeleted){
+    p.push({lvl:"bad", t:"Правило выхода осиротело", d:"Вариант «Про четверть» удалён, а правило, которое на него смотрело, осталось. Оно никогда не сработает.", act:null});
+    p.push({lvl:"bad", t:"Часть недостижима", d:"В «Разбор: четверть» больше не ведёт ни один вариант.", act:null});
+  }
+  var f=forkStop(), uncond=0;
+  for(var i=0;i<f.options.length;i++) if(!f.options[i].deleted && !f.options[i].cond) uncond++;
+  if(S.split && uncond===0)
+    p.push({lvl:"bad", t:"Непокрытый исход", d:"У развилки не осталось ни одного безусловного варианта — зритель может увидеть пустой экран.", act:null});
+  return p;
+}
+function canPublish(){ return problems().length===0; }
+
+/* ============================================================
+   ЭКРАН A. ВХОД В ПРОДУКТ
+   ============================================================ */
+
+function viewStart(){
+  var k=S.startStep;
+  var steps=["Текст","Озвучка","Расшифровка","Черновик собран"];
+  var s='<div class="steps">';
+  for(var i=0;i<4;i++)
+    s+='<div class="step '+(i<k?"done":(i===k?"on":""))+'"><b>Шаг '+(i+1)+'</b>'+steps[i]+'</div>';
+  s+='</div>';
+
+  s+='<div class="panel"><div class="ph">Новое объяснение<span class="spacer"></span><span class="dim tiny">этого экрана в продукте нет</span> <span class="todo">нет в продукте</span></div><div class="pb">';
+
+  if(k===0){
+    s+='<label class="f">О чём объяснение</label><input type="text" value="Дроби" data-act="noop">';
+    s+='<div style="height:9px"></div><label class="f">Текст — то, что будет сказано вслух</label>';
+    s+='<textarea rows="8" data-act="script">'+h(S.scriptText)+'</textarea>';
+    s+='<div class="row" style="margin-top:11px"><button class="btn pri" data-act="start-next">Дальше — озвучка</button>';
+    s+='<button class="btn" data-act="noop">Загрузить docx, md или pdf</button>';
+    s+='<button class="btn" data-act="noop">Вставить ссылку на видео</button></div>';
+    s+='<div class="note">Порядок жёсткий: сначала текст, потом озвучка, потом визуал. До появления дорожки метки некуда ставить.</div>';
+  }
+  if(k===1){
+    s+='<div class="dropzone">Перетащите файл озвучки сюда<br><span class="tiny">wav, mp3, m4a — или запишите голосом прямо здесь</span></div>';
+    s+='<div class="row" style="margin-top:11px"><button class="btn pri" data-act="start-next">Загрузить озвучку</button>';
+    s+='<button class="btn" data-act="start-next">Озвучить синтезом начерно</button>';
+    s+='<button class="btn" data-act="noop">Записать голосом с суфлёром</button></div>';
+    s+='<div class="note">Черновая озвучка синтезом делается сразу, чтобы работа не стояла в ожидании живой записи. Запись — по абзацам, а не одним куском: тогда переписывается тридцать секунд, а не десять минут.</div>';
+  }
+  if(k===2){
+    s+='<div class="waveform">'+wavebars(120)+'</div>';
+    s+='<div class="row dim tiny" style="margin-top:6px"><span>озвучка.wav</span><span class="spacer"></span><span>'+FILE_LEN.toFixed(1)+' с</span></div>';
+    s+='<div class="row" style="margin-top:13px"><button class="btn pri" data-act="start-next">Расшифровать текст</button></div>';
+    s+='<div class="note">Расшифровка нужна не ради текста, а ради слов со временем: метки встают на слова, а не на секунды. Замена голоса или скорости после этого не ломает разметку — меняется только длина.</div>';
+    s+='<div class="dim tiny" style="margin-top:9px">В прототипе это просто кнопка. По-настоящему тут работает распознавание.</div>';
+  }
+  if(k===3){
+    s+='<div class="okbox">Черновик собран. Одна непрерывная дорожка, один текст, ни одной части и ни одного слайда, кроме нулевого.</div>';
+    s+='<div class="row" style="margin-top:11px"><div class="grow"><div class="waveform">'+wavebars(120)+'</div></div></div>';
+    s+='<div class="grid3" style="margin-top:13px">';
+    s+='<div class="panel"><div class="pb"><b>1</b> часть<div class="dim tiny">пока весь рассказ целиком</div></div></div>';
+    s+='<div class="panel"><div class="pb"><b>1</b> слайд<div class="dim tiny">нулевой, на секунде ноль</div></div></div>';
+    s+='<div class="panel"><div class="pb"><b>'+WORDS.length+'</b> слов с временем<div class="dim tiny">к ним привязываются метки</div></div></div>';
+    s+='</div>';
+    s+='<div class="row" style="margin-top:13px"><button class="btn pri" data-act="go-editor">Открыть редактор</button>';
+    s+='<button class="btn" data-act="start-reset">Начать сначала</button></div>';
+    s+='<div class="note">Автор не создаёт части. Части появляются как результат разреза. Слова «часть» и «развилка» не показываются, пока не понадобятся.</div>';
+  }
+  s+='</div></div>';
+  return s;
+}
+function wavebars(n){
+  var s="";
+  for(var i=0;i<n;i++){
+    var v=(Math.sin(i*0.7)*0.5+Math.sin(i*0.23)*0.35+Math.sin(i*1.9)*0.15);
+    var hgt=Math.round(14+Math.abs(v)*30);
+    s+='<i style="height:'+hgt+'%"></i>';
+  }
+  return s;
+}
+
+/* ============================================================
+   РЕДАКТОР: сцена (B)
+   ============================================================ */
+
+function renderStage(states, sel, mini){
+  var s="";
+  for(var i=0;i<ELEMENTS.length;i++){
+    var e=ELEMENTS[i], v=states[e.id];
+    if(!v) continue;
+    var css="left:"+(v.x/960*100)+"%;top:"+(v.y/540*100)+"%;width:"+(v.w/960*100)+"%;height:"+(v.h/540*100)+"%;opacity:"+v.o+";";
+    var inner="", extra="";
+    if(e.id==="e-title") { inner="Дробь — это часть целого"; extra="font-size:5cqw;font-weight:600;color:#e6edf7"; }
+    if(e.id==="e-circle"){ inner="";  extra="border:0.9cqw solid #4c9aff;border-radius:50%"; }
+    if(e.id==="e-half")  { inner="";  extra="background:rgba(76,154,255,.42);border-radius:100% 0 0 100%/50% 0 0 50%"; }
+    if(e.id==="e-cap")   { inner="одна вторая"; extra="font-size:3.4cqw;color:#8b97ab"; }
+    if(e.id==="e-num")   { inner="1/2"; extra="font-size:6.4cqw;font-weight:600;color:#3fb950"; }
+    s+='<div class="el'+(sel===e.id?" sel":"")+'" style="'+css+extra+'" data-act="'+(mini?"noop":"pick-el")+'" data-id="'+e.id+'">'+inner+'</div>';
+    if(sel===e.id && !mini){
+      var cx=[v.x, v.x+v.w/2, v.x+v.w], cy=[v.y, v.y+v.h/2, v.y+v.h];
+      for(var a=0;a<3;a++) for(var b=0;b<3;b++){
+        if(a===1&&b===1) continue;
+        s+='<div class="hnd" style="left:calc('+(cx[a]/960*100)+'% - 4px);top:calc('+(cy[b]/540*100)+'% - 4px)"></div>';
+      }
+      s+='<div class="rot" style="left:calc('+(cx[1]/960*100)+'% - 4.5px);top:calc('+((v.y-26)/540*100)+'%)"></div>';
+    }
+  }
+  return s;
+}
+
+function viewLeftColumn(){
+  var s="";
+  s+='<div class="panel"><div class="ph">Вставить</div><div class="pb"><div class="ins">';
+  for(var i=0;i<INSERTS.length;i++) s+='<button data-act="insert" data-id="'+h(INSERTS[i])+'">'+h(INSERTS[i])+'</button>';
+  s+='</div></div></div>';
+
+  s+='<div class="panel"><div class="ph">Шаблоны</div><div class="pb tpl">';
+  for(var j=0;j<TEMPLATES.length;j++) s+='<button data-act="tpl" data-id="'+h(TEMPLATES[j])+'">'+h(TEMPLATES[j])+'</button>';
+  s+='</div></div>';
+
+  s+='<div class="panel"><div class="ph">Элементы</div><div class="pb elist">';
+  var states=SLIDES[S.slideIdx].states;
+  for(var k=0;k<ELEMENTS.length;k++){
+    var e=ELEMENTS[k], on=states[e.id];
+    s+='<div class="'+(S.selEl===e.id?"on":"")+'" data-act="pick-el" data-id="'+e.id+'">'
+      + '<span style="opacity:'+(on?1:.35)+'">'+h(e.name)+'</span>'
+      + '<span class="spacer" style="flex:1"></span>'
+      + (on?'':'<span class="tiny dim">нет на слайде</span>')
+      + '</div>';
+  }
+  s+='</div></div>';
+
+  s+='<div class="panel"><div class="ph">Части</div><div class="pb">';
+  if(!S.split){
+    s+='<div class="dim tiny">Пока одна часть на весь рассказ. Части появятся после разреза.</div>';
+    s+='<div style="margin-top:7px" class="row"><b>Что такое дробь</b></div>';
+  } else {
+    var order=["p1"].concat(BRANCH_ORDER,["p-cont","p-final"]);
+    for(var m=0;m<order.length;m++){
+      var id=order[m], P=PARTS[id];
+      var isEmpty=(P.empty && !S.emptyFilled);
+      s+='<div class="row" style="margin-top:5px"><button class="btn sm grow" style="text-align:left'+(S.partId===id?";border-color:var(--acc)":"")+'" data-act="pick-part" data-id="'+id+'">'
+        + h(P.title) + (isEmpty?' <span style="color:var(--warn)">· пусто</span>':'') + '</button></div>';
+    }
+  }
+  s+='</div></div>';
+  return s;
+}
+
+function viewSlideStrip(){
+  var P=PARTS[S.partId];
+  var isEmpty=(P.empty && !S.emptyFilled);
+  var s='<div class="panel"><div class="ph">Слайды части «'+h(P.title)+'»<span class="spacer"></span>';
+  s+='<button class="btn sm" data-act="add-slide">Добавить слайд</button>';
+  s+='<button class="btn sm danger" data-act="del-slide">Удалить</button></div><div class="pb">';
+
+  if(isEmpty){
+    s+='<div class="emptybox"><b>Здесь пока ничего нет</b>'
+      + '<div class="tiny" style="margin-top:5px;color:var(--dim)">Ветка создана, но внутри неё нет ни озвучки, ни слайдов. Пока так, объяснение нельзя опубликовать.</div>'
+      + '<div class="row" style="justify-content:center;margin-top:11px;flex-wrap:wrap">'
+      + '<button class="btn pri" data-act="fill-ai">Пусть напишет ИИ</button>'
+      + '<button class="btn" data-act="fill-empty">Написать самому</button>'
+      + '<button class="btn" data-act="fill-empty">Взять блок из библиотеки</button>'
+      + '<button class="btn" data-act="fill-repeat">Повторить пройденную часть</button>'
+      + '</div></div>';
+    s+='<div class="note">Пустая ветка — незавершённое состояние, а не валидное. Не тишина: тишину автор может захотеть намеренно, и тогда «пусто по ошибке» стало бы неотличимо от «пауза задумана».</div>';
+    s+='</div></div>';
+    return s;
+  }
+  if(S.partId!=="p1"){
+    s+='<div class="dim tiny">В прототипе подробно нарисована только головная часть. У этой части '+P.slides+' слайд(ов) и своя дорожка на '+P.len.toFixed(1)+' с.</div>';
+    s+='</div></div>'; return s;
+  }
+
+  s+='<div class="strip">';
+  for(var i=0;i<SLIDES.length;i++){
+    var sl=SLIDES[i], w=windowOf(i);
+    s+='<div class="sl '+(i===S.slideIdx?"on":"")+'" data-act="pick-slide" data-id="'+i+'">';
+    s+='<div class="mini">'+renderStage(sl.states,null,true)+'</div>';
+    s+='<div class="cap"><span>'+(i+1)+'</span><span>'+sl.at.toFixed(1)+' с</span></div>';
+    s+='<div class="cap"><span class="tiny" style="color:var(--slide)">едет '+w.toFixed(2)+' с</span></div>';
+    s+='</div>';
+  }
+  s+='</div><div class="note">Слайд — снимок сцены, а не страница. Переход между соседними считается сам: элемент есть в обоих — едет, только в предыдущем — уходит, только в следующем — приходит.</div>';
+  s+=viewSlideSettings();
+  s+='</div></div>';
+  return s;
+}
+
+/* Настройки ВЫБРАННОГО слайда: переход и привязка метки ко времени.
+   В Сессии 10 оба появились в настоящем редакторе (MarkPanel). */
+function viewSlideSettings(){
+  var i=S.slideIdx, sl=SLIDES[i];
+  var first=(i===0);
+  var noWords=!!PARTS[S.partId].noAudio;
+
+  var s='<div class="slset"><b class="tiny">Слайд '+(i+1)+' · '+fmt(sl.at)+'</b><div class="grid2" style="margin-top:8px">';
+
+  /* переход */
+  s+='<div><label class="f">Переход</label>';
+  if(first){
+    s+='<input type="text" value="перехода нет" disabled>'
+      + '<div class="tiny dim" style="margin-top:4px">Первый слайд — стартовый вид части. Ехать в него неоткуда: до него ничего не было.</div>';
+  } else {
+    s+='<select data-act="set-tr"><option value="morph"'+(sl.tr==="morph"?" selected":"")+'>Плавно — элементы едут</option>'
+      + '<option value="cut"'+(sl.tr==="cut"?" selected":"")+'>Резко — элементы перепрыгивают</option></select>'
+      + '<div class="tiny dim" style="margin-top:4px">'+(sl.tr==="cut"
+          ? 'Окно движения нулевое — на дорожке хвоста нет.'
+          : 'Едет '+fmt(windowOf(i))+' и заканчивает ровно на метке.')+'</div>';
+  }
+  s+='</div>';
+
+  /* привязка */
+  s+='<div><label class="f">Метка привязана</label>';
+  if(noWords){
+    s+='<select data-act="noop"><option>К секунде</option></select>'
+      + '<div class="tiny dim" style="margin-top:4px">У этой части нет расшифровки, привязывать не к чему: метки ставятся по секундам.</div>';
+  } else if(first){
+    s+='<input type="text" value="к секунде 0,00" disabled>'
+      + '<div class="tiny dim" style="margin-top:4px">Нулевой слайд всегда стоит ровно на нуле, иначе начальный вид части зависел бы от расшифровки.</div>';
+  } else {
+    s+='<select data-act="set-bind"><option value="word"'+(sl.bind?" selected":"")+'>К слову</option>'
+      + '<option value="sec"'+(sl.bind?"":" selected")+'>К секунде</option></select>';
+    s+= sl.bind
+      ? '<div class="tiny dim" style="margin-top:4px">Слово: <b style="color:var(--ok)">'+h(sl.bind)+'</b>. Замена голоса разметку не ломает — меняется только длина.</div>'
+      : '<div class="tiny dim" style="margin-top:4px">Здесь пауза, слова рядом нет. Метка держится за секунду.</div>';
+  }
+  s+='</div></div>';
+  s+='<div class="note" style="margin-top:8px">Слово привязки видно постоянно не для красоты: перевод «к секунде и обратно к слову» сохраняет ВРЕМЯ точно, но может выбрать другое слово — то, внутрь которого попала секунда. Измерено на demo.json.</div>';
+  s+='</div>';
+  return s;
+}
+
+/* ============================================================
+   C. ДОРОЖКА
+   ============================================================ */
+
+function viewTrack(){
+  /* Ветка без озвучки — законный случай (product.md §2в [Р]), поэтому
+     у неё СВОЙ вид дорожки: волны нет, слов нет, шкала в секундах.
+     Молча показать чужую дорожку значило бы соврать. */
+  if(PARTS[S.partId].noAudio) return viewSilentTrack();
+
+  var len=HEAD_END+3.0;   // рисуем окно головной части + продолжение
+  var s='<div class="panel"><div class="ph">Дорожка<span class="spacer"></span>';
+  s+='<span class="dim tiny">окно в файле '+FILE_LEN.toFixed(1)+' с: с 0,0 по '+PART_END.toFixed(1)+'</span>';
+  s+='<button class="btn sm" data-act="add-slide-here">Слайд здесь</button>';
+  s+='<button class="btn sm" data-act="add-stop-here">Остановка здесь</button>';
+  s+='</div><div class="pb">';
+
+  /* Дорожка всегда показывает головную часть. Если выбрана другая — сказать
+     это прямо, иначе легко решить, что у веток общая шкала времени. */
+  if(S.partId!=="p1")
+    s+='<div class="warnbox" style="margin:0 0 10px">Ниже — дорожка части «Что такое дробь». У выбранной части «'
+      + h(PARTS[S.partId].title) + '» своя дорожка со своим нулём; в прототипе она не детализирована.</div>';
+
+  s+='<div class="lanehint">сверху — остановки, под волной — слайды</div>';
+  s+='<div class="track" id="track">';
+
+  /* линейка */
+  s+='<div class="ruler">';
+  for(var t=0;t<=len;t+=5) s+='<i style="left:'+pct(t,len)+'%"><b>'+t+'</b></i>';
+  s+='</div>';
+
+  /* полоса остановок сверху */
+  s+='<div class="lane" style="height:20px">';
+  for(var i=0;i<STOPS.length;i++){
+    var st1=STOPS[i];
+    var cls="stopm"+(st1.kind==="fork"?" fork":"")+(S.stopId===st1.id&&S.panel==="stop"?" on":"");
+    s+='<div class="'+cls+'" style="left:'+pct(st1.at,len)+'%" data-act="pick-stop" data-id="'+st1.id+'" data-drag="stop" title="'+h(st1.prompt)+'"></div>';
+    s+='<div class="bindbar '+(st1.bind?"bind-word":"bind-sec")+'" style="left:'+pct(st1.at,len)+'%"></div>';
+  }
+  s+='</div>';
+
+  /* волна */
+  s+='<div class="lane wave" data-act="seek" data-drag="head">'+wavebars(170)+'</div>';
+
+  /* полоса слайдов снизу: хвост окна перехода + ромб */
+  s+='<div class="lane" style="height:22px">';
+  for(var j=0;j<SLIDES.length;j++){
+    var sl=SLIDES[j], w=windowOf(j);
+    if(w>0) s+='<div class="win" style="left:'+pct(sl.at-w,len)+'%;width:'+pct(w,len)+'%"></div>';
+    s+='<div class="dia '+(j===S.slideIdx?"on":"")+(j===0?" zero":"")+'" style="left:'+pct(sl.at,len)+'%" '
+      + 'data-act="pick-slide" data-id="'+j+'" data-drag="slide" title="Слайд '+(j+1)+' · '+sl.at.toFixed(2)+' с · едет '+w.toFixed(2)+' с"></div>';
+    s+='<div class="bindbar '+(sl.bind?"bind-word":"bind-sec")+'" style="left:'+pct(sl.at,len)+'%;top:17px"></div>';
+  }
+  s+='</div>';
+
+  /* головка поверх всего */
+  s+='<div class="head" style="left:'+pct(S.playhead,len)+'%"></div>';
+
+  /* расщепление вниз */
+  s+=viewBranches(len);
+
+  s+='</div>';  /* .track */
+
+  s+='<div class="row tiny dim" style="margin-top:9px;flex-wrap:wrap;gap:14px">';
+  s+='<span><span style="display:inline-block;width:9px;height:9px;background:var(--slide);transform:rotate(45deg)"></span> слайд</span>';
+  s+='<span><span style="display:inline-block;width:8px;height:11px;background:var(--stop);border-radius:2px"></span> вопрос</span>';
+  s+='<span><span style="display:inline-block;width:8px;height:11px;background:var(--warn);border-radius:2px"></span> развилка</span>';
+  s+='<span><span style="display:inline-block;width:22px;height:6px;background:linear-gradient(90deg,rgba(201,162,39,.12),rgba(201,162,39,.62));border-radius:3px"></span> окно перехода — сколько едет ДО метки</span>';
+  s+='<span><span style="display:inline-block;width:3px;height:9px;background:var(--ok)"></span> привязано к слову</span>';
+  s+='<span><span style="display:inline-block;width:3px;height:9px;background:var(--dim2)"></span> привязано к секунде</span>';
+  s+='</div>';
+
+  s+='<div class="note">Переход <b>заканчивается</b> на метке, а не начинается с неё: метка объявляет «здесь сцена равна снимку». Длительность урезается расстоянием до предыдущей метки — поэтому у слайда 6 хвост короче.</div>';
+
+  s+=viewZoom();
+  s+=viewTranscript();
+  s+='</div></div>';
+  return s;
+}
+
+/* Дорожка части БЕЗ ОЗВУЧКИ. Не «сломанная дорожка» и не пустое место:
+   отдельный законный вид, где время идёт в секундах, а привязка к слову
+   не предлагается вовсе — и сказано почему. */
+function viewSilentTrack(){
+  var P=PARTS[S.partId], len=P.len;
+  var marks=[0, len*0.35, len*0.7];
+
+  var s='<div class="panel"><div class="ph">Дорожка части «'+h(P.title)+'»<span class="spacer"></span>';
+  s+='<span class="dim tiny">без озвучки · '+P.len.toFixed(1).replace(".",",")+' с</span>';
+  s+='<button class="btn sm" data-act="add-slide-here">Слайд здесь</button>';
+  s+='<button class="btn sm" data-act="noop">Загрузить озвучку</button>';
+  s+='</div><div class="pb">';
+
+  s+='<div class="lanehint">звука нет — метки ставятся по секундам</div>';
+  s+='<div class="track">';
+  s+='<div class="ruler">';
+  for(var t=0;t<=len;t+=1) s+='<i style="left:'+pct(t,len)+'%"><b>'+t+'</b></i>';
+  s+='</div>';
+
+  /* Вместо волны — честная штриховка: здесь звука нет, а не «не загрузилось». */
+  s+='<div class="lane silent"><span>звуковой дорожки у этой части нет</span></div>';
+
+  s+='<div class="lane" style="height:22px">';
+  for(var i=0;i<marks.length;i++){
+    s+='<div class="dia '+(i===0?"zero":"")+'" style="left:'+pct(marks[i],len)+'%" data-act="noop" title="Слайд '+(i+1)+' · '+marks[i].toFixed(2)+' с"></div>';
+    s+='<div class="bindbar bind-sec" style="left:'+pct(marks[i],len)+'%;top:17px"></div>';
+  }
+  s+='</div>';
+  s+='<div class="head" style="left:0%"></div>';
+  s+='</div>';
+
+  s+='<div class="row tiny dim" style="margin-top:9px;gap:14px">'
+    + '<span><span style="display:inline-block;width:9px;height:9px;background:var(--slide);transform:rotate(45deg)"></span> слайд</span>'
+    + '<span><span style="display:inline-block;width:3px;height:9px;background:var(--dim2)"></span> привязано к секунде</span>'
+    + '</div>';
+
+  s+='<div class="tr" style="color:var(--dim)">Расшифровки нет — метки этой части ставятся по секундам</div>';
+  s+='<div class="note"><b>Это не ошибка.</b> Инструмент не должен быть узконаправленным: продукт обязан обслуживать и объяснение с озвучкой, и статичный разбор без звука. Привязка к слову здесь не предлагается вовсе, а не гаснет молча — погашенная без причины кнопка это тупик, в котором автор не понимает, что сделал не так.</div>';
+  s+='<div class="note">Когда появится загрузка аудио на ветку (Сессия 14), эта же часть получит свою волну и расшифровку, а метки можно будет перевести на слова.</div>';
+  s+='</div></div>';
+  return s;
+}
+
+/* Лупа. В честном масштабе окно перехода — полтора процента дорожки,
+   и решение владельца на нём просто не видно. Тот же участок, растянутый. */
+function viewZoom(){
+  var i = Math.max(1, S.slideIdx);
+  var at = SLIDES[i].at, w = windowOf(i);
+  var from = at - 2.0, to = at + 1.2, span = to - from;
+  function x(t){ return ((t-from)/span*100); }
+
+  var s='<div class="zoom"><div class="row"><b class="tiny">Крупно: участок '+from.toFixed(1)+'–'+to.toFixed(1)+' с</b>';
+  s+='<span class="spacer" style="flex:1"></span><span class="dim tiny">следует за выбранным слайдом</span></div>';
+  s+='<div class="zt">';
+
+  s+='<div class="zruler">';
+  for(var t=Math.ceil(from*2)/2; t<=to; t+=0.5) s+='<i style="left:'+x(t)+'%"><b>'+t.toFixed(1)+'</b></i>';
+  s+='</div>';
+
+  /* соседние слайды, попавшие в окно лупы */
+  for(var j=0;j<SLIDES.length;j++){
+    var sj=SLIDES[j], wj=windowOf(j);
+    if(sj.at<from-0.2 || sj.at>to+0.2) continue;
+    if(wj>0) s+='<div class="zwin" style="left:'+x(sj.at-wj)+'%;width:'+(wj/span*100)+'%"></div>';
+    s+='<div class="zdia" style="left:'+x(sj.at)+'%"></div>';
+    s+='<div class="zlab" style="left:'+x(sj.at)+'%;top:44px;transform:translateX(-50%)">слайд '+(j+1)+'</div>';
+    if(wj>0)
+      s+='<div class="zlab" style="left:'+x(sj.at-wj/2)+'%;top:58px;transform:translateX(-50%);color:var(--slide)">едет '+wj.toFixed(2)+' с</div>';
+  }
+  /* остановки в окне лупы */
+  for(var k=0;k<STOPS.length;k++){
+    var st1=STOPS[k];
+    if(st1.at<from || st1.at>to) continue;
+    s+='<div class="zstop" style="left:'+x(st1.at)+'%"></div>';
+    s+='<div class="zlab" style="left:'+x(st1.at)+'%;top:0px;transform:translateX(-50%);color:var(--stop)">остановка</div>';
+  }
+  s+='</div>';
+
+  var st2=null;
+  for(var m=0;m<STOPS.length;m++) if(STOPS[m].at>at-w && STOPS[m].at<at) st2=STOPS[m];
+  if(st2)
+    s+='<div class="warnbox" style="margin-top:2px">Остановка «'+h(st2.prompt)+'» стоит <b>внутри</b> окна перехода слайда '+(i+1)+'. Плеер довёдет переход до конца мгновенно и только потом откроет ответ, чтобы зритель не отвечал поверх едущих элементов, — но почти всегда это ошибка расстановки.</div>';
+  else
+    s+='<div class="note" style="margin-top:2px">Хвост слева от ромба — сколько элементы едут. Движение <b>заканчивается</b> на метке: в момент метки сцена уже равна снимку, а не начинает к нему ехать.</div>';
+  s+='</div>';
+  return s;
+}
+
+function viewBranches(len){
+  if(!S.split) return "";
+  var f=forkStop();
+  var x=pct(f.at,len);
+
+  /* Ветки не рисуются справа от развилки: у развилки в конце части справа
+     физически нет места, и главное — у каждой ветки СВОЯ дорожка со своим
+     нулём, а не продолжение родительской шкалы. Поэтому отвод вниз-влево. */
+  var s='<div class="brset">';
+  s+='<div class="drop" style="left:'+x+'%"></div>';
+  s+='<div class="beam" style="width:calc('+x+'% - 11px)"></div>';
+  s+='<div class="tiny dim" style="padding-top:19px">после развилки «'+h(f.prompt)+'» — у каждой ветки своя дорожка со своим нулём</div>';
+  s+='<div class="brlist">';
+
+  var shown = S.collapsed ? BRANCH_ORDER.slice(0,2) : BRANCH_ORDER;
+  for(var i=0;i<shown.length;i++){
+    var id=shown[i], P=PARTS[id];
+    var isEmpty=(P.empty && !S.emptyFilled);
+    var wide=Math.max(9, P.len/HEAD_END*46);
+    var cls="bbar"+(S.partId===id?" on":"")+(isEmpty?" empty":"")+(P.away?" away":"");
+    s+='<div class="brow">';
+    s+='<div class="'+cls+'" style="width:'+wide+'%" data-act="pick-part" data-id="'+id+'">'
+      + h(P.title) + (isEmpty?" · пусто":"") + '</div>';
+    s+='<span class="tiny dim">'+(isEmpty?"0,0":P.len.toFixed(1).replace(".",","))+' с</span>';
+    if(P.away) s+='<span class="btail">↘ не возвращается · → Итог</span>';
+    else if(P.kind==="repeat") s+='<span class="tiny dim">↩ повтор, номер части не растёт</span>';
+    else s+='<span class="tiny dim">↳ обратно в «Продолжение»</span>';
+    s+='</div>';
+  }
+  if(BRANCH_ORDER.length>2){
+    s+='<div class="brow">'+(S.collapsed
+      ? '<button class="more" data-act="expand">+'+(BRANCH_ORDER.length-2)+' ещё</button>'
+      : '<button class="more" data-act="collapse">свернуть ветки</button>')+'</div>';
+  }
+  s+='</div>';
+  s+='<div class="brow" style="margin-left:10px;padding-left:13px">'
+    + '<div class="bbar cont" style="width:12%" data-act="pick-part" data-id="p-cont">Продолжение</div>'
+    + '<span class="tiny dim">3,0 с · то же окно файла, с 41,0 по 44,0</span></div>';
+  s+='</div>';
+  return s;
+}
+
+function viewTranscript(){
+  var s='<div class="tr">';
+  var anchors={};
+  for(var i=0;i<SLIDES.length;i++) if(SLIDES[i].bind) anchors[SLIDES[i].bind]=1;
+  for(var j=0;j<WORDS.length;j++){
+    var w=WORDS[j], next=(j+1<WORDS.length?WORDS[j+1][0]:HEAD_END);
+    var now=(S.playhead>=w[0] && S.playhead<next);
+    var cls=(now?"now ":"")+(anchors[w[1]]?"anch":"");
+    s+='<w class="'+cls+'" data-act="seek-word" data-id="'+w[0]+'">'+h(w[1])+'</w> ';
+  }
+  s+='</div><div class="note">Подчёркнутое зелёным — слова, к которым привязаны метки. Замена голоса, диктора или скорости такую разметку не ломает: меняется только длина.</div>';
+  return s;
+}
+
+/* ============================================================
+   E. ПАНЕЛЬ ОСТАНОВКИ · свойства · F. проблемы
+   ============================================================ */
+
+function viewRight(){
+  var s='<div class="panel"><div class="ph">';
+  s+='<div class="seg" style="width:100%">';
+  s+='<button class="'+(S.panel==="props"?"on":"")+'" data-act="panel" data-id="props">Свойства</button>';
+  s+='<button class="'+(S.panel==="stop"?"on":"")+'" data-act="panel" data-id="stop">Остановка</button>';
+  s+='<button class="'+(S.panel==="problems"?"on":"")+'" data-act="panel" data-id="problems">Проблемы'+(problems().length?' <span style="color:var(--bad)">'+problems().length+'</span>':'')+'</button>';
+  s+='</div></div><div class="pb">';
+  if(S.panel==="props")    s+=viewProps();
+  if(S.panel==="stop")     s+=viewStopPanel();
+  if(S.panel==="problems") s+=viewProblems();
+  s+='</div></div>';
+  return s;
+}
+
+function viewProps(){
+  if(!S.selEl) return '<div class="dim tiny">Выберите элемент на холсте или в списке слева.</div>';
+  var e=null, layer=1;
+  for(var i=0;i<ELEMENTS.length;i++) if(ELEMENTS[i].id===S.selEl){ e=ELEMENTS[i]; layer=i+1; }
+  var v=SLIDES[S.slideIdx].states[S.selEl];
+  if(!v) return '<div class="warnbox"><b>'+h(e.name)+'</b> на этом слайде нет.'
+    + '<div style="margin-top:7px"><button class="btn sm" data-act="noop">Поместить на этот слайд</button> <span class="todo">нет в продукте</span></div>'
+    + '<div class="tiny" style="margin-top:6px;color:var(--dim)">Сегодня автор не может добавить элемент на слайд, где его ещё нет. Это записанный долг, а не задумка.</div></div>';
+
+  var s='<div class="dim tiny">'+h(e.kind)+' · «'+h(e.name)+'» · слайд '+(S.slideIdx+1)+'</div>';
+  s+='<div class="grid2" style="margin-top:9px">';
+  s+='<div><label class="f">X</label><input type="number" value="'+v.x+'" data-act="noop"></div>';
+  s+='<div><label class="f">Y</label><input type="number" value="'+v.y+'" data-act="noop"></div>';
+  s+='<div><label class="f">Ширина</label><input type="number" value="'+v.w+'" data-act="noop"></div>';
+  s+='<div><label class="f">Высота</label><input type="number" value="'+v.h+'" data-act="noop"></div>';
+  s+='<div><label class="f">Поворот</label><input type="number" value="0" data-act="noop"></div>';
+  s+='<div><label class="f">Слой</label><input type="number" value="'+layer+'" data-act="noop"></div>';
+  s+='</div>';
+  s+='<div style="margin-top:9px"><label class="f">Прозрачность</label><input type="range" min="0" max="100" value="'+Math.round(v.o*100)+'" data-act="noop"></div>';
+  s+='<div class="row" style="margin-top:7px"><label class="toggle"><input type="checkbox" checked data-act="noop"> видимый</label></div>';
+  s+='<div class="grid2" style="margin-top:9px">';
+  s+='<div><label class="f">Цвет</label><select data-act="noop"><option>Основной</option><option>Приглушённый</option><option>Акцент</option></select></div>';
+  s+='<div><label class="f">Фон</label><select data-act="noop"><option>Нет</option><option>Панель</option></select></div>';
+  s+='<div><label class="f">Шрифт</label><select data-act="noop"><option>Системный (без засечек)</option><option>Georgia (с засечками)</option><option>Моноширинный</option></select></div>';
+  s+='<div><label class="f">Кегль</label><input type="number" value="48" data-act="noop"></div>';
+  s+='<div><label class="f">Насыщенность</label><select data-act="noop"><option>Обычная</option><option>Средняя</option><option>Полужирная</option><option>Жирная</option><option>Чёрная</option></select></div>';
+  s+='<div><label class="f">Скругление</label><input type="text" value="12px" data-act="noop"></div>';
+  s+='</div>';
+  s+='<div class="row" style="margin-top:11px"><button class="btn sm" data-act="noop">Применить на всех слайдах</button></div>';
+  s+='<div class="note">Геометрия и стиль живут в состоянии слайда, а не на элементе. Поэтому правка задним числом — это отдельная кнопка «на всех слайдах», а не побочный эффект.</div>';
+  s+='<div class="dim tiny" style="margin-top:9px">В прототипе поля показаны, но не работают: поворот мышью, живые ручки и правка текста побуквенно срезаны намеренно — этот раздел уже существует в продукте.</div>';
+  return s;
+}
+
+function viewStopPanel(){
+  var st1 = S.stopId ? stopById(S.stopId) : null;
+  if(!st1) return '<div class="dim tiny">Нажмите метку остановки на дорожке.<div style="margin-top:9px"><button class="btn sm" data-act="pick-stop" data-id="q1">Открыть вопрос</button> <button class="btn sm" data-act="pick-stop" data-id="f1">Открыть развилку</button></div></div>';
+
+  var isFork = st1.kind==="fork";
+  var s='<div class="seg"><button class="'+(!isFork?"on":"")+'" data-act="stop-kind" data-id="question">Вопрос</button>'
+      + '<button class="'+(isFork?"on":"")+'" data-act="stop-kind" data-id="fork">Развилка</button></div>';
+  s+='<div class="note" style="margin-top:8px">'+(isFork
+      ? 'Развилка: верного ответа нет, ветки равноправны. Она обязана быть последней в своей части.'
+      : 'Вопрос: есть верный ответ, рассказ после него идёт дальше по той же дорожке.')+'</div>';
+
+  s+='<div style="margin-top:11px"><label class="f">Что спрашиваем</label><input type="text" value="'+h(st1.prompt)+'" data-act="noop"></div>';
+
+  /* Имя переменной задаёт автор. Без него нельзя сослаться на этот ответ
+     из будущего вопроса или развилки — «обычный вопрос теряет смысл». */
+  s+='<div style="margin-top:9px"><label class="f">Ответ запоминается как</label>'
+    + '<input type="text" value="'+h(st1.recordAs)+'" data-act="set-var">'
+    + '<div class="tiny dim" style="margin-top:4px">Под этим именем ответ читают условия вариантов и правила развилок. '
+    + 'Переименование проходит каскадом: правила едут за именем, иначе осиротеют. Две остановки в одну переменную писать не могут.</div></div>';
+
+  /* Привязка ко времени — та же пара «слово или секунда», что и у слайда. */
+  s+='<div style="margin-top:9px"><label class="f">Метка привязана</label>'
+    + '<select data-act="noop" style="width:auto;display:inline-block;margin-left:6px">'
+    + '<option'+(st1.bind?" selected":"")+'>К слову</option><option'+(st1.bind?"":" selected")+'>К секунде</option></select>'
+    + ' <span class="dim tiny">на '+fmt(st1.at)+(st1.bind?' · слово «'+h(st1.bind)+'»':' · слова рядом нет')+'</span></div>';
+
+  var inside=stopInsideWindow(st1);
+  if(inside)
+    s+='<div class="warnbox"><b>Остановка стоит внутри перехода.</b> Слайд '+(SLIDES.indexOf(inside)+1)+' едет с '+fmt(inside.at-windowOf(SLIDES.indexOf(inside)))+' по '+fmt(inside.at)+'. Плеер довёдет переход до конца мгновенно и только потом откроет ответ — зритель не будет отвечать поверх едущих элементов. Но почти всегда это ошибка расстановки.</div>';
+
+  s+='<div style="margin-top:13px" class="row"><b class="tiny">Варианты ответа</b><span class="spacer" style="flex:1"></span><button class="btn sm" data-act="noop">+ вариант</button></div>';
+
+  for(var i=0;i<st1.options.length;i++){
+    var o=st1.options[i];
+    if(o.deleted) continue;
+    var cls="opt"+(o.correct?" correct":"")+(o.cond?" cond":"");
+    s+='<div class="'+cls+'"><div class="oh"><span class="grow">'+h(o.text)+'</span>';
+    if(o.correct) s+='<span class="tiny" style="color:var(--ok)">верный</span>';
+    if(isFork && o.to) s+='<span class="tiny dim">→ '+h(PARTS[o.to]?PARTS[o.to].title:o.to)+'</span>';
+    if(isFork && o.id==="x-quarter") s+=' <button class="btn sm danger" data-act="del-option">удалить</button>';
+    s+='</div>';
+    s+='<div class="tiny dim" style="margin-top:5px">Показывать как: <select data-act="noop" style="width:auto;display:inline-block"><option>кнопку</option><option>элемент сцены «Круг»</option></select></div>';
+    if(o.cond){
+      s+='<div class="cond-line">условие: <b style="color:var(--ok)">'+h(o.cond.v)+'</b> — <b>'+h(o.cond.op)+'</b>'
+        + ' <button class="btn sm" data-act="noop">изменить</button> <span class="todo">нет в продукте</span>'
+        + '<div class="tiny dim" style="margin-top:3px">Имя переменной здесь то же самое, что автор задал у вопроса. Переименуй там — поедет и здесь.</div></div>';
+    } else if(isFork){
+      s+='<div class="cond-line" style="color:var(--dim)"><button class="btn sm" data-act="noop">+ условие</button> <span class="tiny">вариант будет показан, только если условие подошло</span> <span class="todo">нет в продукте</span></div>';
+    }
+    s+='</div>';
+  }
+
+  if(isFork){
+    var uncond=0;
+    for(var k=0;k<st1.options.length;k++) if(!st1.options[k].deleted && !st1.options[k].cond) uncond++;
+    s+= uncond>0
+      ? '<div class="okbox">Безусловных вариантов: '+uncond+'. Хотя бы один обязателен, иначе на живом зрителе скроются все и получится тупик.</div>'
+      : '<div class="badbox">Ни одного безусловного варианта — тупик на живом зрителе.</div>';
+  }
+
+  if(!isFork){
+    s+='<div class="grid2" style="margin-top:11px">';
+    s+='<div><label class="f">Если ответ неверный</label><select data-act="noop"><option>Разбор на месте</option><option>Подсказка на месте</option><option>Спросить снова</option><option>Промолчать и ехать дальше</option></select></div>';
+    s+='<div><label class="f">Сколько попыток</label><input type="number" value="'+st1.attempts+'" data-act="noop"></div>';
+    s+='</div>';
+    s+='<div class="note">После исчерпания попыток остановка пропускается, и факт пропуска идёт в аналитику: «пропустили восемь человек» ценнее, чем «ответили верно шестнадцать».</div>';
+  }
+
+  if(isFork){
+    s+='<div style="margin-top:13px">';
+    if(!S.split){
+      s+='<button class="btn pri" data-act="split" style="width:100%">Разделить повествование здесь</button>';
+      s+='<div class="note">Пока автор не нажал, части нет: развилка — это свойство остановки, а разрез — явный жест. После разреза рассказ после этой точки уезжает в отдельную часть, а каждый вариант получает свою.</div>';
+    } else {
+      s+='<div class="okbox">Повествование разделено. Веток: '+BRANCH_ORDER.length+'.</div>';
+      s+='<button class="btn" data-act="unsplit" style="width:100%;margin-top:8px">Склеить обратно в одну часть</button>';
+      s+='<div class="note">Склейка возможна, пока ветки пусты. Что делать с уже наполненными — открытый вопрос владельцу.</div>';
+    }
+    s+='</div>';
+  }
+  return s;
+}
+
+function viewProblems(){
+  var ps=problems();
+  var s='';
+  if(!ps.length){
+    s+='<div class="okbox">Проблем нет. Объяснение можно опубликовать.</div>';
+  } else {
+    for(var i=0;i<ps.length;i++){
+      var p=ps[i];
+      s+='<div class="prob"><span class="dot '+p.lvl+'"></span><div class="grow"><b>'+h(p.t)+'</b>'
+        +'<div class="tiny dim" style="margin-top:3px">'+h(p.d)+'</div>'
+        +(p.act?'<div style="margin-top:6px"><button class="btn sm" data-act="'+p.act+'">'+h(p.actLabel)+'</button></div>':'')
+        +'</div></div>';
+    }
+  }
+  s+='<div style="margin-top:13px">';
+  s+='<button class="btn '+(canPublish()?"pri":"")+'" style="width:100%" '+(canPublish()?'':'disabled')+' data-act="publish">Опубликовать</button>';
+  if(!canPublish())
+    s+='<div class="badbox">Публикация заблокирована: '+ps.length+' проблем(ы). Пустая ветка — незавершённое состояние, поэтому состояние «зритель попал в пустую ветку» в опубликованном объяснении недостижимо физически.</div>';
+  s+='</div>';
+  s+='<div class="note">Проверки те же, что защищают якоря: пустые ветки, недостижимые части, осиротевшие правила, непокрытые исходы.</div>';
+  return s;
+}
+
+/* ============================================================
+   ЭКРАН РЕДАКТОРА ЦЕЛИКОМ
+   ============================================================ */
+
+function viewEditor(){
+  var P=PARTS[S.partId];
+  var isEmpty=(P.empty && !S.emptyFilled);
+  var states = (S.partId==="p1") ? SLIDES[S.slideIdx].states : {};
+
+  var s='<div class="ed">';
+  s+='<div class="edcol">'+viewLeftColumn()+'</div>';
+
+  s+='<div class="edcol">';
+  s+='<div class="stagewrap"><div class="row" style="margin-bottom:8px">';
+  s+='<b class="tiny">'+h(P.title)+'</b><span class="dim tiny">· слайд '+(S.partId==="p1"?(S.slideIdx+1)+' из '+SLIDES.length:"—")+'</span>';
+  s+='<span class="spacer" style="flex:1"></span>';
+  s+='<button class="btn sm" data-act="noop">Отменить</button><button class="btn sm" data-act="noop">Повторить</button>';
+  s+='<button class="btn sm danger" data-act="noop">Удалить элемент</button>';
+  s+='</div>';
+  s+='<div class="stage">';
+  if(isEmpty) s+='<div class="overlay"><b style="color:var(--warn)">Здесь пока ничего нет</b><div class="dim tiny">Ветка создана, но пуста</div></div>';
+  else s+=renderStage(states, S.selEl, false);
+  s+='</div>';
+  s+='<div class="dim tiny" style="margin-top:7px">Двойное нажатие по тексту правит его прямо на холсте <span class="todo">срезано в прототипе</span></div>';
+  s+='</div>';
+  s+=viewSlideStrip();
+  s+='</div>';
+
+  s+='<div class="edcol">'+viewRight()+'</div>';
+  s+='</div>';
+
+  s+='<div style="height:12px"></div>'+viewTrack();
+  return s;
+}
+
+/* ============================================================
+   G/H. ПРЕДПРОСМОТР И ПЛЕЕР
+   ============================================================ */
+
+function distinctVisited(){
+  var seen={}, n=0;
+  for(var i=0;i<S.vVisited.length;i++){ var id=S.vVisited[i].replace("p1-again","p1"); if(!seen[id]){seen[id]=1;n++;} }
+  return n;
+}
+
+function viewViewer(isPreview){
+  var P=PARTS[S.vPart] || PARTS["p1"];
+  var s='<div class="viewer">';
+
+  if(isPreview){
+    s+='<div class="authorbar"><span class="tag">Предпросмотр</span>';
+    s+='<span class="dim">Смотреть как зритель, ответивший:</span>';
+    s+='<select data-act="viewas" style="width:auto;display:inline-block">';
+    s+='<option value="" '+(S.viewAs===null?"selected":"")+'>— как любой (условные варианты скрыты)</option>';
+    s+='<option value="верно" '+(S.viewAs==="верно"?"selected":"")+'>верно на «Сколько половин…»</option>';
+    s+='<option value="неверно" '+(S.viewAs==="неверно"?"selected":"")+'>неверно на «Сколько половин…»</option>';
+    s+='</select>';
+    s+='<span class="spacer" style="flex:1"></span><button class="btn sm" data-act="v-reset">Сначала</button>';
+    s+='<button class="btn sm" data-act="go-editor">Вернуться в редактор</button></div>';
+    s+='<div class="note" style="margin:0 0 11px">Без этого режима автор физически не может проверить условные варианты: в редакторе он видит пять, зритель — четыре или пять в зависимости от того, как ответил раньше.</div>';
+  }
+
+  /* двухуровневый прогресс */
+  /* Знаменатель называется тогда и только тогда, когда он известен.
+     Развилка живёт в конце «Что такое дробь», поэтому пока зритель в этой
+     части — сколько всего частей он пройдёт, ещё не решено. После повтора
+     развилка снова впереди, и знаменатель снова пропадает. */
+  var known = S.split && S.vPart!=="p1" && S.vPart!=="p1-again";
+  if(!S.split) known = true;
+  s+='<div class="vbar">';
+  s+='<div class="prog2">';
+  s+='<div class="tiny dim" style="margin-bottom:2px">где в объяснении</div>';
+  s+='<div class="lvl1">';
+  var chain = S.split ? ["p1", S.vPart==="p1"?"?":S.vPart, "p-cont","p-final"] : ["p1"];
+  for(var i=0;i<chain.length;i++){
+    var cls = (i<distinctVisited()-0? (i<distinctVisited()?"done":"") : "");
+    if(chain[i]===S.vPart) cls="now";
+    s+='<i class="'+cls+'"></i>';
+  }
+  s+='</div>';
+  var frac = P.len>0 ? Math.min(1,S.vT/P.len) : 1;
+  s+='<div class="tiny dim" style="margin:5px 0 2px">где внутри части «'+h(P.title)+'»</div>';
+  s+='<div class="lvl2"><i style="width:'+(frac*100)+'%"></i></div>';
+  s+='</div>';
+  var n=distinctVisited();
+  s+='<div class="tiny dim" style="white-space:nowrap">'+(S.split && known ? 'часть '+n+' из 4' : 'часть '+n)+'</div>';
+  s+='</div>';
+  if(S.split && !known)
+    s+='<div class="tiny dim" style="margin:-6px 0 9px">Знаменателя пока нет: впереди развилка, и длина объяснения зависит от ответа, которого ещё не было.</div>';
+
+  if(S.vRepeat)
+    s+='<div class="okbox" style="margin-bottom:9px"><b>Возвращаемся к пройденному.</b> Номер части не растёт: счётчик считает различные пройденные части. '
+      + 'Остановки внутри повтора не задаются заново — зритель уже на них отвечал, а в аналитике проход помечается как повтор. '
+      + 'Без этой надписи зритель решил бы, что зациклился, и ушёл.</div>';
+
+  /* сцена */
+  s+='<div class="stage" style="border-radius:11px">';
+  var isEmptyBranch = (PARTS[S.vPart] && PARTS[S.vPart].empty && !S.emptyFilled);
+
+  if(isEmptyBranch){
+    if(isPreview)
+      s+='<div class="overlay"><b style="color:var(--warn)">Здесь будет разбор</b><div class="dim">Ветка пуста</div>'
+        +'<div class="tiny dim">Заглушка видна только в предпросмотре. В опубликованном объяснении сюда попасть нельзя — публикация заблокирована.</div>'
+        +'<button class="btn" data-act="v-next">Дальше</button></div>';
+    else
+      s+='<div class="overlay"><b style="color:var(--bad)">Сюда зритель попасть не может</b><div class="tiny dim">Пустая ветка блокирует публикацию, поэтому в продакшене это состояние недостижимо.</div>'
+        +'<button class="btn" data-act="v-next">Дальше</button></div>';
+  }
+  else if(S.vPhase==="play"){
+    var idx = S.vPart==="p1" ? slideIndexAt(S.vT) : 0;
+    s+= S.vPart==="p1" ? renderStage(SLIDES[idx].states,null,true)
+                       : '<div class="overlay"><b>'+h(P.title)+'</b><div class="dim tiny">своя дорожка на '+P.len.toFixed(1)+' с</div></div>';
+  }
+  else if(S.vPhase==="stop" || S.vPhase==="fork"){
+    var st1 = S.vPhase==="stop" ? stopById("q1") : forkStop();
+    var opts = S.vPhase==="fork" ? visibleOptions(st1, isPreview?S.viewAs:S.vAnswer) : st1.options;
+    s+='<div class="overlay"><b style="font-size:1.3em">'+h(st1.prompt)+'</b><div style="width:100%;max-width:440px">';
+    for(var j=0;j<opts.length;j++)
+      s+='<button class="ansbtn" data-act="v-answer" data-id="'+opts[j].id+'">'+h(opts[j].text)+'</button>';
+    s+='</div>';
+    if(S.vPhase==="fork"){
+      /* считаем только скрытые условием: удалённых вариантов на развилке
+         вообще нет, и мешать их в один счётчик — врать автору */
+      var hidden=0;
+      for(var q=0;q<st1.options.length;q++){
+        var oq=st1.options[q];
+        if(!oq.deleted && oq.cond && opts.indexOf(oq)<0) hidden++;
+      }
+      if(hidden) s+='<div class="tiny dim">скрыто вариантов по условию: '+hidden+'</div>';
+    }
+    s+='</div>';
+  }
+  else if(S.vPhase==="reveal"){
+    s+='<div class="overlay"><b style="color:var(--warn)">Разбор</b>'
+      +'<div>В целом помещается ровно <b>две</b> половины: каждая — это одна вторая.</div>'
+      +'<div class="tiny dim">Дорожка стоит, сцена недоступна для мыши. «Дальше» продолжит ту же дорожку с той же секунды — перемотки не происходит.</div>'
+      +'<button class="btn pri" data-act="v-next">Дальше</button></div>';
+  }
+  else if(S.vPhase==="end"){
+    s+='<div class="overlay"><b style="font-size:1.4em">Объяснение закончено</b>'
+      +'<div class="dim">Пройдено различных частей: '+distinctVisited()+'</div>'
+      +'<button class="btn pri" data-act="v-reset">Смотреть сначала</button></div>';
+  }
+  s+='</div>';
+
+  /* транспорт */
+  s+='<div class="row" style="margin-top:11px">';
+  s+='<button class="btn pri" data-act="v-play">'+(S.vPhase==="play"?"Дальше по рассказу":"Играть")+'</button>';
+  s+='<span class="dim tiny">'+P.title+' · '+S.vT.toFixed(1)+' из '+P.len.toFixed(1)+' с</span>';
+  s+='<span class="spacer" style="flex:1"></span>';
+  s+='<span class="dim tiny">'+(S.vPhase==="play"?"вне остановки сцена физически недоступна для мыши":"остановка: сцена открыта")+'</span>';
+  s+='</div>';
+  s+='<div class="note">Вне остановки у сцены отключены указатели — не «мы не вешаем обработчик», а физически недоступно. Остановка тормозит всё разом: звук, время, анимации.</div>';
+  s+='</div>';
+  return s;
+}
+
+/* ============================================================
+   ЭКРАН «НА ВЫБОР». Открытые вопросы 6–9 списка-сторожа.
+   Здесь НЕ принимается решение — здесь показываются виды рядом,
+   чтобы владелец ткнул пальцем. Выбрать самому было бы подменой:
+   это вопрос вкуса и привычки автора, а не вывод из модели.
+   ============================================================ */
+
+function optionCard(tag, title, body, plus, minus){
+  return '<div class="ocard"><div class="otag">'+h(tag)+'</div><b>'+h(title)+'</b>'
+    + '<div class="omock">'+body+'</div>'
+    + '<div class="tiny" style="margin-top:8px;color:var(--ok)">+ '+h(plus)+'</div>'
+    + '<div class="tiny" style="margin-top:3px;color:var(--warn)">− '+h(minus)+'</div>'
+    + '</div>';
+}
+
+function viewChoose(){
+  var s='<div class="panel"><div class="ph">Открытые вопросы: нужен ваш выбор</div><div class="pb">';
+  s+='<div class="note">Оба вопроса ниже — из вашего разбора прототипа. Ответа в модели нет: она допускает любой из вариантов. Ткните пальцем, и в следующей сессии это станет кодом.</div>';
+  s+='</div></div>';
+
+  /* --- Вопрос 1: как редактировать каждый слайд отдельно --- */
+  s+='<div class="panel"><div class="ph">Вопрос 1 · Как править каждый слайд отдельно</div><div class="pb">';
+  s+='<div class="note">Сегодня сцена показывает ВЫБРАННЫЙ слайд и не следует за головкой: посмотреть, как элемент едет, нельзя. Ваша ставка была «вид канвы для слайдов, а для меток придумать отдельное». Вот три способа это понять.</div>';
+  s+='<div class="ogrid">';
+
+  s+=optionCard('А', 'Лента снизу, одна сцена сверху',
+      '<div class="mk-stage">сцена: слайд 4</div>'
+    + '<div class="mk-row"><i></i><i></i><i></i><i class="on"></i><i></i><i></i></div>'
+    + '<div class="mk-cap">лента слайдов — то, что есть сегодня</div>',
+    'ничего не надо учить, это уже работает',
+    'слайды видны как картинки, но не видно, ЧТО между ними едет');
+
+  s+=optionCard('Б', 'Канва: все слайды на одном поле',
+      '<div class="mk-canvas"><div class="mk-card">1</div><div class="mk-card">2</div>'
+    + '<div class="mk-card on">4</div><div class="mk-card">5</div></div>'
+    + '<div class="mk-cap">двойной щелчок по карточке — правка этого слайда</div>',
+    'видно всё объяснение разом, легко переставлять и сравнивать',
+    'время уходит с экрана: на канве нет дорожки, а метка живёт на ней');
+
+  s+=optionCard('В', 'Две сцены рядом: «правлю» и «смотрю»',
+      '<div class="mk-two"><div class="mk-stage sm">правлю: слайд 4</div>'
+    + '<div class="mk-stage sm ghost">смотрю: 13,4 с</div></div>'
+    + '<div class="mk-cap">головка ведёт правую, выделение — левую</div>',
+    'переход наконец видно; долг §12.5 закрывается сам собой',
+    'два вида одной сцены — легко запутаться, какой из них правится');
+
+  s+='</div></div></div>';
+
+  /* --- Вопрос 2: как не потерять правки, сделанные до метки --- */
+  s+='<div class="panel"><div class="ph">Вопрос 2 · Как не забыть поставить метку</div><div class="pb">';
+  s+='<div class="note">Автор может пойти двумя путями: сначала метка, потом содержимое — либо наоборот. Второй путь сегодня ТЕРЯЕТСЯ: правки лягут в текущий слайд и молча его испортят. Это и есть §14.9.</div>';
+  s+='<div class="ogrid">';
+
+  s+=optionCard('А', 'Слайд рождается сам при первой правке',
+      '<div class="mk-line"><b>двигаю круг…</b></div>'
+    + '<div class="mk-toast ok">слайд 5 создан на 18,2 с — где стоит головка</div>'
+    + '<div class="mk-cap">метку потом можно двигать по дорожке</div>',
+    'ничего не теряется никогда, автор даже не думает об этом',
+    'слайды плодятся незаметно: подвинул элемент — получил слайд');
+
+  s+=optionCard('Б', 'Правки копятся, плашка требует метку',
+      '<div class="mk-line"><b>двигаю круг…</b></div>'
+    + '<div class="mk-toast warn">3 правки не привязаны ко времени · <u>поставить метку</u></div>'
+    + '<div class="mk-cap">до метки правки никуда не пишутся</div>',
+    'лишних слайдов не появляется, автор решает сам',
+    'состояние «правки висят в воздухе» надо где-то держать и показывать');
+
+  s+=optionCard('В', 'Без выбранного слайда сцену править нельзя',
+      '<div class="mk-line dim"><b>сцена заблокирована</b></div>'
+    + '<div class="mk-toast bad">выберите слайд или поставьте метку</div>'
+    + '<div class="mk-cap">жёстко, зато однозначно</div>',
+    'потерять правку физически невозможно',
+    'бьёт по руками в самый неудобный момент — автор был в потоке');
+
+  s+='</div></div></div>';
+
+  s+='<div class="panel"><div class="ph">Что уже решено и переспрашивать не нужно</div><div class="pb">';
+  s+='<div class="tiny dim" style="line-height:1.7">'
+    + '· Переход плавно/резко — <b style="color:var(--ok)">сделано в Сессии 10</b>, переключатель в панели слайда.<br>'
+    + '· Привязка метки по слову/по секунде — <b style="color:var(--ok)">сделано</b>, включая часть без озвучки.<br>'
+    + '· Имя переменной задаёт автор, переименование идёт каскадом — <b style="color:var(--ok)">сделано</b>.<br>'
+    + '· Условия через И и сравнение с числом — Сессия 11, бамп схемы.<br>'
+    + '· Разворот перехода (окно заканчивается на метке) — Сессия 12. В прототипе нарисован, в коде пока наоборот.'
+    + '</div></div></div>';
+  return s;
+}
+
+/* ============================================================
+   СБОРКА
+   ============================================================ */
+
+function render(){
+  document.body.classList.toggle("show-todo", S.showTodo);
+  var nav=[["start","1 · Вход"],["editor","2 · Редактор"],["preview","3 · Предпросмотр"],["player","4 · Плеер"],["choose","5 · На выбор"]];
+  var s='<div class="topbar">';
+  s+='<span class="brand">Дроби<small>черновик · прототип</small></span>';
+  s+='<div class="nav">';
+  for(var i=0;i<nav.length;i++)
+    s+='<button class="chip '+(S.screen===nav[i][0]?"on":"")+'" data-act="screen" data-id="'+nav[i][0]+'">'+nav[i][1]+'</button>';
+  s+='</div><span class="spacer"></span>';
+  s+='<label class="toggle tiny"><input type="checkbox" '+(S.showTodo?"checked":"")+' data-act="todo"> показать, чего ещё нет</label>';
+  s+='<button class="btn '+(canPublish()?"pri":"")+'" '+(canPublish()?"":"disabled")+' data-act="publish-top">Опубликовать</button>';
+  s+='</div>';
+
+  s+='<div class="wrap">';
+  if(S.screen==="start")   s+=viewStart();
+  if(S.screen==="editor")  s+=viewEditor();
+  if(S.screen==="preview") s+=viewViewer(true);
+  if(S.screen==="player")  s+=viewViewer(false);
+  if(S.screen==="choose")  s+=viewChoose();
+  s+='</div>';
+  document.getElementById("app").innerHTML=s;
+}
+
+/* ============================================================
+   СОБЫТИЯ. Одно делегирование на весь документ.
+   ============================================================ */
+
+function act(el){ return el.closest?el.closest("[data-act]"):null; }
+
+document.addEventListener("click", function(ev){
+  var t=act(ev.target); if(!t) return;
+  var a=t.getAttribute("data-act"), id=t.getAttribute("data-id");
+
+  if(a==="noop") return;
+  if(a==="screen"){ S.screen=id; }
+  if(a==="todo"){ S.showTodo=!S.showTodo; }
+  if(a==="go-editor"){ S.screen="editor"; }
+
+  if(a==="start-next"){ S.startStep=Math.min(3,S.startStep+1); }
+  if(a==="start-reset"){ S.startStep=0; }
+
+  if(a==="pick-el"){ S.selEl=id; S.panel="props"; }
+  if(a==="pick-slide"){ S.slideIdx=+id; S.playhead=SLIDES[+id].at; }
+  if(a==="pick-part"){ S.partId=id; if(id!=="p1") S.selEl=null; }
+  if(a==="pick-stop"){ S.stopId=id; S.panel="stop"; }
+  if(a==="panel"){ S.panel=id; }
+  if(a==="insert"){ alert("В продукте здесь на холст ложится «"+id+"».\n\nВ прототипе вставка срезана: раздел сцены показан обзорно по решению этой сессии."); return; }
+  if(a==="tpl"){ alert("Шаблон «"+id+"» разложил бы готовый набор элементов на текущем слайде."); return; }
+  if(a==="add-slide"||a==="add-slide-here"){ alert("Новый слайд — копия предыдущего.\nЭлементы сохраняют свои id, поэтому непрерывность получается сама, а разрыв автор выбирает осознанно."); return; }
+  if(a==="del-slide"){ alert("Удаление слайда. Первый и единственный удалить нельзя."); return; }
+  if(a==="add-stop-here"){ alert("Остановка встала бы на "+fmt(S.playhead)+", привязавшись к ближайшему слову."); return; }
+
+  if(a==="split"){ S.split=true; S.collapsed=true; S.panel="stop"; S.stopId="f1"; }
+  if(a==="unsplit"){ S.split=false; S.partId="p1"; S.emptyFilled=false; S.optionDeleted=false; }
+  if(a==="expand"){ S.collapsed=false; }
+  if(a==="collapse"){ S.collapsed=true; }
+  if(a==="fill-empty"||a==="fill-ai"||a==="fill-repeat"){ S.emptyFilled=true; PARTS["b-third"].len=7.0; PARTS["b-third"].slides=3; }
+  if(a==="goEmpty"){ S.partId="b-third"; S.panel="props"; }
+  if(a==="del-option"){
+    S.optionDeleted=true;
+    var f=forkStop(); for(var i=0;i<f.options.length;i++) if(f.options[i].id==="x-quarter") f.options[i].deleted=true;
+    S.panel="problems";
+  }
+  if(a==="stop-kind"){
+    var st1=stopById(S.stopId);
+    if(st1){
+      if(id==="fork" && st1.id==="q1"){ alert("Развилка обязана быть последней в своей части.\n\nЭта остановка стоит посреди рассказа: если сделать её развилкой, остаток части никогда не прозвучит. Сначала нужно разделить повествование здесь."); return; }
+      if(id==="question" && st1.id==="f1"){ alert("Развилка уже разделила повествование. Чтобы вернуть её в вопрос, сначала склейте части обратно."); return; }
+    }
+  }
+
+  if(a==="publish"||a==="publish-top"){
+    alert(canPublish() ? "Опубликовано.\nЧерновик и опубликованная версия разделены: автор правит дальше, а зрители смотрят снятую копию."
+                       : "Публикация заблокирована."); return;
+  }
+
+  if(a==="seek-word"){ S.playhead=+id; S.slideIdx=slideIndexAt(+id); }
+
+  if(a==="viewas"){ return; }
+  if(a==="v-play"){ stepViewer(); }
+  if(a==="v-next"){ advanceViewer(); }
+  if(a==="v-answer"){ answerViewer(id); }
+  if(a==="v-reset"){ S.vPart="p1"; S.vT=0; S.vPhase="play"; S.vAnswer=null; S.vWrong=0; S.vVisited=["p1"]; S.vRepeat=false; }
+
+  render();
+});
+
+document.addEventListener("change", function(ev){
+  var t=act(ev.target); if(!t) return;
+  var a=t.getAttribute("data-act");
+  if(a==="viewas"){ S.viewAs = ev.target.value || null; render(); }
+  if(a==="script"){ S.scriptText = ev.target.value; }
+
+  /* Переход выбранного слайда. Резкий обнуляет окно движения — хвост
+     на дорожке исчезает сам, потому что рисуется из windowOf. */
+  if(a==="set-tr"){ SLIDES[S.slideIdx].tr = ev.target.value; render(); }
+
+  /* Привязка метки. Обратно к слову берётся ближайшее слово — в продукте
+     это может оказаться НЕ то слово, что было; поэтому оно и показано. */
+  if(a==="set-bind"){
+    var sl=SLIDES[S.slideIdx];
+    sl.bind = (ev.target.value==="word") ? nearestWordText(sl.at) : null;
+    render();
+  }
+
+  /* Имя переменной задаёт автор. Каскад: условия вариантов, смотревшие
+     на старое имя, переезжают вместе с ним — иначе правило осиротеет. */
+  if(a==="set-var"){
+    var st1=stopById(S.stopId); if(!st1) return;
+    var was=st1.recordAs, now=ev.target.value.trim();
+    if(!now || takenBy(now, st1.id)){ render(); return; }
+    st1.recordAs=now;
+    for(var i=0;i<STOPS.length;i++)
+      for(var j=0;j<STOPS[i].options.length;j++){
+        var o=STOPS[i].options[j];
+        if(o.cond && o.cond.v===was) o.cond.v=now;
+      }
+    render();
+  }
+});
+
+/* Слово, ближайшее к секунде: тем же правилом, что и в продукте. */
+function nearestWordText(t){
+  var best=null, dist=1e9;
+  for(var i=0;i<WORDS.length;i++){
+    var d=Math.abs(WORDS[i][0]-t);
+    if(d<dist){ dist=d; best=WORDS[i][1]; }
+  }
+  return dist<=0.9 ? best : null;
+}
+
+/* Занято ли имя переменной другой остановкой: схема запрещает две записи. */
+function takenBy(name, exceptId){
+  for(var i=0;i<STOPS.length;i++)
+    if(STOPS[i].id!==exceptId && STOPS[i].recordAs===name) return STOPS[i];
+  return null;
+}
+
+/* --- перетаскивание меток и головки --- */
+var drag=null;
+document.addEventListener("pointerdown", function(ev){
+  var t=ev.target.closest?ev.target.closest("[data-drag]"):null; if(!t) return;
+  drag={kind:t.getAttribute("data-drag"), id:t.getAttribute("data-id")};
+  ev.preventDefault();
+});
+document.addEventListener("pointermove", function(ev){
+  if(!drag) return;
+  var track=document.getElementById("track"); if(!track) return;
+  var r=track.getBoundingClientRect();
+  var len=HEAD_END+3.0;
+  var t=Math.max(0, Math.min(len, (ev.clientX-r.left)/r.width*len));
+
+  if(drag.kind==="head"){ S.playhead=t; S.slideIdx=slideIndexAt(t); }
+  if(drag.kind==="slide"){
+    var i=+drag.id;
+    var lo=(i>0?SLIDES[i-1].at+0.05:0), hi=(i<SLIDES.length-1?SLIDES[i+1].at-0.05:len);
+    if(i===0) return;                       // нулевой слайд стоит на нуле всегда
+    SLIDES[i].at=Math.max(lo,Math.min(hi,t));
+    SLIDES[i].bind=nearestWord(SLIDES[i].at);
+    S.slideIdx=i; S.playhead=SLIDES[i].at;
+  }
+  if(drag.kind==="stop"){
+    var st1=stopById(drag.id);
+    if(st1){ st1.at=Math.max(0.1,Math.min(len-0.1,t)); st1.bind=nearestWord(st1.at); S.stopId=st1.id; S.panel="stop"; }
+  }
+  render();
+});
+document.addEventListener("pointerup", function(){ drag=null; });
+
+function nearestWord(t){
+  var best=null, bd=0.35;
+  for(var i=0;i<WORDS.length;i++){ var d=Math.abs(WORDS[i][0]-t); if(d<bd){ bd=d; best=WORDS[i][1]; } }
+  return best;
+}
+
+/* --- ход зрителя --- */
+function stepViewer(){
+  var P=PARTS[S.vPart];
+  if(S.vPhase!=="play"){ return; }
+  if(S.vPart==="p1"){
+    if(S.vT<13.5){ S.vT=13.5; S.vPhase="stop"; return; }
+    if(S.vT<HEAD_END){ S.vT=HEAD_END; S.vPhase = S.split ? "fork" : "end"; return; }
+  }
+  if(S.vT<P.len){ S.vT=P.len; return; }
+  advanceViewer();
+}
+function answerViewer(optId){
+  if(S.vPhase==="stop"){
+    var right=(optId==="o-2");
+    S.vAnswer = right ? "верно" : "неверно";
+    if(right){ S.vPhase="play"; S.vT=15.6; }
+    else { S.vWrong++; S.vPhase="reveal"; }
+    return;
+  }
+  if(S.vPhase==="fork"){
+    var f=forkStop(), pick=null;
+    for(var i=0;i<f.options.length;i++) if(f.options[i].id===optId) pick=f.options[i];
+    if(!pick) return;
+    var to = pick.to==="p1" ? "p1-again" : pick.to;
+    S.vRepeat = (pick.to==="p1");
+    S.vPart=to; S.vT=0; S.vPhase="play"; S.vVisited.push(to);
+    return;
+  }
+}
+function advanceViewer(){
+  var P=PARTS[S.vPart];
+  S.vRepeat=false;
+  if(P.back){ S.vPart=P.back; S.vT=0; S.vPhase="play"; S.vVisited.push(P.back); return; }
+  if(S.vPart==="p-cont"){ S.vPart="p-final"; S.vT=0; S.vPhase="play"; S.vVisited.push("p-final"); return; }
+  if(S.vPhase==="reveal"){ S.vPhase="play"; S.vT=15.6; return; }
+  S.vPhase="end";
+}
+
+render();
+</script>
+</body>
+</html>
