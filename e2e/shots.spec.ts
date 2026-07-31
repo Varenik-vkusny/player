@@ -50,8 +50,14 @@ test.describe('@shots снимки продукта', () => {
     await page.screenshot({ path: `${OUT}/after-split.png` });
   });
 
+  /**
+   * Моменты выбраны под окна ПОСЛЕ разворота (ADR-020): к слайду `m-2`
+   * сцена едет по (0.4, 1.0), к `m-3` — по (1.4, 2.0). Раскадровка обязана
+   * показывать движение ДО метки и приехавшую картинку НА ней — прежняя
+   * серия (1.200 … 3.000) вся попадала бы в «уже приехал».
+   */
   test('раскадровка морфинга', async ({ page }) => {
-    for (const t of ['0.000', '1.200', '1.500', '1.800', '2.250', '3.000']) {
+    for (const t of ['0.000', '0.600', '0.850', '1.000', '1.700', '2.000']) {
       await page.goto(`/preview.html?fixture=morph&t=${t}&fonts=test`, { waitUntil: 'load' });
       await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1');
       await page.locator('#stage-host').screenshot({ path: `${OUT}/morph-${t.replace('.', '-')}.png` });
@@ -85,5 +91,36 @@ test.describe('@shots снимки продукта', () => {
       path: `${OUT}/marks-zoom.png`,
       clip: { x: box.x, y: box.y - 46, width: 470, height: box.height + 56 },
     });
+  });
+
+  /** §14.9 глазами: правка на голом месте дорожки ставит новый ромб. */
+  test('слайд рождается при правке', async ({ page }) => {
+    await openEditor(page, 'demo');
+    await page.waitForFunction(
+      () => (window as unknown as { __transport?: { state: string } }).__transport?.state === 'ready',
+      null,
+      { timeout: 30_000 },
+    );
+
+    const track = await page.getByTestId('track-lane').boundingBox();
+    if (!track) throw new Error('дорожка не видна');
+    const duration = await page.evaluate(
+      () => (window as unknown as { __transport: { durationSeconds: number } })
+        .__transport.durationSeconds,
+    );
+    await page.mouse.click(track.x + (track.width * 24) / duration, track.y + track.height / 2);
+    await page.screenshot({ path: `${OUT}/s12-before-edit.png` });
+
+    const node = await page.locator('.ed-stage-host [data-id="title"]').boundingBox();
+    if (!node) throw new Error('элемент не виден на сцене правки');
+    const x = node.x + node.width / 2;
+    const y = node.y + node.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x + 60, y + 40);
+    await page.mouse.move(x + 120, y + 80);
+    await page.mouse.up();
+
+    await page.screenshot({ path: `${OUT}/s12-after-edit.png` });
   });
 });

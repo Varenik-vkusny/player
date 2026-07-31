@@ -5207,10 +5207,25 @@ var El = 0, Dl = class extends Kc {
 }, Ol = (e) => G.editor ? G.editor.addTimeline(e) : new Dl(e).init(), kl = .6, Al = .5;
 function jl(e, t, n) {
 	if (t === 0 || e === "cut") return 0;
-	let r = n[t + 1], i = r === void 0 ? Infinity : r - n[t];
-	return Math.max(0, Math.min(kl, i));
+	let r = n[t] - n[t - 1];
+	return Math.max(0, Math.min(kl, r));
 }
-function Ml(e, t, n) {
+function Ml(e, t) {
+	let n = 0;
+	for (let r = 0; r < e.length && e[r].seconds <= t; r++) n = r;
+	return n;
+}
+function Nl(e, t) {
+	let n = Ml(e, t), r = e[n + 1];
+	return r && r.morphSeconds > 0 && t > r.seconds - r.morphSeconds ? {
+		kind: "morph",
+		index: n + 1
+	} : {
+		kind: "still",
+		index: n
+	};
+}
+function Pl(e, t, n) {
 	let r = [];
 	for (let i of e) {
 		let e = t[i], a = n[i], o;
@@ -5223,7 +5238,7 @@ function Ml(e, t, n) {
 	}
 	return r;
 }
-function Nl(e) {
+function Fl(e) {
 	let t = {};
 	for (let n of e) {
 		let e = n.role === "leaves" ? n.from : n.to;
@@ -5231,21 +5246,21 @@ function Nl(e) {
 	}
 	return t;
 }
-function Pl(e) {
+function Il(e) {
 	return e.visible ? e.opacity : 0;
 }
-function Fl(e, t) {
+function Ll(e, t) {
 	return t > 0 ? e / t : 1;
 }
-function Il(e, t, n, r) {
+function Rl(e, t, n, r) {
 	return e + t / 2 - (n + r / 2);
 }
-var Ll = !1;
-function Rl() {
-	Ll ||= (Z.useDefaultMainLoop = !1, !0);
+var zl = !1;
+function Bl() {
+	zl ||= (Z.useDefaultMainLoop = !1, !0);
 }
-function zl(e, t, n) {
-	Rl();
+function Vl(e, t, n) {
+	Bl();
 	let r = n * 1e3, i = r * Al, a = Ol({ autoplay: !1 });
 	for (let n of e) {
 		if (n.role === "absent") continue;
@@ -5255,12 +5270,12 @@ function zl(e, t, n) {
 			case "moves": {
 				let t = n.from, i = n.to;
 				a.add(e, {
-					x: [Il(t.x, t.width, i.x, i.width), 0],
-					y: [Il(t.y, t.height, i.y, i.height), 0],
-					scaleX: [Fl(t.width, i.width), 1],
-					scaleY: [Fl(t.height, i.height), 1],
+					x: [Rl(t.x, t.width, i.x, i.width), 0],
+					y: [Rl(t.y, t.height, i.y, i.height), 0],
+					scaleX: [Ll(t.width, i.width), 1],
+					scaleY: [Ll(t.height, i.height), 1],
 					rotate: [t.rotation, i.rotation],
-					opacity: [Pl(t), Pl(i)],
+					opacity: [Il(t), Il(i)],
 					duration: r,
 					ease: "inOutQuad"
 				}, 0);
@@ -5269,7 +5284,7 @@ function zl(e, t, n) {
 			case "enters": {
 				let t = n.to;
 				a.add(e, {
-					opacity: [0, Pl(t)],
+					opacity: [0, Il(t)],
 					duration: r - i,
 					ease: "outQuad"
 				}, i);
@@ -5278,7 +5293,7 @@ function zl(e, t, n) {
 			case "leaves": {
 				let t = n.from;
 				a.add(e, {
-					opacity: [Pl(t), 0],
+					opacity: [Il(t), 0],
 					duration: i,
 					ease: "inQuad"
 				}, 0);
@@ -5303,8 +5318,8 @@ function zl(e, t, n) {
 }
 //#endregion
 //#region packages/player/src/render.ts
-var Bl = 1920, Vl = 1080;
-function Hl(e, t, n) {
+var Hl = 1920, Ul = 1080;
+function Wl(e, t, n) {
 	if (!(e > 0) || !(t > 0)) throw RangeError(`Некорректный размер контейнера: ${e}x${t}`);
 	let r = Math.min(e / n.width, t / n.height);
 	return {
@@ -5313,7 +5328,7 @@ function Hl(e, t, n) {
 		offsetY: (t - n.height * r) / 2
 	};
 }
-function Ul(e, t, n) {
+function Gl(e, t, n) {
 	e.className = `scene-el scene-${t.type}`, e.dataset.id = t.id;
 	let r = e.style;
 	r.position = "absolute", r.left = `${n.x}px`, r.top = `${n.y}px`, r.width = `${n.width}px`, r.height = `${n.height}px`, r.zIndex = String(n.zIndex), r.opacity = String(n.opacity), r.transform = n.rotation ? `rotate(${n.rotation}deg)` : "", r.margin = "0", r.boxSizing = "border-box", r.visibility = n.visible ? "" : "hidden";
@@ -5330,9 +5345,9 @@ function Ul(e, t, n) {
 			break;
 	}
 }
-function Wl(e, t, n, r = {
-	width: Bl,
-	height: Vl
+function Kl(e, t, n, r = {
+	width: Hl,
+	height: Ul
 }) {
 	e.textContent = "", e.style.position = "relative", e.style.width = `${r.width}px`, e.style.height = `${r.height}px`, e.style.transformOrigin = "0 0", e.style.overflow = "hidden";
 	let i = /* @__PURE__ */ new Map();
@@ -5340,27 +5355,30 @@ function Wl(e, t, n, r = {
 		let t = n[r.id];
 		if (!t) continue;
 		let a = document.createElement("div");
-		Ul(a, r, t), e.appendChild(a), i.set(r.id, a);
+		Gl(a, r, t), e.appendChild(a), i.set(r.id, a);
 	}
 	return i;
 }
-function Gl(e, t, n, r = {
-	width: Bl,
-	height: Vl
+function ql(e, t, n, r = {
+	width: Hl,
+	height: Ul
 }) {
-	let i = Hl(t, n, r);
+	let i = Wl(t, n, r);
 	return e.style.transform = `translate(${i.offsetX}px, ${i.offsetY}px) scale(${i.scale})`, i;
 }
 //#endregion
 //#region packages/player/src/slides.ts
-var Kl = class {
+function Jl(e, t) {
+	return e !== null && e.kind === t.kind && e.index === t.index;
+}
+var Yl = class {
 	#e;
 	#t;
 	#n;
 	#r;
 	#i;
 	#a;
-	#o = -1;
+	#o = null;
 	#s = null;
 	constructor(e) {
 		this.#e = e.host, this.#t = e.elements, this.#n = e.elements.map((e) => e.id), this.#r = e.stage;
@@ -5378,23 +5396,20 @@ var Kl = class {
 		return this.#s !== null;
 	}
 	indexAt(e) {
-		let t = 0;
-		for (let n = 0; n < this.#i.length && this.#i[n].seconds <= e; n++) t = n;
-		return t;
+		return Ml(this.#i, e);
 	}
 	slideAt(e) {
 		return this.#i[this.indexAt(e)].slide;
 	}
 	transitionAt(e) {
-		let t = this.indexAt(e), n = this.#i[t];
-		return n.morphSeconds <= 0 ? !1 : e > n.seconds && e < n.seconds + n.morphSeconds;
+		return Nl(this.#i, e).kind === "morph";
 	}
 	seekSeconds(e) {
-		let t = this.indexAt(e);
-		t !== this.#o && this.#l(t), this.#c(e);
+		let t = Nl(this.#i, e);
+		Jl(this.#o, t) || this.#l(t), this.#c(e);
 	}
 	renderAt(e) {
-		this.#s = null, this.#o = -1, this.#l(this.indexAt(e)), this.#c(e);
+		this.#s = null, this.#o = null, this.#l(Nl(this.#i, e)), this.#c(e);
 	}
 	settle() {
 		let e = this.#s;
@@ -5411,16 +5426,15 @@ var Kl = class {
 		t.timeline.seekSeconds(n);
 	}
 	#l(e) {
-		let t = this.#i[e], n = t.slide.states, r = e > 0 && t.morphSeconds > 0 ? this.#i[e - 1].slide.states : null;
-		if (this.#o = e, !r) {
-			this.#s = null, this.#d(n);
+		if (this.#o = e, e.kind === "still") {
+			this.#s = null, this.#d(this.#i[e.index].slide.states);
 			return;
 		}
-		let i = Ml(this.#n, r, n);
-		this.#d(Nl(i)), this.#u(i), this.#s = {
-			index: e,
-			startSeconds: t.seconds,
-			timeline: zl(i, this.#a, t.morphSeconds)
+		let t = this.#i[e.index], n = this.#i[e.index - 1].slide.states, r = Pl(this.#n, n, t.slide.states);
+		this.#d(Fl(r)), this.#u(r), this.#s = {
+			index: e.index,
+			startSeconds: t.seconds - t.morphSeconds,
+			timeline: Vl(r, this.#a, t.morphSeconds)
 		};
 	}
 	#u(e) {
@@ -5435,19 +5449,19 @@ var Kl = class {
 		if (this.#a.size === t.size && [...this.#a.keys()].every((e) => t.has(e))) {
 			for (let t of this.#t) {
 				let n = this.#a.get(t.id), r = e[t.id];
-				n && r && Ul(n, t, r);
+				n && r && Gl(n, t, r);
 			}
 			return;
 		}
-		this.#a = Wl(this.#e, this.#t, e, this.#r);
+		this.#a = Kl(this.#e, this.#t, e, this.#r);
 	}
 	destroy() {
-		this.#e.textContent = "", this.#a = /* @__PURE__ */ new Map(), this.#o = -1, this.#s = null;
+		this.#e.textContent = "", this.#a = /* @__PURE__ */ new Map(), this.#o = null, this.#s = null;
 	}
 };
 //#endregion
 //#region packages/player/src/preview.ts
-function ql(e, t) {
+function Xl(e, t) {
 	let n = Ao(e, t);
 	return {
 		src: n.audio.src,
@@ -5463,10 +5477,10 @@ function ql(e, t) {
 		}
 	};
 }
-function Jl(e) {
+function Zl(e) {
 	return e.entry;
 }
-var Yl = class {
+var Ql = class {
 	#e;
 	#t;
 	#n;
@@ -5495,19 +5509,19 @@ var Yl = class {
 		this.#o();
 		let n = this.#n.nodes.get(e.id);
 		if (!n) throw Error(`Элемента «${e.id}» нет на сцене: обновлять нечего`);
-		Ul(n, e, t);
+		Gl(n, e, t);
 	}
 	rebuild(e) {
 		this.#o(), this.#t = e, this.#n.destroy(), this.#n = this.#a(e), this.#n.renderAt(this.#r);
 	}
 	fit(e, t) {
-		return this.#o(), Gl(this.#e, e, t, this.#t.stage);
+		return this.#o(), ql(this.#e, e, t, this.#t.stage);
 	}
 	destroy() {
 		this.#i ||= (this.#n.destroy(), !0);
 	}
 	#a(e) {
-		return new Kl({
+		return new Yl({
 			host: this.#e,
 			elements: e.elements,
 			slides: e.slides,
@@ -5518,7 +5532,7 @@ var Yl = class {
 	#o() {
 		if (this.#i) throw Error("ScenePreview уже уничтожен");
 	}
-}, Xl = 2, Zl = .4, Ql = class {
+}, $l = 2, eu = .4, tu = class {
 	#e;
 	#t;
 	#n;
@@ -5541,7 +5555,7 @@ var Yl = class {
 	#y = null;
 	#b = 0;
 	constructor(e, t, n = {}, r = new Wo(), i = {}) {
-		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? Jl(t), this.#a = ql(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
+		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? Zl(t), this.#a = Xl(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
 	}
 	get state() {
 		return this.#m;
@@ -5582,7 +5596,7 @@ var Yl = class {
 		this.#w("loading"), this.#g = new ResizeObserver(() => this.#E()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.src), this.#T(), this.#w("ready");
 	}
 	#T() {
-		this.#G(), this.#u?.destroy(), this.#u = new Kl({
+		this.#G(), this.#u?.destroy(), this.#u = new Yl({
 			host: this.#t,
 			elements: this.#a.elements,
 			slides: this.#a.slides,
@@ -5594,7 +5608,7 @@ var Yl = class {
 		})).sort((e, t) => e.at - t.at), this.#f = 0, this.#p.clear(), this.#u.renderAt(0);
 	}
 	#E() {
-		Gl(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
+		ql(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
 	}
 	#D = (e) => {
 		if (this.#m !== "at-gate") return;
@@ -5682,9 +5696,9 @@ var Yl = class {
 		let n = Po(Ao(this.#n, this.#i), this.#c);
 		if (n === null) return;
 		let r = this.#a.duration - e;
-		if (r > Xl) return;
-		let i = ql(this.#n, n), a = i.src;
-		if (r > Zl) {
+		if (r > $l) return;
+		let i = Xl(this.#n, n), a = i.src;
+		if (r > eu) {
 			this.#o.warm(a);
 			return;
 		}
@@ -5703,7 +5717,7 @@ var Yl = class {
 	}
 	#P() {
 		let e = this.#s, t = this.#l;
-		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = ql(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#T(), !0);
+		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = Xl(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#T(), !0);
 	}
 	#F() {
 		let e = this.#s;
@@ -5718,7 +5732,7 @@ var Yl = class {
 		await this.#L(e);
 	}
 	async #L(e) {
-		this.#W(), this.#F(), this.#l?.stop(), this.#i = e, this.#a = ql(this.#n, e), this.#b += 1, this.#l = await this.#o.clockFor(this.#a.src), await this.#l.wake(), this.#T(), this.#l.start(this.#S(0)), this.#w("playing"), this.#M();
+		this.#W(), this.#F(), this.#l?.stop(), this.#i = e, this.#a = Xl(this.#n, e), this.#b += 1, this.#l = await this.#o.clockFor(this.#a.src), await this.#l.wake(), this.#T(), this.#l.start(this.#S(0)), this.#w("playing"), this.#M();
 	}
 	async #R() {
 		let e = this.#G(), t = this.#K(), n = this.#d[this.#f];
@@ -5734,7 +5748,7 @@ var Yl = class {
 	}
 	#B() {
 		let e = Ao(this.#n, this.#i);
-		for (let t of Io(e)) this.#o.warm(ql(this.#n, t).src);
+		for (let t of Io(e)) this.#o.warm(Xl(this.#n, t).src);
 	}
 	async answer(e) {
 		if (this.#m !== "at-gate") throw Error(`Ответ вне гейта: состояние ${this.#m}`);
@@ -5747,7 +5761,7 @@ var Yl = class {
 		}
 		let r = (this.#p.get(n.id) ?? 0) + 1;
 		this.#p.set(n.id, r);
-		let i = $l(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
+		let i = nu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
 		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
 		let s = {
 			gate: n,
@@ -5798,7 +5812,7 @@ var Yl = class {
 		return this.#u;
 	}
 };
-function $l(e, t) {
+function nu(e, t) {
 	let n = e.config;
 	switch (n.kind) {
 		case "continue": return !0;
@@ -5811,4 +5825,4 @@ function $l(e, t) {
 	}
 }
 //#endregion
-export { Uo as AudioClock, Wo as AudioClocks, Vl as DEFAULT_STAGE_HEIGHT, Bl as DEFAULT_STAGE_WIDTH, kl as MORPH_DURATION_S, Ql as Player, Lo as ProjectLoadError, Yl as ScenePreview, Kl as SlideEngine, Ul as applyElement, Gl as applyFit, zl as buildMorph, Jl as entrySegmentOf, Hl as fitStage, $l as isCorrect, Nl as layoutStatesFor, Ro as loadProject, Ho as loadTrack, jl as morphSecondsFor, Ml as planMorph, Wl as renderScene, ql as segmentOf };
+export { Uo as AudioClock, Wo as AudioClocks, Ul as DEFAULT_STAGE_HEIGHT, Hl as DEFAULT_STAGE_WIDTH, kl as MORPH_DURATION_S, tu as Player, Lo as ProjectLoadError, Ql as ScenePreview, Yl as SlideEngine, Gl as applyElement, ql as applyFit, Vl as buildMorph, Zl as entrySegmentOf, Wl as fitStage, Ml as indexAt, nu as isCorrect, Fl as layoutStatesFor, Ro as loadProject, Ho as loadTrack, jl as morphSecondsFor, Nl as phaseAt, Pl as planMorph, Kl as renderScene, Xl as segmentOf };
