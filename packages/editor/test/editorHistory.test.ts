@@ -30,7 +30,7 @@ function elementState(overrides: Partial<ElementState> = {}): ElementState {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
@@ -126,6 +126,7 @@ describe('одиночные действия: по шагу на вызов', (
       type: 'addElement',
       element: created,
       state: elementState({ x: 200 }),
+      at: { kind: 'seconds', t: 0 },
     });
 
     expect(next.history.present).not.toBe(state.history.present);
@@ -137,8 +138,18 @@ describe('одиночные действия: по шагу на вызов', (
   it('несколько одиночных setElementState подряд (без commit) — по шагу на каждый, без склейки', () => {
     let state = baseState();
 
-    state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 10 } });
-    state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 20 } });
+    state = historyReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 10 },
+      at: { kind: 'seconds', t: 0 },
+    });
+    state = historyReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 20 },
+      at: { kind: 'seconds', t: 0 },
+    });
 
     // Два самостоятельных шага: отмена возвращает СНАЧАЛА x=10, потом
     // исходное состояние — а не перепрыгивает через первый шаг целиком.
@@ -149,7 +160,12 @@ describe('одиночные действия: по шагу на вызов', (
 
   it('setElementState патчем без изменений (no-op editorReducer) не создаёт шаг', () => {
     const state = baseState();
-    const next = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 0 } });
+    const next = historyReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 0 },
+      at: { kind: 'seconds', t: 0 },
+    });
     expect(next).toBe(state);
   });
 
@@ -176,6 +192,7 @@ describe('правило 2: жест — один шаг истории', () => 
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 10 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     expect(s.gestureOpen).toBe(true);
@@ -186,6 +203,7 @@ describe('правило 2: жест — один шаг истории', () => 
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 20 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     // Второе живое событие НЕ создаёт второй шаг — past не растёт.
@@ -196,6 +214,7 @@ describe('правило 2: жест — один шаг истории', () => 
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 30 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     expect(s.history.past).toEqual([before]);
@@ -264,6 +283,7 @@ describe('правило 2: жест — один шаг истории', () => 
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 10 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     s = historyReducer(s, { type: 'commit' });
@@ -273,6 +293,7 @@ describe('правило 2: жест — один шаг истории', () => 
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 99 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     s = historyReducer(s, { type: 'commit' });
@@ -295,6 +316,7 @@ describe('правило 2: жест — один шаг истории', () => 
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 10 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     expect(s.gestureOpen).toBe(true);
@@ -304,7 +326,12 @@ describe('правило 2: жест — один шаг истории', () => 
     // равно обязан стать самостоятельным шагом поверх живого значения,
     // а не потерять его и не слиться с ним в одну запись.
     const created = element('new-one');
-    s = historyReducer(s, { type: 'addElement', element: created, state: elementState({ x: 500 }) });
+    s = historyReducer(s, {
+      type: 'addElement',
+      element: created,
+      state: elementState({ x: 500 }),
+      at: { kind: 'seconds', t: 0 },
+    });
 
     expect(s.gestureOpen).toBe(false);
     expect(s.history.past).toEqual([p0, liveTip]);
@@ -326,6 +353,7 @@ describe('правило 3: отмена/повтор не берут на се�
       type: 'addElement',
       element: element('shape-1'),
       state: elementState({ x: 300 }),
+      at: { kind: 'seconds', t: 0 },
     });
     expect(withNew.selectedId).toBe('shape-1');
 
@@ -339,7 +367,12 @@ describe('правило 3: отмена/повтор не берут на се�
     let state = baseState();
     state = historyReducer(state, { type: 'select', id: 'subtitle' });
     // Правка другого элемента — subtitle остаётся на месте в обоих снимках.
-    state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 77 } });
+    state = historyReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 77 },
+      at: { kind: 'seconds', t: 0 },
+    });
 
     const undone = historyReducer(state, { type: 'undo' });
     expect(undone.selectedId).toBe('subtitle');
@@ -351,6 +384,7 @@ describe('правило 3: отмена/повтор не берут на се�
       type: 'addElement',
       element: element('shape-1'),
       state: elementState({ x: 300 }),
+      at: { kind: 'seconds', t: 0 },
     });
     const undone = historyReducer(withNew, { type: 'undo' });
     expect(undone.selectedId).toBeUndefined();
@@ -368,6 +402,7 @@ describe('правило 3: отмена/повтор не берут на се�
       type: 'setElementState',
       elementId: 'title',
       patch: { x: 10 },
+      at: { kind: 'seconds', t: 0 },
       commit: false,
     });
     expect(state.gestureOpen).toBe(true);
@@ -394,7 +429,12 @@ describe('охранник переполнения: 60 одиночных пр�
   it('делегирует в history.ts без искажений', () => {
     let state = baseState();
     for (let i = 1; i <= 60; i += 1) {
-      state = historyReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: i } });
+      state = historyReducer(state, {
+        type: 'setElementState',
+        elementId: 'title',
+        patch: { x: i },
+        at: { kind: 'seconds', t: 0 },
+      });
     }
     expect(state.history.past.length).toBe(HISTORY_LIMIT);
 
@@ -404,5 +444,53 @@ describe('охранник переполнения: 60 одиночных пр�
       steps += 1;
     }
     expect(steps).toBe(HISTORY_LIMIT);
+  });
+});
+
+/**
+ * §14.9: рождение слайда и правка, которая его вызвала, обязаны быть ОДНИМ
+ * шагом истории. Разбей их на два действия — Ctrl+Z снял бы правку и оставил
+ * на дорожке пустой слайд, которого автор не ставил и не поймёт, откуда он.
+ */
+describe('рождение слайда — один шаг отмены вместе с правкой', () => {
+  it('отмена убирает и правку, и рождённый слайд разом', () => {
+    const state = baseState();
+    const slidesBefore = state.history.present.segments[0]!.slides.length;
+
+    const edited = historyReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 4 },
+    });
+    expect(edited.history.present.segments[0]!.slides).toHaveLength(slidesBefore + 1);
+    expect(canUndoState(edited)).toBe(true);
+
+    const undone = historyReducer(edited, { type: 'undo' });
+    expect(undone.history.present.segments[0]!.slides).toHaveLength(slidesBefore);
+    // Ровно один шаг: после него отменять больше нечего.
+    expect(canUndoState(undone)).toBe(false);
+  });
+
+  it('жест целиком — тоже один шаг: слайд родился один раз и снялся один раз', () => {
+    let state: HistoryState = baseState();
+    const slidesBefore = state.history.present.segments[0]!.slides.length;
+
+    for (let i = 0; i < 5; i += 1) {
+      state = historyReducer(state, {
+        type: 'setElementState',
+        elementId: 'title',
+        patch: { x: 100 + i },
+        at: { kind: 'seconds', t: 4 },
+        commit: false,
+      });
+    }
+    state = historyReducer(state, { type: 'commit' });
+
+    expect(state.history.present.segments[0]!.slides).toHaveLength(slidesBefore + 1);
+
+    const undone = historyReducer(state, { type: 'undo' });
+    expect(undone.history.present.segments[0]!.slides).toHaveLength(slidesBefore);
+    expect(canUndoState(undone)).toBe(false);
   });
 });

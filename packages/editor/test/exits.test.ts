@@ -65,12 +65,12 @@ function verdictGate(id: string): Gate {
 }
 
 function rule(id: string, when: Condition, goto: string): ExitRule {
-  return { id, when, goto };
+  return { id, when: [when], goto };
 }
 
 function project(segments: readonly Segment[], entry = 'seg-1'): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry,
     segments: [...segments],
@@ -102,11 +102,11 @@ describe('renameVariable', () => {
     const next = renameVariable(crossSegment(), 'q1', 'знает про дроби');
 
     expect(next.segments[1]!.gates[0]!.recordAs).toBe('знает про дроби');
-    expect(next.segments[0]!.exit.rules[0]!.when).toEqual({
+    expect(next.segments[0]!.exit.rules[0]!.when).toEqual([{
       kind: 'equals',
       variable: 'знает про дроби',
       value: 'a',
-    });
+    }]);
   });
 
   it('каскад накрывает все три вида условия, а не только equals', () => {
@@ -125,8 +125,8 @@ describe('renameVariable', () => {
     const next = renameVariable(p, 'q1', 'ответил верно');
 
     expect(next.segments[0]!.exit.rules.map((r) => r.when)).toEqual([
-      { kind: 'correct', variable: 'ответил верно' },
-      { kind: 'wrong', variable: 'ответил верно' },
+      [{ kind: 'correct', variable: 'ответил верно' }],
+      [{ kind: 'wrong', variable: 'ответил верно' }],
     ]);
   });
 
@@ -146,11 +146,11 @@ describe('renameVariable', () => {
 
     const next = renameVariable(project([deciding, asking]), 'q1', 'первый');
 
-    expect(next.segments[0]!.exit.rules[1]!.when).toEqual({
+    expect(next.segments[0]!.exit.rules[1]!.when).toEqual([{
       kind: 'equals',
       variable: 'q2',
       value: 'c',
-    });
+    }]);
   });
 
   it('занятое имя отвергается громко и ДО записи', () => {
@@ -336,7 +336,7 @@ describe('connect', () => {
       segment('seg-1', { gates: [verdictGate('g1')] }),
       segment('seg-2'),
     ]);
-    const next = connect(p, 'seg-1', { kind: 'correct', variable: 'g1' }, 'seg-2');
+    const next = connect(p, 'seg-1', [{ kind: 'correct', variable: 'g1' }], 'seg-2');
     const rules = next.segments[0]!.exit.rules;
     expect(rules.length).toBe(1);
     expect(rules[0]!.goto).toBe('seg-2');
@@ -344,17 +344,17 @@ describe('connect', () => {
 
   it('сегмента-источника нет — бросает', () => {
     const p = project([segment('seg-1')]);
-    expect(() => connect(p, 'ghost', { kind: 'correct', variable: 'g1' }, 'seg-1')).toThrow(/ghost/);
+    expect(() => connect(p, 'ghost', [{ kind: 'correct', variable: 'g1' }], 'seg-1')).toThrow(/ghost/);
   });
 
   it('сегмента назначения нет — бросает', () => {
     const p = project([segment('seg-1', { gates: [verdictGate('g1')] })]);
-    expect(() => connect(p, 'seg-1', { kind: 'correct', variable: 'g1' }, 'ghost')).toThrow(/ghost/);
+    expect(() => connect(p, 'seg-1', [{ kind: 'correct', variable: 'g1' }], 'ghost')).toThrow(/ghost/);
   });
 
   it('переменную не пишет ни один гейт — бросает', () => {
     const p = project([segment('seg-1'), segment('seg-2')]);
-    expect(() => connect(p, 'seg-1', { kind: 'correct', variable: 'ghost' }, 'seg-2')).toThrow(/ghost/);
+    expect(() => connect(p, 'seg-1', [{ kind: 'correct', variable: 'ghost' }], 'seg-2')).toThrow(/ghost/);
   });
 
   it('переменная гейта вида continue и условие equals — бросает: сравнивать значение не с чем', () => {
@@ -373,7 +373,7 @@ describe('connect', () => {
       }),
       segment('seg-2'),
     ]);
-    expect(() => connect(p, 'seg-1', { kind: 'equals', variable: 'g1', value: 'x' }, 'seg-2')).toThrow(/g1/);
+    expect(() => connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'x' }], 'seg-2')).toThrow(/g1/);
   });
 
   it('переменную, записанную гейтом ДРУГОГО сегмента, можно использовать', () => {
@@ -382,7 +382,7 @@ describe('connect', () => {
       segment('seg-2'),
     ]);
     // Правило выхода seg-2 ссылается на переменную, которую пишет гейт seg-1.
-    const next = connect(p, 'seg-2', { kind: 'correct', variable: 'g1' }, 'seg-1');
+    const next = connect(p, 'seg-2', [{ kind: 'correct', variable: 'g1' }], 'seg-1');
     expect(next.segments[1]!.exit.rules).toHaveLength(1);
   });
 });
@@ -557,8 +557,8 @@ describe('согласие со схемой: дыра в панели ⇔ от�
 
   it('покрыты оба варианта — дыр нет и схема принимает', () => {
     let p = twoOptionProject();
-    p = connect(p, 'seg-1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-2');
-    p = connect(p, 'seg-1', { kind: 'equals', variable: 'g1', value: 'b' }, 'seg-2');
+    p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'a' }], 'seg-2');
+    p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'b' }], 'seg-2');
 
     expect(uncoveredOutcomes(p.segments[0]!, p.segments[0]!.gates)).toEqual([]);
     expect(saveable(p)).toBe(true);
@@ -566,7 +566,7 @@ describe('согласие со схемой: дыра в панели ⇔ от�
 
   it('покрыт один вариант из двух — дыра есть и схема отказывает', () => {
     let p = twoOptionProject();
-    p = connect(p, 'seg-1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-2');
+    p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'a' }], 'seg-2');
 
     expect(uncoveredOutcomes(p.segments[0]!, p.segments[0]!.gates)).toEqual([
       { variable: 'g1', optionIds: ['b'], verdicts: [] },
@@ -582,8 +582,8 @@ describe('согласие со схемой: дыра в панели ⇔ от�
 
   it('снятое правило возвращает и дыру, и отказ схемы', () => {
     let p = twoOptionProject();
-    p = connect(p, 'seg-1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-2');
-    p = connect(p, 'seg-1', { kind: 'equals', variable: 'g1', value: 'b' }, 'seg-2');
+    p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'a' }], 'seg-2');
+    p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'b' }], 'seg-2');
     const full = p;
     p = disconnect(p, 'seg-1', full.segments[0]!.exit.rules[1]!.id);
 
@@ -627,7 +627,7 @@ describe('editorReducer: connect/disconnect через действия', () => 
       segment('seg-2'),
     ]);
     const state = initialState(p);
-    const next = editorReducer(state, { type: 'connect', condition: { kind: 'correct', variable: 'g1' }, goto: 'seg-2' });
+    const next = editorReducer(state, { type: 'connect', when: [{ kind: 'correct', variable: 'g1' }], goto: 'seg-2' });
     expect(next.project.segments[0]!.exit.rules).toHaveLength(1);
   });
 

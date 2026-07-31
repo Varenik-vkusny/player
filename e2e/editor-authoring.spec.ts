@@ -247,6 +247,139 @@ test.describe('создание элемента и позиция сцены', 
   });
 });
 
+/** Тащит узел за центр. Несколько шагов: жест, а не один прыжок. */
+async function dragElement(page: Page, id: string, dx: number, dy: number): Promise<void> {
+  // Селектор уточнён до сцены «правлю»: в редакторе ДВЕ сцены, и `data-id`
+  // встречается в документе дважды (Сессия 11).
+  const box = await page.locator(`.ed-stage-host [data-id="${id}"]`).boundingBox();
+  if (!box) throw new Error(`нет узла ${id} на сцене правки`);
+  const x = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + dx / 2, y + dy / 2);
+  await page.mouse.move(x + dx, y + dy);
+  await page.mouse.up();
+}
+
+/**
+ * Слайды текущей части со СЛЕПКОМ состояний целиком.
+ *
+ * Целиком, а не по одному элементу: перетаскивание за точку сцены хватает
+ * то, что в этой точке ЛЕЖИТ СВЕРХУ, и это не обязательно тот элемент,
+ * чей бокс мы мерили. Проверка по одному имени была бы зелёной и тогда,
+ * когда правка ушла в чужой слайд.
+ */
+async function slidesOf(page: Page): Promise<
+  { id: string; at: { kind: string; t?: number }; states: string }[]
+> {
+  return page.evaluate(() => {
+    const project = (window as unknown as {
+      __project: {
+        segments: {
+          slides: { id: string; at: { kind: string; t?: number }; states: unknown }[];
+        }[];
+      };
+    }).__project;
+    return project.segments[0]!.slides.map((slide) => ({
+      id: slide.id,
+      at: slide.at,
+      states: JSON.stringify(slide.states),
+    }));
+  });
+}
+
+/**
+ * §14.9: автор может идти вторым путём — сначала содержимое, потом метка.
+ *
+ * До этой сессии второй путь ТЕРЯЛСЯ: правка ложилась в слайд, чья метка
+ * стоит раньше головки, и молча портила картинку на всём отрезке между
+ * метками. Проверяется по проекту, а не по экрану: на экране обе картины
+ * выглядят одинаково — правка видна в обоих случаях.
+ */
+test.describe('слайд рождается при первой правке', () => {
+  test('правка на голом месте рождает слайд, вторая правка ложится в него же', async ({ page }) => {
+    await openEditor(page, 'demo');
+    await waitTransportReady(page);
+
+    const before = await slidesOf(page);
+    const marks = page.locator('[data-testid^="mark-slide-"]');
+    const marksBefore = await marks.count();
+
+    await seekTrack(page, 24);
+    const head = await page.evaluate(
+      () => (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds,
+    );
+
+    await dragElement(page, 'title', 60, 40);
+
+    // Слайд родился ровно один, и его метка стоит на головке.
+    await expect(marks, 'первая правка на голом месте обязана родить слайд')
+      .toHaveCount(marksBefore + 1);
+    const afterFirst = await slidesOf(page);
+    expect(afterFirst).toHaveLength(before.length + 1);
+    const born = afterFirst.find((slide) => !before.some((old) => old.id === slide.id));
+    if (!born) throw new Error('новый слайд не найден в проекте');
+
+    // Метка встала на позицию головки. Привязка к слову момент не сдвигает:
+    // она хранит смещение от начала слова, а не само начало.
+    const bornSeconds = born.at.kind === 'seconds'
+      ? born.at.t!
+      : await page.evaluate(
+        () => (window as unknown as { __transport: { positionSeconds: number } })
+          .__transport.positionSeconds,
+      );
+    expect(Math.abs(bornSeconds - head), 'метка встала не на головку').toBeLessThan(0.01);
+
+    // Главное: НИ ОДИН прежний слайд не тронут. Это и есть §14.9 — до неё
+    // правка ложилась в слайд, чья метка стоит раньше головки.
+    for (const old of before) {
+      const same = afterFirst.find((slide) => slide.id === old.id);
+      expect(same?.states, `слайд «${old.id}» изменился, хотя правка шла не в него`)
+        .toBe(old.states);
+    }
+
+    // И правка действительно записана — на рождённом слайде, а не в никуда.
+    const sourceStates = before.map((slide) => slide.states);
+    expect(sourceStates, 'на рождённом слайде ничего не изменилось').not.toContain(born.states);
+
+    // Вторая правка при неподвижной головке — в тот же слайд.
+    await dragElement(page, 'title', 30, 20);
+    await expect(marks, 'слайды не должны плодиться на каждую правку')
+      .toHaveCount(marksBefore + 1);
+  });
+
+  test('выбор слайда в ленте ведёт головку на его метку', async ({ page }) => {
+    await openEditor(page, 'demo');
+    await waitTransportReady(page);
+    await seekTrack(page, 24);
+
+    // Второй слайд ленты — его метка заведомо раньше 24 с.
+    const slides = await slidesOf(page);
+    const target = slides[1]!;
+    await page.getByTestId(`slide-${target.id}`).click();
+
+    const head = await page.evaluate(
+      () => (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds,
+    );
+    const duration = await page.evaluate(
+      () => (window as unknown as { __transport: { durationSeconds: number } }).__transport.durationSeconds,
+    );
+
+    // Секунда метки берётся из ГЕОМЕТРИИ дорожки, а не из проекта: метка
+    // может быть привязана к слову, и разрешать ссылку тут нечем. Заодно
+    // проверяется то, что видит автор, — положение ромба на дорожке.
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    const diamond = await page.getByTestId(`mark-slide-${target.id}`).boundingBox();
+    if (!lane || !diamond) throw new Error('дорожка или метка не видны');
+    const markSecondsOnLane = ((diamond.x + diamond.width / 2 - lane.x) / lane.width) * duration;
+
+    expect(Math.abs(head - markSecondsOnLane), 'головка не встала на метку выбранного слайда')
+      .toBeLessThan(0.2);
+    expect(head, 'головка осталась там, где была до выбора').toBeLessThan(24);
+  });
+});
+
 test.describe('перетаскивание картинки на холст', () => {
   test('файл не картинка — падает громко с русским сообщением, элемент не создаётся', async ({
     page,

@@ -32,7 +32,7 @@ function emptySegment(): Segment {
 
 function projectAround(segment: Segment): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height },
     entry: segment.id,
     segments: [segment],
@@ -208,7 +208,7 @@ describe('шаблон «вопрос»: варианты действитель
     const optionIds = gate.config.kind === 'choice' ? gate.config.options.map((option) => option.id) : [];
     return {
       project: {
-        schemaVersion: 4,
+        schemaVersion: 5,
         meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
         entry: 'n1',
         segments: [
@@ -242,8 +242,8 @@ describe('шаблон «вопрос»: варианты действитель
     const { project, gateId, optionIds } = projectWithQuestion();
     expect(optionIds).toHaveLength(2);
 
-    let next = connect(project, 'n1', { kind: 'equals', variable: gateId, value: optionIds[0]! }, 'n2');
-    next = connect(next, 'n1', { kind: 'equals', variable: gateId, value: optionIds[1]! }, 'n3');
+    let next = connect(project, 'n1', [{ kind: 'equals', variable: gateId, value: optionIds[0]! }], 'n2');
+    next = connect(next, 'n1', [{ kind: 'equals', variable: gateId, value: optionIds[1]! }], 'n3');
 
     expect(uncoveredOutcomes(next.segments[0]!, next.segments[0]!.gates)).toEqual([]);
     // И главное: получившийся проект обязан ЗАГРУЖАТЬСЯ. Судит настоящий

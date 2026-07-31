@@ -174,7 +174,7 @@ describe('переменные зрителя', () => {
   it('правило смотрит на переменную, которой никто не пишет', () => {
     const project = explanation();
     project.segments[0].exit = {
-      rules: [{ id: 'r1', when: { kind: 'equals', variable: 'ниоткуда', value: 'yes' }, goto: 'intro' }],
+      rules: [{ id: 'r1', when: [{ kind: 'equals', variable: 'ниоткуда', value: 'yes' }], goto: 'intro' }],
       default: 'intro',
     };
     expect(problems(project)).toMatch(/не записывает ни один гейт/);
@@ -192,7 +192,7 @@ describe('переменные зрителя', () => {
       slides: [{ id: 'b1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
       gates: [],
       exit: {
-        rules: [{ id: 'r1', when: { kind: 'correct', variable: 'ответ' }, goto: 'intro' }],
+        rules: [{ id: 'r1', when: [{ kind: 'correct', variable: 'ответ' }], goto: 'intro' }],
         default: 'второй',
       },
     });
@@ -210,7 +210,7 @@ describe('переменные зрителя', () => {
       recordAs: 'дальше',
     }];
     project.segments[0].exit = {
-      rules: [{ id: 'r1', when: { kind: 'equals', variable: 'дальше', value: 'x' }, goto: 'intro' }],
+      rules: [{ id: 'r1', when: [{ kind: 'equals', variable: 'дальше', value: 'x' }], goto: 'intro' }],
       default: 'intro',
     };
     expect(problems(project)).toMatch(/у него один исход/);
@@ -234,7 +234,7 @@ describe('ссылки', () => {
     const project = explanation();
     project.segments[0].gates = [choiceGate('ответ')];
     project.segments[0].exit = {
-      rules: [{ id: 'r1', when: { kind: 'correct', variable: 'ответ' }, goto: 'нет-такого' }],
+      rules: [{ id: 'r1', when: [{ kind: 'correct', variable: 'ответ' }], goto: 'нет-такого' }],
       default: 'intro',
     };
     expect(problems(project)).toMatch(/несуществующий сегмент/);
@@ -309,7 +309,7 @@ describe('версия 4: развилка и окно дорожки', () => {
   it('о развилке нельзя вынести вердикт «верно»: сравнивать не с чем', () => {
     const project = withFork();
     project.segments[0].exit = {
-      rules: [{ id: 'r', when: { kind: 'correct', variable: 'куда' }, goto: 'intro' }],
+      rules: [{ id: 'r', when: [{ kind: 'correct', variable: 'куда' }], goto: 'intro' }],
       default: 'intro',
     };
     expect(problems(project)).toMatch(/верного ответа|вердикт/i);
@@ -319,7 +319,7 @@ describe('версия 4: развилка и окно дорожки', () => {
     const project = withFork();
     project.segments[0].gates[0].config.correctId = 'left';
     project.segments[0].exit = {
-      rules: [{ id: 'r', when: { kind: 'correct', variable: 'куда' }, goto: 'intro' }],
+      rules: [{ id: 'r', when: [{ kind: 'correct', variable: 'куда' }], goto: 'intro' }],
       default: 'intro',
     };
     expect(ProjectSchema.safeParse(project).success).toBe(true);

@@ -25,7 +25,13 @@ import { useMemo, useState, type ReactElement } from 'react';
 
 import type { Condition, ExitRule, Project, Segment } from '@player/core';
 
-import { emptySegments, reachableFrom, uncoveredOutcomes } from '../state/exits.js';
+import {
+  answerVariables,
+  deadComparisons,
+  emptySegments,
+  reachableFrom,
+  uncoveredOutcomes,
+} from '../state/exits.js';
 
 export interface SegmentPanelProps {
   readonly project: Project;
@@ -33,7 +39,9 @@ export interface SegmentPanelProps {
   readonly onSelectSegment: (id: string) => void;
   readonly onAddSegment: () => void;
   readonly onRemoveSegment: (id: string) => void;
-  readonly onConnect: (condition: Condition, goto: string) => void;
+  readonly onConnect: (when: readonly Condition[], goto: string) => void;
+  readonly onAddCondition: (ruleId: string, condition: Condition) => void;
+  readonly onRemoveCondition: (ruleId: string, index: number) => void;
   readonly onDisconnect: (ruleId: string) => void;
 }
 
@@ -62,23 +70,240 @@ function optionLabel(segment: Segment, variable: string, optionId: string): stri
   return option?.label ?? optionId;
 }
 
-/** Человеческое описание одного правила выхода: условие и цель. */
+/** Знак сравнения так, как его читает автор, а не как он назван в схеме. */
+const OP_SIGN: Record<'gt' | 'gte' | 'lt' | 'lte', string> = {
+  gt: '>',
+  gte: '≥',
+  lt: '<',
+  lte: '≤',
+};
+
+/**
+ * Человеческое описание ОДНОГО условия.
+ *
+ * Значение показывается ПОДПИСЬЮ варианта, а не его id: «opt-skip» — слово
+ * схемы, «Хватит на сегодня» — слово автора, и в правиле он ищет глазами
+ * именно второе.
+ */
+function conditionText(condition: Condition, project: Project): string {
+  switch (condition.kind) {
+    case 'equals':
+      return `«${condition.variable}» = «${optionLabelAnywhere(project, condition.variable, condition.value)}»`;
+    case 'notEquals':
+      return `«${condition.variable}» ≠ «${optionLabelAnywhere(project, condition.variable, condition.value)}»`;
+    case 'correct':
+      return `«${condition.variable}» верно`;
+    case 'wrong':
+      return `«${condition.variable}» неверно`;
+    case 'compare':
+      return `«${condition.variable}» ${OP_SIGN[condition.op]} ${condition.value}`;
+    default: {
+      const unreachable: never = condition;
+      throw new Error(`Неизвестный вид условия: ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+/**
+ * Человеческое описание правила выхода: цепочка условий и цель.
+ *
+ * Условия соединены словом «и», а не значком: список читается сверху вниз
+ * как предложение, и знак `&&` в нём был бы словом схемы, а не автора.
+ */
 function ruleText(rule: ExitRule, project: Project): string {
   const target = titleOfId(project, rule.goto);
-  switch (rule.when.kind) {
-    case 'equals':
-      return `«${rule.when.variable}» = «${rule.when.value}» → ${target}`;
-    case 'correct':
-      return `«${rule.when.variable}» верно → ${target}`;
-    case 'wrong':
-      return `«${rule.when.variable}» неверно → ${target}`;
-  }
+  return `${rule.when.map((condition) => conditionText(condition, project)).join(' и ')} → ${target}`;
 }
 
 const VERDICT_LABEL: Record<'correct' | 'wrong', string> = {
   correct: 'верно',
   wrong: 'неверно',
 };
+
+/**
+ * Подпись варианта, найденная по ВСЕМУ объяснению.
+ *
+ * Отличается от `optionLabel` выше намеренно: та ищет в одном сегменте, и это
+ * известный долг (`planning.md` §12.2). Панели нужен весь проект, потому что
+ * она и предлагает переменные всего проекта — искать в одном сегменте значило
+ * бы показать автору голые id для половины его же переменных.
+ */
+function optionLabelAnywhere(project: Project, variable: string, optionId: string): string {
+  const source = answerVariables(project).find((candidate) => candidate.name === variable);
+  return source?.options.find((option) => option.id === optionId)?.label ?? optionId;
+}
+
+const KIND_LABEL: Record<Condition['kind'], string> = {
+  equals: 'равен',
+  notEquals: 'не равен',
+  correct: 'отвечен верно',
+  wrong: 'отвечен неверно',
+  compare: 'сравнить с числом',
+};
+
+/**
+ * Форма добавления условия к правилу выхода.
+ *
+ * Автор ВЫБИРАЕТ переменную, вид и значение, а не пишет выражение: язык
+ * условий намеренно не текстовый (`product.md` §2 [Р]), и поле ввода
+ * потребовало бы парсера, сообщений парсера и обучения синтаксису.
+ *
+ * Добавленное условие соединяется с прежними через И — правило становится
+ * строже. Чтобы стало шире, автор заводит второе правило. → ADR-019
+ */
+function AddConditionForm({
+  project,
+  ruleId,
+  onAdd,
+}: {
+  readonly project: Project;
+  readonly ruleId: string;
+  readonly onAdd: (ruleId: string, condition: Condition) => void;
+}): ReactElement {
+  const variables = useMemo(() => answerVariables(project), [project]);
+  const [open, setOpen] = useState(false);
+  const [variable, setVariable] = useState(variables[0]?.name ?? '');
+  const [kind, setKind] = useState<Condition['kind']>('equals');
+  const [value, setValue] = useState('');
+  const [op, setOp] = useState<'gt' | 'gte' | 'lt' | 'lte'>('gt');
+  const [threshold, setThreshold] = useState('0');
+
+  const source = variables.find((candidate) => candidate.name === variable);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="ed-action"
+        data-testid={`exit-condition-add-${ruleId}`}
+        disabled={variables.length === 0}
+        onClick={() => setOpen(true)}
+      >
+        + условие
+      </button>
+    );
+  }
+
+  const submit = (): void => {
+    let condition: Condition;
+    if (kind === 'compare') {
+      const parsed = Number(threshold);
+      // Пустое и нечисловое до правила не доходят: правило с NaN не сработало
+      // бы никогда, а автор не узнал бы почему.
+      if (!Number.isFinite(parsed)) return;
+      condition = { kind: 'compare', variable, op, value: parsed };
+    } else if (kind === 'equals' || kind === 'notEquals') {
+      const chosen = value !== '' ? value : (source?.options[0]?.id ?? '');
+      if (chosen === '') return;
+      condition = { kind, variable, value: chosen };
+    } else {
+      condition = { kind, variable };
+    }
+    onAdd(ruleId, condition);
+    setOpen(false);
+  };
+
+  return (
+    <div className="ed-exit-condition-form" data-testid={`exit-condition-form-${ruleId}`}>
+      <select
+        className="ed-insp-input"
+        data-testid={`exit-condition-variable-${ruleId}`}
+        value={variable}
+        onChange={(event) => setVariable(event.target.value)}
+      >
+        {variables.map((candidate) => (
+          <option key={candidate.name} value={candidate.name}>
+            {candidate.name}
+          </option>
+        ))}
+      </select>
+
+      <select
+        className="ed-insp-input"
+        data-testid={`exit-condition-kind-${ruleId}`}
+        value={kind}
+        onChange={(event) => setKind(event.target.value as Condition['kind'])}
+      >
+        {(Object.keys(KIND_LABEL) as Condition['kind'][])
+          // Вердикт о развилке невозможен, и предлагать его значило бы дать
+          // автору собрать правило, которое схема отклонит при сохранении.
+          .filter((candidate) =>
+            candidate === 'correct' || candidate === 'wrong'
+              // У развилки верного ответа нет, вердикт о ней невозможен, и
+              // предлагать его значило бы дать автору собрать правило, которое
+              // схема отклонит при сохранении.
+              ? !(source?.kind === 'choice' && source.correctId === null)
+              : true,
+          )
+          .map((candidate) => (
+            <option key={candidate} value={candidate}>
+              {KIND_LABEL[candidate]}
+            </option>
+          ))}
+      </select>
+
+      {kind === 'equals' || kind === 'notEquals' ? (
+        source && source.kind === 'choice' ? (
+          <select
+            className="ed-insp-input"
+            data-testid={`exit-condition-value-${ruleId}`}
+            value={value !== '' ? value : (source.options[0]?.id ?? '')}
+            onChange={(event) => setValue(event.target.value)}
+          >
+            {source.options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            className="ed-insp-input"
+            type="text"
+            data-testid={`exit-condition-value-${ruleId}`}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+        )
+      ) : null}
+
+      {kind === 'compare' ? (
+        <>
+          <select
+            className="ed-insp-input"
+            data-testid={`exit-condition-op-${ruleId}`}
+            value={op}
+            onChange={(event) => setOp(event.target.value as 'gt' | 'gte' | 'lt' | 'lte')}
+          >
+            <option value="gt">&gt;</option>
+            <option value="gte">≥</option>
+            <option value="lt">&lt;</option>
+            <option value="lte">≤</option>
+          </select>
+          <input
+            className="ed-insp-input"
+            type="number"
+            data-testid={`exit-condition-number-${ruleId}`}
+            value={threshold}
+            onChange={(event) => setThreshold(event.target.value)}
+          />
+        </>
+      ) : null}
+
+      <button
+        type="button"
+        className="ed-action"
+        data-testid={`exit-condition-submit-${ruleId}`}
+        onClick={submit}
+      >
+        Добавить
+      </button>
+      <button type="button" className="ed-action" onClick={() => setOpen(false)}>
+        Отмена
+      </button>
+    </div>
+  );
+}
 
 export function SegmentPanel({
   project,
@@ -88,6 +313,8 @@ export function SegmentPanel({
   onRemoveSegment,
   onConnect,
   onDisconnect,
+  onAddCondition,
+  onRemoveCondition,
 }: SegmentPanelProps): ReactElement {
   const currentSegment = project.segments.find((candidate) => candidate.id === currentSegmentId);
   if (!currentSegment) {
@@ -99,6 +326,9 @@ export function SegmentPanel({
 
   const reachable = useMemo(() => reachableFrom(project), [project]);
   const empty = useMemo(() => new Set(emptySegments(project).map((s) => s.id)), [project]);
+  // По ВСЕМУ объяснению, а не по текущей части: правило десятой части вправе
+  // сравнивать переменную, записанную во второй, и мёртвым оно будет там же.
+  const dead = useMemo(() => deadComparisons(project), [project]);
   const holes = useMemo(
     () => uncoveredOutcomes(currentSegment, currentSegment.gates),
     [currentSegment],
@@ -174,6 +404,30 @@ export function SegmentPanel({
           {currentSegment.exit.rules.map((rule) => (
             <li key={rule.id} className="ed-exit-rule-row">
               <span className="ed-exit-rule-text">{ruleText(rule, project)}</span>
+              {/* Условия показаны и по отдельности: цепочка через И читается
+                  одной строкой, но снять из неё можно только конкретное. */}
+              {rule.when.length > 1 ? (
+                <ul className="ed-exit-conditions" data-testid={`exit-conditions-${rule.id}`}>
+                  {rule.when.map((condition, index) => (
+                    <li key={`${rule.id}:${index}`} className="ed-exit-condition">
+                      <span>{conditionText(condition, project)}</span>
+                      <button
+                        type="button"
+                        className="ed-action"
+                        data-testid={`exit-condition-remove-${rule.id}-${index}`}
+                        onClick={() => onRemoveCondition(rule.id, index)}
+                      >
+                        убрать
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <AddConditionForm
+                project={project}
+                ruleId={rule.id}
+                onAdd={onAddCondition}
+              />
               <button
                 type="button"
                 className="ed-action"
@@ -195,6 +449,37 @@ export function SegmentPanel({
       ) : (
         <p className="ed-segment-empty">У этой части нет правил перехода.</p>
       )}
+
+      {/* Сравнение с числом на переменной, которая числом не бывает, схему
+          проходит: «счёт > 3» безупречно, даже когда «счёт» хранит слово.
+          Но условие не подойдёт ни при каком ответе, и ветка за ним
+          недостижима навсегда — при полностью валидном проекте. → ADR-019 */}
+      {dead.length > 0 ? (
+        <>
+          <h3 className="ed-insp-title">Условия, которые не сработают</h3>
+          <div className="ed-exit-uncovered" data-testid="dead-comparisons">
+            {dead.map((problem) => (
+              <div
+                key={`${problem.segmentId}:${
+                  problem.where.kind === 'rule'
+                    ? problem.where.ruleId
+                    : `${problem.where.gateId}:${problem.where.optionId}`
+                }:${problem.variable}`}
+                className="ed-exit-hole"
+              >
+                <span className="ed-exit-hole-text">
+                  «{titleOfId(project, problem.segmentId)}»:{' '}
+                  {problem.where.kind === 'rule'
+                    ? 'правило выхода'
+                    : `вариант ответа «${optionLabelAnywhere(project, problem.variable, problem.where.optionId)}»`}{' '}
+                  сравнивает «{problem.variable}» с числом, но ни один её вариант числом не является.
+                  Это условие не подойдёт никогда.
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : null}
 
       {/* Пустая ветка — незавершённое состояние, а не валидное
           (product.md §2б [Р]). Ветка рождается пустой по построению разреза,
@@ -255,7 +540,7 @@ export function SegmentPanel({
                       className="ed-action"
                       data-testid={`exit-connect-${hole.variable}-${optionId}`}
                       onClick={() =>
-                        onConnect({ kind: 'equals', variable: hole.variable, value: optionId }, targetFor(key))
+                        onConnect([{ kind: 'equals', variable: hole.variable, value: optionId }], targetFor(key))
                       }
                     >
                       Соединить
@@ -286,7 +571,7 @@ export function SegmentPanel({
                       type="button"
                       className="ed-action"
                       data-testid={`exit-connect-${hole.variable}-${verdict}`}
-                      onClick={() => onConnect({ kind: verdict, variable: hole.variable }, targetFor(key))}
+                      onClick={() => onConnect([{ kind: verdict, variable: hole.variable }], targetFor(key))}
                     >
                       Соединить
                     </button>

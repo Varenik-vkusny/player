@@ -145,7 +145,7 @@ test.describe('дорожка редактора', () => {
   //
   // Проверка идёт по visibility, а не по opacity: скрытый элемент по
   // ADR-015 выражается видимостью, и `opacity` у него единица.
-  test.skip('сцена следует за дорожкой', async ({ page }) => {
+  test('сцена следует за дорожкой', async ({ page }) => {
     await openEditor(page, 'demo');
     await waitForTrack(page);
 
@@ -153,8 +153,19 @@ test.describe('дорожка редактора', () => {
     const box = await lane.boundingBox();
     if (!box) throw new Error('дорожка не видна');
 
+    // Ищем внутри СМОТРОВОЙ сцены, а не по всему документу.
+    //
+    // Тест писался в мире с одной сценой, где document.querySelector был
+    // однозначен. Решение владельца 31.07.2026 поставило рядом вторую сцену,
+    // и узлов с этим data-id стало два: первым в документе идёт узел сцены
+    // ПРАВКИ, а она за головкой не следует и не должна — она показывает
+    // выбранный слайд. Проверено прогоном в живом Chrome: querySelectorAll
+    // даёт 2 узла, и у первого closest('.ed-watch-host') равен null.
+    //
+    // Это правка формы, а не смысла: утверждение «сцена поехала за головкой»
+    // осталось прежним, изменилось лишь то, какая из двух им проверяется.
     const shown = () => page.evaluate(() => {
-      const node = document.querySelector('[data-id="title"]');
+      const node = document.querySelector('.ed-watch-host [data-id="title"]');
       return node instanceof HTMLElement
         && node.checkVisibility({ visibilityProperty: true, opacityProperty: true });
     });

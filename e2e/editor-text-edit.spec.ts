@@ -97,7 +97,7 @@ test.describe('правка текста на холсте', () => {
     expect(after).toBe('Новый заголовок');
 
     // И на сцене — не только в проекте: applyElement применил тот же content.
-    await expect(page.locator('[data-id="title"]')).toHaveText('Новый заголовок');
+    await expect(page.locator('.ed-stage-host [data-id="title"]')).toHaveText('Новый заголовок');
   });
 
   test('правка текста — один шаг отмены: Ctrl+Z возвращает весь прежний текст целиком', async ({
@@ -145,10 +145,10 @@ test.describe('правка текста на холсте', () => {
     // элемент»: keyboard.ts в контексте editingText отдаёт Delete целиком
     // вводу и возвращает undefined редактору.
     await page.keyboard.press('Delete');
-    await expect(page.locator('[data-id="title"]')).toHaveCount(1);
+    await expect(page.locator('.ed-stage-host [data-id="title"]')).toHaveCount(1);
 
     await page.keyboard.press('Escape');
-    await expect(page.locator('[data-id="title"]')).toHaveCount(1);
+    await expect(page.locator('.ed-stage-host [data-id="title"]')).toHaveCount(1);
   });
 
   test('клик мимо коммитит правку так же, как Escape', async ({ page }) => {

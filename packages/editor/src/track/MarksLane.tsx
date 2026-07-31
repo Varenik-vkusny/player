@@ -25,6 +25,14 @@ export interface Mark {
   readonly seconds: number;
   /** Привязана к слову, а не к секундам. Видно по значку. */
   readonly onWord: boolean;
+  /**
+   * Сколько сцена ЕДЕТ к этой метке, секунды. Ноль — приходит срезом.
+   *
+   * Окно движения кончается на метке (ADR-020), поэтому рисуется хвостом
+   * ПЕРЕД ромбом. Автор видит не только «где снимок», но и «сколько едет»:
+   * без этого расстановка слайдов вплотную молча укорачивает переходы.
+   */
+  readonly morphSeconds: number;
   readonly title: string;
 }
 
@@ -105,6 +113,21 @@ export function MarksLane({
 
   return (
     <div className="ed-marks" ref={laneRef} data-testid="marks-lane">
+      {/* Хвосты рисуются ДО кнопок, чтобы ромб оставался сверху и ловил
+          нажатие: хвост — картинка, а не орган управления. */}
+      {marks
+        .filter((mark) => mark.morphSeconds > 0)
+        .map((mark) => (
+          <div
+            key={`tail:${mark.kind}:${mark.id}`}
+            className="ed-mark-tail"
+            data-testid={`mark-tail-${mark.id}`}
+            style={{
+              left: `${((mark.seconds - mark.morphSeconds) / durationSeconds) * 100}%`,
+              width: `${(mark.morphSeconds / durationSeconds) * 100}%`,
+            }}
+          />
+        ))}
       {marks.map((mark) => {
         const isSelected = selected?.kind === mark.kind && selected.id === mark.id;
         return (

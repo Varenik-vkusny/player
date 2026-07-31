@@ -8,8 +8,9 @@
  *
  * Переход между слайдами — морфинг: соседние слайды сравниваются по составу
  * состояний, совпавшие элементы едут, несовпавшие уходят и приходят
- * (ADR-015). Само сравнение и построение таймлайна живут в `morph.ts`;
- * здесь только расписание — когда переход начинается и когда кончается.
+ * (ADR-015). Сравнение, расписание и построение таймлайна живут в `morph.ts`
+ * и проверяются без DOM; здесь только работа с узлами — что показать сейчас
+ * и кому выставить время.
  *
  * `transition: 'cut'` — намеренный разрыв, применяется мгновенно.
  */
@@ -18,11 +19,14 @@ import { resolveTimeRef } from '@player/core';
 
 import {
   buildMorph,
+  indexAt,
   layoutStatesFor,
   morphSecondsFor,
+  phaseAt,
   planMorph,
   type MorphPart,
   type MorphTimeline,
+  type Phase,
 } from './morph.js';
 import { applyElement, renderScene, type SlideStates, type StageSize } from './render.js';
 
@@ -42,9 +46,8 @@ interface Scheduled {
    * Сколько длится переход К ЭТОМУ слайду, секунды.
    *
    * Ноль означает срез: либо `transition: 'cut'`, либо первый слайд, которому
-   * ехать неоткуда. Длительность урезана расстоянием до следующего слайда:
-   * переход, переживший смену слайда, начал бы новый не с текущей картинки,
-   * а с состояния прошлого слайда — то есть скачком.
+   * ехать неоткуда. Окно кончается на метке слайда и урезано расстоянием
+   * до ПРЕДЫДУЩЕЙ метки (ADR-020).
    */
   readonly morphSeconds: number;
 }
@@ -56,6 +59,11 @@ interface Running {
   readonly timeline: MorphTimeline;
 }
 
+/** Одинаковы ли две фазы. Пересобирать сцену надо только при смене. */
+function samePhase(a: Phase | null, b: Phase): boolean {
+  return a !== null && a.kind === b.kind && a.index === b.index;
+}
+
 export class SlideEngine {
   readonly #host: HTMLElement;
   readonly #elements: readonly Element[];
@@ -64,7 +72,7 @@ export class SlideEngine {
   readonly #scheduled: readonly Scheduled[];
 
   #nodes: Map<string, HTMLElement>;
-  #active = -1;
+  #phase: Phase | null = null;
   #running: Running | null = null;
 
   constructor(options: SlideEngineOptions) {
@@ -101,12 +109,7 @@ export class SlideEngine {
 
   /** Индекс слайда, который идёт в секунду `seconds`. */
   indexAt(seconds: number): number {
-    let index = 0;
-    for (let i = 0; i < this.#scheduled.length; i++) {
-      if (this.#scheduled[i]!.seconds <= seconds) index = i;
-      else break;
-    }
-    return index;
+    return indexAt(this.#scheduled, seconds);
   }
 
   /** Слайд, который идёт в секунду `seconds`. */
@@ -121,10 +124,7 @@ export class SlideEngine {
    * нужно ответить про любой момент дорожки, не перематывая на него сцену.
    */
   transitionAt(seconds: number): boolean {
-    const index = this.indexAt(seconds);
-    const scheduled = this.#scheduled[index]!;
-    if (scheduled.morphSeconds <= 0) return false;
-    return seconds > scheduled.seconds && seconds < scheduled.seconds + scheduled.morphSeconds;
+    return phaseAt(this.#scheduled, seconds).kind === 'morph';
   }
 
   /**
@@ -137,8 +137,8 @@ export class SlideEngine {
    * находили в Сессии 2.
    */
   seekSeconds(seconds: number): void {
-    const index = this.indexAt(seconds);
-    if (index !== this.#active) this.#activate(index);
+    const phase = phaseAt(this.#scheduled, seconds);
+    if (!samePhase(this.#phase, phase)) this.#activate(phase);
     this.#drive(seconds);
   }
 
@@ -153,8 +153,8 @@ export class SlideEngine {
    */
   renderAt(seconds: number): void {
     this.#running = null;
-    this.#active = -1;
-    this.#activate(this.indexAt(seconds));
+    this.#phase = null;
+    this.#activate(phaseAt(this.#scheduled, seconds));
     this.#drive(seconds);
   }
 
@@ -182,6 +182,9 @@ export class SlideEngine {
     if (!running) return;
 
     const elapsed = seconds - running.startSeconds;
+    // Внутри фазы перехода `elapsed` меньше длительности по построению:
+    // конец окна и есть метка, а на метке фаза уже другая. Ветка остаётся
+    // границей по плавающей точке — `(T − m) + m` не обязано дать ровно `T`.
     if (elapsed >= running.timeline.durationSeconds) {
       this.settle();
       return;
@@ -190,34 +193,33 @@ export class SlideEngine {
   }
 
   /**
-   * Ставит слайд `index` и, если переход к нему морфинг, готовит таймлайн.
+   * Приводит сцену к фазе: показывает снимок либо готовит таймлайн перехода.
    *
    * Раскладка на время перехода — объединение составов: уходящий элемент
    * обязан остаться в DOM, пока гаснет. Приводится к конечному составу
    * не здесь, а в `settle`, когда уходящие уже прозрачны.
    */
-  #activate(index: number): void {
-    const scheduled = this.#scheduled[index]!;
-    const states = scheduled.slide.states as SlideStates;
+  #activate(phase: Phase): void {
+    this.#phase = phase;
 
-    const previous = index > 0 && scheduled.morphSeconds > 0
-      ? this.#scheduled[index - 1]!.slide.states as SlideStates
-      : null;
-
-    this.#active = index;
-
-    if (!previous) {
+    if (phase.kind === 'still') {
       this.#running = null;
-      this.#renderStates(states);
+      this.#renderStates(this.#scheduled[phase.index]!.slide.states as SlideStates);
       return;
     }
 
-    const plan = planMorph(this.#elementIds, previous, states);
+    // Фаза `morph` бывает только у слайда с ненулевым переходом, а такой
+    // слайд не может быть первым: `morphSecondsFor` даёт ему ноль.
+    const scheduled = this.#scheduled[phase.index]!;
+    const previous = this.#scheduled[phase.index - 1]!.slide.states as SlideStates;
+
+    const plan = planMorph(this.#elementIds, previous, scheduled.slide.states as SlideStates);
     this.#renderStates(layoutStatesFor(plan));
     this.#applyStartOfMorph(plan);
     this.#running = {
-      index,
-      startSeconds: scheduled.seconds,
+      index: phase.index,
+      // Окно заканчивается на метке, значит начинается за длительность до неё.
+      startSeconds: scheduled.seconds - scheduled.morphSeconds,
       timeline: buildMorph(plan, this.#nodes, scheduled.morphSeconds),
     };
   }
@@ -264,7 +266,7 @@ export class SlideEngine {
   destroy(): void {
     this.#host.textContent = '';
     this.#nodes = new Map();
-    this.#active = -1;
+    this.#phase = null;
     this.#running = null;
   }
 }

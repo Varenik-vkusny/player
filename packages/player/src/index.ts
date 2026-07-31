@@ -21,13 +21,17 @@ export {
 } from './clock.js';
 export {
   buildMorph,
+  indexAt,
   layoutStatesFor,
   morphSecondsFor,
+  phaseAt,
   planMorph,
   MORPH_DURATION_S,
   type MorphPart,
   type MorphRole,
   type MorphTimeline,
+  type Phase,
+  type SlideSchedule,
 } from './morph.js';
 export {
   applyElement,

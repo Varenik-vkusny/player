@@ -27,7 +27,7 @@ import {
 
 import type { Condition, Element, ElementState, Gate, Project, Slide, TimeRef } from '@player/core';
 import { findSegment } from '@player/core';
-import { segmentOf, type ScenePreview } from '@player/player';
+import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
 import { ELEMENTS, GATES, plural } from './plural.js';
@@ -42,7 +42,7 @@ import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
-import { variableRenameProblem } from './state/exits.js';
+import { answerVariables, variableRenameProblem } from './state/exits.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
@@ -51,6 +51,7 @@ import { freeId, segmentSlide, type MarkKind } from './state/project.js';
 import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
+import { WatchStage } from './stage/WatchStage.js';
 import { markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
 import { TrackView } from './track/TrackView.js';
@@ -246,13 +247,56 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [],
   );
 
+  // Кого автор изображает, открывая предпросмотр: переменная → id варианта.
+  // Пустая строка значит «не отвечал», и это состояние по умолчанию —
+  // настоящий зритель приходит без ответов.
+  const [viewAs, setViewAs] = useState<Record<string, string>>({});
+  const viewAsVariables = useMemo(
+    () => answerVariables(currentProject).filter((variable) => variable.options.length > 0),
+    [currentProject],
+  );
+
+  /**
+   * Адрес предпросмотра с изображаемыми ответами.
+   *
+   * `correct` считается ЗДЕСЬ, а не в плеере: правильность — свойство ответа
+   * в момент, когда он дан, и плееру неоткуда взять её для ответа, которого
+   * зритель не давал. У развилки `correctId` равен null, и тогда неверных
+   * ответов нет вовсе.
+   */
+  const previewUrl = useMemo(() => {
+    const answers: Record<string, { value: string; correct: boolean }> = {};
+    for (const variable of viewAsVariables) {
+      const chosen = viewAs[variable.name];
+      if (chosen === undefined || chosen === '') continue;
+      answers[variable.name] = {
+        value: chosen,
+        correct: variable.correctId === null ? true : variable.correctId === chosen,
+      };
+    }
+    if (Object.keys(answers).length === 0) return '/?from=editor';
+    // Стартуем с ТЕКУЩЕЙ части автора, а не с начала объяснения. Иначе плеер
+    // переспросит ту же переменную и затрёт заданный ответ своим — режим
+    // не сработал бы ровно там, ради чего заведён.
+    return `/?from=editor&at=${encodeURIComponent(state.currentSegmentId)}`
+      + `&as=${encodeURIComponent(JSON.stringify(answers))}`;
+  }, [viewAs, viewAsVariables, state.currentSegmentId]);
+
   const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
   const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
   const handleConnect = useCallback(
-    (condition: Condition, goto: string) => dispatch({ type: 'connect', condition, goto }),
+    (when: readonly Condition[], goto: string) => dispatch({ type: 'connect', when, goto }),
     [],
   );
   const handleDisconnect = useCallback((ruleId: string) => dispatch({ type: 'disconnect', ruleId }), []);
+  const handleAddCondition = useCallback(
+    (ruleId: string, condition: Condition) => dispatch({ type: 'addCondition', ruleId, condition }),
+    [],
+  );
+  const handleRemoveCondition = useCallback(
+    (ruleId: string, index: number) => dispatch({ type: 'removeCondition', ruleId, index }),
+    [],
+  );
 
   const handleSelectSegment = useCallback((id: string) => {
     // Выделенная метка принадлежала дорожке прежнего сегмента — тот же
@@ -261,7 +305,20 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'selectSegment', id });
   }, []);
 
-  const handleSelectSlide = useCallback((id: string) => dispatch({ type: 'selectSlide', id }), []);
+  /**
+   * Выбор слайда в ленте ВЕДЁТ головку на его метку.
+   *
+   * Решение владельца 31.07.2026: головка — единственный указатель «где я».
+   * Без связки автор выбирает слайд 2, двигает элемент, и правка рождает
+   * слайд там, где осталась головка, — то есть выбор молча теряется.
+   * Заодно сходятся обе сцены: «правлю» показывает выбранный слайд,
+   * «смотрю» идёт за головкой, и оба показывают один момент.
+   */
+  const handleSelectSlide = useCallback((id: string) => {
+    dispatch({ type: 'selectSlide', id });
+    const slide = currentSegment.slides.find((candidate) => candidate.id === id);
+    if (slide) transport.seek(markSeconds(slide.at, segment.words));
+  }, [currentSegment.slides, segment.words, transport]);
 
   const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
 
@@ -295,10 +352,34 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'replaceElement', element });
   }, []);
 
-  /** Одношаговая правка состояния элемента на текущем слайде (цвет, чекбокс). */
+  /**
+   * Куда смотрит головка — в виде ссылки на время (инвариант №10).
+   *
+   * Правка сцены ложится в слайд под этой меткой, а если метки там нет,
+   * слайд рождается (§14.9). `timeRefAt` возвращает ссылку, разрешающуюся
+   * ровно в ту же секунду: привязка к слову хранит смещение от начала
+   * слова, а не само начало, — поэтому метка встаёт ТОЧНО на головку,
+   * и вторая правка попадает в уже рождённый слайд, а не рядом с ним.
+   */
+  const headTimeRef = useCallback(
+    (): TimeRef => timeRefAt(segment.words, transport.positionSeconds),
+    [segment.words, transport.positionSeconds],
+  );
+
+  /**
+   * Позиция, замороженная на время жеста.
+   *
+   * Нужна ровно для одного случая: автор тащит элемент на ИГРАЮЩЕЙ дорожке.
+   * Головка в этот момент едет, и каждое событие жеста просилось бы в свою
+   * секунду — вместо одного слайда получилась бы дорожка из слайдов, по
+   * одному на кадр перетаскивания.
+   */
+  const gestureAtRef = useRef<TimeRef | null>(null);
+
+  /** Одношаговая правка состояния элемента (цвет, чекбокс, стрелки). */
   const handleElementStateChange = useCallback((elementId: string, patch: Partial<ElementState>) => {
-    dispatch({ type: 'setElementState', elementId, patch });
-  }, []);
+    dispatch({ type: 'setElementState', elementId, patch, at: headTimeRef() });
+  }, [headTimeRef]);
 
   /**
    * Живое событие уже идущего жеста — перетаскивание на сцене, набор числа
@@ -306,11 +387,15 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
    * ставит `handleCommitHistory` (см. `state/editorHistory.ts`).
    */
   const handleElementStateChangeLive = useCallback((elementId: string, patch: Partial<ElementState>) => {
-    dispatch({ type: 'setElementState', elementId, patch, commit: false });
-  }, []);
+    gestureAtRef.current ??= headTimeRef();
+    dispatch({ type: 'setElementState', elementId, patch, at: gestureAtRef.current, commit: false });
+  }, [headTimeRef]);
 
   /** Завершает жест, открытый `handleElementStateChangeLive`/`handleMoveMark`. */
-  const handleCommitHistory = useCallback(() => dispatch({ type: 'commit' }), []);
+  const handleCommitHistory = useCallback(() => {
+    gestureAtRef.current = null;
+    dispatch({ type: 'commit' });
+  }, []);
 
   const handleInsert = useCallback(
     (itemId: string) => {
@@ -320,9 +405,9 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         currentSlide.states,
         segment.stage,
       );
-      dispatch({ type: 'addElement', element, state: elementState });
+      dispatch({ type: 'addElement', element, state: elementState, at: headTimeRef() });
     },
-    [currentSegment, currentSlide.states, segment.stage],
+    [currentSegment, currentSlide.states, segment.stage, headTimeRef],
   );
 
   /**
@@ -367,7 +452,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             segment.stage,
             encoded,
           );
-          dispatch({ type: 'addElement', element, state: elementState });
+          dispatch({ type: 'addElement', element, state: elementState, at: headTimeRef() });
         })
         .catch((error: unknown) => {
           setImageDropError(error instanceof Error ? error.message : String(error));
@@ -397,17 +482,31 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       id: gate.id,
       seconds: markSeconds(gate.at, words),
       onWord: gate.at.kind === 'word',
+      // Остановка ни к чему не едет: окна движения у неё нет.
+      morphSeconds: 0,
       // Подсказка автору при наведении: словами продукта, а не схемы.
       // Развилка от вопроса отличается отсутствием верного ответа.
       title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} «${gate.id}»`,
     }));
-    const fromSlides = segment.slides.slice(1).map((slide): Mark => ({
-      kind: 'slide',
-      id: slide.id,
-      seconds: markSeconds(slide.at, words),
-      onWord: slide.at.kind === 'word',
-      title: `Слайд «${slide.id}»: переход ${slide.transition === 'morph' ? 'плавный' : 'разрез'}`,
-    }));
+
+    // Секунды всех слайдов, включая нулевой: длительность перехода урезана
+    // расстоянием до ПРЕДЫДУЩЕЙ метки (ADR-020), а предыдущей у второго
+    // слайда как раз нулевой — выкинув его, получили бы не то число.
+    const slideSeconds = segment.slides.map((slide) => markSeconds(slide.at, words));
+    const fromSlides = segment.slides.slice(1).map((slide, offset): Mark => {
+      const index = offset + 1;
+      const morphSeconds = morphSecondsFor(slide.transition, index, slideSeconds);
+      return {
+        kind: 'slide',
+        id: slide.id,
+        seconds: slideSeconds[index]!,
+        onWord: slide.at.kind === 'word',
+        morphSeconds,
+        title: slide.transition === 'morph'
+          ? `Слайд «${slide.id}»: плавный переход, движение ${morphSeconds.toFixed(2)} с до метки`
+          : `Слайд «${slide.id}»: разрез, без движения`,
+      };
+    });
     return [...fromGates, ...fromSlides];
   }, [segment]);
 
@@ -500,6 +599,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             type: 'setElementState',
             elementId: id,
             patch: { x: currentState.x + intent.dx, y: currentState.y + intent.dy },
+            at: headTimeRef(),
           });
           return;
         }
@@ -556,7 +656,43 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           >
             Сохранить
           </button>
-          <button type="button" className="ed-action" onClick={() => openInPlayer(currentProject)}>
+          {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
+              Без него условные варианты ответа физически непроверяемы: редактор
+              показывает автору все варианты, а зритель видит часть, и увидеть
+              эту часть автору больше негде. */}
+          {viewAsVariables.length > 0 ? (
+            <span className="ed-view-as" data-testid="view-as">
+              <span className="ed-view-as-title">смотреть как ответивший</span>
+              {viewAsVariables.map((variable) => (
+                <label key={variable.name} className="ed-view-as-item">
+                  {/* Имя переменной подписью, а не внутри каждого пункта:
+                      иначе селект растягивается по самому длинному пункту
+                      и выдавливает соседей из шапки. Проверено глазами. */}
+                  <span className="ed-view-as-name">{variable.name}</span>
+                  <select
+                    className="ed-view-as-select"
+                    data-testid={`view-as-${variable.name}`}
+                    value={viewAs[variable.name] ?? ''}
+                    onChange={(event) =>
+                      setViewAs((previous) => ({ ...previous, [variable.name]: event.target.value }))
+                    }
+                  >
+                    <option value="">не отвечал</option>
+                    {variable.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className="ed-action"
+            onClick={() => openInPlayer(currentProject, previewUrl)}
+          >
             Открыть в плеере
           </button>
         </span>
@@ -566,6 +702,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
       </header>
 
       <div className="ed-main">
+        {/* Две сцены рядом — решение владельца 31.07.2026 и закрытие долга
+            §12.5, открытого с Сессии 7. Слева «правлю»: один слайд, жесты,
+            выделение. Справа «смотрю»: полный сегмент в секунду головки —
+            единственное место, где автор видит сам ПЕРЕХОД. */}
+        <div className="ed-stages">
         <StageView
           ref={stageRef}
           segment={segment}
@@ -578,6 +719,13 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           onImageDrop={handleImageDrop}
           onReady={handleReady}
         />
+        <div className="ed-watch" aria-label="Как это выглядит на дорожке">
+          <span className="ed-watch-title">
+            смотрю · {transport.positionSeconds.toFixed(2)} с
+          </span>
+          <WatchStage segment={segment} seconds={transport.positionSeconds} />
+        </div>
+        </div>
         <aside className="ed-elements-panel" aria-label="Элементы сцены">
           <InsertPanel onInsert={handleInsert} />
           <TemplatesPanel onApply={handleApplyTemplate} />
@@ -618,6 +766,8 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             onRemoveSegment={handleRemoveSegment}
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
+            onAddCondition={handleAddCondition}
+            onRemoveCondition={handleRemoveCondition}
           />
         </aside>
         {markData ? (

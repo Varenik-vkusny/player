@@ -13,6 +13,7 @@
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
 import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, TimeRef } from '@player/core';
+import { resolveTimeRef } from '@player/core';
 
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
@@ -56,12 +57,23 @@ export type EditorAction =
   // что это ОДНО из многих событий одного жеста (перетаскивание, набор
   // в числовом поле) и его нельзя класть в историю отдельным шагом.
   | { readonly type: 'replaceElement'; readonly element: Element; readonly commit?: boolean }
-  | { readonly type: 'addElement'; readonly element: Element; readonly state: ElementState }
+  // `at` — где стоит головка дорожки. Правка сцены ложится в слайд под
+  // головкой, а если метки там нет, слайд рождается (planning.md §14.9,
+  // вариант (а) владельца). Поле обязательное намеренно: правки «вне
+  // времени» не бывает, а необязательное поле дало бы тихий путь мимо
+  // рождения — ровно тот дефект, который §14.9 и закрывает.
+  | {
+      readonly type: 'addElement';
+      readonly element: Element;
+      readonly state: ElementState;
+      readonly at: TimeRef;
+    }
   | { readonly type: 'removeElement'; readonly id: string }
   | {
       readonly type: 'setElementState';
       readonly elementId: string;
       readonly patch: Partial<ElementState>;
+      readonly at: TimeRef;
       readonly commit?: boolean;
     }
   | { readonly type: 'addSlide'; readonly afterSlideId: string; readonly at: TimeRef }
@@ -92,7 +104,9 @@ export type EditorAction =
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
-  | { readonly type: 'connect'; readonly condition: Condition; readonly goto: string }
+  | { readonly type: 'connect'; readonly when: readonly Condition[]; readonly goto: string }
+  | { readonly type: 'addCondition'; readonly ruleId: string; readonly condition: Condition }
+  | { readonly type: 'removeCondition'; readonly ruleId: string; readonly index: number }
   | { readonly type: 'disconnect'; readonly ruleId: string }
   // Объявление остановки развилкой. Один шаг истории на весь разрез: он правит
   // текущую часть и рождает несколько новых, и разложить это на addSegment +
@@ -157,6 +171,37 @@ export function hasElement(project: Project, segmentId: string, id: string): boo
   return requireSegment(project, segmentId).elements.some((element) => element.id === id);
 }
 
+/**
+ * Слайд, в который ложится правка сцены, — тот, чья метка стоит под головкой.
+ *
+ * Метки под головкой нет — слайд РОЖДАЕТСЯ на ней (`planning.md` §14.9,
+ * вариант (а) владельца). Автор идёт двумя путями: сначала метка, потом
+ * содержимое, либо наоборот; второй путь до этого терялся — правки ложились
+ * в слайд, чья метка стоит раньше, и молча портили картинку на всём отрезке
+ * между метками.
+ *
+ * Рождение возвращается вместе с сегментом, а не делается отдельным
+ * действием: иначе отмена сняла бы правку и оставила осиротевший слайд.
+ * Один шаг истории — одно состояние проекта.
+ */
+function slideForEdit(segment: Segment, at: TimeRef): { segment: Segment; slideId: string } {
+  const words = segment.audio.words;
+  const seconds = resolveTimeRef(at, words);
+
+  const existing = slidesApi.slideOnMark(segment, seconds, words);
+  if (existing) return { segment, slideId: existing.id };
+
+  const anchor = slidesApi.slideAt(segment, seconds, words);
+  const next = slidesApi.addSlide(segment, anchor.id, at);
+  const born = next.slides.find((slide) => !segment.slides.some((old) => old.id === slide.id));
+  if (!born) {
+    // addSlide обязан был вернуть сегмент с новым слайдом или бросить.
+    // Молчание здесь означало бы правку, ушедшую в никуда.
+    throw new Error(`Слайд на ${seconds.toFixed(3)} с не родился, хотя метки там не было`);
+  }
+  return { segment: next, slideId: born.id };
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'select': {
@@ -181,12 +226,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'addElement': {
-      const segment = currentSegment(state);
-      if (segment.elements.some((element) => element.id === action.element.id)) {
+      if (currentSegment(state).elements.some((element) => element.id === action.element.id)) {
         throw new Error(`Элемент «${action.element.id}» уже есть: идентификаторы обязаны быть уникальны`);
       }
+      // Появление элемента — такая же правка сцены, как и его перемещение:
+      // на голом месте дорожки оно тоже рождает слайд.
+      const { segment, slideId } = slideForEdit(currentSegment(state), action.at);
       const slides = segment.slides.map((slide) =>
-        slide.id === state.currentSlideId
+        slide.id === slideId
           ? { ...slide, states: { ...slide.states, [action.element.id]: action.state } }
           : slide,
       );
@@ -197,7 +244,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       });
       // Новый элемент сразу выделен: автор только что его создал и,
       // скорее всего, тут же начнёт править — незачем кликать по нему заново.
-      return { ...next, selectedId: action.element.id };
+      return { ...next, selectedId: action.element.id, currentSlideId: slideId };
     }
 
     case 'removeElement': {
@@ -212,13 +259,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!hasElement(state.project, state.currentSegmentId, action.elementId)) {
         throw new Error(`Нельзя поменять состояние элемента «${action.elementId}»: его нет в проекте`);
       }
+      const { segment, slideId } = slideForEdit(currentSegment(state), action.at);
       const nextSegment = slidesApi.setElementState(
-        currentSegment(state),
-        state.currentSlideId,
+        segment,
+        slideId,
         action.elementId,
         action.patch,
       );
-      return replaceSegment(state, nextSegment);
+      const applied = replaceSegment(state, nextSegment);
+      // Патч, ничего не изменивший, обязан вернуть ТО ЖЕ состояние по ссылке.
+      // Спред создал бы новый объект даже на пустой правке, а сцена решает
+      // сравнением ссылок, что перерисовывать: перетаскивание, вернувшее
+      // элемент на прежнее место, пересобирало бы сцену на каждый кадр.
+      if (applied === state && slideId === state.currentSlideId) return state;
+      // Правка идёт в слайд под головкой — он же становится текущим.
+      // Иначе лента слайдов показывала бы один слайд, а сцена правила другой.
+      return { ...applied, currentSlideId: slideId };
     }
 
     case 'addSlide': {
@@ -364,12 +420,32 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'connect': {
-      const project = exits.connect(state.project, state.currentSegmentId, action.condition, action.goto);
+      const project = exits.connect(state.project, state.currentSegmentId, action.when, action.goto);
       return { ...state, project };
     }
 
     case 'disconnect': {
       const project = exits.disconnect(state.project, state.currentSegmentId, action.ruleId);
+      return { ...state, project };
+    }
+
+    case 'addCondition': {
+      const project = exits.addCondition(
+        state.project,
+        state.currentSegmentId,
+        action.ruleId,
+        action.condition,
+      );
+      return { ...state, project };
+    }
+
+    case 'removeCondition': {
+      const project = exits.removeCondition(
+        state.project,
+        state.currentSegmentId,
+        action.ruleId,
+        action.index,
+      );
       return { ...state, project };
     }
 

@@ -1,5 +1,5 @@
 /**
- * Схема проекта v4 — единственный источник истины.
+ * Схема проекта v5 — единственный источник истины.
  *
  * Типы TypeScript выводятся отсюда через z.infer и НИКОГДА не пишутся руками:
  * два описания одной сущности неизбежно разъедутся, причём тихо (см. ADR-004).
@@ -24,7 +24,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /** Идентификатор внутри проекта. Непустая строка без пробелов по краям. */
 const Id = z.string().min(1).refine((v) => v === v.trim(), {
@@ -165,6 +165,53 @@ export const SlideSchema = z.object({
 });
 
 /**
+ * Условие — размеченное объединение, а не строка-предикат.
+ *
+ * Смотрит на переменную, записанную гейтом. Переменная может быть записана
+ * в ЛЮБОМ сегменте объяснения, не обязательно в этом: ответы живут на всё
+ * объяснение, и развилка вправе опереться на то, что зритель отвечал раньше.
+ *
+ * Объявлено ЗДЕСЬ, а не рядом с выходом сегмента, потому что условие нужно
+ * в двух местах сразу: правилу выхода и варианту ответа. Порядок объявления
+ * в модуле — не стилистика: `const` не поднимается, и вариант ответа ниже
+ * не увидел бы схему, объявленную после него.
+ *
+ * `compare` несёт оператор ПОЛЕМ, а не отдельным видом на каждый знак:
+ * четыре значения в одном селекте стоят столько же, сколько одно,
+ * а недостающий знак стоил бы отдельного бампа схемы. → ADR-019
+ */
+export const ConditionSchema = z.discriminatedUnion('kind', [
+  /** Ответ равен конкретному значению: для выбора — id варианта. */
+  z.object({ kind: z.literal('equals'), variable: Id, value: z.string() }),
+  /** Ответ НЕ равен значению. Обещано `product.md` §2 как «≠». */
+  z.object({ kind: z.literal('notEquals'), variable: Id, value: z.string() }),
+  z.object({ kind: z.literal('correct'), variable: Id }),
+  z.object({ kind: z.literal('wrong'), variable: Id }),
+  /**
+   * Сравнение с числом. Значение переменной — строка (id варианта), поэтому
+   * приведение к числу может не удаться; это не ошибка, а «условие не подошло».
+   */
+  z.object({
+    kind: z.literal('compare'),
+    variable: Id,
+    op: z.enum(['gt', 'gte', 'lt', 'lte']),
+    value: z.number().finite(),
+  }),
+]);
+
+/**
+ * Список условий, соединяемых через И.
+ *
+ * Непустой намеренно: правило без условий — это `default`, а он уже есть
+ * отдельным полем. Два способа сказать одно и то же неизбежно разъезжаются.
+ *
+ * ИЛИ здесь нет и не будет: оно получается бесплатно СЛЕДУЮЩИМ правилом,
+ * потому что правила проверяются по порядку и выигрывает первое подошедшее.
+ * Скобок тоже нет — с ними это перестаёт быть языком автора.
+ */
+export const ConditionsSchema = z.array(ConditionSchema).min(1);
+
+/**
  * Выбор из вариантов — и то место, где различаются две остановки продукта.
  *
  * `correctId: null` значит «верного ответа нет»: это РАЗВИЛКА, где ветки
@@ -179,7 +226,15 @@ export const SlideSchema = z.object({
 const ChoiceConfig = z.object({
   kind: z.literal('choice'),
   prompt: z.string(),
-  options: z.array(z.object({ id: Id, label: z.string() })).min(2),
+  /**
+   * `when` — необязательное условие показа. Вариант виден зрителю, только
+   * если условие подошло; без `when` вариант виден всегда.
+   *
+   * Проверки «хотя бы один безусловный» и «верный ответ безусловен» стоят
+   * не здесь, а в `.refine` на `GateSchema`: `.refine` превращает объект
+   * в `ZodEffects`, а `discriminatedUnion` принимает только `ZodObject`.
+   */
+  options: z.array(z.object({ id: Id, label: z.string(), when: ConditionsSchema.optional() })).min(2),
   correctId: Id.nullable(),
 });
 
@@ -238,25 +293,47 @@ export const GateSchema = z
       return config.options.some((option) => option.id === config.correctId);
     },
     { message: 'correctId должен указывать на один из вариантов' },
+  )
+  .refine(
+    (gate) => {
+      const config = gate.config;
+      if (config.kind !== 'choice') return true;
+      return config.options.some((option) => option.when === undefined);
+    },
+    {
+      message:
+        'Хотя бы один вариант ответа обязан быть безусловным: '
+        + 'иначе при неудачном наборе переменных скроются все, '
+        + 'и зритель упрётся в вопрос без ответов',
+    },
+  )
+  .refine(
+    (gate) => {
+      const config = gate.config;
+      if (config.kind !== 'choice') return true;
+      if (config.correctId === null) return true;
+      const correct = config.options.find((option) => option.id === config.correctId);
+      // Отсутствие варианта ловит проверка выше — здесь молчим, чтобы автор
+      // получил одну внятную причину, а не две сразу об одном и том же.
+      return correct === undefined || correct.when === undefined;
+    },
+    {
+      message:
+        'Верный вариант ответа не может быть условным: '
+        + 'спрятав его условием, автор делает вопрос непроходимым молча',
+    },
   );
 
 /**
- * Условие правила выхода — размеченное объединение, а не строка-предикат.
+ * Правило выхода: набор условий через И и куда вести, если все подошли.
  *
- * Смотрит на переменную, записанную гейтом. Переменная может быть записана
- * в ЛЮБОМ сегменте объяснения, не обязательно в этом: ответы живут на всё объяснение,
- * и развилка вправе опереться на то, что зритель отвечал раньше.
+ * До версии 5 условие было ровно одно, и «ответил A и ответил B» выразить
+ * было нечем — приходилось бы заводить служебную часть без содержимого
+ * только ради логики. → ADR-019
  */
-export const ConditionSchema = z.discriminatedUnion('kind', [
-  /** Ответ равен конкретному значению: для выбора — id варианта. */
-  z.object({ kind: z.literal('equals'), variable: Id, value: z.string() }),
-  z.object({ kind: z.literal('correct'), variable: Id }),
-  z.object({ kind: z.literal('wrong'), variable: Id }),
-]);
-
 export const ExitRuleSchema = z.object({
   id: Id,
-  when: ConditionSchema,
+  when: ConditionsSchema,
   goto: Id,
 });
 
@@ -511,64 +588,79 @@ export const ProjectSchema = z
           });
         }
 
-        const source = variables.get(rule.when.variable);
-        if (!source) {
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, 'when', 'variable'],
-            message: `Правило выхода смотрит на переменную «${rule.when.variable}», `
-              + 'которую не записывает ни один гейт объяснения',
-          });
-          return;
-        }
+        // Условий у правила теперь список, соединённый через И, и КАЖДОЕ
+        // из них обязано быть осмысленным по отдельности: одно бессмысленное
+        // условие в цепочке делает недостижимой всю цепочку.
+        rule.when.forEach((condition, conditionIndex) => {
+          const wherePath = [...path, 'when', conditionIndex];
+          const source = variables.get(condition.variable);
+          if (!source) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [...wherePath, 'variable'],
+              message: `Правило выхода смотрит на переменную «${condition.variable}», `
+                + 'которую не записывает ни один гейт объяснения',
+            });
+            return;
+          }
 
-        // У развилки нет верного ответа, поэтому вердикт о нём невозможен.
-        // Без этой проверки правило `correct` на переменной развилки прошло бы
-        // загрузку и никогда не сработало: сравнивать ответ было бы не с чем,
-        // то есть ветка оказалась бы недостижимой навсегда при валидном
-        // проекте — ровно тот род дефекта, который уже ловится ниже для
-        // исчезнувшего варианта.
-        if ((rule.when.kind === 'correct' || rule.when.kind === 'wrong') && source.isFork) {
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, 'when'],
-            message: `Переменная «${rule.when.variable}» записана развилкой: верного ответа `
-              + 'у неё нет, и вердикт «верно»/«неверно» о ней невозможен. '
-              + 'Сравнивайте с конкретным вариантом (equals).',
-          });
-        }
+          // У развилки нет верного ответа, поэтому вердикт о нём невозможен.
+          // Без этой проверки правило `correct` на переменной развилки прошло бы
+          // загрузку и никогда не сработало: сравнивать ответ было бы не с чем,
+          // то есть ветка оказалась бы недостижимой навсегда при валидном
+          // проекте — ровно тот род дефекта, который уже ловится ниже для
+          // исчезнувшего варианта.
+          if ((condition.kind === 'correct' || condition.kind === 'wrong') && source.isFork) {
+            ctx.addIssue({
+              code: 'custom',
+              path: wherePath,
+              message: `Переменная «${condition.variable}» записана развилкой: верного ответа `
+                + 'у неё нет, и вердикт «верно»/«неверно» о ней невозможен. '
+                + 'Сравнивайте с конкретным вариантом.',
+            });
+          }
 
-        if (rule.when.kind === 'equals' && source.kind === 'continue') {
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, 'when'],
-            message: `Переменная «${rule.when.variable}» пишется гейтом вида continue: `
-              + 'у него один исход, и сравнивать её значение не с чем',
-          });
-        }
+          if (
+            (condition.kind === 'equals' || condition.kind === 'notEquals')
+            && source.kind === 'continue'
+          ) {
+            ctx.addIssue({
+              code: 'custom',
+              path: wherePath,
+              message: `Переменная «${condition.variable}» пишется гейтом вида continue: `
+                + 'у него один исход, и сравнивать её значение не с чем',
+            });
+          }
 
-        // Значение сравнения обязано быть настоящим вариантом гейта.
-        //
-        // Без этой проверки автор убирает вариант из вопроса, правило выхода
-        // остаётся указывать на исчезнувший `optionId`, и ветка становится
-        // недостижимой НАВСЕГДА — при полностью валидном проекте. Это ровно
-        // тот дефект, который приёмка Сессии 5 нашла у рёбер версии 2
-        // («правка гейта осиротляла ребро»), и версия 2 его ловила. Потерять
-        // проверку при смене формы значило бы сделать схему слабее
-        // предшественницы, ничего об этом не сказав.
-        if (
-          rule.when.kind === 'equals'
-          && source.kind === 'choice'
-          && !source.optionIds.includes(rule.when.value)
-        ) {
-          ctx.addIssue({
-            code: 'custom',
-            path: [...path, 'when', 'value'],
-            message: `Правило выхода сравнивает «${rule.when.variable}» со значением `
-              + `«${rule.when.value}», которого нет среди вариантов гейта. `
-              + 'Эта ветка недостижима навсегда.',
-          });
-        }
+          // Значение сравнения обязано быть настоящим вариантом гейта.
+          //
+          // Без этой проверки автор убирает вариант из вопроса, правило выхода
+          // остаётся указывать на исчезнувший `optionId`, и ветка становится
+          // недостижимой НАВСЕГДА — при полностью валидном проекте. Это ровно
+          // тот дефект, который приёмка Сессии 5 нашла у рёбер версии 2
+          // («правка гейта осиротляла ребро»), и версия 2 его ловила. Потерять
+          // проверку при смене формы значило бы сделать схему слабее
+          // предшественницы, ничего об этом не сказав.
+          //
+          // У `notEquals` тот же изъян зеркален: сравнение с несуществующим
+          // вариантом верно ВСЕГДА, то есть условие ничего не отбирает и лишь
+          // притворяется, что отбирает. Дефект тише первого и потому опаснее.
+          if (
+            (condition.kind === 'equals' || condition.kind === 'notEquals')
+            && source.kind === 'choice'
+            && !source.optionIds.includes(condition.value)
+          ) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [...wherePath, 'value'],
+              message: `Правило выхода сравнивает «${condition.variable}» со значением `
+                + `«${condition.value}», которого нет среди вариантов гейта. `
+                + (condition.kind === 'equals'
+                  ? 'Эта ветка недостижима навсегда.'
+                  : 'Такое условие выполняется всегда и ничего не отбирает.'),
+            });
+          }
+        });
       });
 
       if (segment.exit.default !== null && !segmentIds.has(segment.exit.default)) {
@@ -590,18 +682,28 @@ export const ProjectSchema = z
       // `default` там, где покрытие уже полное, значило бы заставлять автора
       // называть заведомо недостижимый сегмент.
       if (segment.exit.rules.length > 0 && segment.exit.default === null) {
-        const byVariable = new Set(segment.exit.rules.map((r) => r.when.variable));
-        const kinds = new Set(segment.exit.rules.map((r) => r.when.kind));
+        // Покрытие доказуемо только у правил с ОДНИМ условием.
+        //
+        // Цепочка через И сужает, а не покрывает: чтобы доказать, что несколько
+        // пересечений вместе исчерпывают все исходы, нужен решатель. Решатель
+        // внутри схемы проекта — не та цена, которую стоит платить за право
+        // не писать запасной выход. Поэтому появление второго условия хотя бы
+        // у одного правила делает `default` обязательным, и это ужесточение
+        // относительно версии 4 названо намеренно.
+        const single = segment.exit.rules.every((rule) => rule.when.length === 1);
+        const only = single ? segment.exit.rules.map((rule) => rule.when[0]!) : [];
+        const byVariable = new Set(only.map((condition) => condition.variable));
+        const kinds = new Set(only.map((condition) => condition.kind));
         let total = false;
 
-        if (byVariable.size === 1) {
+        if (single && byVariable.size === 1) {
           const variable = [...byVariable][0]!;
           const source = variables.get(variable);
           if (kinds.has('correct') && kinds.has('wrong')) {
             total = true;
           } else if (source && kinds.size === 1 && kinds.has('equals')) {
             const covered = new Set(
-              segment.exit.rules.map((r) => (r.when.kind === 'equals' ? r.when.value : '')),
+              only.map((condition) => (condition.kind === 'equals' ? condition.value : '')),
             );
             total = source.optionIds.length > 0
               && source.optionIds.every((id) => covered.has(id));

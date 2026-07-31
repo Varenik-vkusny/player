@@ -280,14 +280,15 @@ test.describe('панель остановки: имя переменной за
           __project: {
             segments: {
               gates: { recordAs: string }[];
-              exit: { rules: { when: { variable: string } }[] };
+              // Схема v5: у правила список условий через И, а не одно условие.
+              exit: { rules: { when: { variable: string }[] }[] };
             }[];
           };
         }).__project.segments[0]!,
     );
     expect(renamed.gates[0]!.recordAs, 'имя остановки поменялось').toBe('куда пошёл зритель');
     expect(
-      renamed.exit.rules.map((rule) => rule.when.variable),
+      renamed.exit.rules.flatMap((rule) => rule.when.map((condition) => condition.variable)),
       'правила выхода поехали за именем, а не осиротели',
     ).toEqual(['куда пошёл зритель', 'куда пошёл зритель']);
 

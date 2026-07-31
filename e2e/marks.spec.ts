@@ -75,6 +75,38 @@ test.describe('метки на дорожке', () => {
     }
   });
 
+  /**
+   * Хвост окна движения (`product.md` §2б [Р], ADR-020). Проверяется
+   * геометрией, а не наличием узла: смысл хвоста в том, что он КОНЧАЕТСЯ
+   * на метке. Хвост, нарисованный справа от ромба, был бы виден в тесте
+   * на существование и рассказывал бы автору ровно обратное.
+   */
+  test('у слайда виден хвост окна движения, и кончается он на метке', async ({ page }) => {
+    await openEditor(page);
+
+    const slideMarks = page.locator('[data-testid^="mark-slide-"]');
+    const tails = page.locator('.ed-mark-tail');
+    // Хвост есть не у каждого слайда: срез (`transition: cut`) не едет.
+    expect(await tails.count()).toBeGreaterThan(0);
+    expect(await tails.count()).toBeLessThanOrEqual(await slideMarks.count());
+
+    const first = await tails.first().boundingBox();
+    if (!first) throw new Error('хвост не виден');
+
+    // Ромб метки, к которой этот хвост ведёт: его центр обязан лежать
+    // на правом краю хвоста, а не на левом.
+    const centres = await slideMarks.evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.left + rect.width / 2;
+      }));
+    const right = first.x + first.width;
+    const nearest = centres.reduce((best, x) => (Math.abs(x - right) < Math.abs(best - right) ? x : best));
+
+    expect(Math.abs(nearest - right), 'хвост кончается на метке').toBeLessThan(2);
+    expect(first.x, 'и начинается раньше неё').toBeLessThan(nearest - 1);
+  });
+
   test('гейт, поставленный на слово, сохраняется ссылкой на слово с якорем', async ({ page }) => {
     await openEditor(page);
     const before = await gatesOf(page);

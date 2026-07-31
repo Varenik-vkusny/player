@@ -39,7 +39,7 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
@@ -139,7 +139,12 @@ describe('addElement', () => {
       stage,
     );
 
-    const next = editorReducer(state, { type: 'addElement', element: created, state: createdState });
+    const next = editorReducer(state, {
+      type: 'addElement',
+      element: created,
+      state: createdState,
+      at: { kind: 'seconds', t: 0 },
+    });
 
     expect(segmentOf(next.project).elements).toEqual([...segmentOf(state.project).elements, created]);
     expect(slideOf(next.project).states[created.id]).toBe(createdState);
@@ -149,7 +154,12 @@ describe('addElement', () => {
 
   it('дублирующийся id бросает ошибку', () => {
     expect(() =>
-      editorReducer(baseState(), { type: 'addElement', element: element('title'), state: elementState() }),
+      editorReducer(baseState(), {
+        type: 'addElement',
+        element: element('title'),
+        state: elementState(),
+        at: { kind: 'seconds', t: 0 },
+      }),
     ).toThrow(/title/);
   });
 });
@@ -199,7 +209,12 @@ describe('setElementState', () => {
   it('правит состояние элемента на текущем слайде; elements и gates остаются теми же по ссылке', () => {
     const state = baseState();
 
-    const next = editorReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 50 } });
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 50 },
+      at: { kind: 'seconds', t: 0 },
+    });
 
     expect(slideOf(next.project).states.title!.x).toBe(50);
     expect(segmentOf(next.project).elements).toBe(segmentOf(state.project).elements);
@@ -208,13 +223,23 @@ describe('setElementState', () => {
 
   it('патч без изменений — состояние то же по ссылке', () => {
     const state = baseState();
-    const next = editorReducer(state, { type: 'setElementState', elementId: 'title', patch: { x: 0 } });
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 0 },
+      at: { kind: 'seconds', t: 0 },
+    });
     expect(next).toBe(state);
   });
 
   it('правка состояния несуществующего элемента бросает ошибку', () => {
     expect(() =>
-      editorReducer(baseState(), { type: 'setElementState', elementId: 'ghost', patch: { x: 1 } }),
+      editorReducer(baseState(), {
+        type: 'setElementState',
+        elementId: 'ghost',
+        patch: { x: 1 },
+        at: { kind: 'seconds', t: 0 },
+      }),
     ).toThrow(/ghost/);
   });
 });
@@ -417,7 +442,7 @@ describe('removeMark', () => {
 describe('редьюсер: переключение сегмента открывает его для правки', () => {
   function twoSegments(): Project {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [
@@ -455,7 +480,12 @@ describe('редьюсер: переключение сегмента откры
     const state = editorReducer(initialState(twoSegments()), { type: 'selectSegment', id: 'seg-2' });
     const created = element('shape-1');
     const createdState = elementState();
-    const next = editorReducer(state, { type: 'addElement', element: created, state: createdState });
+    const next = editorReducer(state, {
+      type: 'addElement',
+      element: created,
+      state: createdState,
+      at: { kind: 'seconds', t: 0 },
+    });
 
     expect(next.project.segments.find((s) => s.id === 'seg-2')!.elements).toContain(created);
     const originalSeg1 = state.project.segments.find((s) => s.id === 'seg-1')!;
@@ -504,7 +534,12 @@ describe('охранник целостности: серия правок ос�
       slideOf(state.project).states,
       stage,
     );
-    state = editorReducer(state, { type: 'addElement', element: created.element, state: created.state });
+    state = editorReducer(state, {
+      type: 'addElement',
+      element: created.element,
+      state: created.state,
+      at: { kind: 'seconds', t: 0 },
+    });
 
     state = editorReducer(state, { type: 'removeElement', id: created.element.id });
 
@@ -516,5 +551,145 @@ describe('охранник целостности: серия правок ос�
 
     const reloaded = loadProject(JSON.parse(serializeProject(state.project)));
     expect(segmentOf(reloaded).elements.some((e) => e.id === created.element.id)).toBe(false);
+  });
+});
+
+/**
+ * §14.9: автор может идти вторым путём — сначала содержимое, потом метка.
+ *
+ * До этой сессии второй путь ТЕРЯЛСЯ: правка на голом месте дорожки ложилась
+ * в слайд, чья метка стоит раньше, и молча портила картинку на всём отрезке
+ * между метками. Владелец выбрал вариант (а) — слайд рождается сам.
+ */
+describe('слайд рождается при правке на голом месте дорожки', () => {
+  it('правка на секунде без метки создаёт слайд и делает его текущим', () => {
+    const state = baseState();
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 4 },
+    });
+
+    const slides = segmentOf(next.project).slides;
+    expect(slides).toHaveLength(2);
+    expect(slides[1]!.at).toEqual({ kind: 'seconds', t: 4 });
+    expect(next.currentSlideId).toBe(slides[1]!.id);
+    expect(slides[1]!.states['title']!.x).toBe(500);
+  });
+
+  it('прежний слайд правку НЕ получает — ради этого всё и делалось', () => {
+    const state = baseState();
+    const before = slideOf(state.project);
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 4 },
+    });
+
+    expect(segmentOf(next.project).slides[0]).toBe(before);
+  });
+
+  it('рождённый слайд начинается копией предыдущего, а не пустым', () => {
+    // Без копирования КАЖДЫЙ элемент сцены на новом слайде считался бы
+    // «только что прибывшим» (ADR-015), и сцена обнулялась бы при правке.
+    const state = baseState();
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 4 },
+    });
+
+    const born = segmentOf(next.project).slides[1]!;
+    expect(Object.keys(born.states).sort()).toEqual(['subtitle', 'title']);
+    expect(born.states['subtitle']!.zIndex).toBe(1);
+  });
+
+  /**
+   * Главный страх владельца: «слайды плодятся». Он слабее, чем кажется,
+   * ровно потому, что вторая правка при неподвижной головке попадает
+   * в уже рождённый слайд.
+   */
+  it('десять правок при неподвижной головке дают ОДИН слайд', () => {
+    let state = baseState();
+    for (let i = 0; i < 10; i += 1) {
+      state = editorReducer(state, {
+        type: 'setElementState',
+        elementId: 'title',
+        patch: { x: 100 + i },
+        at: { kind: 'seconds', t: 4 },
+      });
+    }
+
+    expect(segmentOf(state.project).slides).toHaveLength(2);
+    expect(segmentOf(state.project).slides[1]!.states['title']!.x).toBe(109);
+  });
+
+  it('правка ровно на метке существующего слайда слайда не рождает', () => {
+    const state = baseState();
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 0 },
+    });
+
+    expect(segmentOf(next.project).slides).toHaveLength(1);
+    expect(slideOf(next.project).states['title']!.x).toBe(500);
+  });
+
+  it('головка чуть в стороне от метки попадает В НЕЁ, а не рождает соседа', () => {
+    // Автор, перемотавший на 3 мс мимо метки, имел в виду эту метку.
+    const state = baseState();
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 0.003 },
+    });
+
+    expect(segmentOf(next.project).slides).toHaveLength(1);
+  });
+
+  it('добавление элемента на голом месте тоже рождает слайд', () => {
+    const state = baseState();
+    const created = createElement(
+      libraryItem('shape'),
+      segmentOf(state.project),
+      slideOf(state.project).states,
+      { width: 1920, height: 1080 },
+    );
+    const next = editorReducer(state, {
+      type: 'addElement',
+      element: created.element,
+      state: created.state,
+      at: { kind: 'seconds', t: 4 },
+    });
+
+    const slides = segmentOf(next.project).slides;
+    expect(slides).toHaveLength(2);
+    // Новый элемент появляется ТОЛЬКО на рождённом слайде: на прежнем его
+    // ещё нет, и там он «отсутствует», а не «невидим» (ADR-015).
+    expect(slides[0]!.states[created.element.id]).toBeUndefined();
+    expect(slides[1]!.states[created.element.id]).toBeDefined();
+  });
+
+  it('рождение и правка — ОДИН шаг: отмена не оставляет осиротевший слайд', () => {
+    // Проверяется на уровне данных: редьюсер обязан вернуть состояние,
+    // в котором слайд и правка появились вместе. Разбей это на два
+    // действия — Ctrl+Z снял бы правку и оставил пустой слайд на дорожке.
+    const state = baseState();
+    const next = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 500 },
+      at: { kind: 'seconds', t: 4 },
+    });
+
+    expect(segmentOf(next.project).slides).toHaveLength(2);
+    expect(segmentOf(next.project).slides[1]!.states['title']!.x).toBe(500);
+    expect(segmentOf(state.project).slides).toHaveLength(1);
   });
 });

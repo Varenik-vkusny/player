@@ -159,6 +159,42 @@ function collectVariables(project: Project): Map<string, VariableSource> {
 }
 
 /**
+ * Годится ли условие к употреблению вообще.
+ *
+ * Повторяет часть правил схемы намеренно: то, что здесь разрешено, обязано
+ * пройти загрузку, а то, что запрещено, схема всё равно отклонит — только
+ * позже и без связи с тем, что автор только что нажал.
+ */
+function assertUsable(variables: Map<string, VariableSource>, condition: Condition): void {
+  const source = variables.get(condition.variable);
+  if (!source) {
+    throw new Error(`Переменную «${condition.variable}» не пишет ни один гейт объяснения`);
+  }
+  if ((condition.kind === 'equals' || condition.kind === 'notEquals') && source.kind === 'continue') {
+    throw new Error(
+      `Переменная «${condition.variable}» пишется гейтом вида «дальше»: у него один исход, `
+        + 'и сравнивать её значение не с чем',
+    );
+  }
+}
+
+/** Упоминает ли набор условий переменную. Пустой и отсутствующий — не упоминают. */
+function mentions(when: readonly Condition[] | undefined, variable: string): boolean {
+  return when !== undefined && when.some((condition) => condition.variable === variable);
+}
+
+/** Переименовывает переменную во всех условиях набора, не трогая остальные поля. */
+function renameIn(
+  when: readonly Condition[],
+  previous: string,
+  next: string,
+): Condition[] {
+  return when.map((condition) =>
+    condition.variable === previous ? { ...condition, variable: next } : condition,
+  );
+}
+
+/**
  * Добавляет правило выхода сегменту `segmentId`.
  *
  * Повторяет часть правил схемы (`schema.ts`, блок про `exit.rules`) — не
@@ -166,7 +202,12 @@ function collectVariables(project: Project): Map<string, VariableSource> {
  * что запрещено, схема всё равно отклонит, только позже и без привязки
  * к тому, что автор только что сделал.
  */
-export function connect(project: Project, segmentId: string, condition: Condition, goto: string): Project {
+export function connect(
+  project: Project,
+  segmentId: string,
+  when: readonly Condition[],
+  goto: string,
+): Project {
   const segment = project.segments.find((candidate) => candidate.id === segmentId);
   if (!segment) {
     throw new Error(`Сегмента «${segmentId}» нет в проекте: не от кого вести правило выхода`);
@@ -174,23 +215,81 @@ export function connect(project: Project, segmentId: string, condition: Conditio
   if (!project.segments.some((candidate) => candidate.id === goto)) {
     throw new Error(`Сегмента «${goto}» нет в проекте: правилу выхода некуда вести`);
   }
+  // Пустой список отклоняем здесь, а не только схемой: правило без условий —
+  // это запасной выход, а он задаётся отдельным полем.
+  if (when.length === 0) {
+    throw new Error('Правило выхода без условий: пустое правило — это запасной выход');
+  }
 
   const variables = collectVariables(project);
-  const source = variables.get(condition.variable);
-  if (!source) {
-    throw new Error(`Переменную «${condition.variable}» не пишет ни один гейт объяснения`);
-  }
-  if (condition.kind === 'equals' && source.kind === 'continue') {
-    throw new Error(
-      `Переменная «${condition.variable}» пишется гейтом вида «дальше»: у него один исход, `
-        + 'и сравнивать её значение не с чем',
-    );
-  }
+  for (const condition of when) assertUsable(variables, condition);
 
-  const rule: ExitRule = { id: freeId('rule', segment.exit.rules), when: condition, goto };
+  const rule: ExitRule = { id: freeId('rule', segment.exit.rules), when: [...when], goto };
   const exit: Exit = { ...segment.exit, rules: [...segment.exit.rules, rule] };
   const segments = project.segments.map((candidate) => (candidate.id === segmentId ? { ...candidate, exit } : candidate));
   return { ...project, segments };
+}
+
+/** Находит сегмент и его правило либо внятно объясняет, чего не нашлось. */
+function requireRule(project: Project, segmentId: string, ruleId: string): { segment: Segment; rule: ExitRule } {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) throw new Error(`Сегмента «${segmentId}» нет в проекте`);
+  const rule = segment.exit.rules.find((candidate) => candidate.id === ruleId);
+  if (!rule) throw new Error(`Правила «${ruleId}» нет у сегмента «${segmentId}»`);
+  return { segment, rule };
+}
+
+/** Заменяет набор условий у правила, оставив всё прочее нетронутым. */
+function withConditions(project: Project, segmentId: string, ruleId: string, when: readonly Condition[]): Project {
+  return {
+    ...project,
+    segments: project.segments.map((segment) =>
+      segment.id !== segmentId
+        ? segment
+        : {
+            ...segment,
+            exit: {
+              ...segment.exit,
+              rules: segment.exit.rules.map((rule) =>
+                rule.id === ruleId ? { ...rule, when: [...when] } : rule,
+              ),
+            },
+          },
+    ),
+  };
+}
+
+/**
+ * Добавляет условие к правилу выхода: оно соединяется с прежними через И.
+ *
+ * Правило становится строже, а не шире. Чтобы стало шире, автор заводит
+ * второе правило — ИЛИ в этом языке выражается порядком правил. → ADR-019
+ */
+export function addCondition(project: Project, segmentId: string, ruleId: string, condition: Condition): Project {
+  const { rule } = requireRule(project, segmentId, ruleId);
+  assertUsable(collectVariables(project), condition);
+  return withConditions(project, segmentId, ruleId, [...rule.when, condition]);
+}
+
+/**
+ * Снимает условие правила по его месту в списке.
+ *
+ * Последнее условие снять нельзя: правило без условий — это запасной выход,
+ * а он задаётся отдельным полем. Автор, которому правило больше не нужно,
+ * снимает правило целиком.
+ */
+export function removeCondition(project: Project, segmentId: string, ruleId: string, index: number): Project {
+  const { rule } = requireRule(project, segmentId, ruleId);
+  if (index < 0 || index >= rule.when.length) {
+    throw new Error(`У правила «${ruleId}» нет условия номер ${index}`);
+  }
+  if (rule.when.length === 1) {
+    throw new Error(
+      `У правила «${ruleId}» осталось одно условие: правило без условий — это запасной выход. `
+        + 'Снимите правило целиком.',
+    );
+  }
+  return withConditions(project, segmentId, ruleId, rule.when.filter((_, at) => at !== index));
 }
 
 /** Снимает правило выхода `ruleId` у сегмента `segmentId`. */
@@ -282,22 +381,50 @@ export function renameVariable(project: Project, gateId: string, nextName: strin
   return {
     ...project,
     segments: project.segments.map((segment) => {
-      const gates = segment.id === owner.id
-        ? segment.gates.map((candidate) => (candidate.id === gateId ? { ...candidate, recordAs: nextName } : candidate))
-        : segment.gates;
+      // Каскад идёт по ДВУМ местам, где может стоять имя переменной: правила
+      // выхода и условия показа вариантов ответа. Второе появилось вместе
+      // с условными вариантами, и пропустить его значило бы оставить
+      // осиротевшее условие — валидный проект с веткой, недостижимой навсегда.
+      const gates = segment.gates.map((candidate) => {
+        const renamed = candidate.id === gateId && segment.id === owner.id
+          ? { ...candidate, recordAs: nextName }
+          : candidate;
 
-      // Каскад: правила любого сегмента, смотревшие на старое имя.
-      const touched = segment.exit.rules.some((rule) => rule.when.variable === previous);
+        const config = renamed.config;
+        if (config.kind !== 'choice') return renamed;
+        if (!config.options.some((option) => mentions(option.when, previous))) return renamed;
+
+        return {
+          ...renamed,
+          config: {
+            ...config,
+            options: config.options.map((option) =>
+              mentions(option.when, previous)
+                ? { ...option, when: renameIn(option.when!, previous, nextName) }
+                : option,
+            ),
+          },
+        };
+      });
+
+      const touched = segment.exit.rules.some((rule) => mentions(rule.when, previous));
       const exit: Exit = touched
         ? {
             ...segment.exit,
             rules: segment.exit.rules.map((rule) =>
-              rule.when.variable === previous ? { ...rule, when: { ...rule.when, variable: nextName } } : rule,
+              mentions(rule.when, previous)
+                ? { ...rule, when: renameIn(rule.when, previous, nextName) }
+                : rule,
             ),
           }
         : segment.exit;
 
-      return gates === segment.gates && exit === segment.exit ? segment : { ...segment, gates, exit };
+      // `gates` пересобран через map всегда, поэтому сравнение по ссылке ниже
+      // его бы не узнало. Сверяем поэлементно: сегмент без единого упоминания
+      // обязан остаться прежним ОБЪЕКТОМ — на этом стоит вся история правок.
+      const gatesSame = gates.every((gate, index) => gate === segment.gates[index]);
+
+      return gatesSame && exit === segment.exit ? segment : { ...segment, gates, exit };
     }),
   };
 }
@@ -324,6 +451,108 @@ export function emptySegments(project: Project): readonly Segment[] {
     (segment) =>
       segment.elements.length === 0 && segment.slides.length === 1 && segment.gates.length === 0,
   );
+}
+
+/** Переменная объяснения: что про неё можно спросить и чем она бывает. */
+export interface AnswerVariable {
+  readonly name: string;
+  readonly kind: 'choice' | 'input' | 'continue';
+  readonly options: readonly { readonly id: string; readonly label: string }[];
+  /** id верного варианта, либо null у развилки: у неё верного ответа нет. */
+  readonly correctId: string | null;
+}
+
+/**
+ * Переменные ВСЕГО объяснения, в порядке появления.
+ *
+ * Не одной части: ответы живут на всё объяснение, и правило десятой части
+ * вправе смотреть на ответ, данный во второй (`authoring-flow.md` §8).
+ * Повтор имени схема запрещает отдельно, поэтому первый выигрывает.
+ */
+export function answerVariables(project: Project): readonly AnswerVariable[] {
+  const found: AnswerVariable[] = [];
+  const seen = new Set<string>();
+  for (const segment of project.segments) {
+    for (const gate of segment.gates) {
+      if (seen.has(gate.recordAs)) continue;
+      seen.add(gate.recordAs);
+      const config = gate.config;
+      found.push({
+        name: gate.recordAs,
+        kind: config.kind,
+        options: config.kind === 'choice'
+          ? config.options.map((option) => ({ id: option.id, label: option.label }))
+          : [],
+        correctId: config.kind === 'choice' ? config.correctId : null,
+      });
+    }
+  }
+  return found;
+}
+
+/** Где стоит условие, которое не сработает никогда. */
+export type DeadComparisonPlace =
+  | { readonly kind: 'rule'; readonly ruleId: string }
+  | { readonly kind: 'option'; readonly gateId: string; readonly optionId: string };
+
+/** Сравнение с числом на переменной, которая числом не бывает. */
+export interface DeadComparison {
+  readonly segmentId: string;
+  readonly where: DeadComparisonPlace;
+  readonly variable: string;
+}
+
+/**
+ * Сравнения с числом, которые не сработают НИКОГДА.
+ *
+ * Схема такое пропускает, и правильно делает: `счёт > 3` синтаксически
+ * безупречно, даже когда «счёт» хранит слово «красный». Но `Number('красный')`
+ * даёт `NaN`, условие не подходит ни при каком ответе, и ветка за ним
+ * недостижима — при полностью валидном проекте.
+ *
+ * Это ровно тот класс дефекта, что уже дважды стоил проекту времени:
+ * валидность не равна достижимости. Место ему в панели проблем, а не
+ * в схеме, — по тому же основанию, что и у пустых частей: это незавершённая
+ * работа автора, а не испорченный файл. Отказать в загрузке значило бы
+ * запретить автору сначала поставить сравнение, а потом поправить варианты.
+ *
+ * Переменная гейта БЕЗ выбора (ввод, «дальше») под подозрение не попадает:
+ * там зритель вводит что угодно, включая число, и судить о ней нечем.
+ */
+export function deadComparisons(project: Project): readonly DeadComparison[] {
+  const variables = collectVariables(project);
+  const found: DeadComparison[] = [];
+
+  const comparable = (variable: string): boolean => {
+    const source = variables.get(variable);
+    // Переменной нет вовсе — про это ругается схема, здесь молчим,
+    // чтобы автор не получил две жалобы об одном и том же.
+    if (!source || source.kind !== 'choice') return true;
+    return source.optionIds.some((id) => id.trim() !== '' && Number.isFinite(Number(id)));
+  };
+
+  const scan = (segmentId: string, where: DeadComparisonPlace, when: readonly Condition[]): void => {
+    for (const condition of when) {
+      if (condition.kind !== 'compare') continue;
+      if (comparable(condition.variable)) continue;
+      found.push({ segmentId, where, variable: condition.variable });
+    }
+  };
+
+  for (const segment of project.segments) {
+    for (const rule of segment.exit.rules) {
+      scan(segment.id, { kind: 'rule', ruleId: rule.id }, rule.when);
+    }
+    for (const gate of segment.gates) {
+      if (gate.config.kind !== 'choice') continue;
+      for (const option of gate.config.options) {
+        if (!option.when) continue;
+        scan(segment.id, { kind: 'option', gateId: gate.id, optionId: option.id }, option.when);
+      }
+    }
+  }
+
+  return found;
 }
 
 /** Дыра в покрытии: какой переменной не хватает исходов, и каких именно. */
@@ -359,13 +588,18 @@ export function uncoveredOutcomes(segment: Segment, gates: readonly Gate[]): Unc
   if (segment.exit.default !== null) return [];
   if (segment.exit.rules.length === 0) return []; // без единого правила выход просто пуст — не дыра, а «выхода ещё нет»
 
-  const byVariable = new Set(segment.exit.rules.map((rule) => rule.when.variable));
-  const kinds = new Set(segment.exit.rules.map((rule) => rule.when.kind));
+  // Покрытие доказуемо только у правил с ОДНИМ условием: цепочка через И
+  // сужает, а не покрывает. Здесь это повторяет `schema.ts` дословно, потому
+  // что панель обязана предсказывать вердикт схемы, а не спорить с ним.
+  const single = segment.exit.rules.every((rule) => rule.when.length === 1);
+  const only = single ? segment.exit.rules.map((rule) => rule.when[0]!) : [];
+  const byVariable = new Set(only.map((condition) => condition.variable));
+  const kinds = new Set(only.map((condition) => condition.kind));
   const gateByVariable = new Map(gates.map((gate) => [gate.recordAs, gate] as const));
 
   // Единственный случай, где схема вообще способна признать выход тотальным:
-  // все правила смотрят на одну и ту же переменную.
-  if (byVariable.size === 1) {
+  // все правила об одном условии и смотрят на одну и ту же переменную.
+  if (single && byVariable.size === 1) {
     const variable = [...byVariable][0]!;
 
     if (kinds.has('correct') && kinds.has('wrong')) return []; // оба вердикта — тотально
@@ -374,7 +608,7 @@ export function uncoveredOutcomes(segment: Segment, gates: readonly Gate[]): Unc
       const gate = gateByVariable.get(variable);
       if (gate && gate.config.kind === 'choice') {
         const covered = new Set(
-          segment.exit.rules.filter((rule) => rule.when.kind === 'equals').map((rule) => (rule.when as { value: string }).value),
+          only.filter((condition) => condition.kind === 'equals').map((condition) => condition.value),
         );
         const optionIds = gate.config.options.map((option) => option.id).filter((id) => !covered.has(id));
         return optionIds.length > 0 ? [{ variable, optionIds, verdicts: [] }] : [];
