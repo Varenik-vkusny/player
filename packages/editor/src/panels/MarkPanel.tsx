@@ -12,15 +12,14 @@
  * в чистом модуле `state/gates.ts` (ADR-010). Этот файл только раскладывает
  * виджеты и передаёт готовый `Gate` в редьюсер через колбэк `onUpdateGate`.
  *
- * У слайда своего колбэка правки нет: `transition` показан только для
- * чтения — у слоя состояния (`state/project.ts`) сейчас нет действия,
- * которое меняло бы это поле (набор действий редьюсера в этой сессии не
- * трогается, см. отчёт). Время метки-слайда, как и время гейта, правится
- * перетаскиванием по дорожке (`moveMark`), а не полем в этой панели.
+ * У слайда правится переход — плавно или резко (`onSetSlideTransition`
+ * → действие `setSlideTransition` → `state/slides.ts`). Время метки-слайда,
+ * как и время гейта, правится перетаскиванием по дорожке (`moveMark`),
+ * а не полем в этой панели.
  */
 import { useState, type ReactElement } from 'react';
 
-import type { Element, Gate, Slide } from '@player/core';
+import type { Element, Gate, Slide, TimeRef, Word } from '@player/core';
 
 import {
   addOption,
@@ -37,12 +36,14 @@ import {
   setOptionLabel,
   setPrompt,
 } from '../state/gates.js';
+import { retargetMark, wordAnchorProblem } from '../track/marks.js';
 import {
   POSITIVE_INTEGER,
   ChoiceField,
   NumberField,
   ReadonlyField,
   StringField,
+  ValidatedStringField,
   type Choice,
 } from './fields.js';
 
@@ -54,6 +55,10 @@ export interface MarkPanelProps {
   mark: SelectedMarkData;
   /** Для привязки варианта ответа (ADR-011). */
   elements: readonly Element[];
+  /** Расшифровка части. Пустая — законный случай: часть без озвучки. */
+  words: readonly Word[];
+  /** Перепривязка метки (действие `moveMark`): к слову или к секунде. */
+  onRetargetMark: (at: TimeRef) => void;
   /**
    * Гейт стоит внутри перехода между слайдами.
    *
@@ -64,6 +69,19 @@ export interface MarkPanelProps {
    */
   gateInsideTransition?: boolean;
   onUpdateGate: (gate: Gate) => void;
+  /** Переход выделенного слайда: плавно или резко (действие `setSlideTransition`). */
+  onSetSlideTransition: (transition: Slide['transition']) => void;
+  /**
+   * Переименование переменной остановки (действие `renameVariable`).
+   *
+   * Отдельным колбэком, а не через `onUpdateGate`: правка расходится
+   * каскадом по правилам выхода ВСЕХ частей, то есть трогает проект целиком,
+   * а не один гейт. Собрать её панелью, как остальные правки гейта,
+   * было бы нельзя — панель других частей не видит.
+   */
+  onRenameVariable: (name: string) => void;
+  /** Почему такое имя переменной принять нельзя (`state/exits.ts`). */
+  variableProblemOf: (name: string) => string | undefined;
   /** Действие `removeMark`/`removeSlide` в редьюсере уже есть — эта кнопка его вызывает. */
   onRemove: () => void;
   /**
@@ -87,8 +105,13 @@ export interface MarkPanelProps {
 export function MarkPanel({
   mark,
   elements,
+  words,
+  onRetargetMark,
   gateInsideTransition = false,
   onUpdateGate,
+  onSetSlideTransition,
+  onRenameVariable,
+  variableProblemOf,
   onRemove,
   onSplitAtGate,
   splitBlockedReason,
@@ -114,12 +137,23 @@ export function MarkPanel({
             gate={mark.gate}
             elements={elements}
             onUpdate={onUpdateGate}
+            onRenameVariable={onRenameVariable}
+            variableProblemOf={variableProblemOf}
             onSplit={onSplitAtGate}
             splitBlockedReason={splitBlockedReason}
           />
         ) : (
-          <SlideMarkPanel key={mark.slide.id} slide={mark.slide} />
+          <SlideMarkPanel
+            key={mark.slide.id}
+            slide={mark.slide}
+            onSetTransition={onSetSlideTransition}
+          />
         )}
+        <MarkTimeBlock
+          at={mark.kind === 'gate' ? mark.gate.at : mark.slide.at}
+          words={words}
+          onRetarget={onRetargetMark}
+        />
         <div className="ed-insp-block">
           <button type="button" className="ed-action" data-testid="mark-remove" onClick={onRemove}>
             Удалить метку
@@ -128,6 +162,99 @@ export function MarkPanel({
       </div>
     </aside>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Привязка метки ко времени: слово или секунда
+// ---------------------------------------------------------------------------
+
+interface MarkTimeBlockProps {
+  at: TimeRef;
+  words: readonly Word[];
+  onRetarget: (at: TimeRef) => void;
+}
+
+/**
+ * Чем метка привязана ко времени — словом расшифровки или секундой.
+ *
+ * Обе привязки работали в модели всегда, выбирать между ними автор не мог
+ * (`product.md` §2в [Р]). Отсюда же и «ветка без озвучки — законный случай»:
+ * при пустой расшифровке привязки к слову просто нет, и блок ОБЪЯСНЯЕТ
+ * это словами, а не гасит переключатель молча.
+ *
+ * Слово показано ПОСТОЯННО, а не только при наведении, и это не украшение.
+ * Круг «к секунде и обратно к слову» сохраняет время точно, но у метки,
+ * стоящей чуть раньше слова, может выбрать ДРУГОЕ слово — то, внутрь
+ * которого попала секунда (измерено на `demo.json`, см. `test/marks.test.ts`).
+ * Время при этом не меняется, значит по дорожке автор ничего не заметит,
+ * а при замене голоса метка поедет не за тем словом. Единственная защита —
+ * держать слово привязки на виду.
+ *
+ * Числового поля времени здесь нет намеренно: время правится перетаскиванием
+ * по дорожке. Поле ввода секунд позволяло бы поставить слайд перед предыдущим,
+ * а порядок слайдов проверяет только схема при сохранении — то есть ошибка
+ * нашлась бы далеко от места, где её сделали.
+ */
+function MarkTimeBlock({ at, words, onRetarget }: MarkTimeBlockProps): ReactElement {
+  const problem = wordAnchorProblem(at, words);
+  const choices: readonly Choice[] = [
+    { value: 'seconds', label: 'К секунде' },
+    ...(problem === undefined || at.kind === 'word' ? [{ value: 'word', label: 'К слову' }] : []),
+  ];
+  const anchorWord = at.kind === 'word' ? (words[at.wordIndex]?.text ?? at.anchor.text) : undefined;
+
+  return (
+    <div className="ed-insp-block" data-testid="mark-time">
+      <ChoiceField
+        label="Метка привязана"
+        value={at.kind}
+        choices={choices}
+        onCommit={(value) => {
+          if (value !== 'word' && value !== 'seconds') {
+            throw new Error(`Неизвестная привязка метки «${value}»`);
+          }
+          onRetarget(retargetMark(at, words, value));
+        }}
+      />
+      {at.kind === 'word' ? (
+        <>
+          <ReadonlyField label="Слово" value={anchorWord ?? ''} />
+          <p className="ed-insp-note">
+            Метка стоит на слове{noticeableOffset(at.offset) ? ` со смещением ${formatOffset(at.offset)}` : ''}.
+            Замена голоса, диктора или скорости такую разметку не ломает — меняется только длина.
+          </p>
+        </>
+      ) : (
+        <>
+          <ReadonlyField label="Секунда" value={at.t.toFixed(2).replace('.', ',')} />
+          {problem === undefined ? null : (
+            <p className="ed-insp-note" data-testid="word-anchor-problem">
+              {problem}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Стоит ли вообще говорить про смещение.
+ *
+ * Сравнение с нулём здесь не годится: смещение строится как разность двух
+ * долей секунды и точным нулём почти никогда не бывает. На метке, стоящей
+ * ровно на начале слова, `−1e-16` печаталось бы как «минус 0,00 с» —
+ * и автор читал бы бессмыслицу вместо «метка стоит на слове».
+ * Порог — половина последнего показываемого знака.
+ */
+function noticeableOffset(offset: number): boolean {
+  return Math.abs(offset) >= 0.005;
+}
+
+/** Смещение словами автора: «плюс 0,20 с» / «минус 0,15 с». */
+function formatOffset(offset: number): string {
+  const value = Math.abs(offset).toFixed(2).replace('.', ',');
+  return `${offset < 0 ? 'минус' : 'плюс'} ${value} с`;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,11 +283,21 @@ interface GatePanelProps {
   gate: Gate;
   elements: readonly Element[];
   onUpdate: (gate: Gate) => void;
+  onRenameVariable: (name: string) => void;
+  variableProblemOf: (name: string) => string | undefined;
   onSplit?: (() => void) | undefined;
   splitBlockedReason?: string | undefined;
 }
 
-function GatePanel({ gate, elements, onUpdate, onSplit, splitBlockedReason }: GatePanelProps): ReactElement {
+function GatePanel({
+  gate,
+  elements,
+  onUpdate,
+  onRenameVariable,
+  variableProblemOf,
+  onSplit,
+  splitBlockedReason,
+}: GatePanelProps): ReactElement {
   // Память о вопросе при переключении вида (choice/input → continue → …) —
   // забота панели, а не state/gates.ts: модуль намеренно ничего не хранит
   // сам (см. docstring promptOf). Инициализируется текущим вопросом и дальше
@@ -183,8 +320,15 @@ function GatePanel({ gate, elements, onUpdate, onSplit, splitBlockedReason }: Ga
       <div className="ed-insp-block">
         <ReadonlyField label="Идентификатор" value={gate.id} />
         {/* Без «recordAs»: внутреннее имя поля автору ничего не говорит,
-            а слово «переменная» он уже понимает по школьному опыту. */}
-        <ReadonlyField label="Ответ запоминается как" value={gate.recordAs} />
+            а слово «переменная» он уже понимает по школьному опыту.
+            Имя задаёт автор (product.md §2в [Р]): без него нельзя сослаться
+            на этот ответ из будущего вопроса или развилки. */}
+        <ValidatedStringField
+          label="Ответ запоминается как"
+          value={gate.recordAs}
+          problemOf={variableProblemOf}
+          onCommit={onRenameVariable}
+        />
         <ChoiceField
           label="Вид"
           value={config.kind}
@@ -510,28 +654,49 @@ function MaxAttemptsField({ gate, onUpdate }: MaxAttemptsFieldProps): ReactEleme
 // Слайд
 // ---------------------------------------------------------------------------
 
-function transitionLabel(transition: Slide['transition']): string {
-  return transition === 'morph' ? 'плавный (morph)' : 'разрез (cut)';
-}
+/**
+ * Слова автора, а не схемы: `morph` и `cut` в интерфейс не течёт.
+ * «Плавно» и «резко» — то, как об этом сказал владелец.
+ */
+const TRANSITION_CHOICES: readonly Choice[] = [
+  { value: 'morph', label: 'Плавно — элементы едут' },
+  { value: 'cut', label: 'Резко — элементы перепрыгивают' },
+];
 
 interface SlideMarkPanelProps {
   slide: Slide;
+  onSetTransition: (transition: Slide['transition']) => void;
 }
 
 /**
  * Настройка метки-слайда. Время правится перетаскиванием по дорожке —
  * как и у гейта, отдельного поля для него здесь нет.
  *
- * `transition` показан только для чтения: см. комментарий в шапке файла.
+ * Первого слайда эта панель не видит никогда: меткой на дорожке он не
+ * является (`Editor.tsx`, `fromSlides = segment.slides.slice(1)`), потому
+ * что стоит на нуле и двигать его нельзя. Поэтому отдельной ветки «у этого
+ * слайда перехода нет» здесь НЕТ — она была бы недостижимым кодом. Защита
+ * стоит там, где до неё можно дойти: `state/slides.ts`, `setTransition`
+ * бросает на первом слайде.
  */
-function SlideMarkPanel({ slide }: SlideMarkPanelProps): ReactElement {
+function SlideMarkPanel({ slide, onSetTransition }: SlideMarkPanelProps): ReactElement {
   return (
     <div className="ed-insp-block">
       <ReadonlyField label="Идентификатор" value={slide.id} />
-      <ReadonlyField label="Переход" value={transitionLabel(slide.transition)} />
+      <ChoiceField
+        label="Переход"
+        value={slide.transition}
+        choices={TRANSITION_CHOICES}
+        onCommit={(value) => {
+          if (value !== 'morph' && value !== 'cut') {
+            throw new Error(`Неизвестный вид перехода «${value}»`);
+          }
+          onSetTransition(value);
+        }}
+      />
       <p className="ed-insp-note">
-        Тип перехода (плавно/разрез) в этой сессии доступен только для чтения:
-        в слое состояния нет действия, которое его меняет.
+        Плавно — элементы доезжают до этого снимка. Резко — встают в него
+        мгновенно, без движения.
       </p>
     </div>
   );

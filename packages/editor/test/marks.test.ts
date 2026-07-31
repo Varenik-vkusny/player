@@ -6,7 +6,16 @@ import { fileURLToPath } from 'node:url';
 import { loadProject, resolveTimeRef } from '@player/core';
 import type { TimeRef, Word } from '@player/core';
 
-import { DEFAULT_SNAP_SECONDS, chooseTarget, markSeconds, timeRefAt, wordAt, crossedStop } from '../src/track/marks.js';
+import {
+  DEFAULT_SNAP_SECONDS,
+  chooseTarget,
+  crossedStop,
+  markSeconds,
+  retargetMark,
+  timeRefAt,
+  wordAnchorProblem,
+  wordAt,
+} from '../src/track/marks.js';
 import type { MarkTarget } from '../src/track/marks.js';
 
 function word(text: string, start: number, end: number): Word {
@@ -45,6 +54,144 @@ function wordRef(ref: TimeRef): Extract<TimeRef, { kind: 'word' }> {
   if (ref.kind !== 'word') throw new Error(`Ожидалась ссылка на слово, получено «${ref.kind}»`);
   return ref;
 }
+
+/**
+ * Выбор привязки метки автором (`product.md` §2в [Р]).
+ *
+ * Обе привязки работали в модели с самого начала, интерфейс всегда выбирал
+ * слово. Здесь проверяется перевод одной в другую — и главное, что смещение
+ * («на слове плюс 0,2 с») переживает переключение туда и обратно. Потерять
+ * его значило бы тихо сдвинуть анимацию, оставив метку на прежнем месте.
+ */
+describe('переключение привязки метки', () => {
+  it('слово → секунда: метка остаётся ровно там же по времени', () => {
+    const ref: TimeRef = timeRefAt(WORDS, 2.6);
+    const next = retargetMark(ref, WORDS, 'seconds');
+
+    expect(next.kind).toBe('seconds');
+    expect(markSeconds(next, WORDS)).toBeCloseTo(markSeconds(ref, WORDS), 12);
+  });
+
+  it('секунда → слово: возвращается на то же слово с тем же смещением', () => {
+    const asWord = wordRef(timeRefAt(WORDS, 2.6));
+    const asSeconds = retargetMark(asWord, WORDS, 'seconds');
+    const back = wordRef(retargetMark(asSeconds, WORDS, 'word'));
+
+    expect(back.wordIndex).toBe(asWord.wordIndex);
+    expect(back.offset).toBeCloseTo(asWord.offset, 12);
+  });
+
+  it('смещение переживает круг и для метки ПЕРЕД словом', () => {
+    // 4.85 — за 0.15 с до слова «дальше»: отрицательное смещение, ровно тот
+    // случай «сработать чуть раньше, чем оно прозвучит», который в demo.json
+    // авторы расставили руками.
+    const asWord = wordRef(timeRefAt(WORDS, 4.85));
+    expect(asWord.offset).toBeCloseTo(-0.15, 12);
+
+    const back = wordRef(retargetMark(retargetMark(asWord, WORDS, 'seconds'), WORDS, 'word'));
+    expect(back.wordIndex).toBe(asWord.wordIndex);
+    expect(back.offset).toBeCloseTo(-0.15, 12);
+  });
+
+  it('та же привязка — тот же объект, лишнего шага истории не будет', () => {
+    const ref: TimeRef = { kind: 'seconds', t: 3.9 };
+    expect(retargetMark(ref, WORDS, 'seconds')).toBe(ref);
+  });
+
+  it('в паузе привязать к слову нельзя, и причина названа', () => {
+    // 3.9 — середина длинной паузы: слова здесь нет, и это точный ответ,
+    // а не запасной вариант.
+    const ref: TimeRef = { kind: 'seconds', t: 3.9 };
+
+    expect(wordAnchorProblem(ref, WORDS)).toMatch(/рядом нет слова/);
+    expect(() => retargetMark(ref, WORDS, 'word')).toThrow(/рядом нет слова/);
+  });
+
+  it('без расшифровки привязка к слову недоступна, и сказано почему', () => {
+    const ref: TimeRef = { kind: 'seconds', t: 1 };
+
+    expect(wordAnchorProblem(ref, []), 'у части нет расшифровки').toMatch(/расшифровки/);
+    expect(() => retargetMark(ref, [], 'word')).toThrow(/расшифровки/);
+  });
+
+  it('там, где слово есть, привязка к нему разрешена', () => {
+    expect(wordAnchorProblem({ kind: 'seconds', t: 2.6 }, WORDS)).toBeUndefined();
+  });
+});
+
+/**
+ * Круг на ЭТАЛОННОЙ фикстуре, а не на синтетике. Синтетический набор слов
+ * подтвердил бы только то, что модуль согласован сам с собой; demo.json
+ * несёт смещения, расставленные руками автора (0.15 и 0.2 с ДО слова),
+ * и именно на них круг ведёт себя не так, как ожидаешь.
+ *
+ * **Что здесь измерено, а не предположено.** Время круг сохраняет точно
+ * всегда. СЛОВО — не всегда: метка «за 0.15 с до „главная"» стоит на 14.387,
+ * а эта секунда лежит ВНУТРИ предыдущего слова «есть» (14.250–14.537).
+ * Правило `chooseTarget` — «попадание внутрь слова сильнее притяжения», —
+ * и оно правильное само по себе, но означает, что вернувшаяся привязка
+ * указывает на «есть», а не на «главная».
+ *
+ * Для автора это не мелочь: время не изменилось, поэтому в редакторе
+ * НИЧЕГО не видно, а при замене голоса метка поедет за другим словом.
+ * Поэтому интерфейс обязан показывать слово привязки постоянно, а не
+ * предлагать переключение как безобидный тумблер. Тест закрепляет
+ * измеренное поведение, чтобы оно не поменялось молча.
+ */
+describe('переключение привязки на demo.json', () => {
+  const demo = loadProject(
+    JSON.parse(
+      readFileSync(
+        join(fileURLToPath(new URL('../../../fixtures/projects/', import.meta.url)), 'demo.json'),
+        'utf8',
+      ),
+    ),
+  );
+  const segment = demo.segments[0]!;
+  const words = segment.audio.words;
+  const onWord = [...segment.slides, ...segment.gates]
+    .map((mark) => mark.at)
+    .filter((at): at is Extract<TimeRef, { kind: 'word' }> => at.kind === 'word');
+
+  it('время метки круг сохраняет точно — все метки фикстуры', () => {
+    expect(onWord.length, 'в demo.json есть метки на словах').toBeGreaterThan(0);
+
+    for (const ref of onWord) {
+      const seconds = markSeconds(ref, words);
+      const back = retargetMark(retargetMark(ref, words, 'seconds'), words, 'word');
+      expect(markSeconds(back, words), `метка на ${seconds} с`).toBeCloseTo(seconds, 9);
+    }
+  });
+
+  it('слово сохраняется у меток ВНУТРИ слова и теряется у меток ПЕРЕД словом', () => {
+    const kept: number[] = [];
+    const moved: number[] = [];
+
+    for (const ref of onWord) {
+      const back = wordRef(retargetMark(retargetMark(ref, words, 'seconds'), words, 'word'));
+      (back.wordIndex === ref.wordIndex ? kept : moved).push(ref.wordIndex);
+    }
+
+    // Обе группы непусты — иначе тест проверял бы только одну ветку правила.
+    expect(kept.length, 'метки внутри своего слова круг переживают').toBeGreaterThan(0);
+    expect(moved.length, 'метки перед словом уезжают на предыдущее').toBeGreaterThan(0);
+
+    // Точное правило — не «смещение отрицательное», а «секунда попала ВНУТРЬ
+    // другого слова». Отрицательное смещение в ПАУЗЕ (перед словом, но после
+    // конца предыдущего) привязку сохраняет: притяжение выбирает то же слово.
+    for (const ref of onWord) {
+      const seconds = markSeconds(ref, words);
+      const inside = wordAt(words, seconds);
+      const back = wordRef(retargetMark(retargetMark(ref, words, 'seconds'), words, 'word'));
+
+      if (inside >= 0 && inside !== ref.wordIndex) {
+        expect(back.wordIndex, `метка на ${seconds} с попала внутрь слова №${inside}`).toBe(inside);
+      } else {
+        expect(back.wordIndex, `метка на ${seconds} с`).toBe(ref.wordIndex);
+      }
+    }
+  });
+});
 
 describe('метка внутри слова', () => {
   it('привязывается к этому слову со смещением от его начала', () => {

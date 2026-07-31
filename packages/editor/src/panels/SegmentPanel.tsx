@@ -25,7 +25,7 @@ import { useMemo, useState, type ReactElement } from 'react';
 
 import type { Condition, ExitRule, Project, Segment } from '@player/core';
 
-import { reachableFrom, uncoveredOutcomes } from '../state/exits.js';
+import { emptySegments, reachableFrom, uncoveredOutcomes } from '../state/exits.js';
 
 export interface SegmentPanelProps {
   readonly project: Project;
@@ -98,6 +98,7 @@ export function SegmentPanel({
   }
 
   const reachable = useMemo(() => reachableFrom(project), [project]);
+  const empty = useMemo(() => new Set(emptySegments(project).map((s) => s.id)), [project]);
   const holes = useMemo(
     () => uncoveredOutcomes(currentSegment, currentSegment.gates),
     [currentSegment],
@@ -140,6 +141,11 @@ export function SegmentPanel({
               {isUnreachable ? (
                 <span className="ed-segment-unreachable" data-testid={`segment-unreachable-${segment.id}`}>
                   недостижим
+                </span>
+              ) : null}
+              {empty.has(segment.id) ? (
+                <span className="ed-segment-unreachable" data-testid={`segment-empty-${segment.id}`}>
+                  пусто
                 </span>
               ) : null}
             </li>
@@ -189,6 +195,33 @@ export function SegmentPanel({
       ) : (
         <p className="ed-segment-empty">У этой части нет правил перехода.</p>
       )}
+
+      {/* Пустая ветка — незавершённое состояние, а не валидное
+          (product.md §2б [Р]). Ветка рождается пустой по построению разреза,
+          и наполнить её легко забыть: разрез рождает сразу несколько. */}
+      <h3 className="ed-insp-title">Пустые части</h3>
+      <div className="ed-exit-uncovered" data-testid="empty-segments">
+        {empty.size === 0 ? (
+          <p className="ed-segment-empty">Во всех частях что-то есть.</p>
+        ) : (
+          <>
+            {project.segments
+              .filter((segment) => empty.has(segment.id))
+              .map((segment) => (
+                <div key={segment.id} className="ed-exit-hole">
+                  <span className="ed-exit-hole-text">
+                    «{titleOf(segment)}» — здесь пока ничего нет
+                  </span>
+                </div>
+              ))}
+            <p className="ed-segment-empty">
+              Пока такая часть есть, объяснение публиковать нельзя: зритель прошёл бы её
+              насквозь. Тишина не подходит как признак — тишину можно захотеть намеренно,
+              и тогда «пусто по ошибке» стало бы неотличимо от «пауза задумана».
+            </p>
+          </>
+        )}
+      </div>
 
       <h3 className="ed-insp-title">Непокрыто</h3>
       <div className="ed-exit-uncovered" data-testid="exit-uncovered">

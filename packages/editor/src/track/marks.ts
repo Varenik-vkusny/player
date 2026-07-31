@@ -119,6 +119,65 @@ export function timeRefAt(
 }
 
 /**
+ * Почему эту метку нельзя привязать к слову. `undefined` — можно.
+ *
+ * Две разные причины, и путать их нельзя: «в части нет расшифровки» —
+ * свойство всей части и законное состояние (`product.md` §2в [Р]: ветка
+ * без озвучки), а «рядом нет слова» — свойство этого места на дорожке,
+ * например середина длинной паузы.
+ *
+ * Существует ради интерфейса: он обязан ОБЪЯСНИТЬ, почему привязка к слову
+ * недоступна, а не молча погасить переключатель. Погашенная без причины
+ * кнопка — тупик, в котором автор не понимает, что он сделал не так.
+ */
+export function wordAnchorProblem(
+  ref: TimeRef,
+  words: readonly Word[],
+  snapSeconds: number = DEFAULT_SNAP_SECONDS,
+): string | undefined {
+  if (ref.kind === 'word') return undefined;
+  if (words.length === 0) {
+    return 'У этой части нет расшифровки, привязывать не к чему: метки ставятся по секундам';
+  }
+  if (chooseTarget(words, markSeconds(ref, words), snapSeconds).kind !== 'word') {
+    return 'На этой секунде рядом нет слова — здесь пауза. Метка остаётся на секунде';
+  }
+  return undefined;
+}
+
+/**
+ * Та же метка, привязанная иначе: к слову или к секунде.
+ *
+ * Обе привязки работали в модели с самого начала (`core/time.ts`), выбирать
+ * между ними автор не мог — интерфейс всегда брал слово. Это и делало
+ * инструмент узконаправленным: часть без расшифровки разметить было нечем.
+ *
+ * Перевод идёт ЧЕРЕЗ СЕКУНДЫ, а не через запоминание прежней ссылки: помнить
+ * её негде — в схеме такого поля нет и не будет (версия не меняется). Круг
+ * при этом точен: смещение строится как `секунда − начало слова`, поэтому
+ * «на слове плюс 0,2 с» возвращается тем же самым, — проверено кругом
+ * по всем меткам `demo.json`, а не рассуждением.
+ *
+ * Невозможный перевод падает громко: до сюда доходят только те переключения,
+ * которые интерфейс предложил, а предлагает он их по `wordAnchorProblem`.
+ */
+export function retargetMark(
+  ref: TimeRef,
+  words: readonly Word[],
+  kind: TimeRef['kind'],
+  snapSeconds: number = DEFAULT_SNAP_SECONDS,
+): TimeRef {
+  if (ref.kind === kind) return ref;
+
+  const seconds = markSeconds(ref, words);
+  if (kind === 'seconds') return { kind: 'seconds', t: seconds };
+
+  const problem = wordAnchorProblem(ref, words, snapSeconds);
+  if (problem) throw new Error(problem);
+  return timeRefAt(words, seconds, snapSeconds);
+}
+
+/**
  * Позиция метки на дорожке в секундах.
  *
  * Тонкая обёртка над `resolveTimeRef`: переводить ссылку в секунды разрешено

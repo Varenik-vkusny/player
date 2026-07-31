@@ -210,6 +210,122 @@ export function disconnect(project: Project, segmentId: string, ruleId: string):
   return { ...project, segments };
 }
 
+/**
+ * Почему такое имя переменной принять нельзя. `undefined` — можно.
+ *
+ * Одна функция на две задачи, и это не удобство, а требование: панель
+ * обязана объяснять автору причину ПОКА ОН ПЕЧАТАЕТ, а `renameVariable` —
+ * падать на том же самом. Две копии правил разошлись бы, и разошлись бы
+ * тихо: поле показывало бы «всё хорошо» там, где запись отвергается.
+ *
+ * Ограничения `Id` из схемы (`schema.ts`) повторяются, а не изобретаются:
+ * то, что разрешено здесь, обязано пройти загрузку.
+ */
+export function variableRenameProblem(
+  project: Project,
+  gateId: string,
+  nextName: string,
+): string | undefined {
+  if (nextName.trim() === '') {
+    return 'Имя переменной не может быть пустым: на него ссылаются правила развилок';
+  }
+  if (nextName !== nextName.trim()) {
+    return 'Имя переменной не должно начинаться или заканчиваться пробелом';
+  }
+
+  // Схема отдельно запрещает двум остановкам писать в одну переменную
+  // («второй ответ затёр бы первый»). Ловим это здесь, пока автор смотрит
+  // на поле, а не при следующей загрузке файла.
+  const taken = project.segments
+    .flatMap((segment) => segment.gates)
+    .find((candidate) => candidate.id !== gateId && candidate.recordAs === nextName);
+  if (taken) {
+    return `Переменную «${nextName}» уже пишет остановка «${taken.id}»: `
+      + 'две остановки в одну переменную писать не могут, второй ответ затёр бы первый';
+  }
+
+  return undefined;
+}
+
+/**
+ * Переименовывает переменную, в которую остановка `gateId` пишет ответ.
+ *
+ * Имя переменной задаёт автор (`product.md` §2в [Р]): до этого оно бралось
+ * из внутреннего id остановки и не правилось, а значит сослаться на ответ
+ * из будущего вопроса или развилки было нечем — «обычный вопрос терял смысл».
+ *
+ * **Каскад обязателен, и он — вся суть этой функции.** Правило выхода
+ * ссылается на переменную ПО ИМЕНИ (`Condition.variable`) и живёт при этом
+ * в поле `exit` ЛЮБОГО сегмента, не обязательно того, где стоит остановка:
+ * переменные зрителя живут на всё объяснение. Переименовать одно поле
+ * `recordAs` и не тронуть правила — значит оставить правило, которое
+ * не сработает никогда. Схема такую ложь не поймает: имя переменной,
+ * которую никто не пишет, отвергается только `connect`, а уже лежащее
+ * в проекте правило проходит загрузку молча.
+ *
+ * Проверки идут ДО любой правки: занятое имя не должно оставить проект
+ * наполовину переименованным.
+ */
+export function renameVariable(project: Project, gateId: string, nextName: string): Project {
+  const owner = project.segments.find((segment) => segment.gates.some((gate) => gate.id === gateId));
+  const gate = owner?.gates.find((candidate) => candidate.id === gateId);
+  if (!owner || !gate) {
+    throw new Error(`Остановки «${gateId}» нет в объяснении: переименовывать нечего`);
+  }
+
+  const previous = gate.recordAs;
+  if (nextName === previous) return project;
+
+  const problem = variableRenameProblem(project, gateId, nextName);
+  if (problem) throw new Error(problem);
+
+  return {
+    ...project,
+    segments: project.segments.map((segment) => {
+      const gates = segment.id === owner.id
+        ? segment.gates.map((candidate) => (candidate.id === gateId ? { ...candidate, recordAs: nextName } : candidate))
+        : segment.gates;
+
+      // Каскад: правила любого сегмента, смотревшие на старое имя.
+      const touched = segment.exit.rules.some((rule) => rule.when.variable === previous);
+      const exit: Exit = touched
+        ? {
+            ...segment.exit,
+            rules: segment.exit.rules.map((rule) =>
+              rule.when.variable === previous ? { ...rule, when: { ...rule.when, variable: nextName } } : rule,
+            ),
+          }
+        : segment.exit;
+
+      return gates === segment.gates && exit === segment.exit ? segment : { ...segment, gates, exit };
+    }),
+  };
+}
+
+/**
+ * Части, в которые автор ещё ничего не положил.
+ *
+ * Пустая ветка — **незавершённое состояние, а не валидное** (`product.md`
+ * §2б [Р]). Ветка рождается пустой по построению разреза: каждый вариант
+ * ответа получает свою часть, и наполнить их — отдельная работа, которую
+ * легко забыть. Без этой проверки объяснение можно было опубликовать так,
+ * что зритель проваливается в никуда.
+ *
+ * Тишина не годится как признак: тишину автор может захотеть намеренно,
+ * и тогда «пусто по ошибке» стало бы неотличимо от «пауза задумана».
+ * Поэтому смотрим на СОДЕРЖИМОЕ, а не на длительность.
+ *
+ * Слайд на нуле в счёт не идёт: он есть у каждой части по схеме
+ * (`slides.min(1)`), и считать его содержимым значило бы не найти
+ * ни одной пустой ветки никогда.
+ */
+export function emptySegments(project: Project): readonly Segment[] {
+  return project.segments.filter(
+    (segment) =>
+      segment.elements.length === 0 && segment.slides.length === 1 && segment.gates.length === 0,
+  );
+}
+
 /** Дыра в покрытии: какой переменной не хватает исходов, и каких именно. */
 export interface UncoveredOutcome {
   readonly variable: string;

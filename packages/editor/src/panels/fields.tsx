@@ -153,6 +153,71 @@ export function StringField({ label, value, onCommit }: StringFieldProps): React
   );
 }
 
+interface ValidatedStringFieldProps {
+  label: string;
+  value: string;
+  /** Почему такое значение принять нельзя. `undefined` — можно. */
+  problemOf: (value: string) => string | undefined;
+  onCommit: (value: string) => void;
+}
+
+/**
+ * Строка, у которой не всякое значение законно, — например имя переменной.
+ *
+ * Черновик здесь нужен по той же причине, что и у `NumberField`, только
+ * причина другая: набираемая строка проходит через состояния, которые
+ * значением быть не могут. Путь к имени «ответ про дроби» лежит через
+ * пустую строку и через «ответ » с хвостовым пробелом — оба схема отвергает.
+ * Отдавать их наружу нельзя, а показывать в поле обязательно, иначе поле
+ * нельзя набрать.
+ *
+ * Отвергнутое значение не уходит МОЛЧА: рядом стоит причина. Молчание
+ * автор принял бы за успешную правку — и узнал бы правду, когда правило
+ * развилки не сработает у зрителя.
+ */
+export function ValidatedStringField({
+  label,
+  value,
+  problemOf,
+  onCommit,
+}: ValidatedStringFieldProps): ReactElement {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const text = draft ?? value;
+  const problem = draft === null ? undefined : problemOf(draft);
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="ed-insp-input"
+        type="text"
+        autoComplete="off"
+        spellCheck={false}
+        value={text}
+        aria-invalid={problem !== undefined}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          if (problemOf(next) === undefined) onCommit(next);
+        }}
+        // Черновик снимается — поле показывает то, что на самом деле лежит
+        // в проекте. Незавершённый или отвергнутый ввод исчезает вместе с ним.
+        onBlur={() => setDraft(null)}
+      />
+      {problem === undefined ? null : (
+        <p className="ed-insp-note" role="alert" data-testid={`field-problem-${id}`}>
+          {problem}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** Многострочное поле. */
 export function MultilineField({ label, value, onCommit }: StringFieldProps): ReactElement {
   const id = useId();

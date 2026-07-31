@@ -266,6 +266,52 @@ describe('addSlide / removeSlide / selectSlide', () => {
   });
 });
 
+describe('setSlideTransition', () => {
+  /** Слайд, вставленный вторым: у первого перехода нет по построению. */
+  function stateWithSecondSlide(): { state: ReturnType<typeof baseState>; id: string } {
+    let state = baseState();
+    state = editorReducer(state, { type: 'addSlide', afterSlideId: 'slide-1', at: { kind: 'seconds', t: 1 } });
+    return { state, id: state.currentSlideId };
+  }
+
+  it('переключает переход на резкий и обратно на плавный', () => {
+    const { state, id } = stateWithSecondSlide();
+
+    const cut = editorReducer(state, { type: 'setSlideTransition', slideId: id, transition: 'cut' });
+    expect(segmentOf(cut.project).slides[1]!.transition).toBe('cut');
+
+    const back = editorReducer(cut, { type: 'setSlideTransition', slideId: id, transition: 'morph' });
+    expect(segmentOf(back.project).slides[1]!.transition).toBe('morph');
+  });
+
+  it('новый слайд по умолчанию плавный — дефолт схемы менять не пришлось', () => {
+    const { state } = stateWithSecondSlide();
+    expect(segmentOf(state.project).slides[1]!.transition).toBe('morph');
+  });
+
+  it('соседний слайд остаётся тем же объектом по ссылке', () => {
+    const { state, id } = stateWithSecondSlide();
+    const before = segmentOf(state.project).slides[0]!;
+
+    const next = editorReducer(state, { type: 'setSlideTransition', slideId: id, transition: 'cut' });
+
+    expect(segmentOf(next.project).slides[0]).toBe(before);
+  });
+
+  it('первый слайд отвергается громко: ехать в него неоткуда', () => {
+    expect(() =>
+      editorReducer(baseState(), { type: 'setSlideTransition', slideId: 'slide-1', transition: 'cut' }),
+    ).toThrow(/первого слайда нет перехода/);
+  });
+
+  it('несуществующий слайд отвергается громко', () => {
+    const { state } = stateWithSecondSlide();
+    expect(() =>
+      editorReducer(state, { type: 'setSlideTransition', slideId: 'ghost', transition: 'cut' }),
+    ).toThrow(/ghost/);
+  });
+});
+
 describe('addGate', () => {
   it('добавляет gate; elements остаются тем же массивом по ссылке', () => {
     const state = baseState();

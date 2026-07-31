@@ -66,6 +66,11 @@ export type EditorAction =
     }
   | { readonly type: 'addSlide'; readonly afterSlideId: string; readonly at: TimeRef }
   | { readonly type: 'removeSlide'; readonly slideId: string }
+  | {
+      readonly type: 'setSlideTransition';
+      readonly slideId: string;
+      readonly transition: Slide['transition'];
+    }
   | { readonly type: 'selectSlide'; readonly id: string }
   | { readonly type: 'addGate'; readonly gate: Gate }
   | { readonly type: 'updateGate'; readonly gate: Gate }
@@ -85,6 +90,7 @@ export type EditorAction =
   | { readonly type: 'addSegment' }
   | { readonly type: 'removeSegment'; readonly id: string }
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
+  | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
   | { readonly type: 'connect'; readonly condition: Condition; readonly goto: string }
   | { readonly type: 'disconnect'; readonly ruleId: string }
@@ -234,6 +240,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...next, currentSlideId: requireFirstSlide(nextSegment).id };
     }
 
+    case 'setSlideTransition': {
+      const nextSegment = slidesApi.setTransition(currentSegment(state), action.slideId, action.transition);
+      return replaceSegment(state, nextSegment);
+    }
+
     case 'selectSlide': {
       if (action.id === state.currentSlideId) return state;
       segmentSlide(state.project, state.currentSegmentId, action.id); // бросает, если слайда нет
@@ -327,6 +338,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'renameSegment': {
       const project = exits.renameSegment(state.project, action.id, action.title);
+      return project === state.project ? state : { ...state, project };
+    }
+
+    case 'renameVariable': {
+      // Правит ВЕСЬ проект, а не текущий сегмент: правило выхода, смотрящее
+      // на эту переменную, вправе лежать в любом другом сегменте.
+      const project = exits.renameVariable(state.project, action.gateId, action.name);
       return project === state.project ? state : { ...state, project };
     }
 

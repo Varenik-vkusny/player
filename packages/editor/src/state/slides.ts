@@ -117,6 +117,36 @@ export function removeSlide(segment: Segment, slideId: string): Segment {
 }
 
 /**
+ * Плавно или резко наступает этот слайд.
+ *
+ * Значение уже работает в плеере: для `cut` длительность перехода равна нулю
+ * (`player/src/morph.ts`). До этой сессии его нельзя было поменять из
+ * редактора — то есть инструмент умел только «элемент едет» и не умел
+ * «элемент просто появился», что и делало его узконаправленным.
+ *
+ * Первый слайд отвергается громко, а не правится молча: он стоит на нуле
+ * и является стартовым видом сегмента. Перехода В него не существует —
+ * ехать неоткуда, — поэтому у значения не было бы смысла, а поле в панели
+ * показывало бы автору выбор, ни на что не влияющий.
+ */
+export function setTransition(segment: Segment, slideId: string, transition: Slide['transition']): Segment {
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+  if (index === 0) {
+    throw new Error(
+      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом части, ехать в него неоткуда',
+    );
+  }
+  if (segment.slides[index]!.transition === transition) return segment;
+
+  const slides = segment.slides.slice();
+  slides[index] = { ...slides[index]!, transition };
+  return { ...segment, slides };
+}
+
+/**
  * Точечная правка состояния элемента на слайде.
  *
  * Правит СУЩЕСТВУЮЩУЮ запись — если элемента ещё нет в `states` этого

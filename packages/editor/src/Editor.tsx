@@ -25,7 +25,7 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Condition, Element, ElementState, Gate, Project } from '@player/core';
+import type { Condition, Element, ElementState, Gate, Project, Slide, TimeRef } from '@player/core';
 import { findSegment } from '@player/core';
 import { segmentOf, type ScenePreview } from '@player/player';
 
@@ -42,6 +42,7 @@ import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
+import { variableRenameProblem } from './state/exits.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
@@ -203,6 +204,42 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   }, [selectedMark]);
 
   const handleUpdateGate = useCallback((gate: Gate) => dispatch({ type: 'updateGate', gate }), []);
+
+  const handleRenameVariable = useCallback(
+    (name: string) => {
+      if (!selectedMark || selectedMark.kind !== 'gate') return;
+      dispatch({ type: 'renameVariable', gateId: selectedMark.id, name });
+    },
+    [selectedMark],
+  );
+
+  // Причину отказа считает тот же модуль, что и сама правка (state/exits.ts),
+  // — иначе поле показывало бы «всё хорошо» там, где запись отвергается.
+  const variableProblemOf = useCallback(
+    (name: string): string | undefined => {
+      if (!selectedMark || selectedMark.kind !== 'gate') return undefined;
+      return variableRenameProblem(currentProject, selectedMark.id, name);
+    },
+    [selectedMark, currentProject],
+  );
+
+  // Перепривязка — тот же `moveMark`, что и перетаскивание: метка меняет
+  // способ ссылки на время, а не сущность. Отдельного действия не нужно.
+  const handleRetargetMark = useCallback(
+    (at: TimeRef) => {
+      if (!selectedMark) return;
+      dispatch({ type: 'moveMark', kind: selectedMark.kind, id: selectedMark.id, at });
+    },
+    [selectedMark],
+  );
+
+  const handleSetSlideTransition = useCallback(
+    (transition: Slide['transition']) => {
+      if (!selectedMark || selectedMark.kind !== 'slide') return;
+      dispatch({ type: 'setSlideTransition', slideId: selectedMark.id, transition });
+    },
+    [selectedMark],
+  );
 
   const handleSplitAtGate = useCallback(
     (gateId: string) => dispatch({ type: 'splitAtGate', gateId }),
@@ -587,9 +624,14 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           <MarkPanel
             mark={markData}
             elements={segment.elements}
+            words={segment.words}
+            onRetargetMark={handleRetargetMark}
             gateInsideTransition={markData.kind === 'gate'
               && gateInsideTransition(markData.gate, segment.slides, segment.words)}
             onUpdateGate={handleUpdateGate}
+            onSetSlideTransition={handleSetSlideTransition}
+            onRenameVariable={handleRenameVariable}
+            variableProblemOf={variableProblemOf}
             onRemove={handleRemoveMark}
             onSplitAtGate={markData.kind === 'gate'
               ? () => handleSplitAtGate(markData.gate.id)

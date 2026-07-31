@@ -97,6 +97,42 @@ test.describe('разрез повествования по развилке', (
     expect(after.length).toBe(before.length + 3);
   });
 
+  /**
+   * Решение [Р] (`product.md` §2б) существовало с Сессии 8, проверки не было.
+   * Ветки рождаются пустыми ПО ПОСТРОЕНИЮ разреза — значит предупреждение
+   * обязано появиться ровно в тот момент, когда автор нажал «разделить»,
+   * а не когда-нибудь потом при попытке публикации.
+   */
+  test('после разреза автор видит, что новые ветки пусты', async ({ page }) => {
+    await openEditor(page, 'exit-branch');
+    await selectFork(page);
+
+    // До разреза пустых частей в этой фикстуре нет: у концовок есть элементы.
+    await expect(page.getByTestId('empty-segments')).toContainText('Во всех частях что-то есть');
+
+    await page.getByTestId('gate-split').click();
+
+    const created = await page.evaluate(
+      () =>
+        (window as unknown as {
+          __project: {
+            segments: { id: string; elements: unknown[]; slides: unknown[]; gates: unknown[] }[];
+          };
+        }).__project.segments
+          .filter((s) => s.elements.length === 0 && s.slides.length === 1 && s.gates.length === 0)
+          .map((s) => s.id),
+    );
+    expect(created.length, 'разрез создал пустые ветки').toBeGreaterThan(0);
+
+    // Предупреждение видно, и названа причина, а не просто счётчик.
+    await expect(page.getByTestId('empty-segments')).toContainText('здесь пока ничего нет');
+    await expect(page.getByTestId('empty-segments')).toContainText('публиковать нельзя');
+    // И каждая такая часть помечена прямо в списке частей.
+    for (const id of created) {
+      await expect(page.getByTestId(`segment-empty-${id}`)).toBeVisible();
+    }
+  });
+
   test('продолжение звучит со своего окна того же файла', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await selectFork(page);

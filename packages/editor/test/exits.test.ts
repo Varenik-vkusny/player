@@ -9,9 +9,11 @@ import {
   addSegment,
   connect,
   disconnect,
+  emptySegments,
   reachableFrom,
   removeSegment,
   renameSegment,
+  renameVariable,
   uncoveredOutcomes,
 } from '../src/state/exits.js';
 
@@ -74,6 +76,158 @@ function project(segments: readonly Segment[], entry = 'seg-1'): Project {
     segments: [...segments],
   };
 }
+
+/**
+ * Имя переменной задаёт автор (`product.md` §2в [Р]).
+ *
+ * Опасность здесь не в самом переименовании, а в том, что правило выхода
+ * ссылается на переменную ПО ИМЕНИ и может жить в другом сегменте. Не пройти
+ * каскадом — значит оставить правило, которое не сработает никогда, и узнать
+ * об этом от зрителя, а не от проверки.
+ */
+describe('renameVariable', () => {
+  /** Вопрос во второй части, правило выхода — в первой: имя живёт на всё объяснение. */
+  function crossSegment(): Project {
+    const asking = segment('seg-2', { gates: [choiceGate('q1', ['a', 'b'])] });
+    const deciding = segment('seg-1', {
+      exit: {
+        rules: [rule('rule-1', { kind: 'equals', variable: 'q1', value: 'a' }, 'seg-2')],
+        default: 'seg-2',
+      },
+    });
+    return project([deciding, asking]);
+  }
+
+  it('переименование доходит до правила выхода в ДРУГОЙ части', () => {
+    const next = renameVariable(crossSegment(), 'q1', 'знает про дроби');
+
+    expect(next.segments[1]!.gates[0]!.recordAs).toBe('знает про дроби');
+    expect(next.segments[0]!.exit.rules[0]!.when).toEqual({
+      kind: 'equals',
+      variable: 'знает про дроби',
+      value: 'a',
+    });
+  });
+
+  it('каскад накрывает все три вида условия, а не только equals', () => {
+    const asking = segment('seg-2', { gates: [verdictGate('q1')] });
+    const deciding = segment('seg-1', {
+      exit: {
+        rules: [
+          rule('rule-1', { kind: 'correct', variable: 'q1' }, 'seg-2'),
+          rule('rule-2', { kind: 'wrong', variable: 'q1' }, 'seg-3'),
+        ],
+        default: 'seg-2',
+      },
+    });
+    const p = project([deciding, asking, segment('seg-3')]);
+
+    const next = renameVariable(p, 'q1', 'ответил верно');
+
+    expect(next.segments[0]!.exit.rules.map((r) => r.when)).toEqual([
+      { kind: 'correct', variable: 'ответил верно' },
+      { kind: 'wrong', variable: 'ответил верно' },
+    ]);
+  });
+
+  it('чужие правила не трогаются: переименовано ровно одно имя', () => {
+    const asking = segment('seg-2', {
+      gates: [choiceGate('q1', ['a', 'b']), choiceGate('q2', ['c', 'd'])],
+    });
+    const deciding = segment('seg-1', {
+      exit: {
+        rules: [
+          rule('rule-1', { kind: 'equals', variable: 'q1', value: 'a' }, 'seg-2'),
+          rule('rule-2', { kind: 'equals', variable: 'q2', value: 'c' }, 'seg-2'),
+        ],
+        default: 'seg-2',
+      },
+    });
+
+    const next = renameVariable(project([deciding, asking]), 'q1', 'первый');
+
+    expect(next.segments[0]!.exit.rules[1]!.when).toEqual({
+      kind: 'equals',
+      variable: 'q2',
+      value: 'c',
+    });
+  });
+
+  it('занятое имя отвергается громко и ДО записи', () => {
+    const p = project([
+      segment('seg-1', { gates: [choiceGate('q1', ['a', 'b']), choiceGate('q2', ['c', 'd'])] }),
+    ]);
+
+    expect(() => renameVariable(p, 'q1', 'q2')).toThrow(/уже пишет/);
+    // Проект не тронут: падение произошло до правки, а не посередине.
+    expect(p.segments[0]!.gates[0]!.recordAs).toBe('q1');
+  });
+
+  it('пустое имя и имя с краевыми пробелами отвергаются: схема их не примет', () => {
+    const p = project([segment('seg-1', { gates: [choiceGate('q1', ['a', 'b'])] })]);
+
+    expect(() => renameVariable(p, 'q1', '   ')).toThrow(/пустым/);
+    expect(() => renameVariable(p, 'q1', ' имя ')).toThrow(/пробел/);
+  });
+
+  it('несуществующая остановка отвергается громко', () => {
+    const p = project([segment('seg-1', { gates: [choiceGate('q1', ['a', 'b'])] })]);
+    expect(() => renameVariable(p, 'ghost', 'имя')).toThrow(/ghost/);
+  });
+
+  it('переименование в то же имя ничего не меняет и не падает', () => {
+    const p = crossSegment();
+    expect(renameVariable(p, 'q1', 'q1')).toBe(p);
+  });
+
+  it('результат остаётся валидным проектом по схеме', () => {
+    const next = renameVariable(crossSegment(), 'q1', 'знает про дроби');
+    expect(() => ProjectSchema.parse(next)).not.toThrow();
+  });
+});
+
+/**
+ * Пустая ветка — незавершённое состояние, а не валидное (`product.md` §2б [Р]).
+ * Решение было принято документом, проверки не существовало: ветка рождается
+ * пустой по построению разреза, и без проверки автор мог опубликовать
+ * объяснение, где зритель проваливается в никуда.
+ */
+describe('emptySegments', () => {
+  it('свежая ветка после разреза пуста: ни элементов, ни своих слайдов, ни остановок', () => {
+    const p = project([segment('seg-1'), segment('seg-2')]);
+    expect(emptySegments(p).map((s) => s.id)).toEqual(['seg-1', 'seg-2']);
+  });
+
+  it('часть с элементом пустой не считается — автор уже что-то положил', () => {
+    const filled = segment('seg-2', {
+      elements: [{ id: 'title', type: 'text', content: 'Разбор' }],
+    });
+    expect(emptySegments(project([segment('seg-1'), filled])).map((s) => s.id)).toEqual(['seg-1']);
+  });
+
+  it('часть со вторым слайдом пустой не считается: сцена меняется во времени', () => {
+    const withSlides = segment('seg-2', {
+      slides: [
+        { id: 's-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} },
+        { id: 's-1', at: { kind: 'seconds', t: 2 }, transition: 'morph', states: {} },
+      ],
+    });
+    expect(emptySegments(project([segment('seg-1'), withSlides])).map((s) => s.id)).toEqual(['seg-1']);
+  });
+
+  it('часть с остановкой пустой не считается: зрителя там о чём-то спрашивают', () => {
+    const asking = segment('seg-2', { gates: [choiceGate('q1', ['a', 'b'])] });
+    expect(emptySegments(project([segment('seg-1'), asking])).map((s) => s.id)).toEqual(['seg-1']);
+  });
+
+  it('нулевой слайд сам по себе пустоты не отменяет: он обязателен по схеме', () => {
+    // Слайд на нуле есть у КАЖДОЙ части — считать его содержимым значило бы
+    // не найти ни одной пустой ветки никогда.
+    const p = project([segment('seg-1')]);
+    expect(p.segments[0]!.slides).toHaveLength(1);
+    expect(emptySegments(p)).toHaveLength(1);
+  });
+});
 
 describe('addSegment', () => {
   it('даёт свободный id, не сталкивается с существующими', () => {
