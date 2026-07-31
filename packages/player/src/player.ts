@@ -4,9 +4,10 @@
  * Главный принцип: всё на экране — чистая функция от одного числа, позиции
  * в аудио. Каждый кадр это число берётся у часов и раздаётся остальным.
  */
-import type { Answer, Gate, Project } from '@player/core';
+import type { Answer, Condition, Gate, Project } from '@player/core';
 import {
   certainRemaining,
+  conditionsHold,
   nextSegment,
   preloadTargetsOfExit,
   resolveTimeRef,
@@ -181,6 +182,8 @@ export class Player {
   #resizeObserver: ResizeObserver | null = null;
   /** id вариантов, помеченных сейчас как кликабельные элементы гейта — снимается при выходе. */
   #markedOptionIds: string[] = [];
+  /** Фигуры вариантов, погашенных условием, и их прежняя прозрачность. */
+  #hiddenOptions: { readonly id: string; readonly opacity: string }[] = [];
   #reveal: Reveal | null = null;
   /**
    * Сколько частей зритель уже прошёл. Считается ходом, а не выводится
@@ -324,6 +327,7 @@ export class Player {
     // Пометки кликабельных вариантов жили на элементах прошлой сцены,
     // а её больше нет: движок слайдов очищает контейнер.
     this.#markedOptionIds = [];
+    this.#hiddenOptions = [];
     this.#fit();
 
     // Греть продолжения можно с самого начала сегмента: он линеен, его
@@ -372,7 +376,11 @@ export class Player {
     const node = target instanceof HTMLElement ? target.closest<HTMLElement>('[data-id]') : null;
     const id = node?.dataset['id'];
     if (id === undefined) return;
-    if (!gate.config.options.some((option) => option.id === id)) return;
+    const option = gate.config.options.find((candidate) => candidate.id === id);
+    // Скрытый условием вариант ответом не становится, даже если его фигура
+    // каким-то образом дошла до клика: видимость решает язык условий, а не
+    // то, попал ли курсор по узлу.
+    if (!option || !this.#conditionsPass(option.when)) return;
 
     void this.answer(id);
   };
@@ -395,6 +403,20 @@ export class Player {
     const unbound: UnboundOption[] = [];
     for (const option of gate.config.options) {
       const node = this.#nodes.get(option.id);
+      const visible = this.#conditionsPass(option.when);
+
+      if (!visible) {
+        // Вариант скрыт условием — гасим ФИГУРУ, а не только интерактив.
+        // Оставить её видимой и неотзывчивой значило бы показать зрителю
+        // ответ, по которому он тыкает без результата: это читается как
+        // поломка. Зритель не должен знать, что варианты вообще скрывались.
+        if (node) {
+          this.#hiddenOptions.push({ id: option.id, opacity: node.style.opacity });
+          node.style.opacity = '0';
+        }
+        continue;
+      }
+
       if (!node) {
         unbound.push(option);
         continue;
@@ -406,6 +428,17 @@ export class Player {
     return unbound;
   }
 
+  /**
+   * Показывать ли вариант этому зрителю.
+   *
+   * Без `when` — показывать всегда. Схема гарантирует, что хотя бы один
+   * вариант безусловен, поэтому «скрылись все» невозможно по построению,
+   * а не по везению.
+   */
+  #conditionsPass(when: readonly Condition[] | undefined): boolean {
+    return when === undefined || conditionsHold(when, this.#answers);
+  }
+
   /** Снимает отметку варианта ответа при выходе из гейта. */
   #unmarkAnswerElements(): void {
     for (const id of this.#markedOptionIds) {
@@ -415,6 +448,16 @@ export class Player {
       node.style.cursor = '';
     }
     this.#markedOptionIds = [];
+
+    // Прозрачность возвращаем В ТО ЖЕ значение, что было, а не в пустую
+    // строку: инлайн-стиль мог принадлежать движку слайдов, и затереть его
+    // значило бы отдать элементу чужую видимость после выхода из гейта.
+    for (const hidden of this.#hiddenOptions) {
+      const node = this.#nodes.get(hidden.id);
+      if (!node) continue;
+      node.style.opacity = hidden.opacity;
+    }
+    this.#hiddenOptions = [];
   }
 
   /**
@@ -678,6 +721,16 @@ export class Player {
     if (!scheduled) throw new Error('Нет открытого гейта');
 
     const { gate } = scheduled;
+    // Оснастка рисует кнопками только те варианты, что отдал `onGateOpen`,
+    // а скрытых среди них нет. Если ответ всё же пришёл по скрытому варианту —
+    // это рассинхрон оснастки с плеером, и увидеть его надо здесь, а не
+    // тремя переходами позже в виде ветки, куда зритель не мог попасть.
+    if (gate.config.kind === 'choice') {
+      const option = gate.config.options.find((candidate) => candidate.id === value);
+      if (option && !this.#conditionsPass(option.when)) {
+        throw new Error(`Вариант «${value}» скрыт условием и не может быть ответом`);
+      }
+    }
     const used = (this.#attempts.get(gate.id) ?? 0) + 1;
     this.#attempts.set(gate.id, used);
 
