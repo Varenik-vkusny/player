@@ -39,7 +39,7 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
@@ -417,7 +417,7 @@ describe('removeMark', () => {
 describe('редьюсер: переключение сегмента открывает его для правки', () => {
   function twoSegments(): Project {
     return {
-      schemaVersion: 4,
+      schemaVersion: 5,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

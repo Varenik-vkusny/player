@@ -46,7 +46,7 @@ const box = (x: number) => ({
  */
 function project(): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080 },
     entry: 'whole',
     segments: [{
@@ -113,7 +113,7 @@ describe('разрез делит повествование, а не копир
   it('выход головы ведёт в ветки по варианту ответа', () => {
     const { head, branches } = parts();
     expect(head.exit.rules.map((r) => r.goto)).toEqual(branches.map((b) => b.id));
-    expect(head.exit.rules.map((r) => r.when.kind === 'equals' && r.when.value))
+    expect(head.exit.rules.map((r) => r.when[0]!.kind === 'equals' && r.when[0]!.value))
       .toEqual(['left', 'right']);
   });
 

@@ -30,7 +30,7 @@ function elementState(overrides: Partial<ElementState> = {}): ElementState {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [

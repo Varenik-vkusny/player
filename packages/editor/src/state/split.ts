@@ -194,7 +194,9 @@ export function splitSegmentAtGate(
       // и схема признаёт такой выход тотальным (см. `ProjectSchema.superRefine`).
       rules: gate.config.options.map((option, index) => ({
         id: `rule-${index + 1}`,
-        when: { kind: 'equals' as const, variable: gate.recordAs, value: option.id },
+        // Ровно одно условие на правило — иначе схема не признает выход
+        // тотальным и потребует запасной выход (см. `ProjectSchema`).
+        when: [{ kind: 'equals' as const, variable: gate.recordAs, value: option.id }],
         goto: branchIds[index]!,
       })),
       default: null,

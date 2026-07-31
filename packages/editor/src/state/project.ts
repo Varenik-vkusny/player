@@ -92,7 +92,9 @@ export type EditorAction =
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
-  | { readonly type: 'connect'; readonly condition: Condition; readonly goto: string }
+  | { readonly type: 'connect'; readonly when: readonly Condition[]; readonly goto: string }
+  | { readonly type: 'addCondition'; readonly ruleId: string; readonly condition: Condition }
+  | { readonly type: 'removeCondition'; readonly ruleId: string; readonly index: number }
   | { readonly type: 'disconnect'; readonly ruleId: string }
   // Объявление остановки развилкой. Один шаг истории на весь разрез: он правит
   // текущую часть и рождает несколько новых, и разложить это на addSegment +
@@ -364,12 +366,32 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'connect': {
-      const project = exits.connect(state.project, state.currentSegmentId, action.condition, action.goto);
+      const project = exits.connect(state.project, state.currentSegmentId, action.when, action.goto);
       return { ...state, project };
     }
 
     case 'disconnect': {
       const project = exits.disconnect(state.project, state.currentSegmentId, action.ruleId);
+      return { ...state, project };
+    }
+
+    case 'addCondition': {
+      const project = exits.addCondition(
+        state.project,
+        state.currentSegmentId,
+        action.ruleId,
+        action.condition,
+      );
+      return { ...state, project };
+    }
+
+    case 'removeCondition': {
+      const project = exits.removeCondition(
+        state.project,
+        state.currentSegmentId,
+        action.ruleId,
+        action.index,
+      );
       return { ...state, project };
     }
 

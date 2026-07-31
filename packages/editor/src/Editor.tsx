@@ -249,10 +249,18 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
   const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
   const handleConnect = useCallback(
-    (condition: Condition, goto: string) => dispatch({ type: 'connect', condition, goto }),
+    (when: readonly Condition[], goto: string) => dispatch({ type: 'connect', when, goto }),
     [],
   );
   const handleDisconnect = useCallback((ruleId: string) => dispatch({ type: 'disconnect', ruleId }), []);
+  const handleAddCondition = useCallback(
+    (ruleId: string, condition: Condition) => dispatch({ type: 'addCondition', ruleId, condition }),
+    [],
+  );
+  const handleRemoveCondition = useCallback(
+    (ruleId: string, index: number) => dispatch({ type: 'removeCondition', ruleId, index }),
+    [],
+  );
 
   const handleSelectSegment = useCallback((id: string) => {
     // Выделенная метка принадлежала дорожке прежнего сегмента — тот же
@@ -618,6 +626,8 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             onRemoveSegment={handleRemoveSegment}
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
+            onAddCondition={handleAddCondition}
+            onRemoveCondition={handleRemoveCondition}
           />
         </aside>
         {markData ? (
