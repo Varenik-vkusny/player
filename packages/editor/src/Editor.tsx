@@ -48,6 +48,7 @@ import { splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, segmentSlide, type MarkKind } from './state/project.js';
+import { slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer } from './state/save.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
@@ -319,6 +320,35 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     const slide = currentSegment.slides.find((candidate) => candidate.id === id);
     if (slide) transport.seek(markSeconds(slide.at, segment.words));
   }, [currentSegment.slides, segment.words, transport]);
+
+  /**
+   * ...и ОБРАТНО: головка ведёт выбранный слайд.
+   *
+   * Без этой половины связка односторонняя, и получается хуже, чем было:
+   * правка уходит в слайд под головкой (§14.9), а показывается автору слайд
+   * под выделением. Автор правит не то, что видит. Замерено на `demo.json`:
+   * головка на 46.8 с — сцена «правлю» показывала один элемент из семи,
+   * сцена «смотрю» все семь.
+   *
+   * Сравнение идёт с РЕФОМ, а не с `currentSlideId` в зависимостях: иначе
+   * нажатие в ленте слайдов запускало бы эффект с ещё не доехавшей позицией
+   * и тут же перевыбирало бы слайд под старой головкой.
+   *
+   * Стоящая НА метке головка попадает в её слайд через `slideOnMark`
+   * с допуском: `transport.seek` возвращает позицию через часы, и требовать
+   * от неё побитового равенства — значит поставить выбор слайда в
+   * зависимость от последнего бита мантиссы.
+   */
+  const headSlideRef = useRef<string | null>(null);
+  useEffect(() => {
+    const words = segment.words;
+    const head = transport.positionSeconds;
+    const slide = slideOnMark(currentSegment, head, words)
+      ?? slideAtSeconds(currentSegment, head, words);
+    if (headSlideRef.current === slide.id) return;
+    headSlideRef.current = slide.id;
+    dispatch({ type: 'selectSlide', id: slide.id });
+  }, [transport.positionSeconds, currentSegment, segment.words]);
 
   const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
 
