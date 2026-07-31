@@ -107,6 +107,45 @@ test.describe('метки на дорожке', () => {
     expect(first.x, 'и начинается раньше неё').toBeLessThan(nearest - 1);
   });
 
+  /**
+   * Нажатие по метке ведёт туда головку (§2г [Р]: головка — единственный
+   * указатель «где я»).
+   *
+   * Без этого автор жмёт по ромбу слайда, чтобы его поправить, головка
+   * остаётся где стояла, и правка после §14.9 уходит в ДРУГОЙ слайд.
+   * Проверяется положением головки против положения ромба на дорожке —
+   * то есть тем, что автор видит, а не тем, что записано в состоянии.
+   */
+  test('нажатие по метке перематывает головку на неё', async ({ page }) => {
+    await openEditor(page);
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полоса меток не видна');
+    const duration = await page.evaluate(
+      () => (window as unknown as { __transport: { durationSeconds: number } })
+        .__transport.durationSeconds,
+    );
+
+    const ids = await page
+      .locator('[data-testid^="mark-slide-"]')
+      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset['testid'] ?? ''));
+    expect(ids.length, 'на дорожке нет меток слайдов').toBeGreaterThan(3);
+
+    // Несколько разных меток, а не одна: попадание в одну может совпасть
+    // с тем местом, где головка и так стояла.
+    for (const id of [ids[2]!, ids[Math.floor(ids.length / 2)]!, ids[ids.length - 1]!]) {
+      await page.getByTestId(id).click();
+      const box = await page.getByTestId(id).boundingBox();
+      if (!box) throw new Error(`метка ${id} не видна`);
+      const markSeconds = ((box.x + box.width / 2 - lane.x) / lane.width) * duration;
+      const head = await page.evaluate(
+        () => (window as unknown as { __transport: { positionSeconds: number } })
+          .__transport.positionSeconds,
+      );
+      expect(Math.abs(head - markSeconds), `головка не встала на метку ${id}`).toBeLessThan(0.2);
+    }
+  });
+
   test('гейт, поставленный на слово, сохраняется ссылкой на слово с якорем', async ({ page }) => {
     await openEditor(page);
     const before = await gatesOf(page);

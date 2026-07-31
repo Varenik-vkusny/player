@@ -187,10 +187,27 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     dispatch({ type: 'select', id });
   }, []);
 
+  /**
+   * Нажатие по метке на дорожке ведёт туда головку.
+   *
+   * Та же связка, что и у ленты слайдов (§2г [Р]): головка — единственный
+   * указатель «где я». Без неё автор жмёт по ромбу слайда, чтобы его
+   * поправить, головка остаётся где стояла, и правка уходит в другой слайд.
+   *
+   * Работает и для остановок: нажав по гейту, автор хочет увидеть кадр,
+   * в котором зритель получит вопрос, — а не тот, где головка застряла.
+   *
+   * Секунды берутся из уже посчитанного списка меток, а не разрешаются
+   * заново: два способа разрешить один TimeRef разошлись бы, и головка
+   * встала бы не на ту метку, по которой нажали.
+   */
+  const marksRef = useRef<readonly Mark[]>([]);
   const handleSelectMark = useCallback((kind: MarkKind, id: string) => {
     setSelectedMark({ kind, id });
     dispatch({ type: 'select', id: undefined });
-  }, []);
+    const mark = marksRef.current.find((candidate) => candidate.kind === kind && candidate.id === id);
+    if (mark) transport.seek(mark.seconds);
+  }, [transport]);
 
   const handleRemoveMark = useCallback(() => {
     if (!selectedMark) return;
@@ -539,6 +556,11 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     });
     return [...fromGates, ...fromSlides];
   }, [segment]);
+
+  // Через ref, а не через зависимость handleSelectMark: метки пересчитываются
+  // на каждую правку сегмента, а обработчику нужен только их СПИСОК в момент
+  // нажатия. В зависимостях он пересоздавал бы колбэк на каждое движение мыши.
+  marksRef.current = marks;
 
   const handleMoveMark = useCallback(
     (kind: MarkKind, id: string, seconds: number) => {
