@@ -1,0 +1,50 @@
+/**
+ * Подтверждение смены озвучки сегмента — чистая логика, без React и DOM.
+ *
+ * Новый файл обесценивает старые `audio.words`, а вместе с ними — каждую
+ * метку (слайд или гейт), чья ссылка `TimeRef` привязана к слову, а не
+ * к секунде (инвариант №10). Молча это делать нельзя: автор обязан узнать
+ * масштаб побочного эффекта ДО того, как согласится, — тот же класс
+ * сообщения, что и `panels/removalMessage.ts` при каскадном удалении.
+ *
+ * Сама перепривязка (перевод меток в `{ kind: 'seconds' }` и очистка
+ * `audio.words`) — забота `state/project.ts` (`replaceSegmentAudio`):
+ * там же лежит `retargetMark`, через который она обязана идти. Этот модуль
+ * только считает и формулирует.
+ */
+import type { Gate, Slide } from '@player/core';
+
+import { plural, type PluralForms } from '../plural.js';
+
+const MARKS: PluralForms = { one: 'метка', few: 'метки', many: 'меток' };
+
+/** Минимум, нужный отсюда от сегмента: список слайдов и гейтов с их `at`. */
+export interface MarkedSegment {
+  readonly slides: readonly Pick<Slide, 'at'>[];
+  readonly gates: readonly Pick<Gate, 'at'>[];
+}
+
+/** Сколько меток (слайды + гейты вместе) сейчас привязано к слову, а не к секунде. */
+export function wordMarkCount(segment: MarkedSegment): number {
+  const slideCount = segment.slides.filter((slide) => slide.at.kind === 'word').length;
+  const gateCount = segment.gates.filter((gate) => gate.at.kind === 'word').length;
+  return slideCount + gateCount;
+}
+
+/**
+ * Текст подтверждения перед заменой озвучки.
+ *
+ * Формулировка не скрывает исход: связь со словом теряется у ВСЕХ меток
+ * этого сегмента разом, но момент на дорожке, где метка стоит сейчас,
+ * не сдвигается — она просто перестаёт «ехать» вместе с текстом.
+ */
+export function replaceAudioConfirmMessage(markCount: number): string {
+  if (markCount === 0) {
+    return 'Меток, привязанных к слову, в этой части нет — заменить озвучку можно без потерь для расстановки.';
+  }
+  return (
+    `${plural(markCount, MARKS)}, привязанных к слову, потеряют эту связь: `
+    + 'старая расшифровка станет недействительна. Момент на дорожке, где стоит '
+    + 'метка, останется прежним — сдвига не будет.'
+  );
+}

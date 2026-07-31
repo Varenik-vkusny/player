@@ -15,6 +15,7 @@
 import { findSegment as findSegment } from '@player/core';
 import type { Element, ElementState, Gate, Project, Slide, Word } from '@player/core';
 
+import type { AudioSource } from './assets.js';
 import { applyElement, applyFit, type Fit, type StageSize } from './render.js';
 import { SlideEngine } from './slides.js';
 
@@ -27,8 +28,15 @@ import { SlideEngine } from './slides.js';
  * (v3) поменяли эту функцию, а не всё, что стоит выше.
  */
 export interface Segment {
-  /** Путь к озвучке этого сегмента. */
-  readonly src: string;
+  /**
+   * Откуда берётся озвучка этого сегмента: файл на сервере или файл,
+   * загруженный автором (схема v6).
+   *
+   * Размеченное объединение, а не строка. Выше по коду никто не разбирает
+   * адрес и не знает про IndexedDB: превращение источника в адрес происходит
+   * ровно в одном месте — `AudioClocks.clockFor`.
+   */
+  readonly source: AudioSource;
   /**
    * С какой секунды файла звучит этот сегмент (схема v4).
    *
@@ -57,8 +65,14 @@ export function segmentOf(project: Project, segmentId: string): Segment {
   // Поиск сегмента берётся из ядра, а не повторяется здесь: два описания одного
   // действия расходятся тихо, и первым разойдётся текст ошибки (ADR-004).
   const segment = findSegment(project, segmentId);
+  const { src, fileId } = segment.audio;
+  // Схема гарантирует ровно один источник (`.refine` над audio), поэтому
+  // ветвление здесь исчерпывающее, а не «на всякий случай».
+  const source: AudioSource = src !== undefined
+    ? { kind: 'url', url: src }
+    : { kind: 'file', fileId: fileId as string };
   return {
-    src: segment.audio.src,
+    source,
     offset: segment.audio.offset,
     words: segment.audio.words,
     duration: segment.audio.duration,

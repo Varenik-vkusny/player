@@ -46,7 +46,7 @@ const box = (x: number) => ({
  */
 function project(): Project {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080 },
     entry: 'whole',
     segments: [{

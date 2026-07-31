@@ -70,7 +70,7 @@ function rule(id: string, when: Condition, goto: string): ExitRule {
 
 function project(segments: readonly Segment[], entry = 'seg-1'): Project {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry,
     segments: [...segments],

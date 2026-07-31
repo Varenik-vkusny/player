@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { loadProject } from '../src/load.js';
 import { MIGRATIONS, migrateToCurrent, SchemaVersionError } from '../src/migrations.js';
-import { SCHEMA_VERSION } from '../src/schema.js';
+import { ProjectSchema, SCHEMA_VERSION } from '../src/schema.js';
 import { resolveTimeRef } from '../src/time.js';
 
 // fileURLToPath, а не pathname.slice(1): на Linux путь начинается со слэша,
@@ -331,5 +331,84 @@ describe('v3 → v4: окно дорожки и право не иметь ве�
     const project = loadProject(v3());
     expect(project.schemaVersion).toBe(SCHEMA_VERSION);
     expect(project.segments[0]!.audio.offset).toBe(0);
+  });
+});
+
+/**
+ * v5 → v6. У дорожки появился второй источник: файл, загруженный автором
+ * (`audio.fileId`), и `src` перестал быть обязательным. Миграция сама по себе
+ * тривиальна (только бампает версию), поэтому здесь важнее не «мигрировало»,
+ * а «схема после этого действительно требует РОВНО одного источника» —
+ * иначе `.refine()` мог бы не сработать и версия 6 приняла бы то, что не должна.
+ */
+describe('v5 → v6: fileId — второй источник дорожки', () => {
+  const v5 = () => ({
+    schemaVersion: 5,
+    meta: { title: 'Проект версии 5', stageWidth: 1920, stageHeight: 1080 },
+    entry: 'a',
+    segments: [{
+      id: 'a',
+      title: 'Часть',
+      audio: { src: '/a.mp3', offset: 0, duration: 10, words: [] },
+      elements: [],
+      slides: [{ id: 's1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+      gates: [],
+      exit: { rules: [], default: null },
+    }],
+  });
+
+  it('версия поднимается до 6, а src сохраняется — данные не теряются', () => {
+    const migrated: any = MIGRATIONS[5]!(v5());
+    expect(migrated.schemaVersion).toBe(6);
+    expect(migrated.segments[0].audio.src).toBe('/a.mp3');
+  });
+
+  it('проект версии 5 доезжает до текущей версии целиком через migrateToCurrent', () => {
+    const project = loadProject(v5());
+    expect(project.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(project.segments[0]!.audio.src).toBe('/a.mp3');
+    expect(project.segments[0]!.audio.fileId).toBeUndefined();
+  });
+
+  it('миграция чистая: исходный объект не тронут', () => {
+    const input = v5();
+    const before = JSON.stringify(input);
+    MIGRATIONS[5]!(input);
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it('не падает своим TypeError на битом входе — доводит его до Zod', () => {
+    expect(() => MIGRATIONS[5]!({ schemaVersion: 5 })).not.toThrow();
+    expect(() => MIGRATIONS[5]!({ schemaVersion: 5, segments: 'не массив' })).not.toThrow();
+  });
+
+  it('фикстура uploaded-audio.json (адресация через fileId) валидна', () => {
+    const project = raw('uploaded-audio.json');
+    expect(project.schemaVersion).toBe(6);
+    expect(() => loadProject(project)).not.toThrow();
+    const loaded = loadProject(project);
+    expect(loaded.segments[0]!.audio.fileId).toBe('aud-fixture-demo');
+    expect(loaded.segments[0]!.audio.src).toBeUndefined();
+    // Новое значение перечисления `source` (ASR) действительно лежит
+    // в фикстуре, а не только упоминается в тесте.
+    expect(loaded.segments[0]!.audio.words.some((w) => w.source === 'asr')).toBe(true);
+  });
+
+  it('оба источника разом — невалидный проект: ни src, ни fileId не выигрывают молча', () => {
+    const project: any = v5();
+    project.schemaVersion = 6;
+    project.segments[0].audio.fileId = 'aud-something';
+    // src уже есть в v5() — теперь их два.
+    const result = ProjectSchema.safeParse(project);
+    expect(result.success, 'проект с двумя источниками прошёл валидацию, хотя не должен был').toBe(false);
+  });
+
+  it('ни одного источника — невалидный проект: дорожке нечем звучать', () => {
+    const project: any = v5();
+    project.schemaVersion = 6;
+    delete project.segments[0].audio.src;
+    // ни src, ни fileId не заданы.
+    const result = ProjectSchema.safeParse(project);
+    expect(result.success, 'проект без источника дорожки прошёл валидацию, хотя не должен был').toBe(false);
   });
 });

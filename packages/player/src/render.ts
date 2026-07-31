@@ -39,6 +39,20 @@ export type SlideStates = Readonly<Record<string, ElementState | undefined>>;
  * Масштабирование через transform, а не zoom: спецификация CSS Transforms
  * прямо говорит, что transform не влияет на поток содержимого, поэтому
  * раскладка считается один раз и переносы строк не могут разойтись.
+ *
+ * **Отступы округляются до целого пикселя, и это не косметика.** Деление
+ * пополам даёт половину пикселя всякий раз, когда разность нечётна. Цена
+ * половины пикселя тем выше, чем мельче масштаб: перевод экранной координаты
+ * в сценическую делит на масштаб, и при 0.208 те же 0.5 px экрана становятся
+ * 2.4 единицы сцены.
+ *
+ * Найдено прогоном в Сессии 13: панель озвучки изменила высоту контейнера
+ * с 535 на 490, отступ стал 132.5 вместо 155, и e2e на изменение размера
+ * ручкой разошёлся ровно на 2.4. Дефект существовал всё время — просто
+ * ни одна раскладка до сих пор не попадала на нечётную разность.
+ *
+ * Побочная польза: сцена перестаёт стоять на дробном пикселе, то есть
+ * текст на ней больше не мылится.
  */
 export function fitStage(hostWidth: number, hostHeight: number, stage: StageSize): Fit {
   if (!(hostWidth > 0) || !(hostHeight > 0)) {
@@ -47,8 +61,8 @@ export function fitStage(hostWidth: number, hostHeight: number, stage: StageSize
   const scale = Math.min(hostWidth / stage.width, hostHeight / stage.height);
   return {
     scale,
-    offsetX: (hostWidth - stage.width * scale) / 2,
-    offsetY: (hostHeight - stage.height * scale) / 2,
+    offsetX: Math.round((hostWidth - stage.width * scale) / 2),
+    offsetY: Math.round((hostHeight - stage.height * scale) / 2),
   };
 }
 

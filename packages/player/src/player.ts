@@ -322,7 +322,7 @@ export class Player {
     this.#resizeObserver = new ResizeObserver(() => this.#fit());
     this.#resizeObserver.observe(this.#host);
 
-    this.#clock = await this.#clocks.clockFor(this.#segment.src);
+    this.#clock = await this.#clocks.clockFor(this.#segment.source);
 
     this.#mountSegment();
     this.#setState('ready');
@@ -580,9 +580,9 @@ export class Player {
     if (remaining > PRELOAD_AHEAD_S) return;
 
     const target = segmentOf(this.#project, next);
-    const src = target.src;
+    const source = target.source;
     if (remaining > SCHEDULE_AHEAD_S) {
-      this.#clocks.warm(src);
+      this.#clocks.warm(source);
       return;
     }
 
@@ -598,7 +598,7 @@ export class Player {
     // Часы просим ПОСЛЕДНИМ шагом, когда всё остальное уже сошлось: каждый
     // запрос строит живой узел усиления, и спрашивать их кадр за кадром
     // значило бы копить их в аудиографе десятками.
-    const pendingClock = this.#clocks.clockIfReady(src);
+    const pendingClock = this.#clocks.clockIfReady(source);
     if (!pendingClock) return;
 
     // С начала ОКНА следующего сегмента, а не с начала файла: если он делит
@@ -662,7 +662,7 @@ export class Player {
     this.#nodeId = nodeId;
     this.#segment = segmentOf(this.#project, nodeId);
     this.#partsPassed += 1;
-    this.#clock = await this.#clocks.clockFor(this.#segment.src);
+    this.#clock = await this.#clocks.clockFor(this.#segment.source);
 
     // Часы усыплены остановкой на гейте (clock.ts). Забыть разбудить —
     // получить ТИШИНУ, а не ошибку: источник запустится в остановленное
@@ -724,7 +724,7 @@ export class Player {
     for (const target of preloadTargetsOfExit(segment)) {
       // Повторный прогрев одного и того же пути источник часов отсекает
       // сам: знание о том, что уже готово, принадлежит ему, а не плееру.
-      this.#clocks.warm(segmentOf(this.#project, target).src);
+      this.#clocks.warm(segmentOf(this.#project, target).source);
     }
   }
 

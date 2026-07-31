@@ -8,6 +8,8 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { releaseAudioUrl, resolveAudioUrl, type AudioSource } from '@player/player';
+
 import { crossedStop } from './marks.js';
 import { computePeaks, type Peak } from './peaks.js';
 import { Transport, type TransportState } from './transport.js';
@@ -45,11 +47,13 @@ export interface TransportApi {
  *   времена гейтов текущего узла. Пустой список значит «играть насквозь».
  */
 export function useTransport(
-  src: string,
+  source: AudioSource,
   declaredDuration: number,
   stopsAt: readonly number[] = [],
   offsetSeconds = 0,
 ): TransportApi {
+  const sourceKey = source.kind === 'url' ? `url:${source.url}` : `file:${source.fileId}`;
+
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [state, setState] = useState<TransportState>('idle');
   const [peaks, setPeaks] = useState<readonly Peak[]>([]);
@@ -112,7 +116,14 @@ export function useTransport(
     previousRef.current = 0;
 
     let cancelled = false;
-    void transport.load(src, { offset: offsetSeconds, duration: declaredDuration }).then((buffer) => {
+    // Источник превращается в адрес ровно здесь и сразу отпускается: адрес
+    // загруженного файла держит в памяти байты целиком, а после декодирования
+    // нужен уже только буфер.
+    void resolveAudioUrl(source)
+      .then((url) => transport
+        .load(url, { offset: offsetSeconds, duration: declaredDuration })
+        .finally(() => { releaseAudioUrl(source, url); }))
+      .then((buffer) => {
       // Компонент могли снять, пока декодировался звук. Считать пики
       // и трогать состояние после этого незачем.
       if (cancelled || !buffer) return;
@@ -152,7 +163,11 @@ export function useTransport(
     // segmentOf на том же переключении части. Две части могут делить ОДИН
     // файл (схема v4), и тогда `src` не меняется, а окно меняется — без
     // смещения в зависимостях дорожка осталась бы показывать прежний участок.
-  }, [src, declaredDuration, offsetSeconds]);
+    //
+    // В зависимостях стоит КЛЮЧ источника, а не сам объект: `segmentOf`
+    // собирает `source` заново на каждый вызов, и объект в deps перезагружал
+    // бы звук на каждом рендере редактора.
+  }, [sourceKey, declaredDuration, offsetSeconds]);
 
   return useMemo(
     (): TransportApi => ({

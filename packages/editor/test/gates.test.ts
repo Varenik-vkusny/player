@@ -89,7 +89,7 @@ function element(id: string): Element {
 /** Минимальный проект с одним гейтом — ровно то, что нужно `loadProject`, не больше. */
 function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project {
   return {
-    schemaVersion: 5,
+    schemaVersion: 6,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [

@@ -422,6 +422,64 @@ export const EDITOR_STYLES = `
   color: #7d8fa5;
 }
 
+/* Колонка «своя озвучка + дорожка» — единственный ребёнок третьей строки
+   грида .ed-root (auto 1fr auto). Без обёртки AudioSourcePanel стал бы
+   четвёртым прямым ребёнком .ed-root, а строк под него в grid-template-rows
+   нет. min-height: 0 — тот же приём, что и у .ed-main ниже: без него флекс/
+   грид-ребёнок не сжимается меньше своего содержимого и раздвигает окно. */
+.ed-track-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Своя озвучка сегмента: загрузка файла автора и расшифровка. Строкой над
+   дорожкой — то же место, где автор уже ищет свойства звука. */
+.ed-audio-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #0b0f14;
+  border-bottom: 1px solid #1c242f;
+  min-width: 0;
+}
+
+.ed-audio-current {
+  color: #7d8fa5;
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+
+/* Спрятан визуально, но остаётся в DOM и доступен экранному диктору —
+   выбор файла всё равно идёт нативным диалогом ОС по клику на кнопку. */
+.ed-audio-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+  padding: 0;
+  margin: -1px;
+}
+
+/* Подтверждение замены озвучки — занимает всю ширину строки под кнопками,
+   а не втискивается между ними: текст длинный (число меток + объяснение). */
+.ed-audio-confirm {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 100%;
+}
+
 /* Дорожка. */
 .ed-track {
   display: grid;

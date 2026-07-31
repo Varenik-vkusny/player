@@ -25,7 +25,7 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Condition, Element, ElementState, Gate, Project, Slide, TimeRef } from '@player/core';
+import type { Condition, Element, ElementState, Gate, Project, Slide, TimeRef, Word } from '@player/core';
 import { findSegment } from '@player/core';
 import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
@@ -51,8 +51,10 @@ import { freeId, segmentSlide, type MarkKind } from './state/project.js';
 import { slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer } from './state/save.js';
+import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { WatchStage } from './stage/WatchStage.js';
+import { AudioSourcePanel } from './track/AudioSourcePanel.js';
 import { markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
 import { TrackView } from './track/TrackView.js';
@@ -129,7 +131,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [segment],
   );
 
-  const transport = useTransport(segment.src, segment.duration, gateSeconds, segment.offset);
+  const transport = useTransport(segment.source, segment.duration, gateSeconds, segment.offset);
 
   const selected =
     state.selectedId === undefined
@@ -587,6 +589,26 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     setSelectedMark({ kind: 'gate', id: gate.id });
   }, [currentSegment.gates, segment.words, transport.positionSeconds]);
 
+  /**
+   * Сколько меток сейчас привязано к слову — для текста подтверждения
+   * замены озвучки (AudioSourcePanel). Считается от ЖИВОГО сегмента
+   * (currentSegment, а не segment-предпросмотр — оба несут одни и те же
+   * `at`, но currentSegment уже под рукой), поэтому число не отстаёт
+   * от последней правки автора между открытием диалога и подтверждением.
+   */
+  const audioWordMarkCount = useMemo(() => wordMarkCount(currentSegment), [currentSegment]);
+
+  const handleReplaceAudio = useCallback(
+    (fileId: string, durationSeconds: number) => {
+      dispatch({ type: 'replaceSegmentAudio', fileId, duration: durationSeconds });
+    },
+    [],
+  );
+
+  const handleWordsTranscribed = useCallback((words: readonly Word[]) => {
+    dispatch({ type: 'setSegmentWords', words });
+  }, []);
+
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
   // на каждый рендер и пересобирал сцену по десять раз в секунду.
   const handleReady = useCallback(
@@ -860,16 +882,29 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
         )}
       </div>
 
-      <TrackView
-        transport={transport}
-        words={segment.words}
-        marks={marks}
-        selectedMark={selectedMark}
-        onSelectMark={handleSelectMark}
-        onMoveMark={handleMoveMark}
-        onMoveMarkEnd={handleCommitHistory}
-        onAddGate={handleAddGate}
-      />
+      {/* Обёрнуты вместе: .ed-root — грид с тремя строками (auto 1fr auto),
+          и третья строка обязана остаться ОДНИМ ребёнком, иначе разметка
+          требует четвёртой строки. AudioSourcePanel стоит над дорожкой —
+          то же место, где автор уже ищет свойства звука (играть/пауза,
+          часы, кнопка остановки живут в её собственной шапке чуть ниже). */}
+      <div className="ed-track-column">
+        <AudioSourcePanel
+          source={segment.source}
+          wordMarkCount={audioWordMarkCount}
+          onReplace={handleReplaceAudio}
+          onWordsTranscribed={handleWordsTranscribed}
+        />
+        <TrackView
+          transport={transport}
+          words={segment.words}
+          marks={marks}
+          selectedMark={selectedMark}
+          onSelectMark={handleSelectMark}
+          onMoveMark={handleMoveMark}
+          onMoveMarkEnd={handleCommitHistory}
+          onAddGate={handleAddGate}
+        />
+      </div>
     </div>
   );
 }

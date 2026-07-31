@@ -10,6 +10,14 @@
 export { loadProject, ProjectLoadError, type Project } from '@player/core';
 
 export {
+  getAudio,
+  putAudio,
+  releaseAudioUrl,
+  resolveAudioUrl,
+  type AudioSource,
+  type StoredAudio,
+} from './assets.js';
+export {
   AudioClock,
   AudioClocks,
   loadTrack,
