@@ -17,7 +17,10 @@
  * своя длина и свой темп, и привязка ко времени здесь была бы ложным другом.
  */
 import { normalizeWord } from './time.js';
-import type { Word } from './schema.js';
+
+// `Word` из `./schema.js` здесь больше не нужен: `alignWords` и `splitIntoWords`
+// требуют только `.text`. Слова текста озвучки, нарезанные `splitIntoWords`,
+// времён не имеют и иметь не могут — сузили тип намеренно, а не по забывчивости.
 
 /**
  * Одна операция сопоставления.
@@ -40,7 +43,7 @@ export type AlignOp =
  * Deepgram возвращает «ждет» там, где синтез произнёс «ждёт». Сравнение
  * сырых строк потеряло бы метку на ровном месте.
  */
-function sameWord(a: Word, b: Word): boolean {
+function sameWord(a: { text: string }, b: { text: string }): boolean {
   return normalizeWord(a.text) === normalizeWord(b.text);
 }
 
@@ -56,7 +59,7 @@ function sameWord(a: Word, b: Word): boolean {
  * поэтому ошибиться в скупую сторону дешевле, чем в щедрую. Известная цена
  * порога — однокоренные разные слова («вода»/«водить») сойдут за одно.
  */
-function similarWord(a: Word, b: Word): boolean {
+function similarWord(a: { text: string }, b: { text: string }): boolean {
   const x = normalizeWord(a.text);
   const y = normalizeWord(b.text);
   if (x === y) return true;
@@ -76,7 +79,10 @@ function similarWord(a: Word, b: Word): boolean {
  * Операции возвращаются слева направо в порядке нового транскрипта;
  * `removed` стоит на том месте, где слово исчезло.
  */
-export function alignWords(before: readonly Word[], after: readonly Word[]): AlignOp[] {
+export function alignWords(
+  before: readonly { text: string }[],
+  after: readonly { text: string }[],
+): AlignOp[] {
   const n = before.length;
   const m = after.length;
 
@@ -128,8 +134,8 @@ export function alignWords(before: readonly Word[], after: readonly Word[]): Ali
  */
 function collapseReplacements(
   ops: readonly AlignOp[],
-  before: readonly Word[],
-  after: readonly Word[],
+  before: readonly { text: string }[],
+  after: readonly { text: string }[],
 ): AlignOp[] {
   const result: AlignOp[] = [];
 
@@ -156,4 +162,20 @@ function collapseReplacements(
   }
 
   return result;
+}
+
+/**
+ * Единственное место, где текст озвучки режется на слова.
+ *
+ * Единственное — не для красоты. `CLAUDE.md`: разные инструменты по-разному
+ * режут текст, и сравнение по индексам даёт правдоподобные числа с видом
+ * настоящих. Суфлёр, выравнивание и подсветка обязаны смотреть на ОДНО
+ * разбиение, иначе они разойдутся между собой, а не с реальностью.
+ *
+ * Знаки препинания остаются приклеенными к слову: снимает их `normalizeWord`
+ * при сравнении, и делать это дважды разными способами значило бы завести
+ * второе правило нормализации.
+ */
+export function splitIntoWords(text: string): { text: string }[] {
+  return text.split(/\s+/u).filter((word) => word.length > 0).map((word) => ({ text: word }));
 }
