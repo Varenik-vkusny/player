@@ -57,6 +57,7 @@ import { WatchStage } from './stage/WatchStage.js';
 import { AudioSourcePanel } from './track/AudioSourcePanel.js';
 import { markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
+import { SlideStrip } from './track/SlideStrip.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
 
@@ -893,6 +894,15 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           wordMarkCount={audioWordMarkCount}
           onReplace={handleReplaceAudio}
           onWordsTranscribed={handleWordsTranscribed}
+        />
+        <SlideStrip
+          slides={segment.slides}
+          words={segment.words}
+          elements={segment.elements}
+          currentSlideId={state.currentSlideId}
+          stageWidth={segment.stage.width}
+          stageHeight={segment.stage.height}
+          onSelectSlide={handleSelectSlide}
         />
         <TrackView
           transport={transport}

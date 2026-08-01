@@ -422,15 +422,26 @@ export const EDITOR_STYLES = `
   color: #7d8fa5;
 }
 
-/* Колонка «своя озвучка + дорожка» — единственный ребёнок третьей строки
-   грида .ed-root (auto 1fr auto). Без обёртки AudioSourcePanel стал бы
-   четвёртым прямым ребёнком .ed-root, а строк под него в grid-template-rows
-   нет. min-height: 0 — тот же приём, что и у .ed-main ниже: без него флекс/
-   грид-ребёнок не сжимается меньше своего содержимого и раздвигает окно. */
+/* Колонка «своя озвучка + лента слайдов + дорожка» — единственный ребёнок
+   третьей строки грида .ed-root (auto 1fr auto). Без обёртки AudioSourcePanel
+   стал бы четвёртым прямым ребёнком .ed-root, а строк под него
+   в grid-template-rows нет.
+
+   min-height: 0 — приём против того, что грид-ребёнок не сжимается меньше
+   своего содержимого.
+
+   min-width: 0 — ТОТ ЖЕ приём по горизонтали, и он не косметика. Лента
+   слайдов — ряд из N карточек по 170 px; без этой строки пятнадцать слайдов
+   давали содержимому 2550 px, колонка растягивалась под них внутри окна
+   на 1879, и ширину наследовали ВОЛНА И ПОЛОСА МЕТОК. Лента при этом
+   не прокручивалась вовсе (scrollWidth совпадал с clientWidth), а работа
+   с метками ломалась: четыре e2e падали, потому что полоса уезжала
+   за экран. Замерено 01.08.2026. */
 .ed-track-column {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 }
 
 /* Своя озвучка сегмента: загрузка файла автора и расшифровка. Строкой над
@@ -478,6 +489,134 @@ export const EDITOR_STYLES = `
   flex-wrap: wrap;
   gap: 8px;
   flex: 1 1 100%;
+}
+
+/* Лента слайдов (§14.11, product.md §2д [Р]). Стоит МЕЖДУ своей озвучкой
+   и дорожкой — тем же ребёнком .ed-track-column, а не отдельной строкой
+   грида .ed-root (см. комментарий у .ed-track-column выше). */
+.ed-slide-strip-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 16px 4px;
+  background: #0b0f14;
+  border-bottom: 1px solid #1c242f;
+  min-width: 0;
+}
+
+.ed-slide-strip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ed-slide-strip-counter {
+  font-variant-numeric: tabular-nums;
+  color: #e6edf5;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Ровная лента: все карточки одного размера, порядок — позиция в ряду,
+   а не секунда (product.md §2д [Р]). Прокрутка своя, дорожку не трогает. */
+.ed-slide-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 4px 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-width: 0;
+  scrollbar-width: thin;
+}
+
+/* Карточка. Размер ПОСТОЯННЫЙ у всех: фокус ниже двигает её transform'ом,
+   который не участвует в раскладке, — иначе ряд пересобирался бы при
+   каждом выборе и соседи «прыгали» бы (это и есть довод владельца против
+   варианта с лупой, planning.md §14.11). */
+.ed-slide-strip-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: 160px;
+  height: 90px;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  border: 1px solid #2c3a4d;
+  border-radius: 6px;
+  background: #11141a;
+  overflow: hidden;
+  cursor: pointer;
+  opacity: 0.78;
+  transform-origin: 50% 100%;
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.18s, opacity 0.18s, box-shadow 0.18s;
+}
+/* Наведение меняет только цвет и прозрачность — НЕ раскладку и НЕ transform:
+   лента не имеет права уползать из-под курсора (product.md §2д [Р]). */
+.ed-slide-strip-card:hover { opacity: 1; border-color: #4c8dff; }
+
+.ed-slide-strip-card-current {
+  opacity: 1;
+  border-color: #4c8dff;
+  transform: translateY(-9px) scale(1.1);
+  box-shadow: 0 0 0 1px #4c8dff88, 0 10px 22px #000b;
+  z-index: 4;
+}
+
+/* Сцена карточки — ScenePreview плеера, инвариант №5. Узел, которым владеет
+   ScenePreview, вставляется внутрь на JS и получает собственный размер
+   1920×1080 с transform-масштабом (см. render.ts, applyFit) — эта обёртка
+   обязана резать его оверфлоу, иначе несмасштабированная сцена распирала бы
+   карточку (тот же приём, что и у .ed-watch-host). */
+.ed-slide-strip-scene {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+}
+
+.ed-slide-strip-cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 6px;
+  background: #0b0f14e6;
+  color: #b6c2ce;
+  font-size: 10.5px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Полоска положения: третий из трёх ориентиров после дальнего прыжка
+   (счётчик, полоска, плавная прокрутка — product.md §2д [Р]). */
+.ed-slide-strip-posbar {
+  position: relative;
+  height: 4px;
+  margin: 2px 4px 0;
+  background: #161b22;
+  border-radius: 2px;
+}
+
+.ed-slide-strip-posthumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: #39414c;
+  border-radius: 2px;
+}
+
+.ed-slide-strip-postick {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 8px;
+  margin-left: -1px;
+  background: #4c8dff;
+  border-radius: 1px;
 }
 
 /* Дорожка. */
