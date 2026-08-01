@@ -11,9 +11,9 @@
       "id": "s-ask",
       "title": "Спрашивает и доигрывает до конца",
       "audio": {
-        "src": "/audio/ask.wav",
+        "src": "/audio/ask.mp3",
         "offset": 0,
-        "duration": 3,
+        "duration": 2.904,
         "words": []
       },
       "elements": [
@@ -81,7 +81,7 @@
     {
       "id": "s-right",
       "title": "Направо",
-      "audio": { "src": "/audio/branch-yes.wav", "offset": 0, "duration": 3, "words": [] },
+      "audio": { "src": "/audio/branch-yes.mp3", "offset": 0, "duration": 2.736, "words": [] },
       "elements": [{ "id": "r-bg", "type": "shape", "content": "" }],
       "slides": [
         {
@@ -103,7 +103,7 @@
     {
       "id": "s-left",
       "title": "Налево",
-      "audio": { "src": "/audio/branch-no.wav", "offset": 0, "duration": 3, "words": [] },
+      "audio": { "src": "/audio/branch-no.mp3", "offset": 0, "duration": 2.4, "words": [] },
       "elements": [{ "id": "l-bg", "type": "shape", "content": "" }],
       "slides": [
         {

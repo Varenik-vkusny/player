@@ -11,8 +11,8 @@
       "id": "s-explain",
       "title": "Гейт с разбором, не покидая сегмент",
       "audio": {
-        "src": "/audio/branch-yes.wav",
-        "duration": 3,
+        "src": "/audio/branch-yes.mp3",
+        "duration": 2.736,
         "words": []
       },
       "elements": [

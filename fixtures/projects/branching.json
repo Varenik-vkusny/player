@@ -748,8 +748,8 @@
       "id": "n-yes",
       "title": "Концовка: да",
       "audio": {
-        "src": "/audio/branch-yes.wav",
-        "duration": 3,
+        "src": "/audio/branch-yes.mp3",
+        "duration": 2.736,
         "words": []
       },
       "scene": {
@@ -796,8 +796,8 @@
       "id": "n-no",
       "title": "Концовка: нет",
       "audio": {
-        "src": "/audio/branch-no.wav",
-        "duration": 3,
+        "src": "/audio/branch-no.mp3",
+        "duration": 2.4,
         "words": []
       },
       "scene": {

@@ -13,15 +13,16 @@
 //
 // n-start ссылается на /audio/demo.mp3 — у него настоящий транскрипт, и гейт
 // привязан к слову (инвариант №10). n-yes и n-no получают СВОИ короткие
-// дорожки (branch-yes.wav / branch-no.wav, генерируются этим же скриптом).
+// дорожки (branch-yes.mp3 / branch-no.mp3, синтезируются make-branch-speech.py).
 // Если бы все три узла делили один src, на границе узлов не менялся бы
 // источник звука: тот же файл — попадание в кэш, тот же буфер, и переход
 // в плеере проверялся бы на случае, где ломаться нечему.
 //
-// Длительность узлов-концовок объявлена в схеме (3 с), а не выведена из
-// декодированного буфера: clock.ts берёт duration из AudioBuffer, поэтому
-// короткий wav обязателен — 48-секундный demo.mp3 на конце сделал бы e2e
-// завершения неприлично медленным.
+// Длительность узлов-концовок объявлена явно, а не выведена из декодированного
+// буфера. Числа — из живого декодера Chromium (01.08.2026), а не от синтезатора:
+// edge-tts сообщает конец последнего слова, а после него в файле ещё ~0.9 с
+// тишины. Дорожки по-прежнему заметно короче 48-секундного demo.mp3, чтобы e2e
+// завершения не стал неприлично медленным.
 //
 // Вариант ответа — сам элемент сцены (ADR-011, гибрид гейта): id элементов
 // opt-yes/opt-no совпадает с id вариантов гейта, поэтому e2e кликает по
@@ -34,7 +35,14 @@ import { readFile, writeFile } from 'node:fs/promises';
 const ROOT = new URL('../', import.meta.url);
 const WORDS = new URL('spikes/s5-words/audio/ru-RU-SvetlanaNeural.words.json', ROOT);
 const FIXTURE_OUT = new URL('fixtures/projects/branching.json', ROOT);
-const BRANCH_DURATION = 3;
+/**
+ * Длительности дорожек веток. Замерено в Chromium 01.08.2026
+ * (`AudioContext.decodeAudioData().duration`), а НЕ взято у синтезатора:
+ * edge-tts сообщает конец последнего слова, а в файле после него ещё
+ * около 0.87 с тишины.
+ */
+const YES_DURATION = 2.736;
+const NO_DURATION = 2.4;
 const BRANCH_SAMPLE_RATE = 44100;
 
 /**
@@ -43,8 +51,12 @@ const BRANCH_SAMPLE_RATE = 44100;
  * Амплитуда сведена к нулю линейной рампой на первых и последних 10 мс —
  * без неё обрыв синуса на границе файла даёт щелчок, и спайк стыка мерил бы
  * дефект фикстуры вместо дефекта перехода между узлами.
+ *
+ * БОЛЬШЕ НЕ ВЫЗЫВАЕТСЯ. Оставлена как след решения: на тоне ветка оказалась
+ * непроверяемой — Deepgram возвращал ноль слов, а ask и branch-no совпадали
+ * побайтово. Речь синтезирует scripts/make-branch-speech.py.
  */
-function makeToneWav(freqHz, seconds = BRANCH_DURATION, sampleRate = BRANCH_SAMPLE_RATE, amplitude = 0.2) {
+function makeToneWav(freqHz, seconds = 3, sampleRate = BRANCH_SAMPLE_RATE, amplitude = 0.2) {
   const numSamples = Math.round(seconds * sampleRate);
   const fadeSamples = Math.round(0.01 * sampleRate); // 10 мс
   const bytesPerSample = 2;
@@ -114,17 +126,16 @@ const find = (needle, from = 0) => {
 const startAudio = { src: '/audio/demo.mp3', duration: +(source.speechDuration + 0.5).toFixed(3), words };
 
 /**
- * Дорожка узла-концовки: своя, короткая, с пустым транскриптом (words: []).
- * Длительность объявлена явно (BRANCH_DURATION), а не выведена из декодированного
- * буфера — см. комментарий вверху файла.
+ * Дорожка узла-концовки: своя, с пустым транскриптом (words: []).
+ *
+ * Транскрипт пуст НАМЕРЕННО, хотя речь настоящая: ветка без расшифровки —
+ * законный случай (`product.md` §2в [Р]), и e2e это охраняет.
  */
-const branchAudio = (src) => ({ src, duration: BRANCH_DURATION, words: [] });
+const branchAudio = (src, duration) => ({ src, duration, words: [] });
 
 const AUDIO_DIR = new URL('apps/playground/public/audio/', ROOT);
-const YES_AUDIO_SRC = '/audio/branch-yes.wav';
-const NO_AUDIO_SRC = '/audio/branch-no.wav';
-const YES_TONE_HZ = 220;
-const NO_TONE_HZ = 330;
+const YES_AUDIO_SRC = '/audio/branch-yes.mp3';
+const NO_AUDIO_SRC = '/audio/branch-no.mp3';
 
 const text = (id, x, y, width, height, content, style, zIndex = 1) => ({
   id, type: 'text', x, y, width, height, rotation: 0, zIndex, style, content,
@@ -212,14 +223,14 @@ const project = {
     {
       id: 'n-yes',
       title: 'Концовка: да',
-      audio: branchAudio(YES_AUDIO_SRC),
+      audio: branchAudio(YES_AUDIO_SRC, YES_DURATION),
       scene: endingScene('result-yes', 'Ты выбрал да'),
       edges: [],
     },
     {
       id: 'n-no',
       title: 'Концовка: нет',
-      audio: branchAudio(NO_AUDIO_SRC),
+      audio: branchAudio(NO_AUDIO_SRC, NO_DURATION),
       scene: endingScene('result-no', 'Ты выбрал нет'),
       edges: [],
     },
@@ -228,12 +239,10 @@ const project = {
 
 await writeFile(FIXTURE_OUT, `${JSON.stringify(project, null, 2)}\n`, 'utf8');
 
-const yesWav = makeToneWav(YES_TONE_HZ);
-const noWav = makeToneWav(NO_TONE_HZ);
-await writeFile(new URL('branch-yes.wav', AUDIO_DIR), yesWav);
-await writeFile(new URL('branch-no.wav', AUDIO_DIR), noWav);
+// Дорожки веток БОЛЬШЕ НЕ ПИШУТСЯ здесь. Раньше этот скрипт клал сюда
+// синусоиды, и повторный запуск затёр бы настоящую речь молча.
+// Речь синтезируется отдельно: python scripts/make-branch-speech.py
 
 console.log(`узлов: ${project.nodes.length}, слов: ${words.length}, длительность n-start: ${startAudio.duration} с`);
 console.log(`n-start: гейт «${words[iSmotrish].text}» (${words[iSmotrish].start} с), рёбер: ${project.nodes[0].edges.length}`);
-console.log(`branch-yes.wav: ${YES_TONE_HZ} Гц, ${yesWav.length} байт`);
-console.log(`branch-no.wav: ${NO_TONE_HZ} Гц, ${noWav.length} байт`);
+console.log(`ветки: ${YES_AUDIO_SRC} (${YES_DURATION} с), ${NO_AUDIO_SRC} (${NO_DURATION} с)`);
