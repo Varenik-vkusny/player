@@ -595,12 +595,39 @@ const migrateV5toV6: Migration = (input) => {
   };
 };
 
+interface ProjectV6 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+}
+
+/**
+ * v6 → v7: появился `Segment.speech` — дословный текст озвучки (ADR-022).
+ *
+ * Содержимого не меняет НИЧЕГО, и это не оплошность. Поле необязательное,
+ * а дописать его существующим проектам было бы нечем: текста, который автор
+ * не писал, не существует, а поставить туда расшифровку значило бы выдать
+ * распознанное за написанное — ровно ту подмену, против которой заведено
+ * различие этих двух полей.
+ */
+const migrateV6toV7: Migration = (input) => {
+  const v6 = input as ProjectV6;
+
+  return {
+    schemaVersion: 7,
+    meta: v6.meta,
+    entry: v6.entry,
+    segments: v6.segments,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
   3: migrateV3toV4,
   4: migrateV4toV5,
   5: migrateV5toV6,
+  6: migrateV6toV7,
 });
 
 export class SchemaVersionError extends Error {

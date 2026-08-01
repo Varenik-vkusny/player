@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { SCHEMA_VERSION } from '@player/core';
 import type { Element, ElementState, Gate, Project } from '@player/core';
 
 import { HISTORY_LIMIT } from '../src/state/history.js';
@@ -30,7 +31,7 @@ function elementState(overrides: Partial<ElementState> = {}): ElementState {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [

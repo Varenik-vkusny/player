@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProjectSchema } from '@player/core';
+import { ProjectSchema, SCHEMA_VERSION } from '@player/core';
 import type { Condition, ExitRule, Gate, Project, Segment } from '@player/core';
 
 import { editorReducer, initialState } from '../src/state/project.js';
@@ -70,7 +70,7 @@ function rule(id: string, when: Condition, goto: string): ExitRule {
 
 function project(segments: readonly Segment[], entry = 'seg-1'): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry,
     segments: [...segments],

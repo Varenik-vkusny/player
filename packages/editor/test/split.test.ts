@@ -14,7 +14,7 @@
  *   результат ПРОХОДИМ — разрезанный проект не просто валиден, а доводит
  *   зрителя по любой ветке. Валидность данных не равна достижимости поведения.
  */
-import { loadProject, resolveTimeRef, type Project, type Word } from '@player/core';
+import { loadProject, resolveTimeRef, SCHEMA_VERSION, type Project, type Word } from '@player/core';
 import { describe, expect, it } from 'vitest';
 
 import { splitAtGate } from '../src/state/project.js';
@@ -46,7 +46,7 @@ const box = (x: number) => ({
  */
 function project(): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080 },
     entry: 'whole',
     segments: [{

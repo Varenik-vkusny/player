@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadProject } from '@player/core';
+import { loadProject, SCHEMA_VERSION } from '@player/core';
 import type { Element, Gate, Project, Slide } from '@player/core';
 
 import {
@@ -89,7 +89,7 @@ function element(id: string): Element {
 /** Минимальный проект с одним гейтом — ровно то, что нужно `loadProject`, не больше. */
 function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [

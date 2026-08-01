@@ -87,6 +87,26 @@ describe('эталонные фикстуры валидны', () => {
   });
 });
 
+describe('текст озвучки сегмента', () => {
+  it('необязателен, но пустой строкой быть не может', () => {
+    const base = explanation();
+
+    expect(ProjectSchema.safeParse(base).success).toBe(true);
+
+    const withSpeech = {
+      ...base,
+      segments: [{ ...base.segments[0], speech: 'Часы это позиция в дорожке.' }],
+    };
+    expect(ProjectSchema.safeParse(withSpeech).success).toBe(true);
+
+    const empty = {
+      ...base,
+      segments: [{ ...base.segments[0], speech: '' }],
+    };
+    expect(problems(empty)).not.toBe('');
+  });
+});
+
 describe('гейт не может ветвить, а развилка не может стоять в середине', () => {
   it('у гейта нет поля для рёбер: лишний ключ отбрасывается, а не создаёт ветку', () => {
     const project = explanation();

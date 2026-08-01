@@ -26,7 +26,7 @@ const segment = (id: string, exit: Segment['exit']): Segment => ({
 });
 
 const project = (segments: Segment[]): Project => ({
-  schemaVersion: 6,
+  schemaVersion: SCHEMA_VERSION,
   meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
   entry: segments[0]!.id,
   segments,

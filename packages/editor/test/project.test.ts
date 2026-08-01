@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadProject } from '@player/core';
+import { loadProject, SCHEMA_VERSION } from '@player/core';
 import type { Element, ElementState, Gate, Project, Segment, Slide, Word } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
@@ -40,7 +40,7 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
@@ -443,7 +443,7 @@ describe('removeMark', () => {
 describe('редьюсер: переключение сегмента открывает его для правки', () => {
   function twoSegments(): Project {
     return {
-      schemaVersion: 6,
+      schemaVersion: SCHEMA_VERSION,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

@@ -3352,6 +3352,7 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 }), fo = z({
 	id: B,
 	title: I().default(""),
+	speech: I().min(1).optional(),
 	audio: z({
 		src: I().min(1).optional(),
 		fileId: I().min(1).optional(),
@@ -3369,7 +3370,7 @@ z({
 	segments: va(fo).min(1)
 });
 var po = z({
-	schemaVersion: ja(6),
+	schemaVersion: ja(7),
 	meta: z({
 		title: I(),
 		stageWidth: R().int().positive().default(1920),
@@ -3796,6 +3797,15 @@ var So = Object.freeze({
 			entry: t.entry,
 			segments: t.segments
 		};
+	},
+	6: (e) => {
+		let t = e;
+		return {
+			schemaVersion: 7,
+			meta: t.meta,
+			entry: t.entry,
+			segments: t.segments
+		};
 	}
 }), wo = class extends Error {
 	found;
@@ -3811,9 +3821,9 @@ function To(e) {
 }
 function Eo(e) {
 	let t = To(e);
-	if (t > 6) throw new wo(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 6. Обновите приложение.`, t);
+	if (t > 7) throw new wo(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 7. Обновите приложение.`, t);
 	let n = e;
-	for (; t < 6;) {
+	for (; t < 7;) {
 		let e = Co[t];
 		if (!e) throw new wo(`Нет миграции с версии ${t} на ${t + 1}. Каждая версия схемы обязана иметь миграцию (инвариант №7).`, t);
 		n = e(n), t = To(n);
