@@ -1,0 +1,21 @@
+версия после миграции: 6
+сегментов: 1
+
+сегмент node-1: слайдов 15
+   0-> 1  at={"kind":"word","wordIndex":0,"offset":0,"anchor":{"text":"представь","before":"","after":"что"}}  <<< ИДЕНТИЧНЫ
+   1-> 2  at={"kind":"seconds","t":0.7999999999999999}
+   2-> 3  at={"kind":"word","wordIndex":10,"offset":0,"anchor":{"text":"останавливается","before":"оно","after":"не"}}  <<< ИДЕНТИЧНЫ
+   3-> 4  at={"kind":"seconds","t":4.112}
+   4-> 5  at={"kind":"seconds","t":4.312}
+   5-> 6  at={"kind":"word","wordIndex":20,"offset":0,"anchor":{"text":"здесь","before":"поставил","after":"вопрос"}}  <<< ИДЕНТИЧНЫ
+   6-> 7  at={"kind":"seconds","t":9.2}
+   7-> 8  at={"kind":"word","wordIndex":32,"offset":0,"anchor":{"text":"главная","before":"есть","after":"идея"}}  <<< ИДЕНТИЧНЫ
+   8-> 9  at={"kind":"seconds","t":15.137}
+   9->10  at={"kind":"word","wordIndex":58,"offset":0,"anchor":{"text":"звук","before":"сверху","after":"замирает"}}  <<< ИДЕНТИЧНЫ
+  10->11  at={"kind":"seconds","t":28.075}
+  11->12  at={"kind":"seconds","t":28.575}
+  12->13  at={"kind":"word","wordIndex":83,"offset":0,"anchor":{"text":"никакой","before":"прервалось","after":"перемотки"}}  <<< ИДЕНТИЧНЫ
+  13->14  at={"kind":"seconds","t":40.563}
+итого идентичных переходов: 6 из 14
+первый слайд at: {"kind":"seconds","t":0}
+ключи слайда: id,at,transition,states
