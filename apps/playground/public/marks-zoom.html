@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>§14.11 — дорожка с приближением</title>
+<style>
+  :root{color-scheme:dark}
+  body{margin:0;padding:24px 28px 60px;background:#0e1117;color:#e6edf3;
+    font:14px/1.5 system-ui,sans-serif}
+  h1{font-size:20px;margin:0 0 6px}
+  .sub{color:#8b98a5;margin:0 0 18px;max-width:900px}
+  .bar{display:flex;gap:22px;align-items:center;margin-bottom:8px;padding:12px 16px;
+    background:#161b22;border:1px solid #262d36;border-radius:8px;position:sticky;top:0;z-index:60}
+  .bar label{color:#8b98a5;margin-right:7px}
+  input[type=range]{width:260px;vertical-align:middle}
+  select{background:#0e1117;color:#e6edf3;border:1px solid #30363d;border-radius:5px;
+    padding:4px 8px;font:inherit}
+  .num{font-variant-numeric:tabular-nums}
+  #stats{color:#8b98a5;font-size:13px}
+  .hint{color:#6b7785;font-size:12.5px;margin:10px 0 16px}
+
+  .viewport{overflow-x:auto;overflow-y:hidden;border:1px solid #262d36;
+    border-radius:8px;background:#0b0e13;position:relative}
+  .inner{position:relative}
+  .wave i{position:absolute;bottom:50%;width:2px;background:#2f6f9f;
+    transform:translateY(50%);border-radius:1px;opacity:.45}
+
+  .mark{position:absolute;margin-left:-9px;width:18px;height:18px;display:grid;
+    place-items:center;font-size:15px;color:#6ea8fe;background:none;border:0;
+    padding:0;cursor:pointer;z-index:20}
+  .mark:hover{color:#fff;transform:scale(1.25)}
+  .mark-gate{color:#e4572e}
+  .tail{position:absolute;height:3px;background:#6ea8fe;opacity:.4;border-radius:2px}
+  .stem{position:absolute;background:#6ea8fe;opacity:.5;width:1px}
+  .ruler{position:absolute;top:0;left:0;right:0;height:16px}
+  .ruler span{position:absolute;font-size:10px;color:#5d6b7a;transform:translateX(2px)}
+  .ruler b{position:absolute;width:1px;top:0;height:6px;background:#2a3340}
+
+  .card{position:absolute;border-radius:4px;border:1px solid #39414c;background:#11141a;
+    overflow:hidden;box-shadow:0 2px 10px #0008;z-index:15}
+  .card .scene{position:absolute;top:0;left:0;transform-origin:0 0}
+  .card .scene>div{position:absolute}
+  .card.dim .scene>div{filter:grayscale(1);opacity:.16}
+  .card.dim .scene>div.hot{filter:none;opacity:1;outline:2px solid #e4572e;outline-offset:1px}
+  .card .cap{position:absolute;left:0;right:0;bottom:0;padding:2px 5px;background:#0b0e13ee;
+    font-size:10px;color:#b6c2ce;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .sec{position:absolute;top:0;left:0;padding:1px 4px;font-size:10px;background:#0b0e13cc;
+    color:#7d8b99;border-bottom-right-radius:4px}
+  .nochange{position:absolute;inset:0;display:grid;place-items:center;background:#0b0e13cc;
+    color:#6b7785;font-size:10px}
+
+  /* подсказка по наведению в дальнем виде */
+  #tip{position:fixed;z-index:200;display:none;max-width:340px;padding:9px 11px;
+    background:#161b22;border:1px solid #39414c;border-radius:7px;
+    box-shadow:0 6px 24px #000a;pointer-events:none;font-size:12.5px}
+  #tip .t{color:#6ea8fe;font-variant-numeric:tabular-nums;font-size:11px}
+  #tip .n{color:#e6edf3;margin:3px 0 4px;font-weight:600}
+  #tip .p{color:#8b98a5;font-style:italic}
+  #tip .w{color:#e4572e}
+
+  table.honest{border-collapse:collapse;margin-top:22px;width:100%;max-width:1000px}
+  table.honest td{border-top:1px solid #232b35;padding:7px 10px 7px 0;vertical-align:top;font-size:13px}
+  table.honest td:first-child{color:#8b98a5;width:200px;white-space:nowrap}
+  .bad{color:#f0846c}.ok{color:#7ee2a8}
+  code{background:#1b222c;padding:1px 5px;border-radius:3px;font-size:12px}
+</style>
+</head>
+<body>
+
+<h1>§14.11, третий заход — дорожка получает приближение</h1>
+<p class="sub">
+  Все восемь прежних видов делили один и тот же бюджет пикселей и упирались
+  в него. Здесь место не выкраивается, а создаётся: тяните ползунок.
+  В дальнем виде — ромбы, наведите на любой. Чем ближе, тем больше меток
+  разворачивается в миниатюру сами.
+</p>
+
+<div class="bar">
+  <div><label for="z">Приближение</label>
+    <input type="range" id="z" min="1" max="40" step="0.5" value="1">
+    <span id="zl" class="num">×1</span></div>
+  <div><label for="set">Набор</label>
+    <select id="set">
+      <option value="demo">demo.json — 15 слайдов</option>
+      <option value="dense">плотный — 40 слайдов</option>
+    </select></div>
+  <div><label for="name">Имя в подсказке</label>
+    <select id="name">
+      <option value="phrase">фраза, которая звучит</option>
+      <option value="change">что слайд меняет</option>
+      <option value="both">и то, и другое</option>
+    </select></div>
+  <div id="stats" class="num"></div>
+</div>
+<div class="hint" id="hint"></div>
+
+<div class="viewport" id="vp"><div class="inner" id="inner"></div></div>
+<div id="tip"></div>
+
+<table class="honest" id="honest"></table>
+
+<script>
+const DATA = {"duration":48.6,"stageW":1920,"stageH":1080,"content":{"bg":"","title":"Объяснение, которое останавливается","accent":"","lead":"Звук замирает, картинка ждёт, и внимание возвращается к тому, что происходит на экране.","card":"","dot":"","footer":"Возобновление — с той же секунды. Перемотки не происходит."},"slides":[{"id":"node-1-slide-1","t":0,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"bg","how":"появляется"},{"id":"title","how":"появляется"},{"id":"accent","how":"появляется"},{"id":"lead","how":"появляется"},{"id":"card","how":"появляется"},{"id":"dot","how":"появляется"},{"id":"footer","how":"появляется"}],"first":true,"phrase":"Представь что ты смотришь","word":"ты"},{"id":"node-1-slide-2","t":0.1,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false,"phrase":"Представь что ты смотришь объяснение","word":"Представь"},{"id":"node-1-slide-3","t":0.7999999999999999,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"title","how":"появляется"}],"first":false,"phrase":"Представь что ты смотришь объяснение и","word":"смотришь"},{"id":"node-1-slide-4","t":3.712,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false,"phrase":"объяснение и в какой-то момент оно останавливается","word":"оно"},{"id":"node-1-slide-5","t":4.112,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":0,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"accent","how":"появляется"}],"first":false,"phrase":"какой-то момент оно останавливается Не","word":"останавливается"},{"id":"node-1-slide-6","t":4.312,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"accent","how":"едет"}],"first":false,"phrase":"какой-то момент оно останавливается Не потому","word":"останавливается"},{"id":"node-1-slide-7","t":8.7,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":false,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false,"phrase":"а потому что автор поставил здесь вопрос","word":"поставил"},{"id":"node-1-slide-8","t":9.2,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"card","how":"появляется"}],"first":false,"phrase":"потому что автор поставил здесь вопрос Пока ты","word":"вопрос"},{"id":"node-1-slide-9","t":14.537,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false,"phrase":"Это и есть главная идея нашего формата","word":"есть"},{"id":"node-1-slide-10","t":15.137,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"lead","how":"появляется"}],"first":false,"phrase":"Это и есть главная идея нашего формата","word":"идея"},{"id":"node-1-slide-11","t":27.675,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":false,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false,"phrase":"приклеена сверху Звук замирает картинка","word":"Звук"},{"id":"node-1-slide-12","t":28.075,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":500,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"dot","how":"появляется"}],"first":false,"phrase":"сверху Звук замирает картинка ждёт","word":"Звук"},{"id":"node-1-slide-13","t":28.575,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":440,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"dot","how":"едет"}],"first":false,"phrase":"Звук замирает картинка ждёт и внимание","word":"замирает"},{"id":"node-1-slide-14","t":40.063,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":440,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":false,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[],"first":false,"phrase":"которой прервалось Никакой перемотки никакого","word":"Никакой"},{"id":"node-1-slide-15","t":40.563,"states":{"bg":{"x":0,"y":0,"width":1920,"height":1080,"rotation":0,"zIndex":0,"opacity":1,"visible":true,"style":{"background":"#11141a"}},"title":{"x":140,"y":130,"width":1300,"height":180,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#f5f7fa","font-family":"Georgia, serif","font-size":"68px","line-height":"1.15","font-weight":"700"}},"accent":{"x":140,"y":350,"width":220,"height":12,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#e4572e","border-radius":"6px"}},"lead":{"x":140,"y":420,"width":1000,"height":260,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#9fb0c4","font-family":"system-ui, sans-serif","font-size":"36px","line-height":"1.5"}},"card":{"x":1240,"y":400,"width":520,"height":340,"rotation":0,"zIndex":1,"opacity":1,"visible":true,"style":{"background":"#1b2430","border-radius":"28px","border":"2px solid #2c3a4d"}},"dot":{"x":1420,"y":440,"width":160,"height":160,"rotation":0,"zIndex":2,"opacity":1,"visible":true,"style":{"background":"#f3a712","border-radius":"50%"}},"footer":{"x":140,"y":900,"width":1200,"height":80,"rotation":0,"zIndex":3,"opacity":1,"visible":true,"style":{"color":"#6d7f95","font-family":"system-ui, sans-serif","font-size":"28px"}}},"changed":[{"id":"footer","how":"появляется"}],"first":false,"phrase":"прервалось Никакой перемотки никакого повторения","word":"Никакой"}],"gates":[{"t":14.387},{"t":44.187999999999995}]};
+const MORPH = 0.6;
+const TW = 96, TH = Math.round(96 * DATA.stageH / DATA.stageW);
+const LANE = 76;
+
+const el=(t,c,s)=>{const n=document.createElement(t);if(c)n.className=c;if(s)Object.assign(n.style,s);return n};
+
+function sceneCard(sl,w,h){
+  const box=el('div','card dim',{width:w+'px',height:h+'px'});
+  const scene=el('div','scene',{width:DATA.stageW+'px',height:DATA.stageH+'px',
+    transform:'scale('+(w/DATA.stageW)+')'});
+  const hot=new Set((sl.changed||[]).map(c=>c.id));
+  for(const id of Object.keys(sl.states).sort((a,b)=>(sl.states[a].zIndex??0)-(sl.states[b].zIndex??0))){
+    const st=sl.states[id];
+    if(st.visible===false && !hot.has(id)) continue;
+    const d=el('div',hot.has(id)?'hot':null,{left:st.x+'px',top:st.y+'px',
+      width:st.width+'px',height:st.height+'px',opacity:String(st.opacity??1),overflow:'hidden'});
+    Object.assign(d.style,st.style||{});
+    if(DATA.content[id]) d.textContent=DATA.content[id];
+    scene.appendChild(d);
+  }
+  box.appendChild(scene);
+  const sec=el('div','sec');sec.textContent=sl.t.toFixed(1);box.appendChild(sec);
+  const ch=sl.changed||[];
+  if(!ch.length && !sl.first){const n=el('div','nochange');n.textContent='ничего не меняет';box.appendChild(n)}
+  else{const c=el('div','cap');c.textContent=sl.first?'первый кадр':ch.map(x=>x.how+' '+x.id).join(', ');box.appendChild(c)}
+  return box;
+}
+
+const tip=document.getElementById('tip');
+function showTip(ev,sl){
+  const mode=document.getElementById('name').value;
+  tip.textContent='';
+  const t=el('div','t');t.textContent=sl.t.toFixed(2)+' с';tip.appendChild(t);
+  if(mode!=='phrase'){
+    const n=el('div','n');
+    n.textContent=sl.first?'первый кадр'
+      :(sl.changed.length?sl.changed.map(c=>c.how+' '+c.id).join(', '):'ничего не меняет');
+    tip.appendChild(n);
+  }
+  if(mode!=='change'){
+    const p=el('div','p');
+    if(sl.phrase){
+      p.textContent='…'+sl.phrase+'…';
+    } else {
+      p.textContent='расшифровки нет — имени взять неоткуда';
+      p.className='p w';
+    }
+    tip.appendChild(p);
+  }
+  tip.style.display='block';
+  const r=tip.getBoundingClientRect();
+  tip.style.left=Math.min(innerWidth-r.width-10,Math.max(8,ev.clientX-r.width/2))+'px';
+  tip.style.top=Math.max(8,ev.clientY-r.height-14)+'px';
+}
+const hideTip=()=>{tip.style.display='none'};
+
+function build(){
+  const zoom=+document.getElementById('z').value;
+  const dense=document.getElementById('set').value==='dense';
+  document.getElementById('zl').textContent='×'+zoom;
+
+  const slides = dense
+    ? Array.from({length:40},(_,i)=>{
+        const src=DATA.slides[i%DATA.slides.length];
+        return {...src,t:Math.min(DATA.duration-0.05,(i/40)*DATA.duration+(((i*7919)%100)/100-0.5)*0.9)};
+      }).sort((a,b)=>a.t-b.t)
+    : DATA.slides;
+
+  const vp=document.getElementById('vp');
+  const base=vp.clientWidth-2;
+  const W=Math.round(base*zoom);
+  const px=t=>(t/DATA.duration)*W;
+
+  const inner=document.getElementById('inner');
+  inner.textContent='';
+  inner.style.width=W+'px';
+
+  // линейка времени
+  const ruler=el('div','ruler');
+  const stepS=[0.1,0.25,0.5,1,2,5,10].find(s=>(s/DATA.duration)*W>=64)??10;
+  for(let t=0;t<=DATA.duration;t+=stepS){
+    ruler.appendChild(el('b',null,{left:px(t)+'px'}));
+    const lab=el('span');lab.textContent=t.toFixed(stepS<1?1:0)+' с';
+    lab.style.left=px(t)+'px';ruler.appendChild(lab);
+  }
+  inner.appendChild(ruler);
+
+  const wave=el('div','wave',{position:'absolute',left:0,top:'18px',width:W+'px',height:LANE+'px'});
+  const stepPx=Math.max(3,Math.round(W/900));
+  for(let x=0;x<W;x+=stepPx){
+    const a=Math.abs(Math.sin(x/(17*zoom))*Math.sin(x/(43*zoom))*Math.sin(x/(7*zoom)));
+    wave.appendChild(el('i',null,{left:x+'px',height:(3+a*(LANE-10)).toFixed(1)+'px'}));
+  }
+  inner.appendChild(wave);
+
+  // Метка разворачивается в миниатюру, когда МЕСТО ЕСТЬ: оба соседа дальше
+  // ширины карточки. Это не порог зума, а следствие приближения.
+  let shown=0;
+  const laneTop=18;
+  const cardTop=laneTop+LANE+16;
+  slides.forEach((sl,i)=>{
+    const prevGap=i===0?Infinity:px(sl.t)-px(slides[i-1].t);
+    const nextGap=i===slides.length-1?Infinity:px(slides[i+1].t)-px(sl.t);
+    const room=prevGap>=TW+8 && nextGap>=TW+8;
+
+    inner.appendChild(el('div','tail',{left:px(Math.max(0,sl.t-MORPH))+'px',
+      width:(px(sl.t)-px(Math.max(0,sl.t-MORPH)))+'px',top:(laneTop+LANE-14)+'px'}));
+
+    const b=el('button','mark',{left:px(sl.t)+'px',top:(laneTop+LANE-34)+'px'});
+    b.textContent='◆';
+    b.addEventListener('pointerenter',(e)=>{ if(!room) showTip(e,sl); });
+    b.addEventListener('pointerleave',hideTip);
+    inner.appendChild(b);
+
+    if(room){
+      shown++;
+      const c=sceneCard(sl,TW,TH);
+      Object.assign(c.style,{left:(px(sl.t)-TW/2)+'px',top:cardTop+'px'});
+      inner.appendChild(c);
+      inner.appendChild(el('div','stem',{left:px(sl.t)+'px',top:(laneTop+LANE-12)+'px',
+        height:(cardTop-laneTop-LANE+12)+'px'}));
+    }
+  });
+
+  for(const g of DATA.gates){
+    const b=el('button','mark mark-gate',{left:px(g.t)+'px',top:(laneTop+2)+'px'});
+    b.textContent='▮';inner.appendChild(b);
+  }
+
+  inner.style.height=(cardTop+TH+14)+'px';
+  vp.style.height=(cardTop+TH+22)+'px';
+
+  const gaps=[];
+  for(let i=1;i<slides.length;i++) gaps.push(px(slides[i].t)-px(slides[i-1].t));
+  const sorted=gaps.slice().sort((a,b)=>a-b);
+  document.getElementById('stats').textContent=
+    (W/DATA.duration).toFixed(0)+' px/с · миниатюр '+shown+' из '+slides.length+
+    ' · зазор мин '+(sorted[0]??0).toFixed(0)+' / медиана '+(sorted[Math.floor(sorted.length/2)]??0).toFixed(0)+' px';
+  document.getElementById('hint').textContent=
+    zoom<=1.5
+      ? 'Дальний вид: миниатюр нет, ориентируемся ромбами. Наведите на ромб — появится имя.'
+      : (shown===slides.length
+          ? 'Всем меткам хватило места: миниатюры у всех.'
+          : 'Часть меток ещё в ромбах — наведите на них, имя работает и здесь.');
+
+  const secondsOnScreen=(DATA.duration*base/W);
+  const rows=[
+    ['ширина ленты','<span class="num">'+W+' px</span> при видимой части '+base+
+      ' px. На экране помещается <span class="num">'+secondsOnScreen.toFixed(1)+' с</span> из '+DATA.duration.toFixed(1)+'.'],
+    ['сколько развернулось','<span class="'+(shown===slides.length?'ok':'bad')+'">'+shown+' из '+slides.length+
+      '</span>. Порог не назначен вручную: карточка появляется там, где оба соседа дальше её ширины.'],
+    ['врёт ли про время','<span class="ok">Нет.</span> Карточка центрирована на своей метке, а соседи заведомо дальше её половины — иначе она бы не развернулась.'],
+    ['хвост окна движения','Хвост '+(MORPH*W/DATA.duration).toFixed(0)+' px против половины карточки '+(TW/2)+
+      ' px: <span class="'+(MORPH*W/DATA.duration>TW/2?'ok':'bad')+'">'+
+      (MORPH*W/DATA.duration>TW/2?'виден':'перекрыт')+'</span> при этом приближении. С ростом приближения хвост растёт, а карточка — нет.'],
+    ['имя слайда','Поля для имени в схеме <b>нет</b>: у слайда есть <code>id</code>, <code>at</code>, <code>transition</code>, <code>states</code>. В подсказке показано то, что есть всегда — фраза из транскрипта и/или что слайд меняет. Переключатель наверху.'],
+    ['где ломается','<span class="bad">Приближение — новая машинерия.</span> Дорожка сегодня всегда 100 % ширины; появляются прокрутка, вопрос «за чем следует вид при игре» и связь зума с окном части (ADR-018).'],
+  ];
+  const table=document.getElementById('honest');
+  table.textContent='';
+  for(const [k,v] of rows){
+    const tr=el('tr');const a=el('td');a.textContent=k;const b2=el('td');b2.innerHTML=v;
+    tr.append(a,b2);table.appendChild(tr);
+  }
+}
+
+for(const id of ['z','set','name']) document.getElementById(id).addEventListener('input',build);
+addEventListener('resize',build);
+build();
+</script>
+</body>
+</html>
