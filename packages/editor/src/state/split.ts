@@ -25,7 +25,7 @@
  *   ссылалось, обязано переехать согласованно.
  */
 import type { Gate, Segment, Slide, TimeRef, Word } from '@player/core';
-import { resolveTimeRef } from '@player/core';
+import { alignWords, resolveTimeRef, splitIntoWords } from '@player/core';
 
 import { freeId } from './elements.js';
 
@@ -155,6 +155,23 @@ export function splitSegmentAtGate(
   const tailSeconds = segment.audio.duration - at;
   const hasTail = tailSeconds >= MIN_TAIL_SECONDS;
 
+  // --- текст озвучки: делится тем же швом, что и расшифровка ---
+  //
+  // Своим индексом делить нельзя: слова речи и слова расшифровки — разные
+  // разбиения (у автора «объяснение», у Deepgram «объясненье»), и k-е слово
+  // одного не обязано быть k-м словом другого. Шов переносится
+  // сопоставлением — это и есть правило `CLAUDE.md` «сравнивать пословно
+  // можно только после сопоставления последовательностей».
+  const speechCut = speechCutIndex(segment.speech, words, wordsCut);
+
+  const spokenWords = segment.speech === undefined ? [] : splitIntoWords(segment.speech);
+  const headSpeech = speechCut === undefined
+    ? segment.speech
+    : joinWords(spokenWords.slice(0, speechCut));
+  const tailSpeech = speechCut === undefined
+    ? undefined
+    : joinWords(spokenWords.slice(speechCut));
+
   // --- слайды и остановки расходятся по времени разреза ---
 
   const headSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) <= at);
@@ -185,6 +202,7 @@ export function splitSegmentAtGate(
 
   const head: Segment = {
     ...segment,
+    speech: headSpeech,
     audio: { ...segment.audio, duration: at, words: headWords },
     elements: usedElements(segment, headSlides),
     slides: headSlides,
@@ -211,6 +229,7 @@ export function splitSegmentAtGate(
     ? {
       id: tailId!,
       title: `${segment.title || segment.id} — продолжение`,
+      speech: tailSpeech,
       audio: {
         ...segment.audio,
         // Файл тот же, окно сдвинуто: «аудио физически не режется».
@@ -265,6 +284,61 @@ export function splitSegmentAtGate(
   }));
 
   return { head, branches, tail };
+}
+
+/**
+ * Сколько первых слов текста озвучки достаётся голове.
+ *
+ * `undefined` — делить нечем, и это не ошибка: либо речи нет вовсе, либо
+ * нет расшифровки, а без неё шва не существует. Оба случая законны, и оба
+ * обязаны быть видимы снаружи, а не свёрнуты в ноль.
+ */
+function speechCutIndex(
+  speech: string | undefined,
+  words: readonly Word[],
+  wordsCut: number,
+): number | undefined {
+  if (speech === undefined || words.length === 0) return undefined;
+
+  const spoken = splitIntoWords(speech);
+  const ops = alignWords(spoken, words);
+
+  // Два счётчика, а не один, потому что операции потребляют стороны
+  // по-разному. Направление проверено прогоном в Задаче 2, а не угадано:
+  // `before` — это речь, `after` — расшифровка, значит
+  //   same, replaced — потребляют по слову с ОБЕИХ сторон;
+  //   removed        — слово есть в речи, в расшифровке его нет
+  //                    (диктор проглотил): потребляет только речь;
+  //   added          — слово есть в расшифровке, в речи нет
+  //                    (диктор сказал от себя): потребляет только её.
+  //
+  // Граница речи — столько её слов, сколько потреблено к моменту, когда
+  // расшифровка дошла до шва.
+  let speechTaken = 0;
+  let heardTaken = 0;
+
+  for (const op of ops) {
+    if (heardTaken >= wordsCut) return speechTaken;
+
+    if (op.kind === 'same' || op.kind === 'replaced') {
+      speechTaken += 1;
+      heardTaken += 1;
+    } else if (op.kind === 'removed') {
+      speechTaken += 1;
+    } else {
+      heardTaken += 1;
+    }
+  }
+  return speechTaken;
+}
+
+/**
+ * Склеивает слова обратно в текст. `undefined` на пустом списке — не пустая
+ * строка: схема (`Segment.speech`) запрещает пустую строку, «текста нет»
+ * выражается отсутствием поля.
+ */
+function joinWords(list: readonly { text: string }[]): string | undefined {
+  return list.length === 0 ? undefined : list.map((word) => word.text).join(' ');
 }
 
 /**
