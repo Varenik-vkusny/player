@@ -61,7 +61,29 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 /**
- * Кладёт байты озвучки под новым ключом и возвращает этот ключ.
+ * Ключ озвучки — SHA-256 её содержимого.
+ *
+ * Раньше ключом был случайный UUID, и один и тот же файл, загруженный дважды,
+ * занимал место дважды: содержимое никто не сравнивал (ADR-021, «что осталось
+ * открытым»). Хэш делает повторную загрузку бесплатной и, что важнее, делает
+ * её ИДЕМПОТЕНТНОЙ — а это единственная защита от сирот, которая у нас есть.
+ *
+ * Сборки мусора нет СОЗНАТЕЛЬНО. Отмена в редакторе возвращает прежний
+ * `fileId`, и байты обязаны её пережить; удаление «неиспользуемого» при
+ * сохранении сломало бы отмену тише, чем её кто-нибудь заметил бы.
+ *
+ * Префикс `aud-` сохранён: по нему узнаются ключи этого хранилища, и уже
+ * существующие проекты держат ссылки вида `aud-<uuid>` — они остаются
+ * рабочими, потому что ключ здесь только выдаётся, но не разбирается.
+ */
+export async function audioIdFor(bytes: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+  return `aud-${hex}`;
+}
+
+/**
+ * Кладёт байты озвучки под ключом её содержимого и возвращает этот ключ.
  *
  * Ключ выдаётся здесь, а не приходит снаружи: тот, кто владеет хранилищем,
  * владеет и пространством имён в нём.
@@ -69,7 +91,7 @@ function openDb(): Promise<IDBDatabase> {
 export async function putAudio(
   audio: Omit<StoredAudio, 'addedAt'>,
 ): Promise<string> {
-  const fileId = `aud-${crypto.randomUUID()}`;
+  const fileId = await audioIdFor(audio.bytes);
   const db = await openDb();
   try {
     await new Promise<void>((resolve, reject) => {
