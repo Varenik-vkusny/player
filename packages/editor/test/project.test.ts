@@ -8,7 +8,7 @@ import type { Element, ElementState, Gate, Project, Segment, Slide, Word } from 
 
 import { createElement } from '../src/state/elements.js';
 import { libraryItem } from '../src/state/library.js';
-import { editorReducer, initialState, segmentSlide } from '../src/state/project.js';
+import { editorReducer, initialState, segmentSlide, type EditorState } from '../src/state/project.js';
 import { serializeProject } from '../src/state/save.js';
 import { timeRefAt } from '../src/track/marks.js';
 
@@ -71,6 +71,11 @@ function baseState() {
 /** Сегмент единственного узла — в редьюсере ей и посвящена вся эта дверца. */
 function segmentOf(project: Project): Segment {
   return project.segments[0]!;
+}
+
+/** Сегмент, который редьюсер считает текущим у ДАННОГО состояния. */
+function currentSegmentOf(state: EditorState): Segment {
+  return state.project.segments.find((candidate) => candidate.id === state.currentSegmentId)!;
 }
 
 function slideOf(project: Project): Slide {
@@ -807,5 +812,29 @@ describe('setSegmentWords', () => {
 
     expect(segmentOf(next.project).gates).toBe(gatesBefore);
     expect(segmentOf(next.project).slides).toBe(slidesBefore);
+  });
+});
+
+describe('текст озвучки', () => {
+  it('записывается в текущий кусок', () => {
+    const state = baseState();
+    const next = editorReducer(state, { type: 'setSpeech', text: 'Часы это позиция.' });
+    expect(currentSegmentOf(next).speech).toBe('Часы это позиция.');
+  });
+
+  it('пустая строка стирает поле, а не кладёт пустоту', () => {
+    const state = baseState();
+    const filled = editorReducer(state, { type: 'setSpeech', text: 'Что-то' });
+    const cleared = editorReducer(filled, { type: 'setSpeech', text: '   ' });
+    expect(currentSegmentOf(cleared).speech).toBeUndefined();
+  });
+
+  it('текст живёт на куске, а не на дорожке: замена озвучки его не трогает', () => {
+    const state = baseState();
+    const filled = editorReducer(state, { type: 'setSpeech', text: 'Часы это позиция.' });
+    const replaced = editorReducer(filled, {
+      type: 'replaceSegmentAudio', fileId: 'sha-1', duration: 3,
+    });
+    expect(currentSegmentOf(replaced).speech).toBe('Часы это позиция.');
   });
 });

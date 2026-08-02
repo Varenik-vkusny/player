@@ -366,6 +366,42 @@ export function splitBlockedReason(gate: Gate, words: readonly Word[]): string |
   return undefined;
 }
 
+/**
+ * Предупреждение для автора: у этой развилки продолжение родится БЕЗ текста
+ * озвучки (ADR-022).
+ *
+ * Случай ровно тот, что решает `speechCutIndex` выше: расшифровки нет
+ * (`audio.words` пуст), шва не существует, и весь текст остаётся у головы —
+ * продолжение получает `speech: undefined`. Молча это не должно произойти:
+ * автор написал текст, разрезал кусок и рискует потерять половину из виду.
+ *
+ * `undefined` — терять нечего:
+ *   - речи не было вовсе — предупреждать не о чем;
+ *   - расшифровка есть — шов есть, ничего не потеряется;
+ *   - продолжения не будет (развилка в самом конце дорожки) — предупреждать
+ *     о потере того, что не рождается, было бы враньём.
+ *
+ * Живёт рядом со самим разрезом по той же причине, что и `splitBlockedReason`:
+ * условие и его текст обязаны меняться вместе.
+ */
+export function speechLossWarning(segment: Segment, gate: Gate): string | undefined {
+  if (segment.speech === undefined) return undefined;
+  if (segment.audio.words.length > 0) return undefined;
+
+  let at: number;
+  try {
+    at = secondsOf(gate.at, segment.audio.words);
+  } catch {
+    // Метка потеряла своё слово — разрез откажет раньше своей ошибкой
+    // (splitBlockedReason), дублировать причину здесь не место.
+    return undefined;
+  }
+  if (segment.audio.duration - at < MIN_TAIL_SECONDS) return undefined;
+
+  return 'У продолжения нет текста озвучки: разделить его было не по чему — у этой части нет '
+    + 'расшифровки. Впишите текст продолжения или получите расшифровку и разрежьте заново.';
+}
+
 /** Заголовок ветки: метка варианта, а не его идентификатор. */
 function branches_title(gate: Gate, optionId: string, index: number): string {
   if (gate.config.kind !== 'choice') return `Ветка ${index + 1}`;

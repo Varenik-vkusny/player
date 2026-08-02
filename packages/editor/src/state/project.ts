@@ -123,7 +123,13 @@ export type EditorAction =
   // (S5: медиана расхождения +30 мс, вычитание «систематической» поправки
   // делает хуже). Не трогает метки: они остаются там, где стояли раньше,
   // и автор перепривязывает их к слову вручную через MarkPanel, если хочет.
-  | { readonly type: 'setSegmentWords'; readonly words: readonly Word[] };
+  | { readonly type: 'setSegmentWords'; readonly words: readonly Word[] }
+  // Текст озвучки куска — что автор произносит, а не что услышала машина
+  // (это `audio.words`, отдельное поле). `commit: false` — та же семантика
+  // набора, что и у `setElementState`/`moveMark`: textarea шлёт это на КАЖДУЮ
+  // распознанную правку, и без флага набор строки создавал бы шаг истории
+  // на каждую букву (см. `editorHistory.ts: isLiveEvent`).
+  | { readonly type: 'setSpeech'; readonly text: string; readonly commit?: boolean };
 
 export function initialState(project: Project): EditorState {
   const segment = requireSegment(project, project.entry);
@@ -510,6 +516,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...segment,
         audio: { ...segment.audio, words: [...action.words] },
       });
+    }
+
+    case 'setSpeech': {
+      const segment = currentSegment(state);
+      const text = action.text.trim();
+      // Пустая строка запрещена схемой: «текста нет» выражается отсутствием
+      // поля. Два способа сказать одно — источник расхождений на ровном месте.
+      const speech = text.length > 0 ? text : undefined;
+      return replaceSegment(state, { ...segment, speech });
     }
   }
 }

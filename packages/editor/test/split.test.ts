@@ -20,7 +20,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { splitAtGate } from '../src/state/project.js';
-import { splitSegmentAtGate, SplitError } from '../src/state/split.js';
+import { speechLossWarning, splitSegmentAtGate, SplitError } from '../src/state/split.js';
 
 /** Десять слов по секунде: «w0» в 0.000, «w1» в 1.000 и так далее. */
 const WORDS: Word[] = Array.from({ length: 10 }, (_, index) => ({
@@ -375,5 +375,49 @@ describe('разрез делит текст озвучки', () => {
 
     expect(head.speech).toBeUndefined();
     expect(tail?.speech).toBeUndefined();
+  });
+});
+
+/**
+ * ADR-022, перенесённое из Задачи 4: автор обязан узнать о потере текста
+ * озвучки СРАЗУ после разреза (см. `speechLossWarning` в `split.ts`).
+ */
+describe('предупреждение о потере текста озвучки при разрезе', () => {
+  it('есть текст, нет расшифровки, есть продолжение — предупреждение звучит', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = { ...base, audio: { ...base.audio, words: [] } };
+
+    const warning = speechLossWarning(segment, segment.gates[0]!);
+
+    expect(warning).toBeDefined();
+    expect(warning).toContain('текста озвучки');
+    expect(warning).toContain('расшифровки');
+    // Словарь автора, не схемы (CLAUDE.md, constraints.md).
+    expect(warning).not.toContain('speech');
+    expect(warning).not.toContain('audio.words');
+  });
+
+  it('речи не было вовсе — молчит: терять нечего', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = { ...base, speech: undefined, audio: { ...base.audio, words: [] } };
+
+    expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
+  });
+
+  it('расшифровка есть — шов есть, ничего не потеряется', () => {
+    const segment = segmentWithSpeechAndWords();
+
+    expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
+  });
+
+  it('развилка в конце дорожки — продолжения не будет, предупреждать не о чем', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = {
+      ...base,
+      audio: { ...base.audio, words: [] },
+      gates: [{ ...base.gates[0]!, at: { kind: 'seconds' as const, t: base.audio.duration } }],
+    };
+
+    expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
   });
 });

@@ -15,6 +15,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type ChangeEvent,
@@ -39,6 +40,17 @@ export interface AudioSourcePanelProps {
   readonly onReplace: (fileId: string, durationSeconds: number) => void;
   /** Расшифровка вернула слова — кладёт их в audio.words. */
   readonly onWordsTranscribed: (words: readonly Word[]) => void;
+  /** Текст озвучки текущего куска. `''` — поля `speech` в проекте нет. */
+  readonly speech: string;
+  /**
+   * Живое событие уже идущего жеста набора текста — та же семантика
+   * `commit: false`, что и у числовых полей `Inspector.tsx` (см. её
+   * комментарий модуля): вызывается на КАЖДУЮ правку textarea, коммит-точку
+   * ставит `onCommitHistory` на потере фокуса.
+   */
+  readonly onSpeechChange: (text: string) => void;
+  /** Завершает жест, открытый `onSpeechChange` (потеря фокуса поля). */
+  readonly onCommitHistory: () => void;
 }
 
 type UploadState =
@@ -62,6 +74,9 @@ export function AudioSourcePanel({
   wordMarkCount,
   onReplace,
   onWordsTranscribed,
+  speech,
+  onSpeechChange,
+  onCommitHistory,
 }: AudioSourcePanelProps): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [upload, setUpload] = useState<UploadState>({ status: 'idle' });
@@ -216,6 +231,60 @@ export function AudioSourcePanel({
           {transcribe.message}
         </span>
       ) : null}
+
+      <SpeechField value={speech} onCommit={onSpeechChange} onBlurCommit={onCommitHistory} />
+    </div>
+  );
+}
+
+interface SpeechFieldProps {
+  value: string;
+  onCommit: (text: string) => void;
+  onBlurCommit: () => void;
+}
+
+/**
+ * Текст озвучки куска — что автор произносит, а не что услышала машина
+ * (это расшифровка, `audio.words`, отдельное поле рядом).
+ *
+ * Черновик — тот же приём, что и у `NumberField` (`panels/Inspector.tsx`,
+ * см. её комментарий модуля): пока поле в фокусе, показывается ИМЕННО
+ * набираемый текст, а не то, что уже лежит в проекте. Без черновика курсор
+ * прыгал бы на каждую букву — редьюсер обрезает текст (`setSpeech` в
+ * `state/project.ts`), а обрезанное значение, возвращённое в поле немедленно,
+ * съедало бы хвостовой пробел ровно в момент, когда автор печатает следующее
+ * слово через пробел.
+ */
+function SpeechField({ value, onCommit, onBlurCommit }: SpeechFieldProps): ReactElement {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = draft ?? value;
+
+  return (
+    <div className="ed-insp-field ed-audio-speech">
+      <label className="ed-insp-label" htmlFor={id}>
+        Текст озвучки
+      </label>
+      <textarea
+        id={id}
+        className="ed-insp-area"
+        data-testid="speech-input"
+        spellCheck={false}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          onCommit(next);
+        }}
+        onBlur={() => {
+          setDraft(null);
+          onBlurCommit();
+        }}
+      />
+      <p className="ed-insp-note">
+        То, что вы произносите на этом куске. Расшифровка — это то, что услышала машина;
+        они могут расходиться.
+      </p>
     </div>
   );
 }

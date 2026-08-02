@@ -21,7 +21,7 @@
  * сессии — это молча объединило бы две осознанные правки одного поля.
  *
  * Вместо угаданной коалесценции — явный флаг у действия. `replaceElement`,
- * `setElementState` и `moveMark` несут необязательное поле `commit`:
+ * `setElementState`, `moveMark` и `setSpeech` несут необязательное поле `commit`:
  * `commit: false` значит «это ОДНО из событий уже идущего жеста», обычный
  * вызов (поле отсутствует) значит «это самостоятельный шаг». Жест
  * раскрывается так:
@@ -107,8 +107,14 @@ export function initialHistoryState(project: Project): HistoryState {
 /** Действия, которые МОГУТ дробить один жест на десятки вызовов. */
 function isLiveEvent(action: EditorAction): boolean {
   return (
-    (action.type === 'replaceElement' || action.type === 'setElementState' || action.type === 'moveMark') &&
-    (action as { commit?: boolean }).commit === false
+    (action.type === 'replaceElement'
+      || action.type === 'setElementState'
+      || action.type === 'moveMark'
+      // Набор текста озвучки (AudioSourcePanel) — тот же приём, что и у
+      // числовых полей Inspector.tsx: каждая буква шлёт `commit: false`,
+      // коммит-точку ставит потеря фокуса поля через явное действие `commit`.
+      || action.type === 'setSpeech')
+    && (action as { commit?: boolean }).commit === false
   );
 }
 
