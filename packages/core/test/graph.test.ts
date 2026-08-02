@@ -9,6 +9,7 @@ import {
   certainRemaining,
   conditionHolds,
   findSegment,
+  nextExit,
   nextSegment,
   preloadTargetsOfExit,
   type Answers,
@@ -114,6 +115,36 @@ describe('следующий сегмент', () => {
 
   it('неотвеченный вопрос при полном покрытии вариантов даёт концовку, а не тупик', () => {
     expect(nextSegment(развилка, {})).toBeNull();
+  });
+});
+
+describe('nextExit', () => {
+  const segmentWithRules = segment('start', {
+    rules: [{ id: 'r1', when: [{ kind: 'wrong', variable: 'v' }], goto: 's-repeat' }],
+    default: 'дальше',
+  });
+  const segmentWithoutExit = segment('s', { rules: [], default: null });
+
+  it('возвращает сработавшее правило, а не только цель', () => {
+    const choice = nextExit(segmentWithRules, { v: { value: 'no', correct: false } });
+    expect(choice).toMatchObject({ goto: 's-repeat' });
+    expect(choice!.rule?.when[0]).toMatchObject({ variable: 'v' });
+  });
+
+  it('запасной выход даёт rule === null', () => {
+    expect(nextExit(segmentWithRules, {})).toMatchObject({ rule: null });
+  });
+
+  it('конец объяснения — null целиком', () => {
+    expect(nextExit(segmentWithoutExit, {})).toBeNull();
+  });
+
+  it('nextSegment отвечает ровно то же, что goto из nextExit', () => {
+    const варианты: Answers[] = [{}, { v: { value: 'no', correct: false } }];
+    for (const answers of варианты) {
+      expect(nextSegment(segmentWithRules, answers))
+        .toBe(nextExit(segmentWithRules, answers)?.goto ?? null);
+    }
   });
 });
 
