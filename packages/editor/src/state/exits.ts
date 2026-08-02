@@ -129,6 +129,26 @@ export function reachableFrom(project: Project, startId?: string): ReadonlySet<s
   return visited;
 }
 
+/**
+ * Ведёт ли цель `targetId` НАЗАД для сегмента `fromSegmentId` — то есть можно
+ * ли из цели по рёбрам выхода дойти обратно до `fromSegmentId`.
+ *
+ * Это и есть настоящий повтор (`docs/product.md`, механика повтора куска):
+ * зритель попадёт в цель и раньше или позже снова придёт туда, откуда его
+ * сейчас пускают. Порядковый номер в списке сегментов тут ни при чём — список
+ * не задаёт порядок проигрывания, граф не дерево.
+ *
+ * Петля на месте (`targetId === fromSegmentId`) тоже повтор, и отдельной
+ * ветки для неё не нужно: `reachableFrom` включает свой же старт, так что
+ * проверка отрабатывает этот случай сама.
+ *
+ * Переиспользует обход `reachableFrom`, а не заводит второй — два обхода
+ * одного графа расходятся тихо.
+ */
+export function leadsBack(project: Project, fromSegmentId: string, targetId: string): boolean {
+  return reachableFrom(project, targetId).has(fromSegmentId);
+}
+
 /** Переменная зрителя, какой её видит правило выхода: кто её пишет и какого рода. */
 interface VariableSource {
   readonly kind: Gate['config']['kind'];

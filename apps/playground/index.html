@@ -43,6 +43,10 @@
   .gate-mark { position: absolute; top: -4px; width: 3px; height: 14px;
                background: #a8c686; border-radius: 2px; }
   #state { color: #7d8fa5; min-width: 7em; }
+  /* Скрыта по умолчанию: main.ts переключает display, а не только текст,
+     иначе e2e toBeVisible() был бы «истинным» даже на пустой строке —
+     инлайновый span с line-height занимает бокс и без текста внутри. */
+  #repeating { display: none; color: #e8b04b; }
 </style>
 </head>
 <body>
@@ -56,6 +60,7 @@
     <code id="clock">0.00</code>
     <span id="state">idle</span>
     <span id="progress"></span>
+    <span id="repeating">Возвращаемся к пройденному</span>
   </div>
 </div>
 <script type="module" src="/src/main.ts"></script>

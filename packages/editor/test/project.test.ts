@@ -3,12 +3,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadProject } from '@player/core';
+import { loadProject, SCHEMA_VERSION } from '@player/core';
 import type { Element, ElementState, Gate, Project, Segment, Slide, Word } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
+import { historyReducer, initialHistoryState } from '../src/state/editorHistory.js';
 import { libraryItem } from '../src/state/library.js';
-import { editorReducer, initialState, segmentSlide } from '../src/state/project.js';
+import { editorReducer, initialState, segmentSlide, type EditorState } from '../src/state/project.js';
 import { serializeProject } from '../src/state/save.js';
 import { timeRefAt } from '../src/track/marks.js';
 
@@ -40,7 +41,7 @@ function gate(id: string): Gate {
 
 function baseProject(): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry: 'seg-1',
     segments: [
@@ -71,6 +72,11 @@ function baseState() {
 /** Сегмент единственного узла — в редьюсере ей и посвящена вся эта дверца. */
 function segmentOf(project: Project): Segment {
   return project.segments[0]!;
+}
+
+/** Сегмент, который редьюсер считает текущим у ДАННОГО состояния. */
+function currentSegmentOf(state: EditorState): Segment {
+  return state.project.segments.find((candidate) => candidate.id === state.currentSegmentId)!;
 }
 
 function slideOf(project: Project): Slide {
@@ -443,7 +449,7 @@ describe('removeMark', () => {
 describe('редьюсер: переключение сегмента открывает его для правки', () => {
   function twoSegments(): Project {
     return {
-      schemaVersion: 6,
+      schemaVersion: SCHEMA_VERSION,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [
@@ -786,6 +792,71 @@ describe('replaceSegmentAudio', () => {
   });
 });
 
+describe('замена озвучки с расшифровкой', () => {
+  const stateWithWordMarks = initialState(projectWithWords());
+  // Тот же текст, что в WORDS («Привет», «мир», «дальше»), но на новых
+  // секундах — как будто автор перезаписал ту же реплику другим голосом.
+  // alignWords сопоставит их как «same»: метки обязаны переехать на слово,
+  // а не остаться привязанными к старому индексу.
+  const newWords: readonly Word[] = [
+    word('Привет', 1.2, 1.7),
+    word('мир', 1.7, 2.1),
+    word('дальше', 5.3, 5.7),
+  ];
+
+  it('метки переезжают на свои слова, а не переводятся в секунды', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    const slide = currentSegmentOf(next).slides[1]!;
+    expect(slide.at.kind).toBe('word');
+    const gateAt = currentSegmentOf(next).gates[0]!.at;
+    expect(gateAt.kind).toBe('word');
+  });
+
+  it('новая расшифровка ложится в дорожку тем же действием', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    expect(currentSegmentOf(next).audio.words).toHaveLength(newWords.length);
+  });
+
+  it('отчёт о переносе ложится в lastRetarget — оба слова сопоставились ровно', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    expect(next.lastRetarget).toEqual({ moved: 2, check: 0, toSeconds: 0 });
+  });
+
+  it('без расшифровки — прежнее поведение: метки в секунды, отчёта нет', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4,
+    });
+
+    expect(currentSegmentOf(next).slides[1]!.at.kind).toBe('seconds');
+    expect(currentSegmentOf(next).audio.words).toEqual([]);
+    expect(next.lastRetarget).toBeUndefined();
+  });
+
+  it('замена — ОДИН шаг истории, а не два', () => {
+    const history = initialHistoryState(projectWithWords());
+    const before = history.history.past.length;
+
+    const next = historyReducer(history, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    expect(next.history.past.length).toBe(before + 1);
+    // Отчёт о переносе доходит и до состояния поверх истории — сообщение
+    // автору живёт рядом с selectedId/currentSlideId, а не только внутри
+    // одного вызова editorReducer.
+    expect(next.lastRetarget).toEqual({ moved: 2, check: 0, toSeconds: 0 });
+  });
+});
+
 describe('setSegmentWords', () => {
   it('кладёт слова в audio.words как есть, без поправки таймингов', () => {
     const state = baseState();
@@ -807,5 +878,29 @@ describe('setSegmentWords', () => {
 
     expect(segmentOf(next.project).gates).toBe(gatesBefore);
     expect(segmentOf(next.project).slides).toBe(slidesBefore);
+  });
+});
+
+describe('текст озвучки', () => {
+  it('записывается в текущий кусок', () => {
+    const state = baseState();
+    const next = editorReducer(state, { type: 'setSpeech', text: 'Часы это позиция.' });
+    expect(currentSegmentOf(next).speech).toBe('Часы это позиция.');
+  });
+
+  it('пустая строка стирает поле, а не кладёт пустоту', () => {
+    const state = baseState();
+    const filled = editorReducer(state, { type: 'setSpeech', text: 'Что-то' });
+    const cleared = editorReducer(filled, { type: 'setSpeech', text: '   ' });
+    expect(currentSegmentOf(cleared).speech).toBeUndefined();
+  });
+
+  it('текст живёт на куске, а не на дорожке: замена озвучки его не трогает', () => {
+    const state = baseState();
+    const filled = editorReducer(state, { type: 'setSpeech', text: 'Часы это позиция.' });
+    const replaced = editorReducer(filled, {
+      type: 'replaceSegmentAudio', fileId: 'sha-1', duration: 3,
+    });
+    expect(currentSegmentOf(replaced).speech).toBe('Часы это позиция.');
   });
 });

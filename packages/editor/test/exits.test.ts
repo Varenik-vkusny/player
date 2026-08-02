@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProjectSchema } from '@player/core';
+import { ProjectSchema, SCHEMA_VERSION } from '@player/core';
 import type { Condition, ExitRule, Gate, Project, Segment } from '@player/core';
 
 import { editorReducer, initialState } from '../src/state/project.js';
@@ -10,6 +10,7 @@ import {
   connect,
   disconnect,
   emptySegments,
+  leadsBack,
   reachableFrom,
   removeSegment,
   renameSegment,
@@ -70,7 +71,7 @@ function rule(id: string, when: Condition, goto: string): ExitRule {
 
 function project(segments: readonly Segment[], entry = 'seg-1'): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
     entry,
     segments: [...segments],
@@ -385,6 +386,35 @@ describe('connect', () => {
     const next = connect(p, 'seg-2', [{ kind: 'correct', variable: 'g1' }], 'seg-1');
     expect(next.segments[1]!.exit.rules).toHaveLength(1);
   });
+
+  /**
+   * Гипотеза из брифа задачи 11 (`task-11-brief.md`, шаг 1): ребро назад,
+   * возможно, уже работает, потому что `connect` проверяет только
+   * существование цели, а не её место в списке. Проверено здесь: `s-a` идёт
+   * первым и уже привёл зрителя в `s-b` через `default`, а `s-b` заводит
+   * правило выхода ОБРАТНО в `s-a` — то самое ребро, на котором стоит
+   * механика повтора куска (`player/src/repeat.ts`). Схема результат
+   * принимает — запрета на такие рёбра в проекте нет и не будет:
+   * они законны (constraints.md).
+   */
+  it('правило выхода может вести назад, к уже пройденному куску', () => {
+    // default у s-b уже указывает назад в s-a: totality (schema.ts) не про
+    // это правило, а про весь выход целиком, и держать её честной — не то,
+    // что здесь проверяется. Проверяется ровно одно: connect не отказывает
+    // ПРАВИЛУ, ведущему назад, только потому что оно ведёт назад.
+    const p = project(
+      [
+        segment('s-a', { exit: { rules: [], default: 's-b' } }),
+        segment('s-b', { gates: [choiceGate('v', ['yes', 'no'])], exit: { rules: [], default: 's-a' } }),
+      ],
+      's-a',
+    );
+
+    const next = connect(p, 's-b', [{ kind: 'equals', variable: 'v', value: 'no' }], 's-a');
+
+    expect(next.segments.find((s) => s.id === 's-b')!.exit.rules[0]!.goto).toBe('s-a');
+    expect(ProjectSchema.safeParse(next).success).toBe(true);
+  });
 });
 
 describe('disconnect', () => {
@@ -456,6 +486,34 @@ describe('reachableFrom', () => {
       segment('seg-3'),
     ]);
     expect(reachableFrom(p)).toEqual(new Set(['seg-1', 'seg-2', 'seg-3']));
+  });
+});
+
+/**
+ * Подсказка автору в `<select>` цели правила выхода (`SegmentPanel.tsx`):
+ * цели, из которых можно вернуться в текущую часть, помечены словом «повтор».
+ * «Назад» здесь значит НЕ «раньше по списку сегментов» (список не задаёт
+ * порядок проигрывания, граф не дерево), а «достижимо обратно по рёбрам
+ * выхода» — переиспользует обход `reachableFrom`, второй обход того же
+ * графа завёл бы отдельную, тихо расходящуюся копию.
+ */
+describe('leadsBack', () => {
+  it('ведёт назад: из цели по рёбрам выхода можно дойти до текущей части', () => {
+    const p = project([
+      segment('s-a'),
+      segment('s-b', { exit: { rules: [], default: 's-a' } }),
+    ]);
+    expect(leadsBack(p, 's-a', 's-b')).toBe(true);
+  });
+
+  it('ведёт вперёд: из цели до текущей части не дойти — это не повтор', () => {
+    const p = project([segment('s-a'), segment('s-b')]);
+    expect(leadsBack(p, 's-a', 's-b')).toBe(false);
+  });
+
+  it('петля на месте (цель — сама текущая часть) — тоже повтор', () => {
+    const p = project([segment('s-a')]);
+    expect(leadsBack(p, 's-a', 's-a')).toBe(true);
   });
 });
 

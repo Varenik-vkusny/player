@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
+import { alignWords, splitIntoWords } from '../src/align.js';
 import { loadProject, ProjectLoadError } from '../src/load.js';
 import { ProjectSchema, SCHEMA_VERSION } from '../src/schema.js';
 
@@ -84,6 +85,48 @@ describe('эталонные фикстуры валидны', () => {
     // Иначе все отрицательные тесты зелены впустую: они падали бы
     // на постороннем дефекте заготовки, а не на том, что ломает тест.
     expect(ProjectSchema.safeParse(explanation()).success).toBe(true);
+  });
+});
+
+describe('текст озвучки сегмента', () => {
+  it('необязателен, но пустой строкой быть не может', () => {
+    const base = explanation();
+
+    expect(ProjectSchema.safeParse(base).success).toBe(true);
+
+    const withSpeech = {
+      ...base,
+      segments: [{ ...base.segments[0], speech: 'Часы это позиция в дорожке.' }],
+    };
+    expect(ProjectSchema.safeParse(withSpeech).success).toBe(true);
+
+    const empty = {
+      ...base,
+      segments: [{ ...base.segments[0], speech: '' }],
+    };
+    expect(problems(empty)).not.toBe('');
+  });
+});
+
+describe('эталонная фикстура speech.json', () => {
+  it('несёт все три расхождения из §4 product.md: перефразировал, пропустил, добавил лишнее', () => {
+    const project = loadProject(raw('speech.json'));
+    const segment = project.segments[0]!;
+
+    expect(segment.speech).toBeTruthy();
+    expect(segment.audio.words.length).toBeGreaterThan(0);
+
+    const ops = alignWords(splitIntoWords(segment.speech!), segment.audio.words);
+    const kinds = new Set(ops.map((op) => op.kind));
+
+    // Слабая проверка «есть хоть одна операция кроме same» позеленела бы
+    // и на фикстуре с единственным расхождением. §4 называет три разных
+    // способа разойтись, и фикстура обязана нести все три операции сразу:
+    // `replaced` (перефразировал), `added` (пропустил слово из текста),
+    // `removed` (произнёс слово, которого в тексте не было).
+    expect(kinds.has('replaced')).toBe(true);
+    expect(kinds.has('added')).toBe(true);
+    expect(kinds.has('removed')).toBe(true);
   });
 });
 

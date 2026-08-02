@@ -14,11 +14,13 @@
  *   результат ПРОХОДИМ — разрезанный проект не просто валиден, а доводит
  *   зрителя по любой ветке. Валидность данных не равна достижимости поведения.
  */
-import { loadProject, resolveTimeRef, type Project, type Word } from '@player/core';
+import {
+  loadProject, resolveTimeRef, SCHEMA_VERSION, type Project, type Segment, type Word,
+} from '@player/core';
 import { describe, expect, it } from 'vitest';
 
 import { splitAtGate } from '../src/state/project.js';
-import { splitSegmentAtGate, SplitError } from '../src/state/split.js';
+import { speechLossWarning, splitSegmentAtGate, SplitError } from '../src/state/split.js';
 
 /** Десять слов по секунде: «w0» в 0.000, «w1» в 1.000 и так далее. */
 const WORDS: Word[] = Array.from({ length: 10 }, (_, index) => ({
@@ -46,7 +48,7 @@ const box = (x: number) => ({
  */
 function project(): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080 },
     entry: 'whole',
     segments: [{
@@ -281,5 +283,141 @@ describe('развилка в конце дорожки: продолжения 
 
   it('и такой проект тоже открывается', () => {
     expect(() => loadProject(splitAtGate(atTheEnd(), 'whole', 'g-fork'))).not.toThrow();
+  });
+});
+
+/**
+ * Часть с расшифровкой из четырёх слов («Кошка» 0с, «бежит» 1с, «быстро» 2с,
+ * «домой» 3с), остановкой-выбором `g1` на 2-й секунде и текстом озвучки из
+ * тех же четырёх слов, где одно взято в другой форме («бежит» → «бежала»).
+ * Расхождение формы — не опечатка теста, а ровно то, ради чего нужно
+ * сопоставление, а не деление по индексу.
+ */
+function segmentWithSpeechAndWords(): Segment {
+  const words: Word[] = [
+    { text: 'Кошка', start: 0, end: 0.5, source: 'manual' },
+    { text: 'бежит', start: 1, end: 1.5, source: 'manual' },
+    { text: 'быстро', start: 2, end: 2.5, source: 'manual' },
+    { text: 'домой', start: 3, end: 3.5, source: 'manual' },
+  ];
+  return {
+    id: 'speech-source',
+    title: 'Кусок с озвучкой',
+    speech: 'Кошка бежала быстро домой',
+    audio: { src: '/track.mp3', offset: 0, duration: 4, words },
+    elements: [],
+    slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+    gates: [{
+      id: 'g1',
+      at: { kind: 'seconds', t: 2 },
+      config: {
+        kind: 'choice',
+        prompt: 'Куда дальше?',
+        options: [{ id: 'a', label: 'Налево' }, { id: 'b', label: 'Направо' }],
+        correctId: 'a',
+      },
+      onWrong: 'continue',
+      maxAttempts: null,
+      recordAs: 'куда',
+    }],
+    exit: { rules: [], default: null },
+  };
+}
+
+describe('разрез делит текст озвучки', () => {
+  it('голова и продолжение делят речь по шву расшифровки', () => {
+    const segment = segmentWithSpeechAndWords();
+    const { head, tail } = splitSegmentAtGate(segment, 'g1', []);
+
+    // Точные значения, а не тождество «голова + хвост == исходный текст» —
+    // такое тождество верно при ЛЮБОМ шве (`slice(0, n)` + `slice(n)` всегда
+    // даёт исходный массив), поэтому не проверяет, что шов встал ПРАВИЛЬНО.
+    // Расшифровка режется на секунде 2 после слов «Кошка»(0с) и «бежит»(1с) —
+    // `wordsCut` равен 2, — и ровно эти же по счёту два слова речи достаются
+    // голове.
+    expect(head.speech).toBe('Кошка бежала');
+    expect(tail?.speech).toBe('быстро домой');
+  });
+
+  it('ветки речи не получают: их повествования ещё нет', () => {
+    const { branches } = splitSegmentAtGate(segmentWithSpeechAndWords(), 'g1', []);
+    for (const branch of branches) expect(branch.speech).toBeUndefined();
+  });
+
+  it('шов речи не равен шву расшифровки, когда диктор проглотил слово', () => {
+    // В речи перед швом есть слово «первая», которого нет в расшифровке —
+    // операция `removed`, потребляющая только сторону речи. Расшифровка
+    // по-прежнему режется после 2 слов (`wordsCut` = 2), но голова обязана
+    // получить на одно слово речи БОЛЬШЕ: «первая» досталось ей, хотя не
+    // считается расшифровкой вовсе. Если бы разрез делил речь тем же
+    // числовым индексом `wordsCut`, что и расшифровку (не сопоставлением),
+    // голова получила бы лишь «Кошка первая» — на слово «бежит» короче.
+    const base = segmentWithSpeechAndWords();
+    const segment = { ...base, speech: 'Кошка первая бежит быстро домой' };
+    const { head, tail } = splitSegmentAtGate(segment, 'g1', []);
+
+    expect(head.speech).toBe('Кошка первая бежит');
+    expect(tail?.speech).toBe('быстро домой');
+  });
+
+  it('расшифровки нет — шва нет: речь целиком у головы', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = { ...base, audio: { ...base.audio, words: [] } };
+    const { head, tail } = splitSegmentAtGate(segment, 'g1', []);
+
+    expect(head.speech).toBe(segment.speech);
+    expect(tail?.speech).toBeUndefined();
+  });
+
+  it('речи не было — её нет ни у кого, и это не ошибка', () => {
+    const segment = { ...segmentWithSpeechAndWords(), speech: undefined };
+    const { head, tail } = splitSegmentAtGate(segment, 'g1', []);
+
+    expect(head.speech).toBeUndefined();
+    expect(tail?.speech).toBeUndefined();
+  });
+});
+
+/**
+ * ADR-022, перенесённое из Задачи 4: автор обязан узнать о потере текста
+ * озвучки СРАЗУ после разреза (см. `speechLossWarning` в `split.ts`).
+ */
+describe('предупреждение о потере текста озвучки при разрезе', () => {
+  it('есть текст, нет расшифровки, есть продолжение — предупреждение звучит', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = { ...base, audio: { ...base.audio, words: [] } };
+
+    const warning = speechLossWarning(segment, segment.gates[0]!);
+
+    expect(warning).toBeDefined();
+    expect(warning).toContain('текста озвучки');
+    expect(warning).toContain('расшифровки');
+    // Словарь автора, не схемы (CLAUDE.md, constraints.md).
+    expect(warning).not.toContain('speech');
+    expect(warning).not.toContain('audio.words');
+  });
+
+  it('речи не было вовсе — молчит: терять нечего', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = { ...base, speech: undefined, audio: { ...base.audio, words: [] } };
+
+    expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
+  });
+
+  it('расшифровка есть — шов есть, ничего не потеряется', () => {
+    const segment = segmentWithSpeechAndWords();
+
+    expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
+  });
+
+  it('развилка в конце дорожки — продолжения не будет, предупреждать не о чем', () => {
+    const base = segmentWithSpeechAndWords();
+    const segment = {
+      ...base,
+      audio: { ...base.audio, words: [] },
+      gates: [{ ...base.gates[0]!, at: { kind: 'seconds' as const, t: base.audio.duration } }],
+    };
+
+    expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
   });
 });

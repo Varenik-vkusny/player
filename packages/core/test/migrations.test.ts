@@ -412,3 +412,30 @@ describe('v5 → v6: fileId — второй источник дорожки', (
     expect(result.success, 'проект без источника дорожки прошёл валидацию, хотя не должен был').toBe(false);
   });
 });
+
+/**
+ * v6 → v7. У сегмента появляется `speech` — дословный текст озвучки (ADR-022).
+ * Миграция сама по себе тривиальна (только бампает версию): полю неоткуда
+ * взяться у существующих проектов, дописывать его текстом расшифровки было бы
+ * подменой написанного распознанным.
+ */
+describe('v6 → v7: версия поднимается, остальное содержимое не меняется', () => {
+  it('meta, entry и сегменты совпадают с исходником; версия поднимается до 7', () => {
+    const v6 = raw('uploaded-audio.json');
+    expect(v6.schemaVersion).toBe(6);
+
+    const v7 = migrateToCurrent(v6) as Record<string, unknown>;
+
+    expect(v7.schemaVersion).toBe(7);
+    // Приём — тот же, что у «миграция чистая» для v5→v6 (строки ~373–378
+    // выше): сравниваем ЦЕЛИКОМ через JSON.stringify, а не поле за полем,
+    // чтобы потеря ЛЮБОГО поля (meta, entry, содержимое сегмента) роняла
+    // тест, а не только несовпадение schemaVersion.
+    expect(JSON.stringify({ ...v7, schemaVersion: 6 })).toBe(JSON.stringify(v6));
+
+    // Ни одному сегменту речь не дописана: её отсутствие — законное состояние.
+    for (const segment of v7.segments as Array<Record<string, unknown>>) {
+      expect(segment).not.toHaveProperty('speech');
+    }
+  });
+});

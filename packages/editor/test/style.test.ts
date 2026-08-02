@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ANIMATABLE, loadProject, type Project } from '@player/core';
+import { ANIMATABLE, loadProject, SCHEMA_VERSION, type Project } from '@player/core';
 
 import {
   getStyleValue,
@@ -324,7 +324,7 @@ describe('интеграция со схемой: результат подст�
 
   function baseProject(headlineStyle: ElementStyle, panelStyle: ElementStyle): Project {
     return {
-      schemaVersion: 6,
+      schemaVersion: SCHEMA_VERSION,
       meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

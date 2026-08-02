@@ -44,7 +44,7 @@ import { canRedoState, canUndoState, historyReducer, initialHistoryState } from 
 import { createElement } from './state/elements.js';
 import { answerVariables, variableRenameProblem } from './state/exits.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
-import { splitBlockedReason } from './state/split.js';
+import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, segmentSlide, type MarkKind } from './state/project.js';
@@ -263,9 +263,22 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [selectedMark],
   );
 
+  /**
+   * Предупреждение ADR-022: развилка режется без расшифровки, а у части
+   * есть текст озвучки — продолжение родится без него (см. `speechLossWarning`,
+   * `state/split.ts`). Состояние вида, как `removalMessage`/`imageDropError`
+   * ниже: считается ДО разреза, потому что после него исходного сегмента уже
+   * нет и считать не по чему.
+   */
+  const [speechSplitWarning, setSpeechSplitWarning] = useState<string | undefined>(undefined);
+
   const handleSplitAtGate = useCallback(
-    (gateId: string) => dispatch({ type: 'splitAtGate', gateId }),
-    [],
+    (gateId: string) => {
+      const gate = currentSegment.gates.find((candidate) => candidate.id === gateId);
+      setSpeechSplitWarning(gate ? speechLossWarning(currentSegment, gate) : undefined);
+      dispatch({ type: 'splitAtGate', gateId });
+    },
+    [currentSegment],
   );
 
   // Кого автор изображает, открывая предпросмотр: переменная → id варианта.
@@ -305,6 +318,10 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
 
   const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
   const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
+  const handleDuplicateSegment = useCallback(
+    (id: string) => dispatch({ type: 'duplicateSegment', segmentId: id }),
+    [],
+  );
   const handleConnect = useCallback(
     (when: readonly Condition[], goto: string) => dispatch({ type: 'connect', when, goto }),
     [],
@@ -606,8 +623,28 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [],
   );
 
+  // «Заменить и расшифровать»: AudioSourcePanel уже сходила за расшифровкой
+  // НОВОГО файла и приносит готовые слова — здесь замена и перенос меток
+  // уходят одним dispatch, одним шагом истории (см. комментарий действия
+  // в state/project.ts: старых слов для сопоставления между двумя
+  // действиями уже не было бы). Проверено e2e (editor-audio-align.spec.ts,
+  // «Ctrl+Z один раз возвращает и дорожку, и расшифровку разом»): тест ловит
+  // разбиение этого dispatch на два — подтверждено намеренным сломом
+  // и откатом при подготовке задачи 7 (Круг правок 1).
+  const handleReplaceAudioWithTranscript = useCallback(
+    (fileId: string, durationSeconds: number, words: readonly Word[]) => {
+      dispatch({ type: 'replaceSegmentAudio', fileId, duration: durationSeconds, words });
+    },
+    [],
+  );
+
   const handleWordsTranscribed = useCallback((words: readonly Word[]) => {
     dispatch({ type: 'setSegmentWords', words });
+  }, []);
+
+  /** Живое событие набора текста озвучки — см. комментарий модуля Inspector.tsx. */
+  const handleSpeechChange = useCallback((text: string) => {
+    dispatch({ type: 'setSpeech', text, commit: false });
   }, []);
 
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
@@ -833,12 +870,23 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             onAdd={handleAddSlide}
             onRemove={handleRemoveSlide}
           />
+          {/* ADR-022: разрез без расшифровки потерял текст озвучки продолжения.
+              Рядом с панелью частей — тот же класс сообщения, что и «Пустые
+              части» внутри неё (state/exits.ts: emptySegments), только здесь
+              это разовое событие самого разреза, а не постоянно пересчитываемое
+              состояние проекта (см. handleSplitAtGate выше). */}
+          {speechSplitWarning ? (
+            <span className="ed-warning" role="status" data-testid="speech-split-warning">
+              {speechSplitWarning}
+            </span>
+          ) : null}
           <SegmentPanel
             project={currentProject}
             currentSegmentId={state.currentSegmentId}
             onSelectSegment={handleSelectSegment}
             onAddSegment={handleAddSegment}
             onRemoveSegment={handleRemoveSegment}
+            onDuplicateSegment={handleDuplicateSegment}
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
             onAddCondition={handleAddCondition}
@@ -893,7 +941,12 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           source={segment.source}
           wordMarkCount={audioWordMarkCount}
           onReplace={handleReplaceAudio}
+          onReplaceWithTranscript={handleReplaceAudioWithTranscript}
           onWordsTranscribed={handleWordsTranscribed}
+          lastRetarget={state.lastRetarget}
+          speech={currentSegment.speech ?? ''}
+          onSpeechChange={handleSpeechChange}
+          onCommitHistory={handleCommitHistory}
         />
         <SlideStrip
           slides={segment.slides}

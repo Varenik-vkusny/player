@@ -29,6 +29,7 @@ import {
   answerVariables,
   deadComparisons,
   emptySegments,
+  leadsBack,
   reachableFrom,
   uncoveredOutcomes,
 } from '../state/exits.js';
@@ -39,6 +40,7 @@ export interface SegmentPanelProps {
   readonly onSelectSegment: (id: string) => void;
   readonly onAddSegment: () => void;
   readonly onRemoveSegment: (id: string) => void;
+  readonly onDuplicateSegment: (id: string) => void;
   readonly onConnect: (when: readonly Condition[], goto: string) => void;
   readonly onAddCondition: (ruleId: string, condition: Condition) => void;
   readonly onRemoveCondition: (ruleId: string, index: number) => void;
@@ -311,6 +313,7 @@ export function SegmentPanel({
   onSelectSegment,
   onAddSegment,
   onRemoveSegment,
+  onDuplicateSegment,
   onConnect,
   onDisconnect,
   onAddCondition,
@@ -332,6 +335,19 @@ export function SegmentPanel({
   const holes = useMemo(
     () => uncoveredOutcomes(currentSegment, currentSegment.gates),
     [currentSegment],
+  );
+  // Цели, ведущие НАЗАД: из них можно по рёбрам выхода дойти обратно до
+  // текущей части — тот самый повтор (leadsBack, exits.ts). Список сегментов
+  // не задаёт порядок проигрывания, поэтому «назад» проверяется обходом
+  // графа, а не позицией в массиве.
+  const repeatTargets = useMemo(
+    () =>
+      new Set(
+        project.segments
+          .filter((segment) => leadsBack(project, currentSegmentId, segment.id))
+          .map((segment) => segment.id),
+      ),
+    [project, currentSegmentId],
   );
 
   // Цель в <select> для каждой ещё не заведённой связки — ключ вида
@@ -395,6 +411,14 @@ export function SegmentPanel({
           onClick={() => onRemoveSegment(currentSegmentId)}
         >
           Удалить часть
+        </button>
+        <button
+          type="button"
+          className="ed-action"
+          data-testid="segment-duplicate"
+          onClick={() => onDuplicateSegment(currentSegmentId)}
+        >
+          Сделать копию части
         </button>
       </div>
 
@@ -532,6 +556,7 @@ export function SegmentPanel({
                       {project.segments.map((segment) => (
                         <option key={segment.id} value={segment.id}>
                           {titleOf(segment)}
+                          {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
                         </option>
                       ))}
                     </select>
@@ -564,6 +589,7 @@ export function SegmentPanel({
                       {project.segments.map((segment) => (
                         <option key={segment.id} value={segment.id}>
                           {titleOf(segment)}
+                          {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
                         </option>
                       ))}
                     </select>

@@ -3352,6 +3352,7 @@ var B = I().min(1).refine((e) => e === e.trim(), { message: "Идентифик�
 }), fo = z({
 	id: B,
 	title: I().default(""),
+	speech: I().min(1).optional(),
 	audio: z({
 		src: I().min(1).optional(),
 		fileId: I().min(1).optional(),
@@ -3369,7 +3370,7 @@ z({
 	segments: va(fo).min(1)
 });
 var po = z({
-	schemaVersion: ja(6),
+	schemaVersion: ja(7),
 	meta: z({
 		title: I(),
 		stageWidth: R().int().positive().default(1920),
@@ -3796,6 +3797,15 @@ var So = Object.freeze({
 			entry: t.entry,
 			segments: t.segments
 		};
+	},
+	6: (e) => {
+		let t = e;
+		return {
+			schemaVersion: 7,
+			meta: t.meta,
+			entry: t.entry,
+			segments: t.segments
+		};
 	}
 }), wo = class extends Error {
 	found;
@@ -3811,9 +3821,9 @@ function To(e) {
 }
 function Eo(e) {
 	let t = To(e);
-	if (t > 6) throw new wo(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 6. Обновите приложение.`, t);
+	if (t > 7) throw new wo(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 7. Обновите приложение.`, t);
 	let n = e;
-	for (; t < 6;) {
+	for (; t < 7;) {
 		let e = Co[t];
 		if (!e) throw new wo(`Нет миграции с версии ${t} на ${t + 1}. Каждая версия схемы обязана иметь миграцию (инвариант №7).`, t);
 		n = e(n), t = To(n);
@@ -3873,8 +3883,14 @@ function No(e, t) {
 	return e.every((e) => jo(e, t));
 }
 function Po(e, t) {
-	for (let n of e.exit.rules) if (No(n.when, t)) return n.goto;
-	return e.exit.default;
+	for (let n of e.exit.rules) if (No(n.when, t)) return {
+		goto: n.goto,
+		rule: n
+	};
+	return e.exit.default === null ? null : {
+		goto: e.exit.default,
+		rule: null
+	};
 }
 function Fo(e, t) {
 	let n = /* @__PURE__ */ new Set(), r = t, i = 0;
@@ -5571,7 +5587,10 @@ function ou(e, t) {
 function su(e) {
 	return e.entry;
 }
-var cu = class {
+function cu(e) {
+	return e.segments.map((t) => ou(e, t.id));
+}
+var lu = class {
 	#e;
 	#t;
 	#n;
@@ -5623,7 +5642,22 @@ var cu = class {
 	#o() {
 		if (this.#i) throw Error("ScenePreview уже уничтожен");
 	}
-}, lu = 2, uu = .4, du = class {
+};
+//#endregion
+//#region packages/player/src/repeat.ts
+function uu(e, t) {
+	return e.filter((e) => !t.has(e.id));
+}
+function du(e, t) {
+	let n = /* @__PURE__ */ new Set();
+	if (t === null) return n;
+	let r = new Set(t.when.map((e) => e.variable).filter((e) => e !== void 0));
+	for (let t of e) for (let e of t.gates) r.has(e.recordAs) && n.add(e.id);
+	return n;
+}
+//#endregion
+//#region packages/player/src/player.ts
+var fu = 2, pu = .4, mu = class {
 	#e;
 	#t;
 	#n;
@@ -5645,8 +5679,11 @@ var cu = class {
 	#v = [];
 	#y = null;
 	#b = 0;
+	#x = /* @__PURE__ */ new Set();
+	#S = /* @__PURE__ */ new Set();
+	#C = !1;
 	constructor(e, t, n = {}, r = new es(), i = {}) {
-		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? su(t), this.#a = ou(t, this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#D), e.appendChild(this.#t);
+		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? su(t), this.#a = ou(t, this.#i), this.#x.add(this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#A), e.appendChild(this.#t);
 	}
 	get state() {
 		return this.#m;
@@ -5655,7 +5692,7 @@ var cu = class {
 		return this.#t;
 	}
 	get positionSeconds() {
-		return this.#l ? this.#x(this.#l.position) : 0;
+		return this.#l ? this.#w(this.#l.position) : 0;
 	}
 	get progress() {
 		return {
@@ -5665,10 +5702,13 @@ var cu = class {
 			durationSeconds: this.#a.duration
 		};
 	}
-	#x(e) {
+	get isRepeating() {
+		return this.#C;
+	}
+	#w(e) {
 		return e - this.#a.offset;
 	}
-	#S(e) {
+	#T(e) {
 		return e + this.#a.offset;
 	}
 	get currentGate() {
@@ -5677,45 +5717,45 @@ var cu = class {
 	get currentReveal() {
 		return this.#y ?? void 0;
 	}
-	get #C() {
+	get #E() {
 		return this.#u?.nodes ?? /* @__PURE__ */ new Map();
 	}
-	#w(e) {
+	#D(e) {
 		this.#m !== e && (this.#m = e, this.#r.onStateChange?.(e));
 	}
 	async load() {
-		this.#w("loading"), this.#g = new ResizeObserver(() => this.#E()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.source), this.#T(), this.#w("ready");
+		this.#D("loading"), this.#g = new ResizeObserver(() => this.#k()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.source), this.#O(), this.#D("ready");
 	}
-	#T() {
-		this.#G(), this.#u?.destroy(), this.#u = new au({
+	#O() {
+		this.#Y(), this.#u?.destroy(), this.#u = new au({
 			host: this.#t,
 			elements: this.#a.elements,
 			slides: this.#a.slides,
 			words: this.#a.words,
 			stage: this.#a.stage
-		}), this.#_ = [], this.#v = [], this.#E(), this.#B(), this.#d = this.#a.gates.map((e) => ({
+		}), this.#_ = [], this.#v = [], this.#k(), this.#W(), this.#d = uu(this.#a.gates, this.#S).map((e) => ({
 			gate: e,
 			at: ko(e.at, this.#a.words)
 		})).sort((e, t) => e.at - t.at), this.#f = 0, this.#p.clear(), this.#u.renderAt(0);
 	}
-	#E() {
+	#k() {
 		ru(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
 	}
-	#D = (e) => {
+	#A = (e) => {
 		if (this.#m !== "at-gate") return;
 		let t = this.currentGate;
 		if (!t || t.config.kind !== "choice") return;
 		let n = e.target, r = (n instanceof HTMLElement ? n.closest("[data-id]") : null)?.dataset.id;
 		if (r === void 0) return;
 		let i = t.config.options.find((e) => e.id === r);
-		!i || !this.#k(i.when) || this.answer(r);
+		!i || !this.#M(i.when) || this.answer(r);
 	};
-	#O(e) {
+	#j(e) {
 		if (e.config.kind !== "choice") return [];
 		let t = [];
 		for (let n of e.config.options) {
-			let e = this.#C.get(n.id);
-			if (!this.#k(n.when)) {
+			let e = this.#E.get(n.id);
+			if (!this.#M(n.when)) {
 				e && (this.#v.push({
 					id: n.id,
 					opacity: e.style.opacity
@@ -5730,114 +5770,118 @@ var cu = class {
 		}
 		return t;
 	}
-	#k(e) {
+	#M(e) {
 		return e === void 0 || No(e, this.#c);
 	}
-	#A() {
+	#N() {
 		for (let e of this.#_) {
-			let t = this.#C.get(e);
+			let t = this.#E.get(e);
 			t && (delete t.dataset.answerOption, t.style.cursor = "");
 		}
 		this.#_ = [];
 		for (let e of this.#v) {
-			let t = this.#C.get(e.id);
+			let t = this.#E.get(e.id);
 			t && (t.style.opacity = e.opacity);
 		}
 		this.#v = [];
 	}
 	async play() {
-		let e = this.#G();
+		let e = this.#Y();
 		if (this.#m !== "playing") {
 			if (this.#m === "at-gate") throw Error("Нельзя продолжить, пока гейт не пройден");
-			if (await e.wake(), this.#j(0)) {
-				e.holdBeforeStart(this.#S(0)), this.#z();
+			if (await e.wake(), this.#P(0)) {
+				e.holdBeforeStart(this.#T(0)), this.#U();
 				return;
 			}
-			e.start(this.#m === "ended" ? this.#S(0) : e.position), this.#m === "ended" && (this.#f = 0), this.#w("playing"), this.#M();
+			e.start(this.#m === "ended" ? this.#T(0) : e.position), this.#m === "ended" && (this.#f = 0), this.#D("playing"), this.#F();
 		}
 	}
-	#j(e) {
+	#P(e) {
 		let t = this.#d[this.#f];
 		return t !== void 0 && e >= t.at;
 	}
-	#M() {
+	#F() {
 		let e = () => {
 			if (this.#m !== "playing") return;
-			let t = this.#G(), n = this.#K(), r = this.#x(t.position);
-			if (n.seekSeconds(r), this.#r.onFrame?.(r), this.#j(r)) {
-				this.#R();
+			let t = this.#Y(), n = this.#X(), r = this.#w(t.position);
+			if (n.seekSeconds(r), this.#r.onFrame?.(r), this.#P(r)) {
+				this.#H();
 				return;
 			}
-			if (this.#P()) {
+			if (this.#L()) {
 				this.#h = requestAnimationFrame(e);
 				return;
 			}
-			if (this.#N(r), r >= this.#a.duration - .02) {
-				this.#I();
+			if (this.#I(r), r >= this.#a.duration - .02) {
+				this.#z();
 				return;
 			}
 			this.#h = requestAnimationFrame(e);
 		};
 		this.#h = requestAnimationFrame(e);
 	}
-	#N(e) {
+	#I(e) {
 		if (this.#s) return;
 		let t = this.#l;
 		if (!t) return;
 		let n = Po(Ao(this.#n, this.#i), this.#c);
 		if (n === null) return;
-		let r = this.#a.duration - e;
-		if (r > lu) return;
-		let i = ou(this.#n, n), a = i.source;
-		if (r > uu) {
-			this.#o.warm(a);
+		let r = n.goto, i = this.#a.duration - e;
+		if (i > fu) return;
+		let a = ou(this.#n, r), o = a.source;
+		if (i > pu) {
+			this.#o.warm(o);
 			return;
 		}
-		let o = t.scheduleEnd;
-		if (o === null) return;
-		let s = o - t.scheduleNow;
-		if (s <= 0) return;
-		let c = this.#o.clockIfReady(a);
-		if (!c) return;
-		let l = c.start(i.offset, { leadTime: s });
+		let s = t.scheduleEnd;
+		if (s === null) return;
+		let c = s - t.scheduleNow;
+		if (c <= 0) return;
+		let l = this.#o.clockIfReady(o);
+		if (!l) return;
+		let u = l.start(a.offset, { leadTime: c });
 		this.#s = {
-			clock: c,
-			nodeId: n,
-			startsAt: l
+			clock: l,
+			nodeId: r,
+			startsAt: u,
+			choice: n
 		};
 	}
-	#P() {
+	#L() {
 		let e = this.#s, t = this.#l;
-		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = ou(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#T(), !0);
+		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = ou(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#V(e.nodeId, e.choice), this.#O(), !0);
 	}
-	#F() {
+	#R() {
 		let e = this.#s;
 		e && (e.clock.stop(), this.#s = null);
 	}
-	async #I() {
+	async #z() {
 		let e = Po(Ao(this.#n, this.#i), this.#c);
 		if (e === null) {
-			this.#U();
+			this.#q();
 			return;
 		}
-		await this.#L(e);
+		await this.#B(e.goto, e);
 	}
-	async #L(e) {
-		this.#W(), this.#F(), this.#l?.stop(), this.#i = e, this.#a = ou(this.#n, e), this.#b += 1, this.#l = await this.#o.clockFor(this.#a.source), await this.#l.wake(), this.#T(), this.#l.start(this.#S(0)), this.#w("playing"), this.#M();
+	async #B(e, t) {
+		this.#J(), this.#R(), this.#l?.stop(), this.#i = e, this.#a = ou(this.#n, e), this.#b += 1, this.#V(e, t), this.#l = await this.#o.clockFor(this.#a.source), await this.#l.wake(), this.#O(), this.#l.start(this.#T(0)), this.#D("playing"), this.#F();
 	}
-	async #R() {
-		let e = this.#G(), t = this.#K(), n = this.#d[this.#f];
+	#V(e, t) {
+		if (this.#C = this.#x.has(e), this.#x.add(e), this.#C) for (let e of du(cu(this.#n), t.rule)) this.#S.delete(e);
+	}
+	async #H() {
+		let e = this.#Y(), t = this.#X(), n = this.#d[this.#f];
 		if (!n) throw Error("Гейт исчез между проверкой и остановкой");
-		this.#F(), await e.freezeAt(this.#S(n.at)), t.seekSeconds(n.at), t.settle(), this.#z();
+		this.#R(), await e.freezeAt(this.#T(n.at)), t.seekSeconds(n.at), t.settle(), this.#U();
 	}
-	#z() {
+	#U() {
 		let e = this.#d[this.#f];
 		if (!e) throw Error("Нет гейта для открытия");
-		this.#W(), this.#t.style.pointerEvents = "auto", this.#w("at-gate"), this.#B();
-		let t = this.#O(e.gate);
+		this.#J(), this.#t.style.pointerEvents = "auto", this.#D("at-gate"), this.#W();
+		let t = this.#j(e.gate);
 		this.#r.onGateOpen?.(e.gate, t);
 	}
-	#B() {
+	#W() {
 		let e = Ao(this.#n, this.#i);
 		for (let t of Io(e)) this.#o.warm(ou(this.#n, t).source);
 	}
@@ -5848,11 +5892,11 @@ var cu = class {
 		let { gate: n } = t;
 		if (n.config.kind === "choice") {
 			let t = n.config.options.find((t) => t.id === e);
-			if (t && !this.#k(t.when)) throw Error(`Вариант «${e}» скрыт условием и не может быть ответом`);
+			if (t && !this.#M(t.when)) throw Error(`Вариант «${e}» скрыт условием и не может быть ответом`);
 		}
 		let r = (this.#p.get(n.id) ?? 0) + 1;
 		this.#p.set(n.id, r);
-		let i = fu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
+		let i = hu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
 		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
 		let s = {
 			gate: n,
@@ -5866,44 +5910,44 @@ var cu = class {
 				value: e ?? "",
 				correct: i
 			}
-		}, this.#r.onGateResolved?.(s), o === "continue" ? await this.#H() : o === "reveal" && this.#V(n), s;
+		}, this.#S.add(n.id), this.#r.onGateResolved?.(s), o === "continue" ? await this.#K() : o === "reveal" && this.#G(n), s;
 	}
-	#V(e) {
-		this.#A(), this.#t.style.pointerEvents = "none";
+	#G(e) {
+		this.#N(), this.#t.style.pointerEvents = "none";
 		let t = e.config;
 		this.#y = {
 			gate: e,
 			kind: e.onWrong === "inline-hint" ? "inline-hint" : "inline-explain",
 			correctOption: t.kind === "choice" ? t.options.find((e) => e.id === t.correctId) : void 0
-		}, this.#w("at-reveal"), this.#r.onRevealOpen?.(this.#y);
+		}, this.#D("at-reveal"), this.#r.onRevealOpen?.(this.#y);
 	}
 	async continueAfterReveal() {
 		if (this.#m !== "at-reveal") throw Error(`Разбор не открыт: состояние ${this.#m}`);
-		await this.#H();
+		await this.#K();
 	}
-	async #H() {
-		let e = this.#G();
-		this.#y = null, this.#A(), this.#t.style.pointerEvents = "none", this.#f += 1, await e.resumeFromFreeze(), this.#w("playing"), this.#M();
+	async #K() {
+		let e = this.#Y();
+		this.#y = null, this.#N(), this.#t.style.pointerEvents = "none", this.#f += 1, await e.resumeFromFreeze(), this.#D("playing"), this.#F();
 	}
-	#U() {
-		this.#W(), this.#F(), this.#l?.stop(), this.#w("ended");
+	#q() {
+		this.#J(), this.#R(), this.#l?.stop(), this.#D("ended");
 	}
-	#W() {
+	#J() {
 		this.#h !== null && (cancelAnimationFrame(this.#h), this.#h = null);
 	}
 	destroy() {
-		this.#W(), this.#F(), this.#g?.disconnect(), this.#l?.stop(), this.#u?.destroy(), this.#o.close(), this.#t.remove(), this.#w("idle");
+		this.#J(), this.#R(), this.#g?.disconnect(), this.#l?.stop(), this.#u?.destroy(), this.#o.close(), this.#t.remove(), this.#D("idle");
 	}
-	#G() {
+	#Y() {
 		if (!this.#l) throw Error("Плеер не загружен: сначала load()");
 		return this.#l;
 	}
-	#K() {
+	#X() {
 		if (!this.#u) throw Error("Плеер не загружен: сначала load()");
 		return this.#u;
 	}
 };
-function fu(e, t) {
+function hu(e, t) {
 	let n = e.config;
 	switch (n.kind) {
 		case "continue": return !0;
@@ -5916,4 +5960,4 @@ function fu(e, t) {
 	}
 }
 //#endregion
-export { $o as AudioClock, es as AudioClocks, $l as DEFAULT_STAGE_HEIGHT, Ql as DEFAULT_STAGE_WIDTH, zl as MORPH_DURATION_S, du as Player, Lo as ProjectLoadError, cu as ScenePreview, au as SlideEngine, tu as applyElement, ru as applyFit, Zl as buildMorph, su as entrySegmentOf, eu as fitStage, Go as getAudio, Hl as indexAt, fu as isCorrect, Gl as layoutStatesFor, Ro as loadProject, Zo as loadTrack, Vl as morphSecondsFor, Ul as phaseAt, Wl as planMorph, Wo as putAudio, qo as releaseAudioUrl, nu as renderScene, Ko as resolveAudioUrl, ou as segmentOf };
+export { $o as AudioClock, es as AudioClocks, $l as DEFAULT_STAGE_HEIGHT, Ql as DEFAULT_STAGE_WIDTH, zl as MORPH_DURATION_S, mu as Player, Lo as ProjectLoadError, lu as ScenePreview, au as SlideEngine, cu as allSegments, du as answersToClear, tu as applyElement, ru as applyFit, Zl as buildMorph, su as entrySegmentOf, eu as fitStage, Go as getAudio, Hl as indexAt, hu as isCorrect, Gl as layoutStatesFor, Ro as loadProject, Zo as loadTrack, Vl as morphSecondsFor, uu as openableGates, Ul as phaseAt, Wl as planMorph, Wo as putAudio, qo as releaseAudioUrl, nu as renderScene, Ko as resolveAudioUrl, ou as segmentOf };

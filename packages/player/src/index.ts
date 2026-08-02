@@ -52,7 +52,8 @@ export {
   type SlideStates,
   type StageSize,
 } from './render.js';
-export { entrySegmentOf, ScenePreview, segmentOf, type Segment } from './preview.js';
+export { allSegments, entrySegmentOf, ScenePreview, segmentOf, type Segment } from './preview.js';
+export { answersToClear, openableGates } from './repeat.js';
 export { SlideEngine, type SlideEngineOptions } from './slides.js';
 export {
   isCorrect,

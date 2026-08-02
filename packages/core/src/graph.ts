@@ -12,7 +12,7 @@
  * записывает ответ в переменную, а решение принимает выход сегмента — и принять
  * его больше негде, потому что `Exit` есть поле сегмента (ADR-015).
  */
-import type { Condition, Project, Segment } from './schema.js';
+import type { Condition, ExitRule, Project, Segment } from './schema.js';
 
 /**
  * Ответ зрителя на одном гейте.
@@ -122,20 +122,47 @@ export function conditionsHold(conditions: readonly Condition[], answers: Answer
 }
 
 /**
- * Какой сегмент следующий, когда этот доиграл.
+ * Куда вести и по какому правилу — исход выбора выхода сегмента.
+ *
+ * `rule: null` означает, что сработал запасной выход (`exit.default`),
+ * а не одно из именованных правил: у запасного выхода нет условий, из
+ * которых можно было бы взять переменные для сброса.
+ */
+export type ExitChoice =
+  | { readonly goto: string; readonly rule: ExitRule }
+  | { readonly goto: string; readonly rule: null };
+
+/**
+ * Какой сегмент следующий, когда этот доиграл, и по какому правилу.
  *
  * Правила проверяются по порядку, первое подошедшее выигрывает: порядок
  * задаёт автор, и «первое подошедшее» — единственная семантика, которую
  * он может держать в голове, читая список сверху вниз.
  *
- * `null` — объяснение закончился. Это концовка, а не ошибка: именно такой выход
- * получает сегмент после миграции с версии 2, то есть это основной случай.
+ * `null` — объяснение закончилось. Это концовка, а не ошибка: именно такой
+ * выход получает сегмент после миграции с версии 2, то есть это основной
+ * случай.
+ *
+ * Правило возвращается вместе с целью, потому что повтору куска объяснения
+ * нужно не только «куда», но и «из-за какого правила»: из правила берутся
+ * переменные, чьи ответы надо сбросить, чтобы виновная остановка спросила
+ * заново.
+ */
+export function nextExit(segment: Segment, answers: Answers): ExitChoice | null {
+  for (const rule of segment.exit.rules) {
+    if (conditionsHold(rule.when, answers)) return { goto: rule.goto, rule };
+  }
+  return segment.exit.default === null ? null : { goto: segment.exit.default, rule: null };
+}
+
+/**
+ * Какой сегмент следующий, когда этот доиграл.
+ *
+ * Обёртка над `nextExit`: два независимых описания одного и того же правила
+ * разъехались бы тихо, поэтому цель берётся из единственного источника.
  */
 export function nextSegment(segment: Segment, answers: Answers): string | null {
-  for (const rule of segment.exit.rules) {
-    if (conditionsHold(rule.when, answers)) return rule.goto;
-  }
-  return segment.exit.default;
+  return nextExit(segment, answers)?.goto ?? null;
 }
 
 /**

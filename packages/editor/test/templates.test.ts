@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ProjectSchema } from '@player/core';
+import { ProjectSchema, SCHEMA_VERSION } from '@player/core';
 import type { Project, Segment } from '@player/core';
 
 import { ANIMATION_PRESETS, ELEMENT_LIBRARY } from '../src/state/library.js';
@@ -32,7 +32,7 @@ function emptySegment(): Segment {
 
 function projectAround(segment: Segment): Project {
   return {
-    schemaVersion: 6,
+    schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height },
     entry: segment.id,
     segments: [segment],
@@ -208,7 +208,7 @@ describe('шаблон «вопрос»: варианты действитель
     const optionIds = gate.config.kind === 'choice' ? gate.config.options.map((option) => option.id) : [];
     return {
       project: {
-        schemaVersion: 6,
+        schemaVersion: SCHEMA_VERSION,
         meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
         entry: 'n1',
         segments: [

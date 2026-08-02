@@ -16,8 +16,10 @@ import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, T
 import { resolveTimeRef } from '@player/core';
 
 import { retargetMark } from '../track/marks.js';
+import { copySegment } from './duplicate.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
+import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import { splitSegmentAtGate } from './split.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
@@ -45,6 +47,14 @@ export interface EditorState {
    * слайд, а не сегмент и не элемент, знает «где» и «как выглядит».
    */
   readonly currentSlideId: string;
+  /**
+   * Отчёт о последнем переносе меток (`replaceSegmentAudio` с расшифровкой) —
+   * сообщение автору, а не свойство проекта, поэтому живёт рядом с `selectedId`
+   * и `currentSlideId`, а не внутри `project`/истории отмены. `undefined` —
+   * либо ничего ещё не переносили, либо последняя замена была без расшифровки
+   * (путь «без расшифровки» законен и отчёта не производит).
+   */
+  readonly lastRetarget: RetargetReport | undefined;
 }
 
 /** Метки на дорожке, которые двигаются перетаскиванием: гейт или слайд. */
@@ -102,6 +112,12 @@ export type EditorAction =
   | { readonly type: 'applyTemplate'; readonly template: SceneTemplate }
   | { readonly type: 'addSegment' }
   | { readonly type: 'removeSegment'; readonly id: string }
+  // Жёсткая копия куска (product.md §7, механика «копия блока» — не путать
+  // с «повтором своего раздела», ребром назад по графу, и со «ссылкой
+  // на общий блок», отложенной [П]). Вся логика — в duplicate.ts: несущее
+  // ограничение там же (схема запрещает двум остановкам писать в одну
+  // переменную по всему проекту, поэтому копия остановки получает своё имя).
+  | { readonly type: 'duplicateSegment'; readonly segmentId: string }
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
@@ -118,12 +134,30 @@ export type EditorAction =
   // wordMarkCount/replaceAudioConfirmMessage — подтверждение строит вызывающий
   // ДО отправки этого действия). fileId уже лежит в хранилище плеера
   // (putAudio), duration — из декодера, а не из File и не из схемы.
-  | { readonly type: 'replaceSegmentAudio'; readonly fileId: string; readonly duration: number }
+  // `words` необязателен: есть расшифровка НОВОЙ озвучки — метки переезжают
+  // на свои слова сопоставлением (`retargetByAlignment`); нет — законный
+  // путь «кусок без расшифровки», прежнее поведение (метки в секунды). Оба
+  // случая ложатся ОДНИМ шагом истории: расшифровка приходит вместе с заменой,
+  // а не следующим действием, потому что старые слова, нужные для
+  // сопоставления, доступны только ДО замены — между двумя действиями их
+  // уже не было бы.
+  | {
+      readonly type: 'replaceSegmentAudio';
+      readonly fileId: string;
+      readonly duration: number;
+      readonly words?: readonly Word[];
+    }
   // Расшифровка вернула слова — кладём их как есть, без поправки таймингов
   // (S5: медиана расхождения +30 мс, вычитание «систематической» поправки
   // делает хуже). Не трогает метки: они остаются там, где стояли раньше,
   // и автор перепривязывает их к слову вручную через MarkPanel, если хочет.
-  | { readonly type: 'setSegmentWords'; readonly words: readonly Word[] };
+  | { readonly type: 'setSegmentWords'; readonly words: readonly Word[] }
+  // Текст озвучки куска — что автор произносит, а не что услышала машина
+  // (это `audio.words`, отдельное поле). `commit: false` — та же семантика
+  // набора, что и у `setElementState`/`moveMark`: textarea шлёт это на КАЖДУЮ
+  // распознанную правку, и без флага набор строки создавал бы шаг истории
+  // на каждую букву (см. `editorHistory.ts: isLiveEvent`).
+  | { readonly type: 'setSpeech'; readonly text: string; readonly commit?: boolean };
 
 export function initialState(project: Project): EditorState {
   const segment = requireSegment(project, project.entry);
@@ -132,6 +166,7 @@ export function initialState(project: Project): EditorState {
     selectedId: undefined,
     currentSegmentId: project.entry,
     currentSlideId: requireFirstSlide(segment).id,
+    lastRetarget: undefined,
   };
 }
 
@@ -403,6 +438,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     }
 
+    case 'duplicateSegment': {
+      const project = duplicateSegment(state.project, action.segmentId);
+      // Автор остаётся на ОРИГИНАЛЕ: он не просил перевести себя на копию
+      // (та же логика, что у splitAtGate выше). currentSegmentId/currentSlideId
+      // не трогаем — оригинал не переехал, его собственные id не изменились.
+      return { ...state, project };
+    }
+
     case 'renameSegment': {
       const project = exits.renameSegment(state.project, action.id, action.title);
       return project === state.project ? state : { ...state, project };
@@ -476,17 +519,34 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'replaceSegmentAudio': {
       const segment = currentSegment(state);
-      // Слова — СТАРЫЕ, той озвучки, которую заменяем. Перепривязка обязана
-      // прочитать их до того, как ниже audio.words станет пустым массивом:
-      // markSeconds (через retargetMark) без слов ничего не разрешит.
-      const words = segment.audio.words;
-      const slides = segment.slides.map((slide) =>
-        slide.at.kind === 'word' ? { ...slide, at: retargetMark(slide.at, words, 'seconds') } : slide,
-      );
-      const gates = segment.gates.map((gate) =>
-        gate.at.kind === 'word' ? { ...gate, at: retargetMark(gate.at, words, 'seconds') } : gate,
-      );
-      return replaceSegment(state, {
+      // Слова СТАРЫЕ, той озвучки, которую заменяем. Читать их обязательно
+      // до того, как ниже audio.words сменится: перенос метки строится на
+      // сопоставлении старого транскрипта с новым, и без левой стороны
+      // сопоставления не существует. Именно поэтому расшифровка приходит
+      // ЭТИМ же действием, а не следующим: между двумя действиями старых
+      // слов уже нет.
+      const before = segment.audio.words;
+      const after = action.words;
+
+      const marks = [...segment.slides.map((s) => s.at), ...segment.gates.map((g) => g.at)];
+      const { refs, report }: { refs: readonly TimeRef[]; report: RetargetReport | undefined } =
+        after === undefined
+          ? { refs: marks.map((ref) => (ref.kind === 'word' ? retargetMark(ref, before, 'seconds') : ref)), report: undefined }
+          : retargetByAlignment(marks, before, after);
+
+      // Спред только там, где ссылка реально изменилась: неизменившийся
+      // слайд/гейт обязан остаться ТЕМ ЖЕ объектом по ссылке (см. комментарий
+      // модуля про StageView и сравнение ссылок).
+      const slides = segment.slides.map((slide, i) => {
+        const ref = refs[i]!;
+        return ref === slide.at ? slide : { ...slide, at: ref };
+      });
+      const gates = segment.gates.map((gate, i) => {
+        const ref = refs[segment.slides.length + i]!;
+        return ref === gate.at ? gate : { ...gate, at: ref };
+      });
+
+      return replaceSegment({ ...state, lastRetarget: report }, {
         ...segment,
         slides,
         gates,
@@ -495,7 +555,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           fileId: action.fileId,
           offset: 0,
           duration: action.duration,
-          words: [],
+          words: after === undefined ? [] : [...after],
         },
       });
     }
@@ -510,6 +570,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...segment,
         audio: { ...segment.audio, words: [...action.words] },
       });
+    }
+
+    case 'setSpeech': {
+      const segment = currentSegment(state);
+      const text = action.text.trim();
+      // Пустая строка запрещена схемой: «текста нет» выражается отсутствием
+      // поля. Два способа сказать одно — источник расхождений на ровном месте.
+      const speech = text.length > 0 ? text : undefined;
+      return replaceSegment(state, { ...segment, speech });
     }
   }
 }
@@ -534,6 +603,39 @@ export function splitAtGate(project: Project, segmentId: string, gateId: string)
   const created: Segment[] = tail ? [...branches, tail] : [...branches];
   const segments = project.segments.flatMap((candidate) =>
     (candidate.id === head.id ? [head, ...created] : [candidate]));
+
+  return { ...project, segments };
+}
+
+/**
+ * Копия куска — жёсткая копия, встаёт СРАЗУ ПОСЛЕ оригинала (product.md §7).
+ * На копию при этом никто не ссылается: связать её — работа автора.
+ *
+ * Живёт здесь, а не в `duplicate.ts`, по той же причине, что и `splitAtGate`
+ * ниже: собрать новый состав `project.segments` — работа стороны записи.
+ * `duplicate.ts` знает, как скопировать ОДНУ часть, и намеренно не видит
+ * проекта целиком (узкая дверца — тест инвариантов «project.segments
+ * и project.entry читают в одном месте»).
+ */
+export function duplicateSegment(project: Project, segmentId: string): Project {
+  const index = project.segments.findIndex((candidate) => candidate.id === segmentId);
+  if (index < 0) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте: копировать нечего`);
+  }
+  const source = project.segments[index]!;
+
+  // Переменные остановок уникальны ПО ВСЕМУ ПРОЕКТУ (schema.ts: «Переменная
+  // записывается дважды…»), поэтому список занятых имён собирается по всем
+  // сегментам, а не только по копируемому.
+  const takenVariables = project.segments.flatMap((segment) =>
+    segment.gates.map((gate) => ({ id: gate.recordAs })));
+
+  const duplicate = copySegment(source, project.segments, takenVariables);
+  const segments = [
+    ...project.segments.slice(0, index + 1),
+    duplicate,
+    ...project.segments.slice(index + 1),
+  ];
 
   return { ...project, segments };
 }

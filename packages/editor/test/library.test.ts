@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ElementSchema, ElementStateSchema, ProjectSchema } from '@player/core';
+import { ElementSchema, ElementStateSchema, ProjectSchema, SCHEMA_VERSION } from '@player/core';
 import type { ElementState, Gate, Segment } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
@@ -222,7 +222,7 @@ describe('фигура библиотеки может быть варианто
     };
 
     const project = {
-      schemaVersion: 6 as const,
+      schemaVersion: SCHEMA_VERSION,
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
       entry: 'seg-1',
       segments: [

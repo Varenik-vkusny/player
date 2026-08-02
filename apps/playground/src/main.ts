@@ -29,6 +29,7 @@ const track = el('track');
 const clockLabel = el('clock');
 const stateLabel = el('state');
 const progressLabel = el('progress');
+const repeatingLabel = el('repeating');
 
 /**
  * Прогресс словами. Знаменатель называется ТОЛЬКО когда он известен.
@@ -166,8 +167,22 @@ async function main(): Promise<void> {
   const segment = segmentOf(project, assumption.startSegmentId ?? entrySegmentOf(project));
   const duration = segment.duration;
 
+  // Надпись «возвращаемся к пройденному» — рядом с прогрессом, синхронизируем
+  // теми же событиями (§5 [Р] product.md: без неё зритель решит, что
+  // зациклился, и уйдёт). Через display, а не только текст: пустой span
+  // с line-height остаётся видимым боксом, и e2e toBeVisible() не отличил бы
+  // «показано» от «не показано».
+  function syncRepeating(): void {
+    // Инлайновый 'inline', а не '' — очищенный инлайн-стиль просто снимает
+    // прежнее переопределение и открывает дорогу правилу листа стилей
+    // `#repeating { display: none; }`, которое как раз и обязано быть
+    // перебито. Найдено прогоном e2e, а не рассуждением: с '' полоска
+    // isRepeating была истинной, а надпись оставалась hidden.
+    repeatingLabel.style.display = player.isRepeating ? 'inline' : 'none';
+  }
+
   const player = new Player(host, project, {
-    onStateChange: (state) => { stateLabel.textContent = state; syncButton(state); },
+    onStateChange: (state) => { stateLabel.textContent = state; syncButton(state); syncRepeating(); },
     onFrame: () => {
       // Через player.progress, а не через position и внешнюю `duration`:
       // та берётся у СТАРТОВОЙ части один раз, и после перехода полоса
@@ -177,6 +192,7 @@ async function main(): Promise<void> {
       clockLabel.textContent = progress.positionSeconds.toFixed(2);
       played.style.width = `${(progress.positionSeconds / progress.durationSeconds) * 100}%`;
       progressLabel.textContent = describeProgress(progress);
+      syncRepeating();
     },
     onGateOpen: (gate, unboundOptions) => showGate(gate, unboundOptions),
     onGateResolved: (attempt) => showResult(attempt),

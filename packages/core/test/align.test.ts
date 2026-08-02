@@ -12,7 +12,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { alignWords } from '../src/align.js';
+import { alignWords, splitIntoWords } from '../src/align.js';
 import type { Word } from '../src/schema.js';
 
 /** Транскрипт из строки: тайминги здесь не важны, важен порядок слов. */
@@ -117,5 +117,29 @@ describe('alignWords', () => {
       .map((op) => ('newIndex' in op ? op.newIndex : undefined))
       .filter((i): i is number => i !== undefined);
     expect(newIndexes).toEqual([...newIndexes].sort((a, b) => a - b));
+  });
+});
+
+describe('splitIntoWords', () => {
+  it('режет по пробелам и переводам строк, знаки препинания не отдельные слова', () => {
+    expect(splitIntoWords('Часы — это позиция.\n\nИ больше ничего!')
+      .map((w) => w.text))
+      .toEqual(['Часы', '—', 'это', 'позиция.', 'И', 'больше', 'ничего!']);
+  });
+
+  it('пустой текст даёт пустой список, а не список из пустой строки', () => {
+    expect(splitIntoWords('')).toEqual([]);
+    expect(splitIntoWords('   \n  ')).toEqual([]);
+  });
+
+  it('сопоставляется с расшифровкой, у которой знаков препинания нет', () => {
+    // Deepgram отдаёт слова без точек. Нормализация в alignWords обязана
+    // свести «позиция.» и «позиция» к одному слову, иначе каждое слово
+    // перед точкой считалось бы заменённым.
+    const speech = splitIntoWords('часы это позиция.');
+    const heard = [
+      { text: 'часы' }, { text: 'это' }, { text: 'позиция' },
+    ];
+    expect(alignWords(speech, heard).every((op) => op.kind === 'same')).toBe(true);
   });
 });

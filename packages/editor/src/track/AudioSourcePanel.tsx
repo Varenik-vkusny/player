@@ -15,6 +15,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
   type ChangeEvent,
@@ -25,6 +26,7 @@ import type { Word } from '@player/core';
 import { getAudio, putAudio, type AudioSource } from '@player/player';
 
 import { replaceAudioConfirmMessage } from '../state/audio.js';
+import { describeRetarget, type RetargetReport } from '../state/retarget.js';
 import { transcribeAudio } from '../transcribe.js';
 
 export interface AudioSourcePanelProps {
@@ -35,16 +37,66 @@ export interface AudioSourcePanelProps {
    * поэтому число в подтверждении не может отстать от последней правки.
    */
   readonly wordMarkCount: number;
-  /** Автор подтвердил замену — пишет новый источник в проект. */
+  /**
+   * Автор выбрал «Заменить без расшифровки» — законный путь без слов:
+   * прежнее поведение, метки переезжают в секунды (`state/project.ts:
+   * replaceSegmentAudio`, `words` не передан).
+   */
   readonly onReplace: (fileId: string, durationSeconds: number) => void;
+  /**
+   * Автор выбрал «Заменить и расшифровать» — расшифровка НОВОГО файла уже
+   * получена (панель сама сходила за ней перед вызовом), и замена вместе
+   * с переносом меток кладётся ОДНИМ действием: без этого между заменой
+   * и расшифровкой был бы шаг, на котором старых слов для сопоставления
+   * уже нет.
+   */
+  readonly onReplaceWithTranscript: (
+    fileId: string,
+    durationSeconds: number,
+    words: readonly Word[],
+  ) => void;
   /** Расшифровка вернула слова — кладёт их в audio.words. */
   readonly onWordsTranscribed: (words: readonly Word[]) => void;
+  /**
+   * Отчёт о последнем переносе меток (`EditorState.lastRetarget`) —
+   * `undefined`, если последняя замена была без расшифровки или переносить
+   * ещё не доводилось. Панель не хранит его сама: это состояние редактора,
+   * а не локальный черновик формы.
+   */
+  readonly lastRetarget: RetargetReport | undefined;
+  /** Текст озвучки текущего куска. `''` — поля `speech` в проекте нет. */
+  readonly speech: string;
+  /**
+   * Живое событие уже идущего жеста набора текста — та же семантика
+   * `commit: false`, что и у числовых полей `Inspector.tsx` (см. её
+   * комментарий модуля): вызывается на КАЖДУЮ правку textarea, коммит-точку
+   * ставит `onCommitHistory` на потере фокуса.
+   */
+  readonly onSpeechChange: (text: string) => void;
+  /** Завершает жест, открытый `onSpeechChange` (потеря фокуса поля). */
+  readonly onCommitHistory: () => void;
+}
+
+/** Общие поля файла, ожидающего решения автора: заменить как — и с чем. */
+interface PendingUpload {
+  readonly fileId: string;
+  readonly duration: number;
+  readonly name: string;
 }
 
 type UploadState =
   | { readonly status: 'idle' }
   | { readonly status: 'decoding' }
-  | { readonly status: 'confirm'; readonly fileId: string; readonly duration: number; readonly name: string }
+  | ({ readonly status: 'confirm' } & PendingUpload)
+  // Автор нажал «Заменить и расшифровать»: панель сама зовёт расшифровку
+  // нового файла, прежде чем что-либо менять в проекте, — кнопки подтверждения
+  // остаются видны (заблокированные), чтобы не терять уже принятое решение.
+  | ({ readonly status: 'confirm-transcribing' } & PendingUpload)
+  // Расшифровка упала. Ошибка обязана остаться видимой и ГРОМКОЙ (CLAUDE.md;
+  // product.md §4 запрещает тихий откат на «заменили без расшифровки») —
+  // но автор не заперт: подтверждение никуда не делось, можно повторить
+  // расшифровку или осознанно выбрать «без расшифровки».
+  | ({ readonly status: 'confirm-error'; readonly message: string } & PendingUpload)
   | { readonly status: 'error'; readonly message: string };
 
 type TranscribeState =
@@ -61,7 +113,12 @@ export function AudioSourcePanel({
   source,
   wordMarkCount,
   onReplace,
+  onReplaceWithTranscript,
   onWordsTranscribed,
+  lastRetarget,
+  speech,
+  onSpeechChange,
+  onCommitHistory,
 }: AudioSourcePanelProps): ReactElement {
   const inputRef = useRef<HTMLInputElement>(null);
   const [upload, setUpload] = useState<UploadState>({ status: 'idle' });
@@ -124,11 +181,40 @@ export function AudioSourcePanel({
     });
   }, []);
 
-  const handleConfirm = useCallback(() => {
-    if (upload.status !== 'confirm') return;
+  // «Заменить без расшифровки» — сегодняшний путь: доступен и из «confirm»,
+  // и из «confirm-error» (расшифровка упала, но отказ от неё остаётся
+  // законным выбором автора, не заглушкой, которую подставила бы панель сама).
+  const handleReplaceWithoutTranscript = useCallback(() => {
+    if (upload.status !== 'confirm' && upload.status !== 'confirm-error') return;
     onReplace(upload.fileId, upload.duration);
     setUpload({ status: 'idle' });
   }, [upload, onReplace]);
+
+  // «Заменить и расшифровать» — расшифровка нового файла ходит здесь же,
+  // ДО того, как что-либо уходит в dispatch: замена и перенос меток обязаны
+  // остаться одним действием (см. комментарий `onReplaceWithTranscript`).
+  // Ошибка расшифровки НЕ откатывается молча на «без расшифровки» — это
+  // и есть фолбэк-заглушка, которую CLAUDE.md запрещает: она осталась бы
+  // видимой (confirm-error), а замену автор выбирает сам следующим кликом.
+  const handleReplaceAndTranscribe = useCallback(() => {
+    if (upload.status !== 'confirm' && upload.status !== 'confirm-error') return;
+    const { fileId, duration, name } = upload;
+    setUpload({ status: 'confirm-transcribing', fileId, duration, name });
+    transcribeAudio({ kind: 'file', fileId })
+      .then((result) => {
+        onReplaceWithTranscript(fileId, duration, result.words);
+        setUpload({ status: 'idle' });
+      })
+      .catch((error: unknown) => {
+        setUpload({
+          status: 'confirm-error',
+          fileId,
+          duration,
+          name,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+  }, [upload, onReplaceWithTranscript]);
 
   // Отказ — не менять НИЧЕГО (CLAUDE.md): просто закрываем подтверждение,
   // dispatch не вызывается. Файл уже лежит в хранилище плеера (putAudio
@@ -181,7 +267,7 @@ export function AudioSourcePanel({
         {transcribe.status === 'loading' ? 'Расшифровываю…' : 'Расшифровать'}
       </button>
 
-      {upload.status === 'confirm' ? (
+      {upload.status === 'confirm' || upload.status === 'confirm-transcribing' || upload.status === 'confirm-error' ? (
         <span className="ed-audio-confirm" role="alertdialog" data-testid="audio-replace-confirm">
           <span className="ed-notice">
             «{upload.name}», {formatDuration(upload.duration)}. {replaceAudioConfirmMessage(wordMarkCount)}
@@ -189,19 +275,35 @@ export function AudioSourcePanel({
           <button
             type="button"
             className="ed-action"
-            onClick={handleConfirm}
-            data-testid="audio-replace-confirm-yes"
+            onClick={handleReplaceAndTranscribe}
+            disabled={upload.status === 'confirm-transcribing'}
+            data-testid="audio-replace-transcribe"
           >
-            Заменить озвучку
+            {upload.status === 'confirm-transcribing' ? 'Расшифровываю…' : 'Заменить озвучку и расшифровать'}
+          </button>
+          <button
+            type="button"
+            className="ed-action"
+            onClick={handleReplaceWithoutTranscript}
+            disabled={upload.status === 'confirm-transcribing'}
+            data-testid="audio-replace-without-transcript"
+          >
+            Заменить без расшифровки
           </button>
           <button
             type="button"
             className="ed-action"
             onClick={handleCancel}
+            disabled={upload.status === 'confirm-transcribing'}
             data-testid="audio-replace-confirm-no"
           >
             Отмена
           </button>
+          {upload.status === 'confirm-error' ? (
+            <span className="ed-failure" role="alert" data-testid="audio-replace-transcribe-error">
+              Расшифровка не удалась, озвучка НЕ заменена: {upload.message}
+            </span>
+          ) : null}
         </span>
       ) : null}
 
@@ -216,6 +318,66 @@ export function AudioSourcePanel({
           {transcribe.message}
         </span>
       ) : null}
+
+      {upload.status === 'idle' && lastRetarget ? (
+        <span className="ed-notice ed-audio-retarget-report" data-testid="audio-retarget-report">
+          {describeRetarget(lastRetarget)}
+        </span>
+      ) : null}
+
+      <SpeechField value={speech} onCommit={onSpeechChange} onBlurCommit={onCommitHistory} />
+    </div>
+  );
+}
+
+interface SpeechFieldProps {
+  value: string;
+  onCommit: (text: string) => void;
+  onBlurCommit: () => void;
+}
+
+/**
+ * Текст озвучки куска — что автор произносит, а не что услышала машина
+ * (это расшифровка, `audio.words`, отдельное поле рядом).
+ *
+ * Черновик — тот же приём, что и у `NumberField` (`panels/Inspector.tsx`,
+ * см. её комментарий модуля): пока поле в фокусе, показывается ИМЕННО
+ * набираемый текст, а не то, что уже лежит в проекте. Без черновика курсор
+ * прыгал бы на каждую букву — редьюсер обрезает текст (`setSpeech` в
+ * `state/project.ts`), а обрезанное значение, возвращённое в поле немедленно,
+ * съедало бы хвостовой пробел ровно в момент, когда автор печатает следующее
+ * слово через пробел.
+ */
+function SpeechField({ value, onCommit, onBlurCommit }: SpeechFieldProps): ReactElement {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const text = draft ?? value;
+
+  return (
+    <div className="ed-insp-field ed-audio-speech">
+      <label className="ed-insp-label" htmlFor={id}>
+        Текст озвучки
+      </label>
+      <textarea
+        id={id}
+        className="ed-insp-area"
+        data-testid="speech-input"
+        spellCheck={false}
+        value={text}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          onCommit(next);
+        }}
+        onBlur={() => {
+          setDraft(null);
+          onBlurCommit();
+        }}
+      />
+      <p className="ed-insp-note">
+        То, что вы произносите в этой части. Расшифровка — это то, что услышала машина;
+        они могут расходиться.
+      </p>
     </div>
   );
 }
