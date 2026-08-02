@@ -4,11 +4,11 @@
  * Главный принцип: всё на экране — чистая функция от одного числа, позиции
  * в аудио. Каждый кадр это число берётся у часов и раздаётся остальным.
  */
-import type { Answer, Condition, Gate, Project } from '@player/core';
+import type { Answer, Condition, ExitChoice, Gate, Project } from '@player/core';
 import {
   certainRemaining,
   conditionsHold,
-  nextSegment,
+  nextExit,
   preloadTargetsOfExit,
   resolveTimeRef,
   findSegment,
@@ -16,7 +16,8 @@ import {
 
 import { AudioClocks, type Clock, type ClockSource } from './clock.js';
 import { applyFit } from './render.js';
-import { entrySegmentOf, segmentOf, type Segment } from './preview.js';
+import { allSegments, entrySegmentOf, segmentOf, type Segment } from './preview.js';
+import { answersToClear, openableGates } from './repeat.js';
 import { SlideEngine } from './slides.js';
 
 /**
@@ -159,7 +160,7 @@ export class Player {
    * `outputLatency`, а не длина кадра) и щелчок на одном переходе
    * из двадцати. Расписание даёт ноль и по разрывам, и по задержке.
    */
-  #pending: { clock: Clock; nodeId: string; startsAt: number } | null = null;
+  #pending: { clock: Clock; nodeId: string; startsAt: number; choice: ExitChoice } | null = null;
 
   /** Исход последней разобранной попытки: им выбирается ребро графа. */
   /**
@@ -191,6 +192,26 @@ export class Player {
    * у двух зрителей он разный.
    */
   #partsPassed = 0;
+
+  /**
+   * Куски, которые зритель уже слышал в этом просмотре.
+   *
+   * Проверяется ФАКТОМ, а не разметкой автора: правило выхода не знает,
+   * вперёд оно ведёт или назад, и знать не может — граф не дерево. Значит
+   * «повтор» может определить только тот, кто помнит, где уже был.
+   */
+  #visited = new Set<string>();
+  /**
+   * Остановки, на которые зритель уже отвечал в этом просмотре.
+   *
+   * НЕ то же самое, что `#answers`: туда предпросмотр «смотреть как зритель,
+   * ответивший X» засевает чужие ответы заранее (см. конструктор), и если
+   * считать следом сам ответ, эти остановки замолчали бы, не открывшись
+   * ни разу. След — отдельное множество идентификаторов.
+   */
+  #answeredHere = new Set<string>();
+  /** Играет ли сейчас уже слышанный кусок — для надписи зрителю (`isRepeating`). */
+  #repeating = false;
 
   /**
    * Часы передаются четвёртым аргументом со значением по умолчанию.
@@ -235,6 +256,9 @@ export class Player {
     // findSegment внутри segmentOf упадёт на ней громко и по имени.
     this.#nodeId = assume.startSegmentId ?? entrySegmentOf(project);
     this.#segment = segmentOf(project, this.#nodeId);
+    // Стартовый кусок тоже «слышан» — иначе ребро, ведущее назад к самому
+    // началу, не распозналось бы как повтор вовсе.
+    this.#visited.add(this.#nodeId);
     this.#events = events;
 
     this.#stage = document.createElement('div');
@@ -273,6 +297,15 @@ export class Player {
       durationSeconds: this.#segment.duration,
     };
   }
+
+  /**
+   * Играет ли сейчас кусок, который зритель уже слышал в этом просмотре.
+   *
+   * Оснастка обязана показать надпись, пока это правда (§5 [Р] `product.md`:
+   * без неё зритель решит, что зациклился, и уйдёт) — это не украшение,
+   * а единственный способ сказать зрителю, почему знакомые слова звучат снова.
+   */
+  get isRepeating(): boolean { return this.#repeating; }
 
   /**
    * Перевод между двумя системами координат, которые легко перепутать.
@@ -361,7 +394,11 @@ export class Player {
     // Слова берутся ЭТОГО узла (инвариант №10): у каждого узла свой
     // транскрипт, и разрешить метку чужим — значит получить правдоподобные
     // секунды с видом настоящих.
-    this.#gates = this.#segment.gates
+    //
+    // Остановки, на которые в этом просмотре уже отвечали, второй раз
+    // не открываются: §5 [Р] «гейты внутри не задаются заново». Зритель
+    // вернулся посмотреть объяснение, а не переотвечать на решённое.
+    this.#gates = openableGates(this.#segment.gates, this.#answeredHere)
       .map((gate) => ({ gate, at: resolveTimeRef(gate.at, this.#segment.words) }))
       .sort((a, b) => a.at - b.at);
     this.#nextGateIndex = 0;
@@ -573,8 +610,12 @@ export class Player {
     const clock = this.#clock;
     if (!clock) return;
 
-    const next = nextSegment(findSegment(this.#project, this.#nodeId), this.#answers);
-    if (next === null) return;
+    // nextExit, а не nextSegment: choice несёт с собой сработавшее правило,
+    // и оно нужно #enterSegment, чтобы решить, повтор ли это, и если да —
+    // чьи ответы стереть.
+    const choice = nextExit(findSegment(this.#project, this.#nodeId), this.#answers);
+    if (choice === null) return;
+    const next = choice.goto;
 
     const remaining = this.#segment.duration - position;
     if (remaining > PRELOAD_AHEAD_S) return;
@@ -604,7 +645,7 @@ export class Player {
     // С начала ОКНА следующего сегмента, а не с начала файла: если он делит
     // файл с текущим (разрезанное повествование), нулём была бы чужая речь.
     const startsAt = pendingClock.start(target.offset, { leadTime });
-    this.#pending = { clock: pendingClock, nodeId: next, startsAt };
+    this.#pending = { clock: pendingClock, nodeId: next, startsAt, choice };
   }
 
   /** Подменяет сцену и часы, когда запланированный узел начал звучать. */
@@ -619,6 +660,9 @@ export class Player {
     this.#segment = segmentOf(this.#project, pending.nodeId);
     this.#pending = null;
     this.#partsPassed += 1;
+    // ДО #mountSegment: она читает #answeredHere, чтобы решить, какие
+    // остановки открывать, а #enterSegment может его только что почистить.
+    this.#enterSegment(pending.nodeId, pending.choice);
 
     this.#mountSegment();
     return true;
@@ -639,12 +683,14 @@ export class Player {
    * такого права не имеет и иметь не может: поля для рёбер у него нет.
    */
   async #reachEndOfNode(): Promise<void> {
-    const next = nextSegment(findSegment(this.#project, this.#nodeId), this.#answers);
-    if (next === null) {
+    // nextExit, а не nextSegment: #goToNode передаёт choice дальше в
+    // #enterSegment, которая решает, повтор ли это.
+    const choice = nextExit(findSegment(this.#project, this.#nodeId), this.#answers);
+    if (choice === null) {
       this.#finish();
       return;
     }
-    await this.#goToNode(next);
+    await this.#goToNode(choice.goto, choice);
   }
 
   /**
@@ -654,7 +700,7 @@ export class Player {
    * в ноль и контекст подвешен (S3: 0 разрывов, 0 мс скачка), поэтому старт
    * следующего узла ничем не отличается от начала воспроизведения.
    */
-  async #goToNode(nodeId: string): Promise<void> {
+  async #goToNode(nodeId: string, choice: ExitChoice): Promise<void> {
     this.#stopFrameLoop();
     this.#dropPending();
 
@@ -662,6 +708,8 @@ export class Player {
     this.#nodeId = nodeId;
     this.#segment = segmentOf(this.#project, nodeId);
     this.#partsPassed += 1;
+    // ДО #mountSegment — тот же порядок, что и в #promotePendingIfStarted.
+    this.#enterSegment(nodeId, choice);
     this.#clock = await this.#clocks.clockFor(this.#segment.source);
 
     // Часы усыплены остановкой на гейте (clock.ts). Забыть разбудить —
@@ -673,6 +721,34 @@ export class Player {
     this.#clock.start(this.#toClockTime(0));
     this.#setState('playing');
     this.#startFrameLoop();
+  }
+
+  /**
+   * Отмечает переход и решает, повтор ли это.
+   *
+   * Повтор — это возвращение в уже слышанный кусок. Определяется по факту,
+   * а не по разметке автора: правило выхода не знает, вперёд оно ведёт или
+   * назад, и знать не может — граф не дерево.
+   *
+   * Вызывается ДО `#mountSegment` в обоих местах, откуда меняется сегмент
+   * (`#goToNode`, `#promotePendingIfStarted`): та читает `#answeredHere`,
+   * чтобы решить, какие остановки открывать, а эта функция его чистит.
+   */
+  #enterSegment(nodeId: string, choice: ExitChoice): void {
+    this.#repeating = this.#visited.has(nodeId);
+    this.#visited.add(nodeId);
+
+    if (!this.#repeating) return;
+
+    // Виновница спрашивает снова. Стираем след ровно тех остановок, чьи
+    // ответы прочитало сработавшее правило: иначе возвращаться было бы
+    // незачем — зритель попал бы в ту же развилку с тем же ответом
+    // и уехал на повтор ещё раз, и так навсегда. Правило продукта живёт
+    // в repeat.ts, а не здесь — своя копия в классе разошлась бы с юнитами
+    // тихо (см. заголовок repeat.ts).
+    for (const gateId of answersToClear(allSegments(this.#project), choice.rule)) {
+      this.#answeredHere.delete(gateId);
+    }
   }
 
   async #reachGate(): Promise<void> {
@@ -768,6 +844,11 @@ export class Player {
     // Единственное, что гейт делает с ответом: записывает его в переменную.
     // Никуда не перекидывает — решение о следующем сегменте принимает выход.
     this.#answers = { ...this.#answers, [gate.recordAs]: { value: value ?? '', correct } };
+    // След «отвечали в этом просмотре» — НЕ то же самое, что запись выше:
+    // она переживает предпросмотр с засеянными ответами (конструктор), этот
+    // след — нет. Отдельное множество нужно ровно затем, чтобы повтор молчал
+    // по факту ответа, а не по значению, которое мог подставить предпросмотр.
+    this.#answeredHere.add(gate.id);
     this.#events.onGateResolved?.(attempt);
 
     if (outcome === 'continue') await this.#leaveGate();

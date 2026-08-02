@@ -1,0 +1,280 @@
+{
+  "schemaVersion": 7,
+  "meta": {
+    "title": "Повтор куска: молчащая остановка и виновница",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-a",
+  "segments": [
+    {
+      "id": "s-a",
+      "title": "Кусок A: молчащая внутри остановка",
+      "audio": {
+        "src": "/audio/ask.mp3",
+        "offset": 0,
+        "duration": 2.904,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "bg-a",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "label-a",
+          "type": "text",
+          "content": "Кусок A"
+        }
+      ],
+      "slides": [
+        {
+          "id": "a-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "cut",
+          "states": {
+            "bg-a": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#11141a"
+              }
+            },
+            "label-a": {
+              "x": 140,
+              "y": 440,
+              "width": 1640,
+              "height": 200,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-family": "system-ui, sans-serif",
+                "font-size": "64px",
+                "font-weight": "700",
+                "text-align": "center"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-a",
+          "at": {
+            "kind": "seconds",
+            "t": 1
+          },
+          "config": {
+            "kind": "continue",
+            "label": "Дальше"
+          },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "ответА"
+        }
+      ],
+      "exit": {
+        "rules": [],
+        "default": "s-b"
+      }
+    },
+    {
+      "id": "s-b",
+      "title": "Кусок B: виновная остановка",
+      "audio": {
+        "src": "/audio/branch-yes.mp3",
+        "offset": 0,
+        "duration": 2.736,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "bg-b",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "label-b",
+          "type": "text",
+          "content": "Кусок B"
+        }
+      ],
+      "slides": [
+        {
+          "id": "b-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "cut",
+          "states": {
+            "bg-b": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#11141a"
+              }
+            },
+            "label-b": {
+              "x": 140,
+              "y": 460,
+              "width": 1640,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-family": "system-ui, sans-serif",
+                "font-size": "64px",
+                "font-weight": "700",
+                "text-align": "center"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-b",
+          "at": {
+            "kind": "seconds",
+            "t": 1
+          },
+          "config": {
+            "kind": "choice",
+            "prompt": "Верно или неверно?",
+            "options": [
+              {
+                "id": "opt-right",
+                "label": "Верно"
+              },
+              {
+                "id": "opt-wrong",
+                "label": "Неверно"
+              }
+            ],
+            "correctId": "opt-right"
+          },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "ответБ"
+        }
+      ],
+      "exit": {
+        "rules": [
+          {
+            "id": "r-repeat",
+            "when": [
+              {
+                "kind": "wrong",
+                "variable": "ответБ"
+              }
+            ],
+            "goto": "s-a"
+          },
+          {
+            "id": "r-end",
+            "when": [
+              {
+                "kind": "correct",
+                "variable": "ответБ"
+              }
+            ],
+            "goto": "s-end"
+          }
+        ],
+        "default": null
+      }
+    },
+    {
+      "id": "s-end",
+      "title": "Конец объяснения",
+      "audio": {
+        "src": "/audio/ask.mp3",
+        "offset": 0,
+        "duration": 2.904,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "bg-end",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "label-end",
+          "type": "text",
+          "content": "Конец"
+        }
+      ],
+      "slides": [
+        {
+          "id": "end-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "cut",
+          "states": {
+            "bg-end": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#11141a"
+              }
+            },
+            "label-end": {
+              "x": 140,
+              "y": 460,
+              "width": 1640,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-family": "system-ui, sans-serif",
+                "font-size": "64px",
+                "font-weight": "700",
+                "text-align": "center"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": {
+        "rules": [],
+        "default": null
+      }
+    }
+  ]
+}
