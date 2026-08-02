@@ -29,6 +29,7 @@ import {
   answerVariables,
   deadComparisons,
   emptySegments,
+  leadsBack,
   reachableFrom,
   uncoveredOutcomes,
 } from '../state/exits.js';
@@ -335,6 +336,19 @@ export function SegmentPanel({
     () => uncoveredOutcomes(currentSegment, currentSegment.gates),
     [currentSegment],
   );
+  // Цели, ведущие НАЗАД: из них можно по рёбрам выхода дойти обратно до
+  // текущей части — тот самый повтор (leadsBack, exits.ts). Список сегментов
+  // не задаёт порядок проигрывания, поэтому «назад» проверяется обходом
+  // графа, а не позицией в массиве.
+  const repeatTargets = useMemo(
+    () =>
+      new Set(
+        project.segments
+          .filter((segment) => leadsBack(project, currentSegmentId, segment.id))
+          .map((segment) => segment.id),
+      ),
+    [project, currentSegmentId],
+  );
 
   // Цель в <select> для каждой ещё не заведённой связки — ключ вида
   // «variable-optionId» или «variable-verdict». Живёт здесь и только здесь:
@@ -542,6 +556,7 @@ export function SegmentPanel({
                       {project.segments.map((segment) => (
                         <option key={segment.id} value={segment.id}>
                           {titleOf(segment)}
+                          {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
                         </option>
                       ))}
                     </select>
@@ -574,6 +589,7 @@ export function SegmentPanel({
                       {project.segments.map((segment) => (
                         <option key={segment.id} value={segment.id}>
                           {titleOf(segment)}
+                          {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
                         </option>
                       ))}
                     </select>
