@@ -318,6 +318,10 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
 
   const handleAddSegment = useCallback(() => dispatch({ type: 'addSegment' }), []);
   const handleRemoveSegment = useCallback((id: string) => dispatch({ type: 'removeSegment', id }), []);
+  const handleDuplicateSegment = useCallback(
+    (id: string) => dispatch({ type: 'duplicateSegment', segmentId: id }),
+    [],
+  );
   const handleConnect = useCallback(
     (when: readonly Condition[], goto: string) => dispatch({ type: 'connect', when, goto }),
     [],
@@ -882,6 +886,7 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
             onSelectSegment={handleSelectSegment}
             onAddSegment={handleAddSegment}
             onRemoveSegment={handleRemoveSegment}
+            onDuplicateSegment={handleDuplicateSegment}
             onConnect={handleConnect}
             onDisconnect={handleDisconnect}
             onAddCondition={handleAddCondition}

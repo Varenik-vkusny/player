@@ -39,6 +39,7 @@ export interface SegmentPanelProps {
   readonly onSelectSegment: (id: string) => void;
   readonly onAddSegment: () => void;
   readonly onRemoveSegment: (id: string) => void;
+  readonly onDuplicateSegment: (id: string) => void;
   readonly onConnect: (when: readonly Condition[], goto: string) => void;
   readonly onAddCondition: (ruleId: string, condition: Condition) => void;
   readonly onRemoveCondition: (ruleId: string, index: number) => void;
@@ -311,6 +312,7 @@ export function SegmentPanel({
   onSelectSegment,
   onAddSegment,
   onRemoveSegment,
+  onDuplicateSegment,
   onConnect,
   onDisconnect,
   onAddCondition,
@@ -395,6 +397,14 @@ export function SegmentPanel({
           onClick={() => onRemoveSegment(currentSegmentId)}
         >
           Удалить часть
+        </button>
+        <button
+          type="button"
+          className="ed-action"
+          data-testid="segment-duplicate"
+          onClick={() => onDuplicateSegment(currentSegmentId)}
+        >
+          Сделать копию части
         </button>
       </div>
 

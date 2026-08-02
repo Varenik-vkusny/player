@@ -16,6 +16,7 @@ import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, T
 import { resolveTimeRef } from '@player/core';
 
 import { retargetMark } from '../track/marks.js';
+import { copySegment } from './duplicate.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
@@ -111,6 +112,12 @@ export type EditorAction =
   | { readonly type: 'applyTemplate'; readonly template: SceneTemplate }
   | { readonly type: 'addSegment' }
   | { readonly type: 'removeSegment'; readonly id: string }
+  // Жёсткая копия куска (product.md §7, механика «копия блока» — не путать
+  // с «повтором своего раздела», ребром назад по графу, и со «ссылкой
+  // на общий блок», отложенной [П]). Вся логика — в duplicate.ts: несущее
+  // ограничение там же (схема запрещает двум остановкам писать в одну
+  // переменную по всему проекту, поэтому копия остановки получает своё имя).
+  | { readonly type: 'duplicateSegment'; readonly segmentId: string }
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
@@ -431,6 +438,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     }
 
+    case 'duplicateSegment': {
+      const project = duplicateSegment(state.project, action.segmentId);
+      // Автор остаётся на ОРИГИНАЛЕ: он не просил перевести себя на копию
+      // (та же логика, что у splitAtGate выше). currentSegmentId/currentSlideId
+      // не трогаем — оригинал не переехал, его собственные id не изменились.
+      return { ...state, project };
+    }
+
     case 'renameSegment': {
       const project = exits.renameSegment(state.project, action.id, action.title);
       return project === state.project ? state : { ...state, project };
@@ -588,6 +603,39 @@ export function splitAtGate(project: Project, segmentId: string, gateId: string)
   const created: Segment[] = tail ? [...branches, tail] : [...branches];
   const segments = project.segments.flatMap((candidate) =>
     (candidate.id === head.id ? [head, ...created] : [candidate]));
+
+  return { ...project, segments };
+}
+
+/**
+ * Копия куска — жёсткая копия, встаёт СРАЗУ ПОСЛЕ оригинала (product.md §7).
+ * На копию при этом никто не ссылается: связать её — работа автора.
+ *
+ * Живёт здесь, а не в `duplicate.ts`, по той же причине, что и `splitAtGate`
+ * ниже: собрать новый состав `project.segments` — работа стороны записи.
+ * `duplicate.ts` знает, как скопировать ОДНУ часть, и намеренно не видит
+ * проекта целиком (узкая дверца — тест инвариантов «project.segments
+ * и project.entry читают в одном месте»).
+ */
+export function duplicateSegment(project: Project, segmentId: string): Project {
+  const index = project.segments.findIndex((candidate) => candidate.id === segmentId);
+  if (index < 0) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте: копировать нечего`);
+  }
+  const source = project.segments[index]!;
+
+  // Переменные остановок уникальны ПО ВСЕМУ ПРОЕКТУ (schema.ts: «Переменная
+  // записывается дважды…»), поэтому список занятых имён собирается по всем
+  // сегментам, а не только по копируемому.
+  const takenVariables = project.segments.flatMap((segment) =>
+    segment.gates.map((gate) => ({ id: gate.recordAs })));
+
+  const duplicate = copySegment(source, project.segments, takenVariables);
+  const segments = [
+    ...project.segments.slice(0, index + 1),
+    duplicate,
+    ...project.segments.slice(index + 1),
+  ];
 
   return { ...project, segments };
 }
