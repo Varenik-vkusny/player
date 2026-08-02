@@ -18,6 +18,7 @@ import { resolveTimeRef } from '@player/core';
 import { retargetMark } from '../track/marks.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
+import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import { splitSegmentAtGate } from './split.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
@@ -45,6 +46,14 @@ export interface EditorState {
    * слайд, а не сегмент и не элемент, знает «где» и «как выглядит».
    */
   readonly currentSlideId: string;
+  /**
+   * Отчёт о последнем переносе меток (`replaceSegmentAudio` с расшифровкой) —
+   * сообщение автору, а не свойство проекта, поэтому живёт рядом с `selectedId`
+   * и `currentSlideId`, а не внутри `project`/истории отмены. `undefined` —
+   * либо ничего ещё не переносили, либо последняя замена была без расшифровки
+   * (путь «без расшифровки» законен и отчёта не производит).
+   */
+  readonly lastRetarget: RetargetReport | undefined;
 }
 
 /** Метки на дорожке, которые двигаются перетаскиванием: гейт или слайд. */
@@ -118,7 +127,19 @@ export type EditorAction =
   // wordMarkCount/replaceAudioConfirmMessage — подтверждение строит вызывающий
   // ДО отправки этого действия). fileId уже лежит в хранилище плеера
   // (putAudio), duration — из декодера, а не из File и не из схемы.
-  | { readonly type: 'replaceSegmentAudio'; readonly fileId: string; readonly duration: number }
+  // `words` необязателен: есть расшифровка НОВОЙ озвучки — метки переезжают
+  // на свои слова сопоставлением (`retargetByAlignment`); нет — законный
+  // путь «кусок без расшифровки», прежнее поведение (метки в секунды). Оба
+  // случая ложатся ОДНИМ шагом истории: расшифровка приходит вместе с заменой,
+  // а не следующим действием, потому что старые слова, нужные для
+  // сопоставления, доступны только ДО замены — между двумя действиями их
+  // уже не было бы.
+  | {
+      readonly type: 'replaceSegmentAudio';
+      readonly fileId: string;
+      readonly duration: number;
+      readonly words?: readonly Word[];
+    }
   // Расшифровка вернула слова — кладём их как есть, без поправки таймингов
   // (S5: медиана расхождения +30 мс, вычитание «систематической» поправки
   // делает хуже). Не трогает метки: они остаются там, где стояли раньше,
@@ -138,6 +159,7 @@ export function initialState(project: Project): EditorState {
     selectedId: undefined,
     currentSegmentId: project.entry,
     currentSlideId: requireFirstSlide(segment).id,
+    lastRetarget: undefined,
   };
 }
 
@@ -482,17 +504,34 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'replaceSegmentAudio': {
       const segment = currentSegment(state);
-      // Слова — СТАРЫЕ, той озвучки, которую заменяем. Перепривязка обязана
-      // прочитать их до того, как ниже audio.words станет пустым массивом:
-      // markSeconds (через retargetMark) без слов ничего не разрешит.
-      const words = segment.audio.words;
-      const slides = segment.slides.map((slide) =>
-        slide.at.kind === 'word' ? { ...slide, at: retargetMark(slide.at, words, 'seconds') } : slide,
-      );
-      const gates = segment.gates.map((gate) =>
-        gate.at.kind === 'word' ? { ...gate, at: retargetMark(gate.at, words, 'seconds') } : gate,
-      );
-      return replaceSegment(state, {
+      // Слова СТАРЫЕ, той озвучки, которую заменяем. Читать их обязательно
+      // до того, как ниже audio.words сменится: перенос метки строится на
+      // сопоставлении старого транскрипта с новым, и без левой стороны
+      // сопоставления не существует. Именно поэтому расшифровка приходит
+      // ЭТИМ же действием, а не следующим: между двумя действиями старых
+      // слов уже нет.
+      const before = segment.audio.words;
+      const after = action.words;
+
+      const marks = [...segment.slides.map((s) => s.at), ...segment.gates.map((g) => g.at)];
+      const { refs, report }: { refs: readonly TimeRef[]; report: RetargetReport | undefined } =
+        after === undefined
+          ? { refs: marks.map((ref) => (ref.kind === 'word' ? retargetMark(ref, before, 'seconds') : ref)), report: undefined }
+          : retargetByAlignment(marks, before, after);
+
+      // Спред только там, где ссылка реально изменилась: неизменившийся
+      // слайд/гейт обязан остаться ТЕМ ЖЕ объектом по ссылке (см. комментарий
+      // модуля про StageView и сравнение ссылок).
+      const slides = segment.slides.map((slide, i) => {
+        const ref = refs[i]!;
+        return ref === slide.at ? slide : { ...slide, at: ref };
+      });
+      const gates = segment.gates.map((gate, i) => {
+        const ref = refs[segment.slides.length + i]!;
+        return ref === gate.at ? gate : { ...gate, at: ref };
+      });
+
+      return replaceSegment({ ...state, lastRetarget: report }, {
         ...segment,
         slides,
         gates,
@@ -501,7 +540,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           fileId: action.fileId,
           offset: 0,
           duration: action.duration,
-          words: [],
+          words: after === undefined ? [] : [...after],
         },
       });
     }

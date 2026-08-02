@@ -51,6 +51,7 @@ import type { Project, Segment } from '@player/core';
 
 import { canRedo, canUndo, createHistory, push, redo, undo, type History } from './history.js';
 import { editorReducer, hasElement, type EditorAction, type EditorState } from './project.js';
+import type { RetargetReport } from './retarget.js';
 
 export type { History } from './history.js';
 
@@ -80,6 +81,17 @@ export interface HistoryState {
    * dispatch подряд.
    */
   readonly gestureOpen: boolean;
+  /**
+   * Отчёт о последнем переносе меток (`replaceSegmentAudio` с расшифровкой,
+   * `state/project.ts`) — сообщение автору о последнем действии, а не
+   * свойство проекта, поэтому живёт здесь же, рядом с `selectedId`
+   * и `currentSlideId`, вне `History<Project>`. `undefined` — либо ничего ещё
+   * не переносили, либо последняя замена была без расшифровки. Undo/redo
+   * сбрасывает его в `undefined`: отчёт относится к правке, от которой автор
+   * только что отошёл, и после навигации по истории он уже не про текущее
+   * состояние.
+   */
+  readonly lastRetarget: RetargetReport | undefined;
 }
 
 function firstSlideId(segment: Segment): string {
@@ -101,6 +113,7 @@ export function initialHistoryState(project: Project): HistoryState {
     currentSegmentId: project.entry,
     currentSlideId: firstSlideId(requireSegment(project, project.entry)),
     gestureOpen: false,
+    lastRetarget: undefined,
   };
 }
 
@@ -158,7 +171,9 @@ function afterNav(state: HistoryState, history: History<Project>): HistoryState 
       ? state.selectedId
       : undefined;
 
-  return { history, currentSegmentId, currentSlideId, selectedId, gestureOpen: false };
+  // Отчёт о переносе меток сбрасывается: он про правку, от которой автор
+  // только что отошёл undo/redo, а не про текущее восстановленное состояние.
+  return { history, currentSegmentId, currentSlideId, selectedId, gestureOpen: false, lastRetarget: undefined };
 }
 
 export function historyReducer(state: HistoryState, action: HistoryEditorAction): HistoryState {
@@ -180,6 +195,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     selectedId: state.selectedId,
     currentSegmentId: state.currentSegmentId,
     currentSlideId: state.currentSlideId,
+    lastRetarget: state.lastRetarget,
   };
   const after = editorReducer(before, action);
 
@@ -229,6 +245,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     currentSegmentId: after.currentSegmentId,
     currentSlideId: after.currentSlideId,
     gestureOpen: live,
+    lastRetarget: after.lastRetarget,
   };
 }
 

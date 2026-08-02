@@ -619,6 +619,21 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
     [],
   );
 
+  // «Заменить и расшифровать»: AudioSourcePanel уже сходила за расшифровкой
+  // НОВОГО файла и приносит готовые слова — здесь замена и перенос меток
+  // уходят одним dispatch, одним шагом истории (см. комментарий действия
+  // в state/project.ts: старых слов для сопоставления между двумя
+  // действиями уже не было бы). Проверено e2e (editor-audio-align.spec.ts,
+  // «Ctrl+Z один раз возвращает и дорожку, и расшифровку разом»): тест ловит
+  // разбиение этого dispatch на два — подтверждено намеренным сломом
+  // и откатом при подготовке задачи 7 (Круг правок 1).
+  const handleReplaceAudioWithTranscript = useCallback(
+    (fileId: string, durationSeconds: number, words: readonly Word[]) => {
+      dispatch({ type: 'replaceSegmentAudio', fileId, duration: durationSeconds, words });
+    },
+    [],
+  );
+
   const handleWordsTranscribed = useCallback((words: readonly Word[]) => {
     dispatch({ type: 'setSegmentWords', words });
   }, []);
@@ -921,7 +936,9 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           source={segment.source}
           wordMarkCount={audioWordMarkCount}
           onReplace={handleReplaceAudio}
+          onReplaceWithTranscript={handleReplaceAudioWithTranscript}
           onWordsTranscribed={handleWordsTranscribed}
+          lastRetarget={state.lastRetarget}
           speech={currentSegment.speech ?? ''}
           onSpeechChange={handleSpeechChange}
           onCommitHistory={handleCommitHistory}

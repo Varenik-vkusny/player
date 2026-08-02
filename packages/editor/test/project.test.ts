@@ -7,6 +7,7 @@ import { loadProject, SCHEMA_VERSION } from '@player/core';
 import type { Element, ElementState, Gate, Project, Segment, Slide, Word } from '@player/core';
 
 import { createElement } from '../src/state/elements.js';
+import { historyReducer, initialHistoryState } from '../src/state/editorHistory.js';
 import { libraryItem } from '../src/state/library.js';
 import { editorReducer, initialState, segmentSlide, type EditorState } from '../src/state/project.js';
 import { serializeProject } from '../src/state/save.js';
@@ -788,6 +789,71 @@ describe('replaceSegmentAudio', () => {
     const next = editorReducer(state, { type: 'replaceSegmentAudio', fileId: 'aud-1', duration: 20 });
 
     expect(segmentOf(next.project).gates[0]!.at).toEqual({ kind: 'seconds', t: 2 });
+  });
+});
+
+describe('замена озвучки с расшифровкой', () => {
+  const stateWithWordMarks = initialState(projectWithWords());
+  // Тот же текст, что в WORDS («Привет», «мир», «дальше»), но на новых
+  // секундах — как будто автор перезаписал ту же реплику другим голосом.
+  // alignWords сопоставит их как «same»: метки обязаны переехать на слово,
+  // а не остаться привязанными к старому индексу.
+  const newWords: readonly Word[] = [
+    word('Привет', 1.2, 1.7),
+    word('мир', 1.7, 2.1),
+    word('дальше', 5.3, 5.7),
+  ];
+
+  it('метки переезжают на свои слова, а не переводятся в секунды', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    const slide = currentSegmentOf(next).slides[1]!;
+    expect(slide.at.kind).toBe('word');
+    const gateAt = currentSegmentOf(next).gates[0]!.at;
+    expect(gateAt.kind).toBe('word');
+  });
+
+  it('новая расшифровка ложится в дорожку тем же действием', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    expect(currentSegmentOf(next).audio.words).toHaveLength(newWords.length);
+  });
+
+  it('отчёт о переносе ложится в lastRetarget — оба слова сопоставились ровно', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    expect(next.lastRetarget).toEqual({ moved: 2, check: 0, toSeconds: 0 });
+  });
+
+  it('без расшифровки — прежнее поведение: метки в секунды, отчёта нет', () => {
+    const next = editorReducer(stateWithWordMarks, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4,
+    });
+
+    expect(currentSegmentOf(next).slides[1]!.at.kind).toBe('seconds');
+    expect(currentSegmentOf(next).audio.words).toEqual([]);
+    expect(next.lastRetarget).toBeUndefined();
+  });
+
+  it('замена — ОДИН шаг истории, а не два', () => {
+    const history = initialHistoryState(projectWithWords());
+    const before = history.history.past.length;
+
+    const next = historyReducer(history, {
+      type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
+    });
+
+    expect(next.history.past.length).toBe(before + 1);
+    // Отчёт о переносе доходит и до состояния поверх истории — сообщение
+    // автору живёт рядом с selectedId/currentSlideId, а не только внутри
+    // одного вызова editorReducer.
+    expect(next.lastRetarget).toEqual({ moved: 2, check: 0, toSeconds: 0 });
   });
 });
 
