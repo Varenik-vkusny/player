@@ -10,5 +10,4 @@ export * from './migrations.js';
 export * from './time.js';
 export * from './align.js';
 export * from './graph.js';
-export * from './elements/registry.js';
 export { loadProject, ProjectLoadError } from './load.js';

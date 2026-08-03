@@ -59,12 +59,3 @@ export function mountEditor(
 }
 
 export { Editor, type EditorProps } from './Editor.js';
-export {
-  registerEditorElement,
-  getEditorElementPlugin,
-  getEditorElementInspector,
-  getAllLibraryItems,
-  type EditorElementPlugin,
-} from './elements/registry.js';
-export { registerCommandHandler, dispatchCommand, type CommandHandler } from './commands/bus.js';
-export { AudioPipelineService, type AudioPrepareResult } from './audio/audioPipeline.js';

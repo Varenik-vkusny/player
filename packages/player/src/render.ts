@@ -117,23 +117,10 @@ export function applyElement(
   }
 
   const renderer = getElementRenderer(element.type);
-  if (renderer) {
-    renderer(node, element, state);
-  } else {
-    switch (element.type) {
-      case 'text':
-        node.textContent = element.content;
-        break;
-      case 'image':
-        node.textContent = '';
-        style.backgroundImage = element.content ? `url(${element.content})` : '';
-        style.backgroundSize = 'cover';
-        break;
-      case 'shape':
-        node.textContent = '';
-        break;
-    }
+  if (!renderer) {
+    throw new Error(`Для типа элемента «${element.type}» не зарегистрирован DOM-рендерер`);
   }
+  renderer(node, element, state);
 }
 
 /**
