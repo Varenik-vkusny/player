@@ -13,7 +13,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(`console: ${m.
 // Сам по себе 404 в консоли не говорит, ЧТО не нашлось. Записываем адрес.
 page.on('response', (r) => { if (r.status() === 404) missing.push(r.url()); });
 
-await page.goto('http://localhost:5173/', { waitUntil: 'load' });
+await page.goto('http://localhost:5179/', { waitUntil: 'load' });
 await page.waitForFunction(() => document.documentElement.dataset.ready === '1', { timeout: 20000 });
 
 const report = await page.evaluate(() => {

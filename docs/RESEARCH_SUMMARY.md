@@ -279,7 +279,7 @@ Vite-плагины отдают фикстуры и шрифты прямо и�
 
 ```
 pnpm install          # установка
-pnpm dev              # дев-сервер → http://localhost:5173/
+pnpm dev              # дев-сервер → http://localhost:5179/
                         # ?fixture=e2e — другая фикстура
 pnpm check            # все проверки: типы → юниты → сборка → e2e
 pnpm build:player     # сборка плеера в public/bundle/player.js

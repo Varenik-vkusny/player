@@ -9,7 +9,7 @@ export default defineConfig({
   reporter: process.env['CI'] ? 'list' : [['list']],
 
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL: 'http://localhost:5179',
     trace: 'retain-on-failure',
   },
 
@@ -34,7 +34,7 @@ export default defineConfig({
   // будет означать «я забыл поднять сервер», а не свойство продукта.
   webServer: {
     command: 'pnpm --filter @player/playground dev',
-    url: 'http://localhost:5173',
+    url: 'http://localhost:5179',
     reuseExistingServer: !process.env['CI'],
     timeout: 60_000,
   },
