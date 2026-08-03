@@ -15,6 +15,7 @@
  * живёт через все слайды раздела, меняя только состояние.
  */
 import type { Element, ElementState } from '@player/core';
+import { getElementRenderer } from './renderers/registry.js';
 
 export const DEFAULT_STAGE_WIDTH = 1920;
 export const DEFAULT_STAGE_HEIGHT = 1080;
@@ -115,18 +116,23 @@ export function applyElement(
     style.setProperty(key, String(value));
   }
 
-  switch (element.type) {
-    case 'text':
-      node.textContent = element.content;
-      break;
-    case 'image':
-      node.textContent = '';
-      style.backgroundImage = element.content ? `url(${element.content})` : '';
-      style.backgroundSize = 'cover';
-      break;
-    case 'shape':
-      node.textContent = '';
-      break;
+  const renderer = getElementRenderer(element.type);
+  if (renderer) {
+    renderer(node, element, state);
+  } else {
+    switch (element.type) {
+      case 'text':
+        node.textContent = element.content;
+        break;
+      case 'image':
+        node.textContent = '';
+        style.backgroundImage = element.content ? `url(${element.content})` : '';
+        style.backgroundSize = 'cover';
+        break;
+      case 'shape':
+        node.textContent = '';
+        break;
+    }
   }
 }
 

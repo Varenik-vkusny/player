@@ -42,6 +42,11 @@ export {
   type SlideSchedule,
 } from './morph.js';
 export {
+  registerElementRenderer,
+  getElementRenderer,
+  type ElementDOMRenderer,
+} from './renderers/registry.js';
+export {
   applyElement,
   applyFit,
   fitStage,
