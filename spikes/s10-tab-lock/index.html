@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>S10 — захват слота работы между вкладками</title>
+</head>
+<body>
+<h1>S10 — Web Locks между вкладками</h1>
+<p>Вся логика измерения — в <code>run-tab-lock.mjs</code>, эта страница только даёт
+настоящий http-origin. Web Locks привязаны к origin и к разделу хранилища;
+на <code>file://</code> и <code>data:</code> раздел особый, и измерение на нём
+ничего не сказало бы про реальный origin редактора.</p>
+</body>
+</html>

@@ -14,7 +14,7 @@ import { createRoot } from 'react-dom/client';
 import type { Project } from '@player/core';
 import type { ScenePreview } from '@player/player';
 
-import { Editor } from './Editor.js';
+import { Editor, type EditorProps } from './Editor.js';
 import { EDITOR_STYLES } from './styles.js';
 
 const STYLE_ID = 'player-editor-styles';
@@ -37,6 +37,13 @@ export interface MountOptions {
    * поэтому страница зависала навсегда, не показывая никакой ошибки.
    */
   onReady?: (preview: ScenePreview | null) => void;
+  /**
+   * Принадлежит ли слот работы этой вкладке. `false` — только смотреть.
+   * Умолчание `true`: хост, который про слот не знает, работает как раньше.
+   */
+  canWrite?: boolean;
+  /** Откуда пришла работа: имя фикстуры или имя открытого файла. */
+  origin?: string;
 }
 
 /**
@@ -52,10 +59,32 @@ export function mountEditor(
 ): () => void {
   ensureStyles(host.ownerDocument);
   const root = createRoot(host);
-  root.render(
-    createElement(Editor, options.onReady ? { project, onReady: options.onReady } : { project }),
-  );
+
+  // Поля добавляются по одному, а не спредом с undefined: при
+  // `exactOptionalPropertyTypes` присутствие ключа со значением undefined
+  // и его отсутствие — разные вещи, и первое не подходит под `?:`.
+  const props: EditorProps = { project };
+  if (options.onReady !== undefined) props.onReady = options.onReady;
+  if (options.canWrite !== undefined) props.canWrite = options.canWrite;
+  if (options.origin !== undefined) props.origin = options.origin;
+
+  root.render(createElement(Editor, props));
   return () => root.unmount();
 }
 
 export { Editor, type EditorProps } from './Editor.js';
+
+/**
+ * Слот работы автора. Нужен стенду: он решает, откуда взять проект при
+ * открытии вкладки, и он же объявляет слот своим до монтирования редактора.
+ */
+export {
+  saveWork,
+  readWork,
+  clearWork,
+  claimWorkSlot,
+  WORK_KEY,
+  WORK_LOCK,
+  type StoredWork,
+} from './state/workspace.js';
+export { openProjectFile } from './state/save.js';

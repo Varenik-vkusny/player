@@ -50,7 +50,8 @@ import { libraryItem } from './state/library.js';
 import { freeId, segmentSlide, type MarkKind } from './state/project.js';
 import { slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import { sceneTemplate } from './state/templates.js';
-import { downloadProject, openInPlayer } from './state/save.js';
+import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
+import { saveWork } from './state/workspace.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { WatchStage } from './stage/WatchStage.js';
@@ -65,7 +66,28 @@ export interface EditorProps {
   project: Project;
   /** Сообщает хосту, что сцена построена. Вызывается с null при снятии. */
   onReady?: (preview: ScenePreview | null) => void;
+  /**
+   * Принадлежит ли слот работы этой вкладке.
+   *
+   * `false` — слот держит другая вкладка, и здесь можно только смотреть.
+   * Писать в занятый слот значило бы затирать работу первой вкладки без
+   * единого признака, что что-то исчезло. Умолчание `true`: хост, который
+   * про слот не знает вовсе (тесты, встраивание), ведёт себя как раньше.
+   */
+  canWrite?: boolean;
+  /** Откуда пришла работа: имя фикстуры или имя открытого файла. */
+  origin?: string;
 }
+
+/**
+ * Пауза между последней правкой и записью в слот.
+ *
+ * Пауза, а не запись на каждое действие: перетаскивание элемента даёт десятки
+ * правок в секунду, и каждая из них прогоняла бы проект через полную
+ * валидацию (`serializeProject`). Полсекунды автор не замечает, а руку с мыши
+ * он к этому моменту уже снял.
+ */
+const AUTOSAVE_PAUSE_MS = 500;
 
 /**
  * `INPUT`/`TEXTAREA`/`SELECT` — поля, в которых клавиши принадлежат вводу,
@@ -79,9 +101,22 @@ function isTextFieldNode(node: globalThis.Element | null): boolean {
   return node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT';
 }
 
-export function Editor({ project, onReady }: EditorProps): ReactElement {
+export function Editor({
+  project,
+  onReady,
+  canWrite = true,
+  origin = 'без имени',
+}: EditorProps): ReactElement {
   const [state, dispatch] = useReducer(historyReducer, project, initialHistoryState);
   const currentProject = state.history.present;
+
+  /**
+   * Что пошло не так со слотом работы: не удалось записать или не удалось
+   * открыть файл. Видно автору полосой, а не только в консоли — иначе он
+   * узнает о потере работы завтра, когда вкладку уже не вернуть.
+   */
+  const [workError, setWorkError] = useState<string | undefined>(undefined);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Мост к правке текста на холсте (см. StageView.beginTextEdit): Escape
   // в контексте editingText даёт намерение commitText (keyboard.ts), а
@@ -667,6 +702,67 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
   }, [currentProject]);
 
   /**
+   * Автосохранение работы в слот.
+   *
+   * Через паузу после последней правки: таймер перезаводится на каждое
+   * изменение проекта, поэтому во время перетаскивания запись не случается
+   * ни разу, а через полсекунды после остановки — один раз.
+   *
+   * Вкладка без слота не пишет вовсе. Это не оптимизация, а решение владельца:
+   * вторая вкладка предупреждает и не пишет, потому что тихая перезапись здесь
+   * равна потере работы, и заметить её нечем.
+   *
+   * Отказ записи не глушится. Он не может «упасть громко» в обычном смысле —
+   * исключение из отложенной задачи ушло бы только в консоль, — поэтому
+   * поднимается в полосу, которую автор видит глазами.
+   */
+  useEffect(() => {
+    if (!canWrite) return undefined;
+
+    const timer = setTimeout(() => {
+      saveWork(currentProject, origin)
+        .then(() => setWorkError(undefined))
+        .catch((error: unknown) => {
+          setWorkError(`Не удалось сохранить работу в браузере: ${String(error)}`);
+        });
+    }, AUTOSAVE_PAUSE_MS);
+
+    return () => clearTimeout(timer);
+  }, [currentProject, canWrite, origin]);
+
+  /**
+   * Открытие своего файла — вторая половина кнопки «Сохранить».
+   *
+   * Проект кладётся в слот, и вкладка перезагружается на свой же адрес БЕЗ
+   * параметров. Так «откуда берётся проект» остаётся одной дорогой — той же,
+   * которой работа открывается обычным утром. Замена состояния на месте была
+   * бы второй дорогой, и её пришлось бы отдельно решать: что делать с историей
+   * отмен от прежнего проекта, которая к новому не относится вовсе.
+   *
+   * `location.pathname` без строки запроса намеренно: остаться на `?fixture=X`
+   * значило бы, что после перезагрузки откроется фикстура, а не открытый файл.
+   */
+  const handleOpenFile = useCallback(
+    async (file: File): Promise<void> => {
+      // Проверка здесь, а не только в виде отключённой кнопки. Отключённая
+      // кнопка — это внешний вид, а слот защищать надо в том месте, где
+      // в него пишут: до `handleOpenFile` можно дотянуться и мимо неё.
+      if (!canWrite) {
+        setWorkError('Работа открыта в другой вкладке — здесь нельзя открыть файл');
+        return;
+      }
+      try {
+        const opened = await openProjectFile(file);
+        await saveWork(opened, file.name);
+        location.href = location.pathname;
+      } catch (error: unknown) {
+        setWorkError(`Не удалось открыть ${file.name}: ${String(error)}`);
+      }
+    },
+    [canWrite],
+  );
+
+  /**
    * Клавиатура (срез 6). `keyToIntent` — чистая таблица без React и DOM
    * (`keyboard.ts`); этот эффект только собирает контекст из фактического
    * состояния и вызывает её, как и требует ADR-010.
@@ -768,6 +864,34 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           >
             Сохранить
           </button>
+          {/* Открытие файла — пара к «Сохранить». Настоящий input прячется:
+              его вид не поддаётся оформлению и не совпадает с соседями,
+              а нажатие по нему делает кнопка. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="ed-file-input"
+            data-testid="open-file-input"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              // Значение сбрасывается сразу: иначе выбор ТОГО ЖЕ файла второй
+              // раз не даст события change вовсе, и кнопка будет выглядеть
+              // сломанной ровно в том случае, когда автор повторяет действие.
+              event.target.value = '';
+              if (file) void handleOpenFile(file);
+            }}
+          />
+          <button
+            type="button"
+            className="ed-action"
+            data-testid="open-file"
+            disabled={!canWrite}
+            title={canWrite ? undefined : 'Работа открыта в другой вкладке'}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Открыть файл
+          </button>
           {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
               Без него условные варианты ответа физически непроверяемы: редактор
               показывает автору все варианты, а зритель видит часть, и увидеть
@@ -812,6 +936,23 @@ export function Editor({ project, onReady }: EditorProps): ReactElement {
           {selectionReadout}
         </span>
       </header>
+
+      {/* Полосы про слот работы — отдельной строкой ПОД шапкой, а не внутри
+          неё. У `.ed-header` стоит `overflow: hidden` и `white-space: nowrap`:
+          надпись там молча обрезалась бы многоточием, и автор увидел бы
+          начало фразы вместо предупреждения. Состояние было бы верным,
+          а человек не узнал бы ничего. */}
+      {canWrite ? null : (
+        <div className="ed-workspace-readonly" role="status" data-testid="workspace-readonly">
+          Работа уже открыта в другой вкладке. Здесь можно смотреть, но правки
+          не сохранятся — чтобы не затереть то, что вы делаете там.
+        </div>
+      )}
+      {workError ? (
+        <div className="ed-workspace-error" role="alert" data-testid="workspace-error">
+          {workError}
+        </div>
+      ) : null}
 
       <div className="ed-main">
         {/* Две сцены рядом — решение владельца 31.07.2026 и закрытие долга
