@@ -413,3 +413,40 @@ test.describe('перетаскивание картинки на холст', (
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(0);
   });
 });
+
+/**
+ * Долг §12.4: элемент живёт в ЧАСТИ, а его состояние — на слайде.
+ *
+ * Раньше автор мог только удалить элемент насовсем: «пусть он появится вот
+ * здесь, а раньше его не было» выразить было нечем, хотя ради этого случая
+ * и заведено различие «нет в states» против `visible: false`.
+ *
+ * Тест жмёт по ВИДИМОЙ кнопке и смотрит на сцену. Проверка «в проекте
+ * поменялись states» была бы зелёной, даже если бы кнопка ничего не рисовала,
+ * а элемент остался бы на холсте — то есть не поймала бы ровно тот дефект,
+ * ради которого действие затевалось.
+ */
+test.describe('элемент на слайде: поместить и убрать', () => {
+  test('убрать со слайда — элемент уходит со сцены, но остаётся в списке части', async ({ page }) => {
+    await openEditor(page, 'demo');
+
+    const row = page.getByTestId('element-row-title');
+    const toggle = page.getByTestId('element-slide-toggle-title');
+    await expect(row).toBeVisible();
+    await expect(page.locator('.ed-stage-host [data-id="title"]')).toHaveCount(1);
+
+    await toggle.click();
+
+    // Со сцены ушёл...
+    await expect(page.locator('.ed-stage-host [data-id="title"]')).toHaveCount(0);
+    // ...но из части НЕ удалён: строка на месте и честно говорит, что его
+    // нет на этом слайде. Именно этим действие отличается от удаления.
+    await expect(row).toBeVisible();
+    await expect(row).toContainText('не на слайде');
+
+    await toggle.click();
+
+    await expect(page.locator('.ed-stage-host [data-id="title"]')).toHaveCount(1);
+    await expect(row).not.toContainText('не на слайде');
+  });
+});

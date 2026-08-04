@@ -17,6 +17,7 @@
  * сегмента (`segment.exit`, `segment.gates`), а не к слайдам или элементам.
  */
 import type { Condition, Exit, ExitRule, Gate, Project, Segment } from '@player/core';
+import { findSegment } from '@player/core';
 
 import { freeId } from './elements.js';
 
@@ -599,12 +600,30 @@ export interface UncoveredOutcome {
  * правил разных переменных неоднозначен. Это не изобретено здесь — это
  * прямое чтение `schema.ts` (`if (byVariable.size === 1) { ... }`).
  *
- * `gates` передаётся отдельно от `segment.gates`: переменная, на которую
- * смотрит правило выхода, не обязана быть записана гейтом ЭТОГО сегмента
- * (см. `collectVariables` выше) — вызывающий сам решает, какой набор гейтов
- * подставить (обычно `segment.gates`, но не только).
+ * Принимает ПРОЕКТ и идентификатор сегмента, а не сегмент с набором гейтов
+ * (долг §12.2 в `docs/planning.md`, закрыт в Сессии 17). Прежняя сигнатура
+ * `(segment, gates)` требовала от вызывающего подставить нужные гейты, и
+ * очевидный вызов `uncoveredOutcomes(segment, segment.gates)` был НЕВЕРЕН:
+ * переменная, на которую смотрит правило выхода, не обязана быть записана
+ * гейтом этого сегмента (см. `collectVariables` выше). Функция не находила
+ * чужой гейт и сообщала о дыре, которой нет, — то есть панель пугала автора
+ * зря, нарушая правило §8.3 «список дыр и ошибки схемы обязаны совпадать».
+ *
+ * Дефект был не в вызове, а в том, что позвать неправильно было ВОЗМОЖНО.
+ * Теперь набор гейтов собирается здесь, и подставить не тот нечем.
  */
-export function uncoveredOutcomes(segment: Segment, gates: readonly Gate[]): UncoveredOutcome[] {
+export function uncoveredOutcomes(project: Project, segmentId: string): UncoveredOutcome[] {
+  // `findSegment` ядра, а не `segmentOf` плеера: тот возвращает СВОЙ тип
+  // сегмента — вид для проигрывания, с готовым источником звука. Здесь нужна
+  // модель, и узкий слой доступа к ней живёт в ядре.
+  const segment = findSegment(project, segmentId);
+  // Гейты всего проекта, а не только этого сегмента: ровно тот набор, по
+  // которому `collectVariables` считает переменные доступными.
+  const gates: readonly Gate[] = project.segments.flatMap((candidate) => candidate.gates);
+  return uncoveredIn(segment, gates);
+}
+
+function uncoveredIn(segment: Segment, gates: readonly Gate[]): UncoveredOutcome[] {
   if (segment.exit.default !== null) return [];
   if (segment.exit.rules.length === 0) return []; // без единого правила выход просто пуст — не дыра, а «выхода ещё нет»
 

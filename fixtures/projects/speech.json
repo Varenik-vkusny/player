@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "meta": {
     "title": "Расхождение текста озвучки и расшифровки",
     "stageWidth": 1920,
@@ -625,6 +625,21 @@
           "at": {
             "kind": "seconds",
             "t": 0
+          },
+          "transition": "morph",
+          "states": {}
+        },
+        {
+          "id": "slide-orphan",
+          "at": {
+            "kind": "orphan",
+            "wordIndex": 71,
+            "offset": 0,
+            "lost": {
+              "text": "конечно",
+              "before": "экране",
+              "after": "когда"
+            }
           },
           "transition": "morph",
           "states": {}

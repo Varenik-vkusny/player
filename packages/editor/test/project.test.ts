@@ -298,6 +298,112 @@ describe('addSlide / removeSlide / selectSlide', () => {
   });
 });
 
+/**
+ * Долг §12.4, закрытый в Сессии 17.
+ *
+ * Непрерывность держалась копированием состояний при создании слайда, поэтому
+ * элемент, созданный на третьем слайде, есть на третьем и дальше. Осознанный
+ * приход «пусть появится ВОТ ЗДЕСЬ, а раньше его не было» выразить было нечем,
+ * хотя ради него и заведено различие «нет в states» против `visible: false`.
+ */
+describe('элемент на слайде: поместить и убрать (§12.4)', () => {
+  /** Состояние с двумя слайдами, где на втором элемента «subtitle» нет. */
+  function twoSlides() {
+    const project = baseProject();
+    const segment = project.segments[0]!;
+    project.segments[0] = {
+      ...segment,
+      slides: [
+        segment.slides[0]!,
+        {
+          id: 'slide-2',
+          at: { kind: 'seconds', t: 4 },
+          transition: 'morph',
+          states: { title: elementState({ x: 100 }) },
+        },
+      ],
+    };
+    return initialState(project);
+  }
+
+  it('убрать со слайда — элемент уходит из states, но остаётся в части', () => {
+    const state = editorReducer(baseState(), { type: 'removeElementFromSlide', elementId: 'subtitle' });
+    const segment = currentSegmentOf(state);
+
+    expect(segment.slides[0]!.states).not.toHaveProperty('subtitle');
+    // Главное отличие от removeElement: сам элемент никуда не делся.
+    expect(segment.elements.map((element) => element.id)).toContain('subtitle');
+  });
+
+  it('убранный элемент перестаёт быть выделенным: свойств у него в этом кадре нет', () => {
+    const selected = editorReducer(baseState(), { type: 'select', id: 'subtitle' });
+    const next = editorReducer(selected, { type: 'removeElementFromSlide', elementId: 'subtitle' });
+    expect(next.selectedId).toBeUndefined();
+  });
+
+  it('поместить на слайд — вид берётся с ближайшего слайда, где элемент известен', () => {
+    let state = twoSlides();
+    state = editorReducer(state, { type: 'selectSlide', id: 'slide-2' });
+    state = editorReducer(state, { type: 'putElementOnSlide', elementId: 'subtitle' });
+
+    const second = currentSegmentOf(state).slides[1]!;
+    expect(second.states['subtitle']).toBeDefined();
+    // Сосед слева — первый слайд, где subtitle стоит с zIndex 1.
+    expect(second.states['subtitle']!.zIndex).toBe(1);
+  });
+
+  it('вид берётся и СПРАВА, когда слева элемента ещё нет', () => {
+    // Элемент приходит только на втором слайде — ровно тот случай, ради
+    // которого различие «нет в states» и `visible: false` заведено. Помещаем
+    // его на ПЕРВЫЙ: слева соседа нет, значит вид обязан прийти справа.
+    const project = baseProject();
+    const segment = project.segments[0]!;
+    project.segments[0] = {
+      ...segment,
+      slides: [
+        { ...segment.slides[0]!, states: { title: elementState() } },
+        {
+          id: 'slide-2',
+          at: { kind: 'seconds', t: 4 },
+          transition: 'morph',
+          states: { title: elementState(), subtitle: elementState({ zIndex: 7 }) },
+        },
+      ],
+    };
+
+    const state = editorReducer(initialState(project), {
+      type: 'putElementOnSlide',
+      elementId: 'subtitle',
+    });
+
+    expect(currentSegmentOf(state).slides[0]!.states['subtitle']?.zIndex).toBe(7);
+  });
+
+  it('элемента нет в части — действие падает громко, а не создаёт его молча', () => {
+    expect(() => editorReducer(baseState(), { type: 'putElementOnSlide', elementId: 'нет-такого' }))
+      .toThrow(/нет в проекте/);
+  });
+
+  it('повторное «убрать» — не ошибка, а повтор: состояние то же по ссылке', () => {
+    const once = editorReducer(baseState(), { type: 'removeElementFromSlide', elementId: 'subtitle' });
+    const twice = editorReducer(once, { type: 'removeElementFromSlide', elementId: 'subtitle' });
+    expect(twice.project).toBe(once.project);
+  });
+
+  it('серия «убрать → поместить» оставляет проект, который грузится', () => {
+    // Судит настоящий валидатор, а не представление о его правилах: элемент
+    // без состояния на части слайдов — законное состояние схемы, и проект
+    // после такой пары правок обязан открываться.
+    let state = twoSlides();
+    state = editorReducer(state, { type: 'removeElementFromSlide', elementId: 'subtitle' });
+    expect(() => loadProject(state.project)).not.toThrow();
+
+    state = editorReducer(state, { type: 'selectSlide', id: 'slide-2' });
+    state = editorReducer(state, { type: 'putElementOnSlide', elementId: 'title' });
+    expect(() => loadProject(state.project)).not.toThrow();
+  });
+});
+
 describe('setSlideTransition', () => {
   /** Слайд, вставленный вторым: у первого перехода нет по построению. */
   function stateWithSecondSlide(): { state: ReturnType<typeof baseState>; id: string } {
@@ -828,7 +934,12 @@ describe('замена озвучки с расшифровкой', () => {
       type: 'replaceSegmentAudio', fileId: 'sha-2', duration: 4, words: newWords,
     });
 
-    expect(next.lastRetarget).toEqual({ moved: 2, check: 0, toSeconds: 0 });
+    // Полный набор, а не toMatchObject: нули в `orphaned` и `toSeconds`
+    // утверждают, что при полном совпадении расшифровок ни одна метка
+    // не осиротела и ни одна не ушла в секунды.
+    expect(next.lastRetarget).toEqual({
+      moved: 2, check: 0, orphaned: 0, recovered: 0, toSeconds: 0,
+    });
   });
 
   it('без расшифровки — прежнее поведение: метки в секунды, отчёта нет', () => {
@@ -853,7 +964,12 @@ describe('замена озвучки с расшифровкой', () => {
     // Отчёт о переносе доходит и до состояния поверх истории — сообщение
     // автору живёт рядом с selectedId/currentSlideId, а не только внутри
     // одного вызова editorReducer.
-    expect(next.lastRetarget).toEqual({ moved: 2, check: 0, toSeconds: 0 });
+    // Полный набор, а не toMatchObject: нули в `orphaned` и `toSeconds`
+    // утверждают, что при полном совпадении расшифровок ни одна метка
+    // не осиротела и ни одна не ушла в секунды.
+    expect(next.lastRetarget).toEqual({
+      moved: 2, check: 0, orphaned: 0, recovered: 0, toSeconds: 0,
+    });
   });
 });
 

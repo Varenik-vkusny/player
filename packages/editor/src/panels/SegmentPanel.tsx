@@ -332,9 +332,13 @@ export function SegmentPanel({
   // По ВСЕМУ объяснению, а не по текущей части: правило десятой части вправе
   // сравнивать переменную, записанную во второй, и мёртвым оно будет там же.
   const dead = useMemo(() => deadComparisons(project), [project]);
+  // Проект целиком, а не текущая часть с её гейтами: правило выхода вправе
+  // смотреть на переменную, записанную гейтом ДРУГОЙ части, и прежний вызов
+  // `(currentSegment, currentSegment.gates)` такого гейта не находил —
+  // панель сообщала о дыре, которой нет (долг §12.2).
   const holes = useMemo(
-    () => uncoveredOutcomes(currentSegment, currentSegment.gates),
-    [currentSegment],
+    () => uncoveredOutcomes(project, currentSegment.id),
+    [project, currentSegment.id],
   );
   // Цели, ведущие НАЗАД: из них можно по рёбрам выхода дойти обратно до
   // текущей части — тот самый повтор (leadsBack, exits.ts). Список сегментов

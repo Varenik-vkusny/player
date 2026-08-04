@@ -245,7 +245,7 @@ describe('шаблон «вопрос»: варианты действитель
     let next = connect(project, 'n1', [{ kind: 'equals', variable: gateId, value: optionIds[0]! }], 'n2');
     next = connect(next, 'n1', [{ kind: 'equals', variable: gateId, value: optionIds[1]! }], 'n3');
 
-    expect(uncoveredOutcomes(next.segments[0]!, next.segments[0]!.gates)).toEqual([]);
+    expect(uncoveredOutcomes(next, next.segments[0]!.id)).toEqual([]);
     // И главное: получившийся проект обязан ЗАГРУЖАТЬСЯ. Судит настоящий
     // валидатор, а не моё представление о его правилах.
     const parsed = ProjectSchema.safeParse(next);

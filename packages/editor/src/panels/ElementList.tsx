@@ -17,9 +17,19 @@ export interface ElementListProps {
   rows: readonly ElementRow[];
   selectedId: string | undefined;
   onSelect: (id: string) => void;
+  /** Поместить элемент на текущий слайд — §12.4. */
+  onPutOnSlide: (id: string) => void;
+  /** Убрать с текущего слайда, НЕ удаляя из части — парное к предыдущему. */
+  onRemoveFromSlide: (id: string) => void;
 }
 
-export function ElementList({ rows, selectedId, onSelect }: ElementListProps): ReactElement {
+export function ElementList({
+  rows,
+  selectedId,
+  onSelect,
+  onPutOnSlide,
+  onRemoveFromSlide,
+}: ElementListProps): ReactElement {
   return (
     <div className="ed-elements" aria-label="Элементы сцены">
       <h2 className="ed-insp-title">Элементы</h2>
@@ -28,7 +38,7 @@ export function ElementList({ rows, selectedId, onSelect }: ElementListProps): R
       ) : (
         <ul className="ed-elements-list">
           {rows.map((row) => (
-            <li key={row.id}>
+            <li key={row.id} className="ed-element-item">
               <button
                 type="button"
                 className={
@@ -46,6 +56,31 @@ export function ElementList({ rows, selectedId, onSelect }: ElementListProps): R
                     Не показать это значило бы дать автору выделить элемент
                     и упереться в пустую панель свойств без объяснения. */}
                 {!row.onSlide ? <span className="ed-element-not-on-slide">не на слайде</span> : null}
+              </button>
+              {/*
+                Сестра строки, а не вложенная в неё кнопка: кнопку в кнопку
+                браузер не разрешает, а нажатие по внутренней всё равно
+                поднялось бы к внешней и выделило элемент вместо действия.
+
+                §12.4: элемент живёт в ЧАСТИ, а его состояние — на слайде.
+                Здесь автор управляет вторым, не трогая первое: «убрать»
+                снимает элемент с этого кадра, оставляя его в части и на
+                остальных слайдах. Удаление насовсем — другая кнопка,
+                в панели свойств, и это различие держится намеренно.
+              */}
+              <button
+                type="button"
+                className="ed-element-on-slide"
+                data-testid={`element-slide-toggle-${row.id}`}
+                title={row.onSlide ? 'Убрать с этого слайда' : 'Поместить на этот слайд'}
+                aria-label={
+                  row.onSlide
+                    ? `Убрать «${row.id}» с этого слайда`
+                    : `Поместить «${row.id}» на этот слайд`
+                }
+                onClick={() => (row.onSlide ? onRemoveFromSlide(row.id) : onPutOnSlide(row.id))}
+              >
+                {row.onSlide ? '−' : '+'}
               </button>
             </li>
           ))}

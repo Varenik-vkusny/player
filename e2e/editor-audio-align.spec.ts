@@ -28,6 +28,8 @@ interface Word {
 
 interface TimeRef {
   readonly kind: string;
+  readonly wordIndex?: number;
+  readonly lost?: { readonly text: string };
 }
 
 interface Segment {
@@ -181,6 +183,96 @@ test.describe('замена озвучки и расшифровка — одн�
     // Больше отменять нечего: если бы замена была двумя шагами, здесь
     // кнопка «Отменить» осталась бы активной (второй шаг ещё ждал бы отмены).
     await expect(page.getByRole('button', { name: 'Отменить' })).toBeDisabled();
+
+    expect(errors, 'страница не должна была упасть в консоль или бросить ошибку').toEqual([]);
+  });
+});
+
+/**
+ * Метка, потерявшая своё слово, — `product.md` §4 [Р].
+ *
+ * До Сессии 17 такая метка молча становилась секундной: наутро она выглядела
+ * как осознанный выбор автора, и «проверьте эти места» строить было не из чего.
+ * Здесь проверяется весь круг целиком — от исчезнувшего слова до починки.
+ *
+ * Тест поведенческий: он ЖМЁТ по видимым кнопкам и читает то, что видит автор.
+ * Проверка «в проекте появился TimeRef вида orphan» была бы зелёной, даже
+ * если бы на дорожке не отрисовалось ничего, — то есть не поймала бы ровно
+ * тот дефект, ради которого §4 требует список мест.
+ */
+test.describe('метка потеряла своё слово', () => {
+  test('сирота видна на дорожке, считается и чинится переключателем', async ({ page }) => {
+    const errors = await openEditor(page, 'demo');
+
+    const before = currentSegment(await currentProject(page));
+    const wordMarks = [...before.slides, ...before.gates]
+      .map((mark) => mark.at)
+      .filter((at) => at.kind === 'word');
+    expect(wordMarks.length, 'фикстура demo обязана нести метки на словах').toBeGreaterThan(0);
+
+    // Убираем из новой расшифровки ровно то слово, на котором стоит первая
+    // метка. Осиротеют все метки этого слова — их и считаем ожидаемым числом,
+    // а не единицей наугад: в фикстуре на одном слове может стоять больше
+    // одной метки, и подставленная единица сделала бы тест ложно строгим.
+    const droppedIndex = wordMarks[0]!.wordIndex!;
+    const droppedWord = before.audio.words[droppedIndex]!.text;
+    const expectedOrphans = wordMarks.filter((at) => at.wordIndex === droppedIndex).length;
+
+    await page.route('**/api/transcribe*', async (route) => {
+      const kept = before.audio.words.filter((_, index) => index !== droppedIndex);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          words: kept.map((w) => ({ text: w.text, start: w.start, end: w.end, confidence: 0.99 })),
+          transcript: kept.map((w) => w.text).join(' '),
+          durationSeconds: kept.at(-1)?.end ?? 1,
+        }),
+      });
+    });
+
+    await page.getByTestId('audio-file-input').setInputFiles({
+      name: 'переозвучка.mp3',
+      mimeType: 'audio/mpeg',
+      buffer: DEMO_MP3,
+    });
+    await expect(page.getByTestId('audio-replace-confirm')).toBeVisible({ timeout: 10_000 });
+    await page.getByTestId('audio-replace-transcribe').click();
+
+    // 1. Автор видит счётчик — не «в проекте что-то поменялось», а строку.
+    const counter = page.getByTestId('orphan-counter');
+    await expect(counter).toBeVisible({ timeout: 15_000 });
+    await expect(counter).toContainText('слово не найдено');
+    await expect(counter).toContainText(String(expectedOrphans));
+
+    // 2. Сирота помечена на самой дорожке, а не только посчитана.
+    const orphanMarks = page.locator('[data-testid="marks-lane"] [data-anchor="orphan"]');
+    await expect(orphanMarks).toHaveCount(expectedOrphans);
+
+    // 3. Данные тоже сироты, и они помнят потерянное слово.
+    const after = currentSegment(await currentProject(page));
+    const orphans = [...after.slides, ...after.gates]
+      .map((mark) => mark.at)
+      .filter((at) => at.kind === 'orphan');
+    expect(orphans.length).toBe(expectedOrphans);
+    expect(orphans[0]!.lost!.text).toBe(
+      droppedWord.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]/gu, ''),
+    );
+
+    // 4. Кнопка «к следующей» ведёт к метке и открывает её панель.
+    await page.getByTestId('orphan-next').click();
+    await expect(page.getByTestId('orphan-note')).toBeVisible();
+    await expect(page.getByTestId('orphan-note')).toContainText('в этой записи нет');
+
+    // 5. Починка существующим переключателем снимает сиротство, и счётчик
+    //    уменьшается ровно на одну метку — то есть считает данные, а не
+    //    помнит число с момента замены.
+    await page.getByLabel('Метка привязана', { exact: true }).selectOption('seconds');
+    if (expectedOrphans === 1) {
+      await expect(counter).toBeHidden();
+    } else {
+      await expect(orphanMarks).toHaveCount(expectedOrphans - 1);
+    }
 
     expect(errors, 'страница не должна была упасть в консоль или бросить ошибку').toEqual([]);
   });

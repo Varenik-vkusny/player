@@ -56,7 +56,7 @@ import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { WatchStage } from './stage/WatchStage.js';
 import { AudioSourcePanel } from './track/AudioSourcePanel.js';
-import { markSeconds, timeRefAt } from './track/marks.js';
+import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
 import { SlideStrip } from './track/SlideStrip.js';
 import { TrackView } from './track/TrackView.js';
@@ -583,7 +583,7 @@ export function Editor({
       kind: 'gate',
       id: gate.id,
       seconds: markSeconds(gate.at, words),
-      onWord: gate.at.kind === 'word',
+      anchor: anchorStateOf(gate.at),
       // Остановка ни к чему не едет: окна движения у неё нет.
       morphSeconds: 0,
       // Подсказка автору при наведении: словами продукта, а не схемы.
@@ -602,7 +602,7 @@ export function Editor({
         kind: 'slide',
         id: slide.id,
         seconds: slideSeconds[index]!,
-        onWord: slide.at.kind === 'word',
+        anchor: anchorStateOf(slide.at),
         morphSeconds,
         title: slide.transition === 'morph'
           ? `Слайд «${slide.id}»: плавный переход, движение ${morphSeconds.toFixed(2)} с до метки`
@@ -1002,7 +1002,13 @@ export function Editor({
               {imageDropError}
             </span>
           ) : null}
-          <ElementList rows={elementRows} selectedId={state.selectedId} onSelect={handleSelect} />
+          <ElementList
+            rows={elementRows}
+            selectedId={state.selectedId}
+            onSelect={handleSelect}
+            onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
+            onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
+          />
           <SlidePanel
             slides={segment.slides}
             words={segment.words}

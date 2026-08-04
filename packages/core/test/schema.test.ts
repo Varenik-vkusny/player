@@ -297,6 +297,57 @@ describe('ссылки', () => {
     }];
     expect(problems(project)).toMatch(/пустом транскрипте/);
   });
+
+  /**
+   * Сирота (`product.md` §4) — метка, чьё слово не нашлось при выравнивании.
+   * Её `wordIndex` это ДОГАДКА в актуальной расшифровке, а `lost` — якорь,
+   * который искали. Схема обязана требовать от догадки того же, что от
+   * обычной привязки: указывать на существующее слово.
+   */
+  const orphanGate = (wordIndex: number) => ({
+    ...choiceGate('ответ'),
+    at: {
+      kind: 'orphan',
+      wordIndex,
+      offset: 0,
+      lost: { text: 'энергия', before: '', after: 'не' },
+    },
+  });
+
+  const withWords = () => {
+    const project = explanation();
+    project.segments[0].audio.words = [
+      { text: 'раз', start: 0, end: 0.3, source: 'asr' },
+      { text: 'два', start: 0.4, end: 0.7, source: 'asr' },
+    ];
+    return project;
+  };
+
+  it('сирота с догадкой на существующее слово — валидный проект', () => {
+    const project = withWords();
+    project.segments[0].gates = [orphanGate(1)];
+    expect(ProjectSchema.safeParse(project).success).toBe(true);
+  });
+
+  it('догадка сироты за пределами транскрипта не проходит', () => {
+    const project = withWords();
+    project.segments[0].gates = [orphanGate(5)];
+    expect(problems(project)).toMatch(/Слово №5 отсутствует/);
+  });
+
+  it('сирота при пустом транскрипте не проходит: догадке некуда указывать', () => {
+    const project = explanation();
+    project.segments[0].gates = [orphanGate(0)];
+    expect(problems(project)).toMatch(/пустом транскрипте/);
+  });
+
+  it('сирота без якоря потерянного слова не проходит: нечего искать заново', () => {
+    const project = withWords();
+    const gate: any = orphanGate(1);
+    delete gate.at.lost;
+    project.segments[0].gates = [gate];
+    expect(ProjectSchema.safeParse(project).success).toBe(false);
+  });
 });
 
 describe('загрузка падает громко и перечисляет проблемы', () => {

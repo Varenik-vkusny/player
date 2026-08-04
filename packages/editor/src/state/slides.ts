@@ -187,6 +187,84 @@ export function setElementState(
 }
 
 /**
+ * Помещает существующий элемент сегмента на слайд, где его ещё нет.
+ *
+ * Долг §12.4 в `docs/planning.md`. Непрерывность обеспечивало копирование
+ * состояний при создании слайда, поэтому элемент, созданный на третьем
+ * слайде, есть на третьем и дальше — но не на первом и втором. Осознанный
+ * приход «пусть он появится ВОТ ЗДЕСЬ, а раньше его не было» выразить было
+ * нечем, хотя ради него и заведено различие «нет в states» против
+ * `visible: false`.
+ *
+ * Вид берётся из БЛИЖАЙШЕГО слайда, где элемент известен — сначала назад,
+ * потом вперёд. Это не вкусовщина: переход между соседними слайдами
+ * вычисляется как разница их состояний (ADR-015), поэтому вид, взятый
+ * издалека, дал бы скачок на ровном месте. Ближайший сосед — единственный
+ * вариант, при котором элемент приходит туда, где он и так был бы.
+ *
+ * Элемента без состояния ХОТЬ ГДЕ не бывает: он рождается вместе с ним
+ * (`createElement`). Если такой всё же встретился, данные испорчены,
+ * и падать надо здесь, а не подставлять выдуманный прямоугольник.
+ */
+export function putOnSlide(segment: Segment, slideId: string, elementId: string): Segment {
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+  if (!segment.elements.some((element) => element.id === elementId)) {
+    throw new Error(`Элемента «${elementId}» нет в сегменте «${segment.id}»`);
+  }
+
+  const slide = segment.slides[index]!;
+  if (slide.states[elementId]) return segment; // уже здесь — не правка, а повтор
+
+  let source: ElementState | undefined;
+  for (let i = index - 1; i >= 0 && !source; i--) source = segment.slides[i]!.states[elementId];
+  for (let i = index + 1; i < segment.slides.length && !source; i++) {
+    source = segment.slides[i]!.states[elementId];
+  }
+  if (!source) {
+    throw new Error(
+      `У элемента «${elementId}» нет состояния ни на одном слайде сегмента «${segment.id}» — `
+        + 'откуда взять его вид, неизвестно',
+    );
+  }
+
+  const slides = segment.slides.slice();
+  slides[index] = { ...slide, states: { ...slide.states, [elementId]: { ...source } } };
+  return { ...segment, slides };
+}
+
+/**
+ * Убирает элемент со слайда, НЕ удаляя его из сегмента.
+ *
+ * Парное действие к `putOnSlide` (§12.4). Отличие от `removeElement` —
+ * ровно то, ради чего различие вообще заведено: элемент остаётся в части
+ * и на других слайдах, а с этого просто уходит. Схема такое допускает:
+ * она требует, чтобы ключи `states` указывали на существующий элемент,
+ * но не требует, чтобы у элемента было состояние хоть где-то.
+ *
+ * Слайд, где элемента и так нет, возвращается ТЕМ ЖЕ объектом: «убрать
+ * дважды» — не ошибка автора, а повтор, и городить исключение на него
+ * значило бы наказывать за настойчивость.
+ */
+export function removeFromSlide(segment: Segment, slideId: string, elementId: string): Segment {
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+
+  const slide = segment.slides[index]!;
+  if (!slide.states[elementId]) return segment;
+
+  const states = { ...slide.states };
+  delete states[elementId];
+  const slides = segment.slides.slice();
+  slides[index] = { ...slide, states };
+  return { ...segment, slides };
+}
+
+/**
  * Слайд, который идёт в заданную секунду, — последний, чьё время наступило.
  *
  * `words` передаётся отдельно от `segment.audio.words`, а не берётся из

@@ -17,10 +17,15 @@ import {
 
 import type { Word } from '@player/core';
 
+import { plural, type PluralForms } from '../plural.js';
 import type { MarkKind } from '../state/project.js';
+import { nextOrphan } from './marks.js';
 import { MarksLane, type Mark } from './MarksLane.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
+
+/** Винительный падеж: «Проверьте 1 метку / 2 метки / 5 меток». */
+const ORPHAN_MARKS: PluralForms = { one: 'метку', few: 'метки', many: 'меток' };
 
 export interface TrackViewProps {
   transport: TransportApi;
@@ -119,6 +124,8 @@ export function TrackView({
     }
   }, []);
 
+  const orphanCount = marks.filter((mark) => mark.anchor === 'orphan').length;
+
   const step = tickStep(durationSeconds, width);
   const ticks: number[] = [];
   for (let t = 0; t <= durationSeconds; t += step) ticks.push(t);
@@ -192,6 +199,44 @@ export function TrackView({
           style={{ left: `${progress * 100}%` }}
         />
       </div>
+
+      {/*
+        Список «проверьте эти места» (`product.md` §4 [Р]) — строкой над
+        дорожкой, а не отдельной панелью.
+
+        Считается ОТ МЕТОК, то есть от данных проекта, а не от события замены
+        озвучки. Разница видна назавтра: отчёт о переносе живёт, пока открыта
+        панель дорожки, а сирота живёт в файле. Покажи мы счётчик только после
+        замены — он исчез бы при перезагрузке вместе с памятью о проблеме,
+        и §4 «автор получает список» выполнялся бы ровно один сеанс.
+
+        Строки нет, когда сирот нет: пустой блок «0 меток требуют проверки»
+        приучал бы глаз пропускать это место.
+      */}
+      {orphanCount > 0 && (
+        <p className="ed-orphans" data-testid="orphan-counter">
+          <span className="ed-orphans-sign" aria-hidden="true">⚠</span>
+          {' '}
+          Проверьте {plural(orphanCount, ORPHAN_MARKS)}: слово не найдено в записи.
+          {' '}
+          <button
+            type="button"
+            className="ed-orphans-next"
+            data-testid="orphan-next"
+            onClick={() => {
+              const next = nextOrphan(marks, selectedMark);
+              if (!next) return;
+              onSelectMark(next.kind, next.id);
+              // Ведём головку к метке: выделения мало, автор должен увидеть
+              // МЕСТО. Перемотка в паузе законна — так же выбирается слайд
+              // в ленте (`Editor.tsx`, `handleSelectSlide`).
+              transport.seek(next.seconds);
+            }}
+          >
+            к следующей
+          </button>
+        </p>
+      )}
 
       <MarksLane
         marks={marks}

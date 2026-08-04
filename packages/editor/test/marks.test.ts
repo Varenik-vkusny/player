@@ -3,14 +3,16 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { loadProject, resolveTimeRef } from '@player/core';
+import { loadProject, normalizeWord, resolveTimeRef, splitIntoWords } from '@player/core';
 import type { TimeRef, Word } from '@player/core';
 
 import {
   DEFAULT_SNAP_SECONDS,
+  anchorStateOf,
   chooseTarget,
   crossedStop,
   markSeconds,
+  nextOrphan,
   retargetMark,
   timeRefAt,
   wordAnchorProblem,
@@ -542,5 +544,120 @@ describe('crossedStop: пересечение гейта за кадр', () => {
 
   it('перемотка назад пересечением не считается', () => {
     expect(crossedStop([6], 20, 1)).toBeUndefined();
+  });
+});
+
+/**
+ * Фикстура §4 несёт метку-сироту, и её якорь `lost` собран СКРИПТОМ
+ * (`scripts/build-speech-fixture.mjs`), у которого своя копия правила
+ * нормализации: скрипт на .mjs, `normalizeWord` — на TypeScript, импортировать
+ * несобранный модуль оттуда нечем.
+ *
+ * Копия правила — долг, и этот тест его сторожит. Разъедься две нормализации
+ * (например, ядро перестанет схлопывать ё → е), якорь сироты в фикстуре
+ * молча перестал бы находиться при следующей записи: `recoverLost` сравнивает
+ * `normalizeWord(слово)` с `lost.text`, и несовпадение выглядело бы не ошибкой,
+ * а «слово так и не произнесли».
+ */
+describe('якорь сироты в фикстуре собран по правилу ядра', () => {
+  const speech = loadProject(
+    JSON.parse(
+      readFileSync(
+        join(fileURLToPath(new URL('../../../fixtures/projects/', import.meta.url)), 'speech.json'),
+        'utf8',
+      ),
+    ),
+  );
+  const segment = speech.segments[0]!;
+  const orphan = segment.slides
+    .map((slide) => slide.at)
+    .find((at): at is Extract<TimeRef, { kind: 'orphan' }> => at.kind === 'orphan');
+
+  it('в фикстуре есть сирота — иначе новый вид схемы не покрыт эталоном', () => {
+    expect(orphan, 'в speech.json нет метки-сироты').toBeDefined();
+  });
+
+  it('текст и соседи якоря совпадают с нормализацией ядра', () => {
+    const spoken = splitIntoWords(segment.speech ?? '');
+    const at = spoken.findIndex((w) => normalizeWord(w.text) === orphan!.lost.text);
+
+    expect(at, 'потерянное слово обязано быть в тексте озвучки').toBeGreaterThanOrEqual(0);
+    expect(orphan!.lost.before).toBe(normalizeWord(spoken[at - 1]?.text ?? ''));
+    expect(orphan!.lost.after).toBe(normalizeWord(spoken[at + 1]?.text ?? ''));
+  });
+
+  it('потерянного слова действительно нет в расшифровке — иначе это не сирота', () => {
+    const inTranscript = segment.audio.words
+      .some((w) => normalizeWord(w.text) === orphan!.lost.text);
+    expect(inTranscript, 'слово есть в расшифровке — метке нечего терять').toBe(false);
+  });
+});
+
+describe('состояние якоря на языке product.md §4', () => {
+  it('ссылка на слово — bound', () => {
+    expect(anchorStateOf({
+      kind: 'word', wordIndex: 1, offset: 0, anchor: { text: 'а', before: '', after: '' },
+    })).toBe('bound');
+  });
+
+  it('секунды — pinned: место зафиксировано вручную, выравнивание его не трогает', () => {
+    expect(anchorStateOf({ kind: 'seconds', t: 3 })).toBe('pinned');
+  });
+
+  it('потерянное слово — orphan', () => {
+    expect(anchorStateOf({
+      kind: 'orphan', wordIndex: 1, offset: 0, lost: { text: 'а', before: '', after: '' },
+    })).toBe('orphan');
+  });
+});
+
+describe('обход сирот кнопкой «к следующей»', () => {
+  const mark = (id: string, seconds: number, anchor: 'bound' | 'pinned' | 'orphan') =>
+    ({ kind: 'slide' as const, id, anchor, seconds });
+
+  // Порядок в массиве НАМЕРЕННО не совпадает с порядком по секундам: автор
+  // видит дорожку, и «следующая» для него та, что правее, а не та, что дальше
+  // в списке слайдов.
+  const marks = [
+    mark('c', 9, 'orphan'),
+    mark('a', 1, 'orphan'),
+    mark('b', 5, 'bound'),
+    mark('d', 3, 'orphan'),
+  ];
+
+  it('ничего не выбрано — первая сирота по дорожке, а не по списку', () => {
+    expect(nextOrphan(marks, undefined)?.id).toBe('a');
+  });
+
+  it('выбрана сирота — следующая правее по дорожке', () => {
+    expect(nextOrphan(marks, { kind: 'slide', id: 'a' })?.id).toBe('d');
+    expect(nextOrphan(marks, { kind: 'slide', id: 'd' })?.id).toBe('c');
+  });
+
+  it('обход круговой: за последней идёт первая', () => {
+    // Иначе кнопка на последней сироте умирает, и автор вручную вспоминает,
+    // с какой метки начал обход.
+    expect(nextOrphan(marks, { kind: 'slide', id: 'c' })?.id).toBe('a');
+  });
+
+  it('выбрана не сирота — обход начинается с начала', () => {
+    expect(nextOrphan(marks, { kind: 'slide', id: 'b' })?.id).toBe('a');
+  });
+
+  it('одна сирота — кнопка возвращает её же, а не пустоту', () => {
+    const single = [mark('only', 2, 'orphan'), mark('b', 5, 'pinned')];
+    expect(nextOrphan(single, { kind: 'slide', id: 'only' })?.id).toBe('only');
+  });
+
+  it('сирот нет — ходить некуда', () => {
+    expect(nextOrphan([mark('a', 1, 'bound'), mark('b', 2, 'pinned')], undefined)).toBeUndefined();
+  });
+
+  it('совпадение id при разном роде метки не считается: гейт и слайд — разные метки', () => {
+    const mixed = [
+      { kind: 'gate' as const, id: 'x', anchor: 'orphan' as const, seconds: 1 },
+      { kind: 'slide' as const, id: 'x', anchor: 'orphan' as const, seconds: 4 },
+    ];
+    expect(nextOrphan(mixed, { kind: 'gate', id: 'x' })?.kind).toBe('slide');
   });
 });

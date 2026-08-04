@@ -621,6 +621,42 @@ const migrateV6toV7: Migration = (input) => {
   };
 };
 
+interface ProjectV7 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+}
+
+/**
+ * v7 → v8: у `TimeRef` появился третий вид — `orphan` (`product.md` §4).
+ *
+ * Содержимого не меняет ничего, и здесь это не пропуск, а единственный
+ * честный вариант. Сирота — результат ВЫРАВНИВАНИЯ: она рождается, когда
+ * старую расшифровку сопоставили с новой и слово не нашлось. У проекта,
+ * лежащего на диске, второй расшифровки нет, сопоставлять не с чем, и объявить
+ * его метки сиротами значило бы сообщить о проблеме, которой никто не видел.
+ *
+ * Обратное прочтение тоже даром: `word` читается как `bound`, `seconds` —
+ * как `pinned`, потому что выравнивание секундные метки не трогает. Оба
+ * состояния уже записаны существующими данными, дописывать нечего.
+ *
+ * Зачем тогда бамп версии. Он защищает не переход вперёд, а ОТКАЗ НАЗАД:
+ * `migrateToCurrent` ниже обязан громко сказать «проект сохранён в версии 8,
+ * а эта сборка понимает только 7», когда старый плеер получит файл с сиротой.
+ * Без бампа тот же файл дошёл бы до валидации и упал бы разбором варианта
+ * объединения — то есть виноватым выглядел бы проект, а не устаревшая сборка.
+ */
+const migrateV7toV8: Migration = (input) => {
+  const v7 = input as ProjectV7;
+
+  return {
+    schemaVersion: 8,
+    meta: v7.meta,
+    entry: v7.entry,
+    segments: v7.segments,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
@@ -628,6 +664,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   4: migrateV4toV5,
   5: migrateV5toV6,
   6: migrateV6toV7,
+  7: migrateV7toV8,
 });
 
 export class SchemaVersionError extends Error {
