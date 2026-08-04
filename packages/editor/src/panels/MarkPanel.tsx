@@ -198,6 +198,10 @@ interface MarkTimeBlockProps {
 function MarkTimeBlock({ at, words, onRetarget }: MarkTimeBlockProps): ReactElement {
   const problem = wordAnchorProblem(at, words);
   const choices: readonly Choice[] = [
+    // Сирота попадает в список первой и только когда она уже есть: `<select>`
+    // не может показать значение, которого нет среди `<option>`, а показал бы
+    // молча первое — то есть соврал бы о состоянии метки.
+    ...(at.kind === 'orphan' ? [{ value: 'orphan', label: 'Слово не найдено' }] : []),
     { value: 'seconds', label: 'К секунде' },
     ...(problem === undefined || at.kind === 'word' ? [{ value: 'word', label: 'К слову' }] : []),
   ];
@@ -210,13 +214,24 @@ function MarkTimeBlock({ at, words, onRetarget }: MarkTimeBlockProps): ReactElem
         value={at.kind}
         choices={choices}
         onCommit={(value) => {
+          if (value === 'orphan') {
+            // Сиротство ставит выравнивание, а не автор (`product.md` §4:
+            // якорь никогда не ставится наугад — наугад ставит машина и сразу
+            // сознаётся). Снять его можно, выбрав любую из двух привязок;
+            // назначить руками нельзя, и это не заглушка, а отказ.
+            throw new Error(
+              'Сиротство метки снимается выбором привязки, поставить его вручную нельзя',
+            );
+          }
           if (value !== 'word' && value !== 'seconds') {
             throw new Error(`Неизвестная привязка метки «${value}»`);
           }
           onRetarget(retargetMark(at, words, value));
         }}
       />
-      {at.kind === 'word' ? (
+      {at.kind === 'orphan' ? (
+        <OrphanBlock at={at} words={words} />
+      ) : at.kind === 'word' ? (
         <>
           <ReadonlyField label="Слово" value={anchorWord ?? ''} />
           <p className="ed-insp-note">
@@ -235,6 +250,47 @@ function MarkTimeBlock({ at, words, onRetarget }: MarkTimeBlockProps): ReactElem
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Метка, потерявшая своё слово: что искали, где стоит сейчас и что делать.
+ *
+ * Три вещи говорятся прямо, потому что §4 запрещает и тихую подстановку,
+ * и молчаливую потерю: слово, которого не нашлось; слово, на котором метка
+ * стоит СЕЙЧАС; и то, что это догадка машины, а не выбор автора. Убрать
+ * любую из трёх — значит вернуть состояние, в котором метка выглядит
+ * рабочей и ломается у зрителя.
+ */
+function OrphanBlock({
+  at,
+  words,
+}: {
+  at: Extract<TimeRef, { kind: 'orphan' }>;
+  words: readonly Word[];
+}): ReactElement {
+  // Догадка обязана указывать на существующее слово — это проверяет схема
+  // при загрузке. Если сюда всё же пришла ссылка в пустоту, значит проект
+  // испорчен мимо валидации, и правильный исход — коробка ошибки редактора,
+  // а не подставленный прочерк: подставленный прочерк автор примет за
+  // «слово такое», и дефект уедет в сохранённый файл.
+  const guess = words[at.wordIndex];
+  if (!guess) {
+    throw new Error(
+      `Догадка сироты указывает на слово №${at.wordIndex}, а всего слов ${words.length}`,
+    );
+  }
+
+  return (
+    <>
+      <ReadonlyField label="Искали слово" value={at.lost.text} />
+      <ReadonlyField label="Метка стоит на" value={guess.text} />
+      <p className="ed-insp-note" data-testid="orphan-note">
+        Слова «{at.lost.text}» в этой записи нет. Метка поставлена в лучшую
+        догадку — на ближайшее уцелевшее слово. Это выбор машины, а не ваш:
+        подтвердите его кнопкой «К слову» или переведите метку на секунду.
+      </p>
+    </>
   );
 }
 

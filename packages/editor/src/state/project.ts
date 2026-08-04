@@ -87,6 +87,16 @@ export type EditorAction =
       readonly at: TimeRef;
       readonly commit?: boolean;
     }
+  /**
+   * Поместить существующий элемент на ТЕКУЩИЙ слайд и убрать с него (§12.4).
+   *
+   * Секунда не передаётся, в отличие от `setElementState`: там правка может
+   * родить слайд на голом месте дорожки, а здесь речь о слайде, который автор
+   * уже выбрал и видит. Родить слайд этим действием нельзя — «появись вот
+   * здесь» относится к существующему кадру.
+   */
+  | { readonly type: 'putElementOnSlide'; readonly elementId: string }
+  | { readonly type: 'removeElementFromSlide'; readonly elementId: string }
   | { readonly type: 'addSlide'; readonly afterSlideId: string; readonly at: TimeRef }
   | { readonly type: 'removeSlide'; readonly slideId: string }
   | {
@@ -321,6 +331,29 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Правка идёт в слайд под головкой — он же становится текущим.
       // Иначе лента слайдов показывала бы один слайд, а сцена правила другой.
       return { ...applied, currentSlideId: slideId };
+    }
+
+    case 'putElementOnSlide': {
+      if (!hasElement(state.project, state.currentSegmentId, action.elementId)) {
+        throw new Error(`Нельзя поместить элемент «${action.elementId}» на слайд: его нет в проекте`);
+      }
+      return replaceSegment(
+        state,
+        slidesApi.putOnSlide(currentSegment(state), state.currentSlideId, action.elementId),
+      );
+    }
+
+    case 'removeElementFromSlide': {
+      if (!hasElement(state.project, state.currentSegmentId, action.elementId)) {
+        throw new Error(`Нельзя убрать элемент «${action.elementId}» со слайда: его нет в проекте`);
+      }
+      const next = replaceSegment(
+        state,
+        slidesApi.removeFromSlide(currentSegment(state), state.currentSlideId, action.elementId),
+      );
+      // Убранный элемент больше не на сцене — держать его выделенным значило бы
+      // показывать свойства того, чего в этом кадре нет.
+      return next.selectedId === action.elementId ? { ...next, selectedId: undefined } : next;
     }
 
     case 'addSlide': {

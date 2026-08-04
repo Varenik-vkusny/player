@@ -17,14 +17,21 @@ import {
 } from 'react';
 
 import type { MarkKind } from '../state/project.js';
+import type { MarkAnchor } from './marks.js';
 
 export interface Mark {
   readonly kind: MarkKind;
   readonly id: string;
   /** Момент метки в секундах — уже разрешённый из TimeRef. */
   readonly seconds: number;
-  /** Привязана к слову, а не к секундам. Видно по значку. */
-  readonly onWord: boolean;
+  /**
+   * Состояние якоря (`product.md` §4): привязан, зафиксирован вручную или
+   * потерял своё слово. Раньше здесь стояло `onWord: boolean` — двух значений
+   * хватало, пока состояний было два. Сирота не «не на слове»: она на слове,
+   * просто на угаданном, и булев признак её либо приравнял бы к секундной
+   * метке, либо к нормально привязанной. Оба ответа неверны.
+   */
+  readonly anchor: MarkAnchor;
   /**
    * Сколько сцена ЕДЕТ к этой метке, секунды. Ноль — приходит срезом.
    *
@@ -137,14 +144,14 @@ export function MarksLane({
             className={[
               'ed-mark',
               `ed-mark-${mark.kind}`,
-              mark.onWord ? 'ed-mark-word' : 'ed-mark-seconds',
+              `ed-mark-${mark.anchor}`,
               isSelected ? 'ed-mark-selected' : '',
             ]
               .filter(Boolean)
               .join(' ')}
             style={{ left: `${(mark.seconds / durationSeconds) * 100}%` }}
             data-testid={`mark-${mark.kind}-${mark.id}`}
-            data-on-word={mark.onWord ? '1' : '0'}
+            data-anchor={mark.anchor}
             title={mark.title}
             aria-label={mark.title}
             onPointerDown={(event) => handleDown(event, mark)}

@@ -24,10 +24,18 @@ export interface MarkedSegment {
   readonly gates: readonly Pick<Gate, 'at'>[];
 }
 
-/** Сколько меток (слайды + гейты вместе) сейчас привязано к слову, а не к секунде. */
+/**
+ * Сколько меток (слайды + гейты вместе) сейчас привязано к слову, а не к секунде.
+ *
+ * Сироты считаются наравне с `word`, и условие поэтому написано от секунд,
+ * а не к слову. Сирота стоит на слове-догадке в ЭТОЙ расшифровке и при замене
+ * озвучки без расшифровки теряет его точно так же. Считать только `word`
+ * значило бы пообещать автору, что часть меток замена не тронет, — и тронуть
+ * их. Компилятор такую ошибку не ловит: у обоих видов одни и те же поля.
+ */
 export function wordMarkCount(segment: MarkedSegment): number {
-  const slideCount = segment.slides.filter((slide) => slide.at.kind === 'word').length;
-  const gateCount = segment.gates.filter((gate) => gate.at.kind === 'word').length;
+  const slideCount = segment.slides.filter((slide) => slide.at.kind !== 'seconds').length;
+  const gateCount = segment.gates.filter((gate) => gate.at.kind !== 'seconds').length;
   return slideCount + gateCount;
 }
 

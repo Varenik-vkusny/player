@@ -518,17 +518,45 @@ describe('leadsBack', () => {
 });
 
 describe('uncoveredOutcomes', () => {
+  /**
+   * Долг §12.2, закрытый в Сессии 17.
+   *
+   * Правило выхода вправе смотреть на переменную, записанную гейтом ДРУГОЙ
+   * части (`collectVariables` собирает их по всему проекту). Пока сигнатура
+   * была `(segment, gates)`, очевидный вызов `(segment, segment.gates)` такой
+   * гейт не находил, выпадал в общую ветку и сообщал о недостающих вердиктах —
+   * то есть панель показывала дыру там, где схема проект принимает.
+   *
+   * Тест ловит именно это: обе ветки гейта покрыты, дыр быть не должно.
+   * На старой сигнатуре он вернул бы запись про недостающие 'correct'/'wrong'.
+   */
+  it('переменная записана гейтом ДРУГОЙ части — дыры нет, гейт ищется по всему проекту', () => {
+    const withGate = segment('seg-1', { gates: [choiceGate('g1', ['a', 'b'])] });
+    const consumer = segment('seg-2', {
+      gates: [],
+      exit: {
+        rules: [
+          rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-1'),
+          rule('r2', { kind: 'equals', variable: 'g1', value: 'b' }, 'seg-1'),
+        ],
+        default: null,
+      },
+    });
+
+    expect(uncoveredOutcomes(project([withGate, consumer]), 'seg-2')).toEqual([]);
+  });
+
   it('default задан — дыр нет', () => {
     const s = segment('seg-1', {
       gates: [choiceGate('g1', ['a', 'b'])],
       exit: { rules: [rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-1')], default: 'seg-1' },
     });
-    expect(uncoveredOutcomes(s, s.gates)).toEqual([]);
+    expect(uncoveredOutcomes(project([s]), s.id)).toEqual([]);
   });
 
   it('правил нет вовсе — дыр нет (выхода просто ещё нет, не дефект покрытия)', () => {
     const s = segment('seg-1', { gates: [choiceGate('g1', ['a', 'b'])] });
-    expect(uncoveredOutcomes(s, s.gates)).toEqual([]);
+    expect(uncoveredOutcomes(project([s]), s.id)).toEqual([]);
   });
 
   it('частично покрытые варианты choice — дыра', () => {
@@ -536,7 +564,7 @@ describe('uncoveredOutcomes', () => {
       gates: [choiceGate('g1', ['a', 'b', 'c'])],
       exit: { rules: [rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-1')], default: null },
     });
-    expect(uncoveredOutcomes(s, s.gates)).toEqual([{ variable: 'g1', optionIds: ['b', 'c'], verdicts: [] }]);
+    expect(uncoveredOutcomes(project([s]), s.id)).toEqual([{ variable: 'g1', optionIds: ['b', 'c'], verdicts: [] }]);
   });
 
   it('все варианты choice покрыты equals-правилами — дыры нет', () => {
@@ -550,7 +578,7 @@ describe('uncoveredOutcomes', () => {
         default: null,
       },
     });
-    expect(uncoveredOutcomes(s, s.gates)).toEqual([]);
+    expect(uncoveredOutcomes(project([s]), s.id)).toEqual([]);
   });
 
   it('оба вердикта correct+wrong на одной переменной — дыры нет, даже для choice', () => {
@@ -564,7 +592,7 @@ describe('uncoveredOutcomes', () => {
         default: null,
       },
     });
-    expect(uncoveredOutcomes(s, s.gates)).toEqual([]);
+    expect(uncoveredOutcomes(project([s]), s.id)).toEqual([]);
   });
 
   it('гейт-ввод: только correct без wrong — дыра verdicts: [wrong]', () => {
@@ -572,7 +600,7 @@ describe('uncoveredOutcomes', () => {
       gates: [verdictGate('g1')],
       exit: { rules: [rule('r1', { kind: 'correct', variable: 'g1' }, 'seg-1')], default: null },
     });
-    expect(uncoveredOutcomes(s, s.gates)).toEqual([{ variable: 'g1', optionIds: [], verdicts: ['wrong'] }]);
+    expect(uncoveredOutcomes(project([s]), s.id)).toEqual([{ variable: 'g1', optionIds: [], verdicts: ['wrong'] }]);
   });
 
   it('несколько переменных без default — дыра, даже если каждая по отдельности покрыта полностью', () => {
@@ -588,7 +616,7 @@ describe('uncoveredOutcomes', () => {
         default: null,
       },
     });
-    expect(uncoveredOutcomes(s, s.gates).length).toBeGreaterThan(0);
+    expect(uncoveredOutcomes(project([s]), s.id).length).toBeGreaterThan(0);
   });
 });
 
@@ -618,7 +646,7 @@ describe('согласие со схемой: дыра в панели ⇔ от�
     p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'a' }], 'seg-2');
     p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'b' }], 'seg-2');
 
-    expect(uncoveredOutcomes(p.segments[0]!, p.segments[0]!.gates)).toEqual([]);
+    expect(uncoveredOutcomes(p, p.segments[0]!.id)).toEqual([]);
     expect(saveable(p)).toBe(true);
   });
 
@@ -626,7 +654,7 @@ describe('согласие со схемой: дыра в панели ⇔ от�
     let p = twoOptionProject();
     p = connect(p, 'seg-1', [{ kind: 'equals', variable: 'g1', value: 'a' }], 'seg-2');
 
-    expect(uncoveredOutcomes(p.segments[0]!, p.segments[0]!.gates)).toEqual([
+    expect(uncoveredOutcomes(p, p.segments[0]!.id)).toEqual([
       { variable: 'g1', optionIds: ['b'], verdicts: [] },
     ]);
     expect(saveable(p)).toBe(false);
@@ -634,7 +662,7 @@ describe('согласие со схемой: дыра в панели ⇔ от�
 
   it('гейт без правил — дыры нет, и схема действительно принимает', () => {
     const p = twoOptionProject();
-    expect(uncoveredOutcomes(p.segments[0]!, p.segments[0]!.gates)).toEqual([]);
+    expect(uncoveredOutcomes(p, p.segments[0]!.id)).toEqual([]);
     expect(saveable(p)).toBe(true);
   });
 
@@ -645,7 +673,7 @@ describe('согласие со схемой: дыра в панели ⇔ от�
     const full = p;
     p = disconnect(p, 'seg-1', full.segments[0]!.exit.rules[1]!.id);
 
-    expect(uncoveredOutcomes(p.segments[0]!, p.segments[0]!.gates)).toHaveLength(1);
+    expect(uncoveredOutcomes(p, p.segments[0]!.id)).toHaveLength(1);
     expect(saveable(p)).toBe(false);
   });
 });

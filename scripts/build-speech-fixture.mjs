@@ -107,6 +107,43 @@ speechWords[stopsIndex] = REPLACED_TO; // (1) замена формы
 
 const speech = speechWords.join(' ');
 
+/**
+ * Нормализация слова — ТА ЖЕ, что в packages/core/src/time.ts (normalizeWord):
+ * строчные, ё → е, без всего, что не буква и не цифра.
+ *
+ * Правило продублировано, и это долг, а не решение: скрипт на .mjs, ядро
+ * на TypeScript, импортировать несобранный модуль отсюда нечем. Разъедься
+ * два правила — якорь сироты в фикстуре перестанет находиться, причём тихо.
+ * Охраняется тестом: он строит якорь через core и сверяет с фикстурой.
+ */
+const normalizeWord = (text) =>
+  text.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]/gu, '');
+
+// Метка-сирота. Берётся именно расхождение 3: слово «конечно» диктор
+// произнёс, в тексте озвучки оно есть, а в расшифровке его НЕТ. То есть
+// метка, стоявшая на нём, своё слово потеряла — сирота по построению,
+// а не приписанная фикстуре ради галочки.
+//
+// Догадка ставится на «Когда» — ближайшее уцелевшее слово справа. Слева
+// от «конечно» в тексте озвучки стоит слово с тем же расстоянием, и по
+// правилу выравнивания победило бы ЛЕВОЕ; здесь догадка задана прямо,
+// потому что фикстура описывает СОСТОЯНИЕ проекта, а не прогон алгоритма.
+const orphanSlide = {
+  id: 'slide-orphan',
+  at: {
+    kind: 'orphan',
+    wordIndex: insertBeforeIndex,
+    offset: 0,
+    lost: {
+      text: normalizeWord(INSERTED_WORD),
+      before: normalizeWord(words[insertBeforeIndex - 1].text),
+      after: normalizeWord(INSERTED_BEFORE),
+    },
+  },
+  transition: 'morph',
+  states: {},
+};
+
 const segment = {
   id: 's-speech',
   title: 'Текст озвучки против расшифровки',
@@ -120,13 +157,14 @@ const segment = {
   elements: [],
   slides: [
     { id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} },
+    orphanSlide,
   ],
   gates: [],
   exit: { rules: [], default: null },
 };
 
 const project = {
-  schemaVersion: 7,
+  schemaVersion: 8,
   meta: { title: 'Расхождение текста озвучки и расшифровки', stageWidth: 1920, stageHeight: 1080 },
   entry: segment.id,
   segments: [segment],
@@ -139,4 +177,5 @@ console.log(`текст озвучки: ${speechWords.length} слов`);
 console.log(`расхождение 1 (replaced, «перефразировал»): «${REPLACED_FROM}» → «${REPLACED_TO}» (индекс расшифровки ${stopsIndex})`);
 console.log(`расхождение 2 (added, «пропустил»): в тексте озвучки нет слова «${OMITTED_WORD}» (индекс расшифровки ${omittedIndex}) — в расшифровке оно есть`);
 console.log(`расхождение 3 (removed, «добавил лишнее»): в тексте озвучки есть слово «${INSERTED_WORD}» перед «${INSERTED_BEFORE}» (индекс расшифровки ${insertBeforeIndex}) — в расшифровке его нет`);
+console.log(`метка-сирота: слайд «${orphanSlide.id}», искали «${orphanSlide.at.lost.text}», догадка на слове №${orphanSlide.at.wordIndex} («${words[insertBeforeIndex].text}»)`);
 console.log(`записано: ${FIXTURE_OUT.pathname}`);

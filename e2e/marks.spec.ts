@@ -71,7 +71,10 @@ test.describe('метки на дорожке', () => {
 
     // Оба гейта demo.json стоят на словах — это видно и без раскрытия свойств.
     for (const id of ['gate-choice', 'gate-input']) {
-      await expect(page.getByTestId(`mark-gate-${id}`)).toHaveAttribute('data-on-word', '1');
+      // `data-anchor` вместо прежнего `data-on-word`: состояний якоря стало
+      // три (product.md §4), и булев признак перестал их различать.
+      // `bound` — то же утверждение, что раньше значило '1': метка на слове.
+      await expect(page.getByTestId(`mark-gate-${id}`)).toHaveAttribute('data-anchor', 'bound');
     }
   });
 

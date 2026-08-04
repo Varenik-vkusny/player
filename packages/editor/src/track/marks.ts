@@ -24,6 +24,77 @@ export type MarkTarget =
   | { readonly kind: 'seconds' };
 
 /**
+ * Состояние якоря на языке `product.md` §4 — то, что видит и понимает автор.
+ *
+ * Схема хранит виды `TimeRef`, документ говорит о состояниях якоря, и это
+ * РАЗНЫЕ словари: `word` — про устройство ссылки, `bound` — про то, что
+ * с меткой всё в порядке. Перевод собран в одной функции по той же причине,
+ * по которой доступ к сегментам идёт через `segmentOf`: разъедься эти два
+ * словаря по десятку мест — и однажды `seconds` где-то перестанет считаться
+ * зафиксированным вручную.
+ */
+export type MarkAnchor = 'bound' | 'pinned' | 'orphan';
+
+/**
+ * Состояние якоря метки.
+ *
+ * `pinned` — это `seconds`, и здесь видно, почему отдельного поля не завели:
+ * «автор зафиксировал место вручную, выравнивание его не трогает» — ровно
+ * описание секундной метки, которую `retargetByAlignment` возвращает нетронутой.
+ */
+export function anchorStateOf(ref: TimeRef): MarkAnchor {
+  switch (ref.kind) {
+    case 'word':
+      return 'bound';
+    case 'seconds':
+      return 'pinned';
+    case 'orphan':
+      return 'orphan';
+  }
+}
+
+/** Минимум, нужный для обхода сирот: что это за метка, где стоит и в каком состоянии. */
+export interface AnchoredMark {
+  readonly kind: 'gate' | 'slide';
+  readonly id: string;
+  readonly anchor: MarkAnchor;
+  readonly seconds: number;
+}
+
+/**
+ * Следующая сирота по дорожке — для кнопки «к следующей».
+ *
+ * Обход круговой: за последней идёт первая. Список «проверьте эти места»
+ * из §4 [Р] — это работа, которую автор делает до конца, а не однажды
+ * сверху вниз; упереться в конец списка и получить мёртвую кнопку значило бы
+ * заставить его вручную вспоминать, с какой метки он начал.
+ *
+ * Порядок — по секундам, а не по порядку в массиве: автор видит дорожку,
+ * и «следующая» для него та, что правее, независимо от того, слайд это
+ * или гейт и в каком списке он лежит.
+ *
+ * `undefined` возвращается ровно когда сирот нет вовсе. Если выбрана
+ * не сирота (или ничего не выбрано), обход начинается с первой.
+ */
+export function nextOrphan(
+  marks: readonly AnchoredMark[],
+  selected: { readonly kind: string; readonly id: string } | undefined,
+): AnchoredMark | undefined {
+  const orphans = marks
+    .filter((mark) => mark.anchor === 'orphan')
+    .sort((a, b) => a.seconds - b.seconds);
+
+  if (orphans.length === 0) return undefined;
+
+  const current = orphans.findIndex(
+    (mark) => mark.kind === selected?.kind && mark.id === selected.id,
+  );
+
+  // `current === -1` (выбрана не сирота или ничего) даёт индекс 0 — первую.
+  return orphans[(current + 1) % orphans.length];
+}
+
+/**
  * Насколько далеко от слова метка всё ещё считается «на слове», секунды.
  *
  * Нижняя граница задана измерением, а не вкусом. S5: MFA даёт p95 ошибки
@@ -160,11 +231,18 @@ export function wordAnchorProblem(
  *
  * Невозможный перевод падает громко: до сюда доходят только те переключения,
  * которые интерфейс предложил, а предлагает он их по `wordAnchorProblem`.
+ *
+ * Целью бывает только `seconds` или `word`, хотя видов у `TimeRef` три.
+ * Сиротство ставит выравнивание, обнаружив пропажу слова, — назначить его
+ * «переводом» нельзя, потому что сирота несёт `lost`, а взять его тут неоткуда:
+ * получилась бы метка, которая заявляет о потере, не зная, что потеряла.
+ * Отсюда сужение типа, а не проверка в теле: невыразимое дешевле проверяемого.
+ * ИСТОЧНИКОМ перевода сирота быть может — любая из двух привязок её снимает.
  */
 export function retargetMark(
   ref: TimeRef,
   words: readonly Word[],
-  kind: TimeRef['kind'],
+  kind: 'seconds' | 'word',
   snapSeconds: number = DEFAULT_SNAP_SECONDS,
 ): TimeRef {
   if (ref.kind === kind) return ref;

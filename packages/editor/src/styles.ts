@@ -397,6 +397,28 @@ export const EDITOR_STYLES = `
   flex: 0 0 auto;
 }
 
+/* Строка и кнопка «на слайде» стоят рядом, а не одна в другой: кнопку
+   в кнопку браузер не разрешает (§12.4). */
+.ed-element-item {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.ed-element-item .ed-element-row { min-width: 0; }
+
+.ed-element-on-slide {
+  flex: 0 0 auto;
+  width: 22px;
+  border: 1px solid #223047;
+  border-radius: 4px;
+  background: #0f1621;
+  color: #9fb2c9;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ed-element-on-slide:hover { border-color: #4c8dff; color: #e6edf5; }
+
 /* Настоящая кнопка, а не строка со своим обработчиком клика: Tab обходит
    список без отдельной клавиатурной машинерии (см. срез 6 плана). */
 .ed-element-row {
@@ -899,10 +921,55 @@ export const EDITOR_STYLES = `
 .ed-mark-selected { border-color: #4c8dff; color: #e6edf5; }
 
 /* Привязка к слову — не украшение, а то, что автор обязан видеть без
-   раскрытия свойств: от неё зависит, переживёт ли метка замену озвучки. */
-.ed-mark-word { color: #a8c686; }
+   раскрытия свойств: от неё зависит, переживёт ли метка замену озвучки.
+   Классы названы состояниями якоря из product.md §4 (bound / pinned /
+   orphan), а не видами ссылки: интерфейс говорит с автором на языке
+   документа, а не схемы. */
+.ed-mark-bound { color: #a8c686; }
 .ed-mark-gate { color: #e4572e; }
-.ed-mark-gate.ed-mark-word { color: #a8c686; }
+.ed-mark-gate.ed-mark-bound { color: #a8c686; }
+
+/* Сирота: слово потерялось, метка стоит в догадке машины.
+   Отличается ДВУМЯ признаками сразу, и это не избыточность. Цвет один
+   не годится: он уже несёт род метки и выделение, а на дальтонизме
+   и вовсе перестаёт различать. Восклицательный знак в углу читается
+   независимо от цвета и не отнимает основной знак у рода метки —
+   ромб слайда и столбик гейта обязаны остаться на месте. */
+.ed-mark-orphan { color: #e8b64c; }
+.ed-mark-gate.ed-mark-orphan { color: #e8b64c; }
+.ed-mark-orphan::after {
+  content: '!';
+  position: absolute;
+  top: -4px;
+  right: -3px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: #e8b64c;
+}
+
+/* Строка списка «проверьте эти места» (product.md §4). Стоит НАД полосой
+   меток, потому что относится ко всей дорожке, а не к выбранной метке. */
+.ed-orphans {
+  margin: 0;
+  padding: 4px 8px;
+  border-top: 1px solid #1c242f;
+  background: #251f10;
+  color: #e8d9b0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ed-orphans-sign { color: #e8b64c; font-weight: 700; }
+.ed-orphans-next {
+  padding: 1px 8px;
+  border: 1px solid #6b5a2e;
+  border-radius: 4px;
+  background: #33290f;
+  color: #f0e2bb;
+  font: inherit;
+  cursor: pointer;
+}
+.ed-orphans-next:hover { background: #453718; }
 
 /* Своя полоса каждому роду метки. Разведение по вертикали, а не по z-index:
    порядок наложения решает, КТО сверху, но обе метки продолжают занимать
