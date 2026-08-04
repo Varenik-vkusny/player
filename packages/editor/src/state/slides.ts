@@ -15,8 +15,9 @@
  * при каждой вставке слайда, а не продолжалась.
  */
 import { resolveTimeRef } from '@player/core';
-import type { ElementState, Segment, Slide, TimeRef, Word } from '@player/core';
+import type { Element, ElementState, Segment, Slide, TimeRef, Word } from '@player/core';
 
+import { prefixOf } from './duplicate.js';
 import { freeId } from './elements.js';
 
 /** Глубокая копия states: `style` — вложенный объект, поверхностного spread мало. */
@@ -89,6 +90,32 @@ export function addSlide(segment: Segment, afterSlideId: string, at: TimeRef): S
 }
 
 /**
+ * Почему этот слайд нельзя вырезать (или удалить — то же правило).
+ * `undefined` — можно.
+ *
+ * Ровно то же условие, что раньше жило только внутри `removeSlide`, теперь
+ * доступно ДО клика: кнопка «Вырезать» (`track/SlideStrip.tsx`) и панель
+ * слайдов (`panels/SlidePanel.tsx`) обязаны показать невозможность действия
+ * заранее, а не поймать исключение ради текста подсказки. Раньше это же
+ * правило было продублировано в `SlidePanel.tsx` собственным выражением
+ * (`index > 0 && slides.length > 1`) — третья копия (кнопка «Вырезать»)
+ * разъехалась бы с первыми двумя молча, поэтому правило теперь одно.
+ */
+export function cutProblem(segment: Segment, slideId: string): string | undefined {
+  if (segment.slides.length <= 1) {
+    return 'Единственный слайд вырезать нельзя: части нечего будет показывать';
+  }
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+  if (index === 0) {
+    return 'Первый слайд вырезать нельзя: он обязан стоять на нуле — это стартовый вид части';
+  }
+  return undefined;
+}
+
+/**
  * Удаляет слайд.
  *
  * Не даёт остаться без единого слайда (`SegmentSchema.slides.min(1)`) —
@@ -99,19 +126,15 @@ export function addSlide(segment: Segment, afterSlideId: string, at: TimeRef): S
  * ровно на нуле («первый слайд обязан стоять на нуле», schema.ts) — это
  * стартовый вид сегмента, а не слайд как все остальные, и его роль обязан
  * унаследовать кто-то явно, а не следующий слайд по факту освобождения места.
+ *
+ * Отказ — целиком забота `cutProblem`: эта функция зовёт её первой строкой
+ * и бросает её же текст, ровно так же, как `pasteSlide` зовёт `pasteProblem`.
  */
 export function removeSlide(segment: Segment, slideId: string): Segment {
-  if (segment.slides.length <= 1) {
-    throw new Error('Нельзя удалить последний слайд: сегменту нечего будет показывать');
-  }
-  const index = slideIndex(segment, slideId);
-  if (index < 0) {
-    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
-  }
-  if (index === 0) {
-    throw new Error('Нельзя удалить первый слайд: он обязан стоять на нуле — это стартовый вид сегмента');
-  }
+  const problem = cutProblem(segment, slideId);
+  if (problem) throw new Error(problem);
 
+  const index = slideIndex(segment, slideId);
   const slides = segment.slides.slice(0, index).concat(segment.slides.slice(index + 1));
   return { ...segment, slides };
 }
@@ -318,4 +341,208 @@ export function slideAt(segment: Segment, seconds: number, words: readonly Word[
     }
   }
   return current;
+}
+
+/**
+ * Буфер обмена слайдов (ADR-025: «слайд переносит состояние, а не момент»).
+ *
+ * Не несёт `at` источника — переносить его некуда: `TimeRef` вида `word`
+ * указывает в расшифровку СВОЕЙ части, а в чужой части (или в той же части
+ * на новом месте) этот индекс слова не значит ничего. Момент вставки решает
+ * вызывающий `pasteSlide`, передавая `at` снаружи — как и у `addSlide`.
+ *
+ * `elements` — снимок САМИХ элементов (не только их id): автор вправе
+ * скопировать слайд, удалить элемент из части и вставить — элемент обязан
+ * вернуться (ADR-025, «Последствия»).
+ */
+export interface SlideClipboard {
+  /** Только для подписи автору («слайд из части N»). В логике НЕ участвует. */
+  readonly sourceSegmentId: string;
+  readonly transition: Slide['transition'];
+  readonly states: Readonly<Record<string, ElementState>>;
+  /** Снимок элементов, на которые смотрят `states`. Ровно они, не все элементы части. */
+  readonly elements: readonly Element[];
+}
+
+/**
+ * Копирует слайд в буфер: снимок его состояний и элементов, на которые они
+ * ссылаются.
+ *
+ * Элемент, упомянутый в `states`, которого нет в `segment.elements`, —
+ * испорченные данные (`states` обязаны указывать на существующий элемент,
+ * schema.ts). Падаем здесь же, а не подставляем выдуманный прямоугольник —
+ * тот же принцип, что и в `putOnSlide` выше.
+ */
+export function copySlideToClipboard(segment: Segment, slideId: string): SlideClipboard {
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+  const slide = segment.slides[index]!;
+
+  const elements: Element[] = Object.keys(slide.states).map((elementId) => {
+    const element = segment.elements.find((candidate) => candidate.id === elementId);
+    if (!element) {
+      throw new Error(
+        `Слайд «${slideId}» ссылается на элемент «${elementId}», которого нет в сегменте «${segment.id}» — `
+          + 'данные повреждены',
+      );
+    }
+    return { ...element };
+  });
+
+  return {
+    sourceSegmentId: segment.id,
+    transition: slide.transition,
+    states: cloneStates(slide.states),
+    elements,
+  };
+}
+
+/**
+ * Почему вставку в `at` сделать нельзя. `undefined` — можно (ADR-025, «Куда
+ * именно встаёт слайд»). Ровно три причины, каждая — своя строка:
+ *
+ * 1. секунда `<= 0` — место первого слайда занято навсегда (ADR-015);
+ * 2. секунда попадает в `MARK_HIT_SECONDS` существующей метки — это
+ *    попадание В неё, а не рядом;
+ * 3. секунда за длиной дорожки.
+ *
+ * Буфер сюда НЕ передаётся, хотя `pasteSlide` принимает его рядом с `at`:
+ * все три причины — про ВРЕМЯ, и ни одна не читала бы содержимое буфера.
+ * Параметр «для симметрии сигнатур» пришлось бы глушить `void`, то есть
+ * заявлять необходимость, которой нет, и следующий читатель искал бы,
+ * зачем он. Пустота буфера — не причина отсюда: вставлять нечего решает
+ * интерфейс, у которого буфера может не быть вовсе (`undefined`).
+ *
+ * Существует ради интерфейса, ровно как `wordAnchorProblem` в
+ * `track/marks.ts`: он обязан ОБЪЯСНИТЬ, почему кнопка «Вставить» недоступна,
+ * а не гасить её молча и не ловить исключение ради текста подсказки.
+ * Погашенная без причины кнопка — тупик, в котором автор не понимает,
+ * что он сделал не так.
+ */
+export function pasteProblem(segment: Segment, at: TimeRef): string | undefined {
+  const words = segment.audio.words;
+  const newSeconds = seconds(at, words);
+
+  if (newSeconds <= 0) {
+    return `Начало части занято: первый слайд обязан стоять на нуле (получено ${newSeconds.toFixed(3)} с)`;
+  }
+
+  const hit = slideOnMark(segment, newSeconds, words);
+  if (hit) {
+    const hitSeconds = resolveTimeRef(hit.at, words);
+    return `На этой секунде уже стоит слайд «${hit.id}» (${hitSeconds.toFixed(3)} с)`;
+  }
+
+  if (newSeconds > segment.audio.duration) {
+    return `За длиной дорожки: ${newSeconds.toFixed(3)} с при длине дорожки ${segment.audio.duration} с`;
+  }
+
+  return undefined;
+}
+
+/**
+ * Вставляет слайд из буфера в `at`. Возвращает НОВЫЙ сегмент.
+ *
+ * `at` разрешается в секунды тем же путём, что и в `addSlide`; привязку
+ * к слову (`timeRefAt`) выбирает ВЫЗЫВАЮЩИЙ — этому модулю решение не
+ * принадлежит.
+ *
+ * Отказ по времени — целиком забота `pasteProblem`: эта функция зовёт её
+ * первой строкой и бросает её же текст, ровно так же, как `retargetMark`
+ * в `track/marks.ts` зовёт `wordAnchorProblem` и бросает `problem`. Проверки
+ * обязаны жить в ОДНОМ месте — второй копией условий здесь они бы разъехались
+ * молча, и интерфейс однажды объяснил бы отказ, которого `pasteSlide`
+ * на самом деле не сделала (или наоборот).
+ *
+ * Индекс вставки считается ПО ВРЕМЕНИ: слайды идут по возрастанию (инвариант
+ * схемы), поэтому новый слайд встаёт туда, где он оказался бы, если бы
+ * список пересортировали, а не в конец и не после конкретного соседа.
+ *
+ * Элементы — по таблице ADR-025: тот же id с тем же `type`/`content`
+ * переиспользуется; свободный id заводится с тем же именем; занятый чужим
+ * элементом id получает новое имя от ПРЕФИКСА (`prefixOf` из `duplicate.ts`,
+ * общий с `copySegment` — свой второй регэксп заводить нельзя, разъедутся).
+ * `taken` — явный список выданных на этот вызов id: без него два новых
+ * элемента одного префикса, заведённые за один вызов, получили бы одно имя
+ * (тот же приём, что приватный `claimer` в `duplicate.ts`, здесь — открытым
+ * кодом, потому что публичный API у генератора имён не нужен).
+ */
+export function pasteSlide(segment: Segment, clipboard: SlideClipboard, at: TimeRef): Segment {
+  const problem = pasteProblem(segment, at);
+  if (problem) throw new Error(problem);
+
+  const words = segment.audio.words;
+  const newSeconds = seconds(at, words);
+
+  // Список занятых id для третьего случая таблицы ADR-025 — засеян тем, что
+  // уже есть в части, и пополняется по мере раздачи новых имён в этом вызове.
+  const taken: { id: string }[] = segment.elements.map((element) => ({ id: element.id }));
+
+  const newElements: Element[] = [];
+  const states: Record<string, ElementState> = {};
+
+  for (const [elementId, state] of Object.entries(clipboard.states)) {
+    const sourceElement = clipboard.elements.find((candidate) => candidate.id === elementId);
+    if (!sourceElement) {
+      throw new Error(
+        `Буфер обмена испорчен: состояние элемента «${elementId}» есть, а самого элемента в буфере нет`,
+      );
+    }
+
+    const existing = segment.elements.find((candidate) => candidate.id === elementId);
+
+    if (existing && existing.type === sourceElement.type && existing.content === sourceElement.content) {
+      // Тот же элемент — переиспользуем, ключ состояния остаётся прежним.
+      states[elementId] = { ...state, style: { ...state.style } };
+      continue;
+    }
+
+    if (!existing) {
+      // id свободен — заводим элемент с тем же id.
+      newElements.push({ ...sourceElement });
+      taken.push({ id: elementId });
+      states[elementId] = { ...state, style: { ...state.style } };
+      continue;
+    }
+
+    // id занят другим элементом (иной type/content) — новое имя от префикса.
+    const newId = freeId(prefixOf(elementId), taken);
+    taken.push({ id: newId });
+    newElements.push({ ...sourceElement, id: newId });
+    states[newId] = { ...state, style: { ...state.style } };
+  }
+
+  const elements = segment.elements.concat(newElements);
+
+  const slide: Slide = {
+    id: freeId('slide', segment.slides),
+    at,
+    transition: clipboard.transition,
+    states,
+  };
+
+  let insertAt = segment.slides.length;
+  for (let i = 0; i < segment.slides.length; i++) {
+    if (resolveTimeRef(segment.slides[i]!.at, words) > newSeconds) {
+      insertAt = i;
+      break;
+    }
+  }
+
+  const slides = segment.slides.slice();
+  slides.splice(insertAt, 0, slide);
+
+  return { ...segment, elements, slides };
+}
+
+/**
+ * Ярлык «копировать этот слайд и вставить на `at`». Буфер автора не трогает —
+ * работает через свой временный `SlideClipboard`, композиция `copySlideToClipboard`
+ * и `pasteSlide`, а не третья реализация того же правила (ADR-025).
+ */
+export function duplicateSlideAt(segment: Segment, slideId: string, at: TimeRef): Segment {
+  const clipboard = copySlideToClipboard(segment, slideId);
+  return pasteSlide(segment, clipboard, at);
 }

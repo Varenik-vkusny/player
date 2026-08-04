@@ -47,8 +47,8 @@ import { createGate, gateInsideTransition } from './state/gates.js';
 import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
-import { freeId, segmentSlide, type MarkKind } from './state/project.js';
-import { slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
+import { freeId, pasteProblemAt, segmentSlide, type MarkKind } from './state/project.js';
+import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import { sceneTemplate } from './state/templates.js';
 import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
 import { saveWork } from './state/workspace.js';
@@ -425,6 +425,22 @@ export function Editor({
   const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
 
   /**
+   * Буфер обмена слайдов (ADR-025) — кнопки ленты (`SlideStrip`, §14.13).
+   * Цель всех четырёх — `state.currentSlideId`. Момент вставки (для
+   * pasteSlide/duplicateSlide) — головка дорожки; сами обработчики заведены
+   * НИЖЕ, сразу после headTimeRef (используют её, второго timeRefAt не
+   * заводят).
+   */
+  const handleCopySlide = useCallback(
+    () => dispatch({ type: 'copySlide', slideId: state.currentSlideId }),
+    [state.currentSlideId],
+  );
+  const handleCutSlide = useCallback(
+    () => dispatch({ type: 'cutSlide', slideId: state.currentSlideId }),
+    [state.currentSlideId],
+  );
+
+  /**
    * Добавляет слайд после текущего выделенного — копией его состояний
    * (это уже делает `slidesApi.addSlide`, здесь только вычисляется момент
    * вставки). Момент — середина между текущим слайдом и следующим, либо,
@@ -467,6 +483,39 @@ export function Editor({
     (): TimeRef => timeRefAt(segment.words, transport.positionSeconds),
     [segment.words, transport.positionSeconds],
   );
+
+  const handlePasteSlide = useCallback(
+    () => dispatch({ type: 'pasteSlide', at: headTimeRef() }),
+    [headTimeRef],
+  );
+  const handleDuplicateSlide = useCallback(
+    () => dispatch({ type: 'duplicateSlide', slideId: state.currentSlideId, at: headTimeRef() }),
+    [state.currentSlideId, headTimeRef],
+  );
+
+  /**
+   * Почему в место под головкой нельзя положить слайд (ADR-025). Про ВРЕМЯ
+   * и только про время — см. комментарий `pasteProblem` в state/slides.ts.
+   *
+   * Считается ОДИН раз на обе кнопки: и вставка, и дублирование метят в одну
+   * секунду, поэтому причина отказа по месту у них общая. Дверца
+   * `pasteProblemAt` нужна потому, что `pasteProblem` ждёт МОДЕЛЬ сегмента,
+   * а `segment` выше — вид плеера (`segmentOf`), у которого поля называются
+   * иначе; состав аргументов дверцы фиксирован намеренно, см. её комментарий.
+   */
+  const slideSpotProblem = pasteProblemAt(currentProject, state.currentSegmentId, headTimeRef());
+
+  /**
+   * Почему «Вставить» недоступна: к месту добавляется пустой буфер.
+   *
+   * У «Дублировать» этой причины НЕТ и быть не может: `duplicateSlideAt`
+   * работает через свой временный буфер и авторского не читает. Сведи их
+   * в один сигнал — и автор не смог бы размножить кадр, пока чего-нибудь
+   * не скопирует, а логика редьюсера была бы при этом исправна.
+   */
+  const slidePasteProblem = state.slideClipboard === undefined
+    ? 'Буфер пуст: сначала скопируйте или вырежьте слайд'
+    : slideSpotProblem;
 
   /**
    * Позиция, замороженная на время жеста.
@@ -1016,6 +1065,7 @@ export function Editor({
             onSelect={handleSelectSlide}
             onAdd={handleAddSlide}
             onRemove={handleRemoveSlide}
+            cutProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
           />
           {/* ADR-022: разрез без расшифровки потерял текст озвучки продолжения.
               Рядом с панелью частей — тот же класс сообщения, что и «Пустые
@@ -1103,6 +1153,13 @@ export function Editor({
           stageWidth={segment.stage.width}
           stageHeight={segment.stage.height}
           onSelectSlide={handleSelectSlide}
+          onDuplicate={handleDuplicateSlide}
+          onCopy={handleCopySlide}
+          onCut={handleCutSlide}
+          onPaste={handlePasteSlide}
+          cutProblem={slideCutProblem(currentSegment, state.currentSlideId)}
+          duplicateProblem={slideSpotProblem}
+          pasteProblem={slidePasteProblem}
         />
         <TrackView
           transport={transport}

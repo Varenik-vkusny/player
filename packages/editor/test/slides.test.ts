@@ -1,0 +1,278 @@
+/**
+ * Буфер обмена слайдов (ADR-025) — чистая логика, без редьюсера и без React.
+ *
+ * Прецедент — `duplicate.test.ts`: там тоже проверяется чистый модуль
+ * (`copySegment`) напрямую, а не через `state/project.ts`. Здесь то же самое
+ * для `copySlideToClipboard` / `pasteSlide` / `duplicateSlideAt`.
+ */
+import { describe, expect, it } from 'vitest';
+
+import { loadProject, SCHEMA_VERSION } from '@player/core';
+import type { Element, ElementState, Project, Segment, Slide, TimeRef } from '@player/core';
+
+import { copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, type SlideClipboard } from '../src/state/slides.js';
+import { serializeProject } from '../src/state/save.js';
+
+function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
+  return { id, type, content };
+}
+
+function state(overrides: Partial<ElementState> = {}): ElementState {
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+}
+
+const seconds = (t: number): TimeRef => ({ kind: 'seconds', t });
+
+/** Секунды слайда — тесты используют только `kind: 'seconds'`, приведение безопасно. */
+function slideSeconds(slide: Slide): number {
+  if (slide.at.kind !== 'seconds') throw new Error('фикстура сломана: ожидался TimeRef.seconds');
+  return slide.at.t;
+}
+
+/**
+ * Часть на 10 секунд с одним элементом (`shape-1`) и двумя слайдами:
+ * стартовый на нуле и второй на 5-й секунде — его и копируют в тестах.
+ */
+function baseSegment(): Segment {
+  return {
+    id: 'seg-1',
+    title: '',
+    audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
+    elements: [el('shape-1')],
+    slides: [
+      { id: 'slide-1', at: seconds(0), transition: 'morph', states: { 'shape-1': state() } },
+      { id: 'slide-2', at: seconds(5), transition: 'morph', states: { 'shape-1': state({ x: 50 }) } },
+    ],
+    gates: [],
+    exit: { rules: [], default: null },
+  };
+}
+
+/** Ручной буфер — не через `copySlideToClipboard` — там, где важен ПОЛНЫЙ контроль над тем, что в нём лежит. */
+function clipboardOf(
+  elements: Element[],
+  states: Record<string, ElementState>,
+  transition: Slide['transition'] = 'morph',
+): SlideClipboard {
+  return { sourceSegmentId: 'other-segment', transition, states, elements };
+}
+
+function project(segment: Segment): Project {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    meta: { title: 'Буфер обмена слайдов', stageWidth: 1920, stageHeight: 1080 },
+    entry: segment.id,
+    segments: [segment],
+  };
+}
+
+describe('pasteSlide: отказы вставки (ADR-025, «Куда именно встаёт слайд»)', () => {
+  it('вставка на 0.000 отвергается: место первого слайда занято навсегда', () => {
+    const segment = baseSegment();
+    const clipboard = copySlideToClipboard(segment, 'slide-2');
+    expect(() => pasteSlide(segment, clipboard, seconds(0))).toThrow(/нуле/);
+  });
+
+  it('вставка на секунду, занятую существующим слайдом (в пределах MARK_HIT_SECONDS), отвергается', () => {
+    const segment = baseSegment();
+    const clipboard = copySlideToClipboard(segment, 'slide-2');
+    // slide-2 стоит на 5 с; 5 + половина MARK_HIT_SECONDS — попадание В неё.
+    expect(() => pasteSlide(segment, clipboard, seconds(5 + MARK_HIT_SECONDS / 2))).toThrow(/уже стоит слайд/);
+  });
+
+  it('вставка за длиной дорожки отвергается', () => {
+    const segment = baseSegment(); // duration: 10
+    const clipboard = copySlideToClipboard(segment, 'slide-2');
+    expect(() => pasteSlide(segment, clipboard, seconds(10.5))).toThrow(/длиной дорожки/);
+  });
+});
+
+describe('pasteSlide: элементы (ADR-025, таблица из трёх случаев)', () => {
+  it('элемент переиспользуется, когда в целевой части уже есть тот же id/type/content: новых элементов не заводится', () => {
+    const segment = baseSegment(); // shape-1: type 'shape', content ''
+    const clipboard = copySlideToClipboard(segment, 'slide-2'); // states: { 'shape-1': ... }
+
+    const next = pasteSlide(segment, clipboard, seconds(3));
+
+    expect(next.elements).toHaveLength(segment.elements.length); // не выросло
+    const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
+    expect(Object.keys(inserted.states)).toEqual(['shape-1']); // ключ состояния прежний
+  });
+
+  it('id остаётся прежним, когда он свободен в целевой части: заводится элемент с ТЕМ ЖЕ id', () => {
+    const segment = baseSegment(); // не содержит 'text-9'
+    const clipboard = clipboardOf([el('text-9', 'text', 'привет')], { 'text-9': state({ x: 12 }) });
+
+    const next = pasteSlide(segment, clipboard, seconds(3));
+
+    const created = next.elements.find((e) => e.id === 'text-9');
+    expect(created).toEqual({ id: 'text-9', type: 'text', content: 'привет' });
+    const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
+    expect(inserted.states['text-9']).toEqual(state({ x: 12 }));
+  });
+
+  it('id занят ДРУГИМ элементом (иной type/content): заводится НОВЫЙ элемент через freeId, исходный не тронут', () => {
+    const segment = baseSegment(); // shape-1: type 'shape', content ''
+    const clipboard = clipboardOf([el('shape-1', 'text', 'другое')], { 'shape-1': state({ x: 77 }) });
+
+    const next = pasteSlide(segment, clipboard, seconds(3));
+
+    // исходный элемент цел
+    expect(next.elements.find((e) => e.id === 'shape-1')).toEqual(segment.elements[0]);
+    // новый элемент заведён от префикса ('shape-1' → 'shape' → 'shape-2', первый свободный)
+    const created = next.elements.find((e) => e.type === 'text' && e.content === 'другое');
+    expect(created?.id).toBe('shape-2');
+    const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
+    expect(inserted.states['shape-2']).toEqual(state({ x: 77 }));
+    expect(inserted.states['shape-1']).toBeUndefined();
+  });
+});
+
+describe('pasteSlide: время и снимок', () => {
+  it('вставленный слайд встаёт ПО ВРЕМЕНИ, а не в конец списка', () => {
+    const segment = baseSegment(); // слайды на 0 и 5
+    const clipboard = copySlideToClipboard(segment, 'slide-2');
+
+    const next = pasteSlide(segment, clipboard, seconds(2)); // между 0 и 5
+
+    expect(next.slides.map(slideSeconds)).toEqual([0, 2, 5]);
+  });
+
+  it('буфер несёт снимок: скопировали → удалили элемент из части → вставили → элемент вернулся', () => {
+    const segment = baseSegment();
+    const clipboard = copySlideToClipboard(segment, 'slide-2'); // снимок сделан ДО удаления
+
+    const withoutElement: Segment = {
+      ...segment,
+      elements: [],
+      slides: segment.slides.map((s) => ({ ...s, states: {} })),
+    };
+
+    const next = pasteSlide(withoutElement, clipboard, seconds(3));
+
+    expect(next.elements.some((e) => e.id === 'shape-1')).toBe(true);
+    const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
+    expect(inserted.states['shape-1']).toBeDefined();
+  });
+
+  it('transition переезжает из буфера, а не берётся по умолчанию', () => {
+    const segment = baseSegment();
+    const withCut: Segment = {
+      ...segment,
+      slides: [segment.slides[0]!, { ...segment.slides[1]!, transition: 'cut' }],
+    };
+    const clipboard = copySlideToClipboard(withCut, 'slide-2');
+
+    const next = pasteSlide(withCut, clipboard, seconds(3));
+
+    const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
+    expect(inserted.transition).toBe('cut');
+  });
+});
+
+describe('pasteSlide: результат проходит схему целиком', () => {
+  it('вставленный слайд проходит ProjectSchema: порядок слайдов, отсутствие повтора id, ни одного состояния без хозяина', () => {
+    const segment = baseSegment();
+    const clipboard = copySlideToClipboard(segment, 'slide-2');
+
+    const pasted = pasteSlide(segment, clipboard, seconds(3));
+    const text = serializeProject(project(pasted));
+
+    expect(() => loadProject(JSON.parse(text))).not.toThrow();
+  });
+});
+
+describe('pasteProblem: те же три причины, что у pasteSlide, объяснённые текстом', () => {
+  it('начало части занято: причина названа, число совпадает', () => {
+    const segment = baseSegment();
+    expect(pasteProblem(segment, seconds(0))).toMatch(/нуле/);
+  });
+
+  it('секунда попадает в существующую метку: причина названа', () => {
+    const segment = baseSegment();
+    expect(pasteProblem(segment, seconds(5 + MARK_HIT_SECONDS / 2))).toMatch(/уже стоит слайд/);
+  });
+
+  it('секунда за длиной дорожки: причина названа', () => {
+    const segment = baseSegment(); // duration: 10
+    expect(pasteProblem(segment, seconds(10.5))).toMatch(/длиной дорожки/);
+  });
+
+  it('вставка возможна: undefined', () => {
+    const segment = baseSegment();
+    expect(pasteProblem(segment, seconds(3))).toBeUndefined();
+  });
+
+  /**
+   * Несущее свойство: `pasteProblem` и `pasteSlide` смотрят на ОДНИ правила.
+   * Красный здесь означает ровно одно — правила разъехались (проверено
+   * сломом: `pasteSlide` получила собственную дополнительную проверку,
+   * которой нет в `pasteProblem`, — см. отчёт).
+   */
+  it('pasteProblem вернула undefined ⟺ pasteSlide не бросила', () => {
+    const segment = baseSegment();
+    const clipboard = copySlideToClipboard(segment, 'slide-2');
+    const candidates = [0, 3, 5 + MARK_HIT_SECONDS / 2, 7, 10.5];
+
+    for (const t of candidates) {
+      const problem = pasteProblem(segment, seconds(t));
+      if (problem === undefined) {
+        expect(() => pasteSlide(segment, clipboard, seconds(t))).not.toThrow();
+      } else {
+        expect(() => pasteSlide(segment, clipboard, seconds(t))).toThrow();
+      }
+    }
+  });
+});
+
+describe('cutProblem: почему слайд нельзя вырезать (ADR-025, третья копия правила из SlidePanel/SlideStrip)', () => {
+  it('единственный слайд: причина названа', () => {
+    const single: Segment = { ...baseSegment(), slides: [baseSegment().slides[0]!] };
+    expect(cutProblem(single, 'slide-1')).toMatch(/Единственный слайд/);
+  });
+
+  it('первый слайд из нескольких: причина названа', () => {
+    const segment = baseSegment(); // slide-1 на 0, slide-2 на 5
+    expect(cutProblem(segment, 'slide-1')).toMatch(/Первый слайд/);
+  });
+
+  it('второй и далее слайд из нескольких: можно, undefined', () => {
+    const segment = baseSegment();
+    expect(cutProblem(segment, 'slide-2')).toBeUndefined();
+  });
+
+  /**
+   * Несущее свойство: `cutProblem` и `removeSlide` смотрят на ОДНО правило —
+   * ровно то, ради чего заведён `cutProblem` (устранение третьей копии).
+   * Красный здесь означает, что правила разъехались.
+   *
+   * Проверено сломом: `removeSlide` на секунду получила собственную ветку
+   * `if (index === 1) throw new Error('нельзя вырезать второй слайд')`,
+   * которой нет в `cutProblem` — тест упал (`второй слайд бросил, а
+   * cutProblem сказала «можно»), подтвердив, что проверка ловит расхождение.
+   * Ветка убрана; тест снова зелёный.
+   */
+  it('cutProblem вернула undefined ⟺ removeSlide не бросила', () => {
+    const segment = baseSegment();
+    for (const slideId of ['slide-1', 'slide-2']) {
+      const problem = cutProblem(segment, slideId);
+      if (problem === undefined) {
+        expect(() => removeSlide(segment, slideId)).not.toThrow();
+      } else {
+        expect(() => removeSlide(segment, slideId)).toThrow();
+      }
+    }
+  });
+});
+
+describe('duplicateSlideAt: композиция copySlideToClipboard + pasteSlide', () => {
+  it('дублирует слайд сегмента и вставляет копию на at за один вызов', () => {
+    const segment = baseSegment();
+
+    const next = duplicateSlideAt(segment, 'slide-2', seconds(3));
+
+    const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
+    expect(inserted.states['shape-1']).toEqual(segment.slides[1]!.states['shape-1']);
+    expect(next.elements).toHaveLength(segment.elements.length);
+  });
+});

@@ -426,6 +426,92 @@ describe('правило 3: отмена/повтор не берут на се�
   });
 });
 
+/**
+ * ADR-025: буфер обмена слайдов — состояние вида, вне History<Project>
+ * (см. комментарий поля `slideClipboard` в HistoryState). Три ловушки,
+ * которые этот файл обязан ловить молча иначе: (а) отдельная ветка для
+ * copySlide в historyReducer, (б) поле slideClipboard в общем возврате,
+ * (в) сохранение буфера в afterNav при undo/redo.
+ */
+describe('буфер обмена слайдов (ADR-025)', () => {
+  /** Состояние с двумя слайдами: slide-1 на 0 с, второй — родом от addSlide на 1 с. */
+  function twoSlideState(): HistoryState {
+    return historyReducer(baseState(), {
+      type: 'addSlide',
+      afterSlideId: 'slide-1',
+      at: { kind: 'seconds', t: 1 },
+    });
+  }
+
+  it('copySlide наполняет буфер, пройдя через historyReducer', () => {
+    const state = twoSlideState();
+    const slideId = state.currentSlideId;
+
+    const next = historyReducer(state, { type: 'copySlide', slideId });
+
+    expect(next.slideClipboard).toBeDefined();
+  });
+
+  it('copySlide не создаёт шаг истории', () => {
+    const state = twoSlideState();
+    const slideId = state.currentSlideId;
+
+    const next = historyReducer(state, { type: 'copySlide', slideId });
+
+    expect(next.history).toBe(state.history);
+    expect(canUndoState(next)).toBe(canUndoState(state));
+  });
+
+  it('cutSlide = ОДИН шаг истории: один Ctrl+Z возвращает слайд целиком', () => {
+    const state = twoSlideState();
+    const slideId = state.currentSlideId;
+    const slidesBefore = state.history.present.segments[0]!.slides.length;
+    const pastBefore = state.history.past.length;
+
+    const cut = historyReducer(state, { type: 'cutSlide', slideId });
+    expect(cut.history.present.segments[0]!.slides.length).toBe(slidesBefore - 1);
+    // Ровно один новый шаг — не два (copySlide отдельно + removeSlide отдельно).
+    expect(cut.history.past.length).toBe(pastBefore + 1);
+
+    const undone = historyReducer(cut, { type: 'undo' });
+    // Один Ctrl+Z возвращает СРАЗУ снимок до вырезания, целиком, по ссылке —
+    // не промежуточное «слайд ещё жив, буфер уже пуст» состояние.
+    expect(undone.history.present).toBe(state.history.present);
+    expect(undone.history.present.segments[0]!.slides.length).toBe(slidesBefore);
+  });
+
+  it('cutSlide кладёт слайд в буфер, пройдя через historyReducer', () => {
+    const state = twoSlideState();
+    const slideId = state.currentSlideId;
+
+    const cut = historyReducer(state, { type: 'cutSlide', slideId });
+
+    expect(cut.slideClipboard).toBeDefined();
+  });
+
+  it('буфер переживает undo и redo', () => {
+    let state = twoSlideState();
+    const slideId = state.currentSlideId;
+    state = historyReducer(state, { type: 'copySlide', slideId });
+    const clipboard = state.slideClipboard;
+    expect(clipboard).toBeDefined();
+
+    // Самостоятельный шаг истории поверх наполненного буфера — есть что отменять.
+    state = historyReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 42 },
+      at: { kind: 'seconds', t: 0 },
+    });
+
+    const undone = historyReducer(state, { type: 'undo' });
+    expect(undone.slideClipboard).toBe(clipboard);
+
+    const redone = historyReducer(undone, { type: 'redo' });
+    expect(redone.slideClipboard).toBe(clipboard);
+  });
+});
+
 describe('охранник переполнения: 60 одиночных правок дают ровно 50 доступных отмен', () => {
   it('делегирует в history.ts без искажений', () => {
     let state = baseState();
