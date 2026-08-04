@@ -55,6 +55,8 @@
 | [020](adr/ADR-020-transition-window.md) | **Окно перехода заканчивается на метке слайда: `(T − m, T)`, урезание по предыдущей, фаза вместо индекса** | S1, S7 |
 | [021](adr/ADR-021-audio-source.md) | **Схема v6: у дорожки два источника — файл на сервере и файл автора в браузере, `fileId` — хэш содержимого** | — |
 | [022](adr/ADR-022-speech-and-script.md) | **Схема v7: сценарий — это план и в схему не идёт; текст озвучки — отдельное поле `Segment.speech`** | — |
+| [023](adr/ADR-023-plugin-registry-and-command-bus.md) | **Реестр DOM-рендереров элементов плеера вместо `switch` в `render.ts`** | — |
+| [024](adr/ADR-024-anchor-states.md) | **Схема v8: `orphan` третьим видом `TimeRef`; `word` = `bound`, `seconds` = `pinned`** | — |
 
 ---
 
