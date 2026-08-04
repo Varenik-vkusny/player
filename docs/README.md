@@ -57,6 +57,7 @@
 | [022](adr/ADR-022-speech-and-script.md) | **Схема v7: сценарий — это план и в схему не идёт; текст озвучки — отдельное поле `Segment.speech`** | — |
 | [023](adr/ADR-023-plugin-registry-and-command-bus.md) | **Реестр DOM-рендереров элементов плеера вместо `switch` в `render.ts`** | — |
 | [024](adr/ADR-024-anchor-states.md) | **Схема v8: `orphan` третьим видом `TimeRef`; `word` = `bound`, `seconds` = `pinned`** | — |
+| [025](adr/ADR-025-slide-clipboard.md) | **Слайд переносит состояние, а не момент: `at` строится заново на головке; сирота при переносе не производится** | — |
 
 ---
 

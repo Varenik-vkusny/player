@@ -52,6 +52,7 @@ import type { Project, Segment } from '@player/core';
 import { canRedo, canUndo, createHistory, push, redo, undo, type History } from './history.js';
 import { editorReducer, hasElement, type EditorAction, type EditorState } from './project.js';
 import type { RetargetReport } from './retarget.js';
+import type { SlideClipboard } from './slides.js';
 
 export type { History } from './history.js';
 
@@ -92,6 +93,14 @@ export interface HistoryState {
    * состояние.
    */
   readonly lastRetarget: RetargetReport | undefined;
+  /**
+   * Буфер обмена слайдов (ADR-025) — состояние вида, как и `selectedId`
+   * и `currentSlideId`: снимок истории его не несёт. Отличие от
+   * `lastRetarget`: undo/redo НЕ сбрасывает его (см. `afterNav` ниже) —
+   * буфер обязан пережить отмену, это предмет в руке автора, а не отчёт
+   * о правке, от которой автор отошёл.
+   */
+  readonly slideClipboard: SlideClipboard | undefined;
 }
 
 function firstSlideId(segment: Segment): string {
@@ -114,6 +123,7 @@ export function initialHistoryState(project: Project): HistoryState {
     currentSlideId: firstSlideId(requireSegment(project, project.entry)),
     gestureOpen: false,
     lastRetarget: undefined,
+    slideClipboard: undefined,
   };
 }
 
@@ -173,7 +183,21 @@ function afterNav(state: HistoryState, history: History<Project>): HistoryState 
 
   // Отчёт о переносе меток сбрасывается: он про правку, от которой автор
   // только что отошёл undo/redo, а не про текущее восстановленное состояние.
-  return { history, currentSegmentId, currentSlideId, selectedId, gestureOpen: false, lastRetarget: undefined };
+  //
+  // Буфер слайдов — НЕ сбрасывается, и это осознанное отличие от строки выше.
+  // ADR-025, «Последствия»: отчёт о переносе относится к правке, от которой
+  // автор отошёл; буфер — предмет в руке. Потерять его при Ctrl+Z значило бы
+  // наказывать автора за отмену — он вырезал слайд, отменил другую правку,
+  // и вставить вырезанное обязан всё ещё мочь.
+  return {
+    history,
+    currentSegmentId,
+    currentSlideId,
+    selectedId,
+    gestureOpen: false,
+    lastRetarget: undefined,
+    slideClipboard: state.slideClipboard,
+  };
 }
 
 export function historyReducer(state: HistoryState, action: HistoryEditorAction): HistoryState {
@@ -196,6 +220,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     currentSegmentId: state.currentSegmentId,
     currentSlideId: state.currentSlideId,
     lastRetarget: state.lastRetarget,
+    slideClipboard: state.slideClipboard,
   };
   const after = editorReducer(before, action);
 
@@ -225,6 +250,19 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
         };
   }
 
+  if (action.type === 'copySlide') {
+    // То же правило №1, только для буфера обмена: copySlide — тоже вид,
+    // а не данные, и project он НЕ трогает вовсе (ADR-025). Без отдельной
+    // ветки ниже сработал бы generic-путь `after.project === before.project`
+    // (следующая ветка) — он переносит только selectedId, а slideClipboard
+    // остался бы лежать в `after` и потерялся молча: автор нажал бы
+    // «Копировать», история осталась бы прежней, ошибки нигде бы не было,
+    // но и буфер до HistoryState не долетел бы.
+    return after.slideClipboard === state.slideClipboard
+      ? state
+      : { ...state, slideClipboard: after.slideClipboard };
+  }
+
   if (after.project === before.project) {
     // editorReducer сам решил, что правки не было (например, replaceElement
     // тем же объектом). Выделение он всё равно мог поменять
@@ -246,6 +284,11 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     currentSlideId: after.currentSlideId,
     gestureOpen: live,
     lastRetarget: after.lastRetarget,
+    // cutSlide И меняет проект, И наполняет буфер за один вызов editorReducer
+    // — без этого поля здесь буфер попал бы в `after`, но потерялся бы
+    // именно тут, на общем возврате (та же ловушка, что и в ветке copySlide
+    // выше, только для действия, которое ушло дальше generic-пути).
+    slideClipboard: after.slideClipboard,
   };
 }
 

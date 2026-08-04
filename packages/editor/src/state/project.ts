@@ -13,7 +13,7 @@
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
 import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, TimeRef, Word } from '@player/core';
-import { resolveTimeRef } from '@player/core';
+import { findSegment, resolveTimeRef } from '@player/core';
 
 import { retargetMark } from '../track/marks.js';
 import { copySegment } from './duplicate.js';
@@ -21,6 +21,7 @@ import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
+import type { SlideClipboard } from './slides.js';
 import { splitSegmentAtGate } from './split.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
 
@@ -55,6 +56,15 @@ export interface EditorState {
    * (путь «без расшифровки» законен и отчёта не производит).
    */
   readonly lastRetarget: RetargetReport | undefined;
+  /**
+   * Буфер обмена слайдов (ADR-025: «слайд переносит состояние, а не
+   * момент»). Состояние ВИДА, а не данные проекта — живёт рядом
+   * с `selectedId`/`lastRetarget`, вне истории отмены. Отличие от
+   * `lastRetarget`, который undo/redo сбрасывает: буфер отмену обязан
+   * ПЕРЕЖИТЬ — это предмет в руке автора, а не отчёт о правке, от которой
+   * он отошёл. `undefined` — буфер пуст, ничего не скопировано и не вырезано.
+   */
+  readonly slideClipboard: SlideClipboard | undefined;
 }
 
 /** Метки на дорожке, которые двигаются перетаскиванием: гейт или слайд. */
@@ -105,6 +115,12 @@ export type EditorAction =
       readonly transition: Slide['transition'];
     }
   | { readonly type: 'selectSlide'; readonly id: string }
+  // Буфер обмена слайдов (ADR-025). `at` приходит СНАРУЖИ, как и у addSlide —
+  // это положение головки дорожки, редьюсер timeRefAt сам не зовёт.
+  | { readonly type: 'copySlide'; readonly slideId: string }
+  | { readonly type: 'cutSlide'; readonly slideId: string }
+  | { readonly type: 'pasteSlide'; readonly at: TimeRef }
+  | { readonly type: 'duplicateSlide'; readonly slideId: string; readonly at: TimeRef }
   | { readonly type: 'addGate'; readonly gate: Gate }
   | { readonly type: 'updateGate'; readonly gate: Gate }
   | {
@@ -177,6 +193,7 @@ export function initialState(project: Project): EditorState {
     currentSegmentId: project.entry,
     currentSlideId: requireFirstSlide(segment).id,
     lastRetarget: undefined,
+    slideClipboard: undefined,
   };
 }
 
@@ -216,6 +233,32 @@ export function segmentSlide(project: Project, segmentId: string, slideId: strin
     throw new Error(`Слайда «${slideId}» нет в сегменте «${segmentId}»`);
   }
   return slide;
+}
+
+/**
+ * Почему вставку слайда в `at` сделать нельзя. `undefined` — можно.
+ *
+ * Узкая дверца между `pasteProblem` (`state/slides.ts`) и `Editor.tsx`.
+ * `pasteProblem` ждёт МОДЕЛЬ сегмента (`segment.audio.words`,
+ * `segment.audio.duration`), а `Editor.tsx` для дорожки и элементов держит
+ * `segmentOf(...)` — ВИД плеера, где поля названы иначе (`segment.words`,
+ * `segment.duration`, без вложенного `audio`). Это разные двери, и звать
+ * `pasteProblem` из `Editor.tsx` напрямую нечем — подставить не тот вид
+ * пришлось бы вручную и молча.
+ *
+ * `findSegment` ядра, а не `segmentOf` плеера — тот же довод, что
+ * у `uncoveredOutcomes` (`state/exits.ts`): здесь нужна МОДЕЛЬ, а не готовый
+ * к проигрыванию вид с построенным источником звука.
+ *
+ * Сигнатура `(project, segmentId, at)`, а не `(segment, at)`, — намеренно:
+ * если бы функция принимала сегмент, вызвать её можно было бы и с видом
+ * `segmentOf`, и с моделью `findSegment`, и оба вызова скомпилировались бы
+ * (поля `words`/`duration` совпадают по имени с `Segment` плеера случайно).
+ * Приняв `(project, segmentId)`, дверцу сузили до одного способа спросить.
+ */
+export function pasteProblemAt(project: Project, segmentId: string, at: TimeRef): string | undefined {
+  const segment = findSegment(project, segmentId);
+  return slidesApi.pasteProblem(segment, at);
 }
 
 /**
@@ -384,6 +427,53 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (action.id === state.currentSlideId) return state;
       segmentSlide(state.project, state.currentSegmentId, action.id); // бросает, если слайда нет
       return { ...state, currentSlideId: action.id };
+    }
+
+    case 'copySlide': {
+      // Только буфер вида — проект НЕ меняется (ADR-025). replaceSegment
+      // здесь намеренно не зовём: project остаётся тем же объектом по ссылке.
+      const clipboard = slidesApi.copySlideToClipboard(currentSegment(state), action.slideId);
+      return { ...state, slideClipboard: clipboard };
+    }
+
+    case 'cutSlide': {
+      // Буфер и удаление — ОДНИМ вызовом редьюсера, то есть одним шагом
+      // истории: разложи их на copySlide + removeSlide, и Ctrl+Z отдал бы
+      // автору полуразрезанное состояние (буфер уже наполнен, слайд ещё жив).
+      const segment = currentSegment(state);
+      const clipboard = slidesApi.copySlideToClipboard(segment, action.slideId);
+      const nextSegment = slidesApi.removeSlide(segment, action.slideId);
+      const next = replaceSegment(state, nextSegment);
+      // Тот же приём, что в removeSlide ниже: удалённый текущий слайд —
+      // возвращаемся на первый слайд сегмента.
+      const currentSlideId =
+        state.currentSlideId === action.slideId ? requireFirstSlide(nextSegment).id : next.currentSlideId;
+      return { ...next, currentSlideId, slideClipboard: clipboard };
+    }
+
+    case 'pasteSlide': {
+      // Буфера нет — вставлять нечего. ТОТ ЖЕ объект по ссылке: заводить
+      // пустой шаг истории на «нечего вставлять» нельзя.
+      if (!state.slideClipboard) return state;
+      const before = currentSegment(state);
+      const nextSegment = slidesApi.pasteSlide(before, state.slideClipboard, action.at);
+      const created = nextSegment.slides.find(
+        (slide) => !before.slides.some((old) => old.id === slide.id),
+      )!;
+      // Буфер НЕ опустошается: вставить дважды — законное намерение автора
+      // (ADR-025). Вставленный слайд становится текущим — так же, как addSlide.
+      return { ...replaceSegment(state, nextSegment), currentSlideId: created.id };
+    }
+
+    case 'duplicateSlide': {
+      // Буфер автора не трогает вовсе: свой временный SlideClipboard внутри
+      // duplicateSlideAt (ADR-025) — не третья реализация правила вставки.
+      const before = currentSegment(state);
+      const nextSegment = slidesApi.duplicateSlideAt(before, action.slideId, action.at);
+      const created = nextSegment.slides.find(
+        (slide) => !before.slides.some((old) => old.id === slide.id),
+      )!;
+      return { ...replaceSegment(state, nextSegment), currentSlideId: created.id };
     }
 
     case 'addGate': {

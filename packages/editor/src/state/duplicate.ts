@@ -67,8 +67,12 @@ export function titleForCopy(sourceTitle: string): string {
  * «circle-3» → «circle», «g-fork» остаётся собой: числовой хвост срезается,
  * чтобы новый id выглядел как свободное имя того же семейства, а не как
  * суффикс поверх суффикса («circle-3-1»).
+ *
+ * Экспортирована: тем же регэкспом пользуется вставка слайда из буфера
+ * обмена (`slides.ts`, ADR-025) — заводить второй разбор id нельзя,
+ * разъедутся.
  */
-function prefixOf(id: string): string {
+export function prefixOf(id: string): string {
   const match = /^(.+)-\d+$/.exec(id);
   return match ? match[1]! : id;
 }

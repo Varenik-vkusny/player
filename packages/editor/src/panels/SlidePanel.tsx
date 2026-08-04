@@ -27,6 +27,13 @@ export interface SlidePanelProps {
   onSelect: (id: string) => void;
   onAdd: () => void;
   onRemove: (id: string) => void;
+  /**
+   * Почему слайд нельзя вырезать/удалить (`state/slides.ts`, `cutProblem`).
+   * `undefined` — можно. Единственный источник правила «первый и единственный
+   * слайд не удаляются» — раньше здесь было собственное выражение
+   * (`index > 0 && slides.length > 1`), вторая копия того же правила.
+   */
+  cutProblem: (slideId: string) => string | undefined;
 }
 
 function formatSeconds(seconds: number): string {
@@ -40,17 +47,18 @@ export function SlidePanel({
   onSelect,
   onAdd,
   onRemove,
+  cutProblem,
 }: SlidePanelProps): ReactElement {
   return (
     <section className="ed-slide-panel" aria-label="Слайды">
       <h2 className="ed-insp-title">Слайды</h2>
       <ul className="ed-slide-list">
-        {slides.map((slide, index) => {
+        {slides.map((slide) => {
           const isCurrent = slide.id === currentSlideId;
-          // Первый слайд обязан стоять на нуле и не может быть удалён
-          // (state/slides.ts, removeSlide); последний оставшийся — тоже:
-          // сегменту нечего было бы показывать без единого слайда.
-          const canRemove = index > 0 && slides.length > 1;
+          // Правило «первый и единственный слайд не удаляются» живёт целиком
+          // в state/slides.ts (cutProblem) — здесь оно только предсказано
+          // ДО клика, одним источником с removeSlide и с кнопкой «Вырезать».
+          const canRemove = cutProblem(slide.id) === undefined;
           return (
             <li key={slide.id} className="ed-slide-row">
               <button

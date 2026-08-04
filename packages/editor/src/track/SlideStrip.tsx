@@ -41,6 +41,26 @@ export interface SlideStripProps {
   readonly stageWidth: number;
   readonly stageHeight: number;
   readonly onSelectSlide: (id: string) => void;
+  readonly onDuplicate: () => void;
+  readonly onCopy: () => void;
+  readonly onCut: () => void;
+  readonly onPaste: () => void;
+  /** Почему «Вырезать» недоступна. `undefined` — доступна. */
+  readonly cutProblem: string | undefined;
+  /**
+   * Почему «Дублировать» недоступна. `undefined` — доступна.
+   *
+   * Отдельный сигнал, а не общий с «Вставить», и это не симметрия ради
+   * симметрии. Обе кнопки метят в одну секунду — головку дорожки, — но
+   * дублирование НЕ ЧИТАЕТ буфер автора: `duplicateSlideAt` работает через
+   * свой временный `SlideClipboard`. Сведи их в один сигнал — и пустой буфер
+   * гасил бы «Дублировать» с причиной «Буфер пуст», то есть автор не мог бы
+   * размножить кадр, пока чего-нибудь не скопирует. Логика редьюсера при
+   * этом исправна, и юнит-тест такого не поймал бы.
+   */
+  readonly duplicateProblem: string | undefined;
+  /** Почему «Вставить» недоступна. `undefined` — доступна. */
+  readonly pasteProblem: string | undefined;
 }
 
 /** Метрики прокрутки — то, из чего строится полоска положения под лентой. */
@@ -62,6 +82,13 @@ export function SlideStrip({
   stageWidth,
   stageHeight,
   onSelectSlide,
+  onDuplicate,
+  onCopy,
+  onCut,
+  onPaste,
+  cutProblem,
+  duplicateProblem,
+  pasteProblem,
 }: SlideStripProps): ReactElement {
   const stripRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState<ScrollMetrics>(EMPTY_METRICS);
@@ -128,11 +155,61 @@ export function SlideStrip({
     : 0;
   const pickPct = total > 0 && metrics.pickCenter !== undefined ? (metrics.pickCenter / total) * 100 : undefined;
 
+  // Одна строка на все причины разом: кнопки могут быть недоступны
+  // ОДНОВРЕМЕННО (головка на первом слайде + пустой буфер), и автор обязан
+  // увидеть обе, а не только последнюю посчитанную (wordAnchorProblem,
+  // track/marks.ts — тот же принцип: объяснить, а не погасить молча).
+  //
+  // Повторы убираются `Set`, и это не украшательство: при непустом буфере
+  // `duplicateProblem` и `pasteProblem` — ОДНА И ТА ЖЕ причина про место
+  // головки, и без свёртки автор читал бы «на этой секунде уже стоит слайд»
+  // дважды подряд.
+  const clipboardNote = [...new Set(
+    [cutProblem, duplicateProblem, pasteProblem].filter((problem): problem is string => problem !== undefined),
+  )].join(' · ');
+
   return (
     <div className="ed-slide-strip-wrap">
       <div className="ed-slide-strip-head">
         <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
+        <div className="ed-actions">
+          <button
+            type="button"
+            className="ed-action"
+            data-testid="slide-duplicate"
+            disabled={duplicateProblem !== undefined}
+            onClick={onDuplicate}
+          >
+            Дублировать
+          </button>
+          <button type="button" className="ed-action" data-testid="slide-copy" onClick={onCopy}>
+            Копировать
+          </button>
+          <button
+            type="button"
+            className="ed-action"
+            data-testid="slide-cut"
+            disabled={cutProblem !== undefined}
+            onClick={onCut}
+          >
+            Вырезать
+          </button>
+          <button
+            type="button"
+            className="ed-action"
+            data-testid="slide-paste"
+            disabled={pasteProblem !== undefined}
+            onClick={onPaste}
+          >
+            Вставить
+          </button>
+        </div>
       </div>
+      {/* Своя строка, а не место в ряду кнопок, и рисуется ВСЕГДА — даже
+          пустой. Появляйся она только при наличии причины, высота головы
+          менялась бы при каждой перемотке головки, и сцена под руками
+          автора прыгала бы. `min-height` в стилях держит место. */}
+      <span className="ed-slide-strip-note" data-testid="slide-clipboard-note">{clipboardNote}</span>
       <div
         className="ed-slide-strip"
         data-testid="slide-strip"

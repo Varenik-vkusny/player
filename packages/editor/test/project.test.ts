@@ -278,8 +278,11 @@ describe('addSlide / removeSlide / selectSlide', () => {
   });
 
   it('удаление последнего слайда бросает громкую ошибку', () => {
+    // Текст сообщения — из cutProblem (state/slides.ts, задание Сессии 18):
+    // «Единственный слайд вырезать нельзя...», а не прежнее «последний слайд»
+    // (removeSlide теперь зовёт cutProblem, а не несёт своё сообщение).
     expect(() => editorReducer(baseState(), { type: 'removeSlide', slideId: 'slide-1' })).toThrow(
-      /последний слайд/,
+      /Единственный слайд/,
     );
   });
 
@@ -295,6 +298,82 @@ describe('addSlide / removeSlide / selectSlide', () => {
 
   it('selectSlide на несуществующий слайд бросает ошибку', () => {
     expect(() => editorReducer(baseState(), { type: 'selectSlide', id: 'ghost' })).toThrow(/ghost/);
+  });
+});
+
+/**
+ * ADR-025: «слайд переносит состояние, а не момент». Буфер живёт в
+ * EditorState рядом с lastRetarget (см. комментарий поля `slideClipboard`),
+ * поэтому проверки на этом уровне — про сам редьюсер, а не про историю
+ * (та часть — в editorHistory.test.ts).
+ */
+describe('буфер обмена слайдов: copySlide / cutSlide / pasteSlide / duplicateSlide', () => {
+  /** Состояние с двумя слайдами: slide-1 на 0 с, второй — только что вставленный на 1 с. */
+  function twoSlideState(): EditorState {
+    return editorReducer(baseState(), {
+      type: 'addSlide',
+      afterSlideId: 'slide-1',
+      at: { kind: 'seconds', t: 1 },
+    });
+  }
+
+  it('copySlide наполняет буфер и НЕ меняет проект', () => {
+    const state = twoSlideState();
+    const slideId = state.currentSlideId;
+
+    const next = editorReducer(state, { type: 'copySlide', slideId });
+
+    expect(next.project).toBe(state.project);
+    expect(next.slideClipboard).toBeDefined();
+    expect(next.slideClipboard!.transition).toBe('morph');
+  });
+
+  it('pasteSlide вставляет слайд из буфера и делает его текущим', () => {
+    let state = twoSlideState();
+    const slideId = state.currentSlideId;
+    state = editorReducer(state, { type: 'copySlide', slideId });
+    const slidesBefore = segmentOf(state.project).slides.length;
+
+    const next = editorReducer(state, { type: 'pasteSlide', at: { kind: 'seconds', t: 5 } });
+
+    expect(segmentOf(next.project).slides.length).toBe(slidesBefore + 1);
+    expect(segmentOf(next.project).slides.some((slide) => slide.id === next.currentSlideId)).toBe(true);
+    expect(next.currentSlideId).not.toBe(state.currentSlideId);
+  });
+
+  it('pasteSlide при пустом буфере возвращает ТОТ ЖЕ объект состояния', () => {
+    const state = twoSlideState(); // slideClipboard всё ещё undefined
+    const next = editorReducer(state, { type: 'pasteSlide', at: { kind: 'seconds', t: 5 } });
+    expect(next).toBe(state);
+  });
+
+  it('pasteSlide НЕ опустошает буфер: две вставки подряд дают два новых слайда', () => {
+    let state = twoSlideState();
+    const slideId = state.currentSlideId;
+    state = editorReducer(state, { type: 'copySlide', slideId });
+    const slidesBefore = segmentOf(state.project).slides.length;
+
+    state = editorReducer(state, { type: 'pasteSlide', at: { kind: 'seconds', t: 5 } });
+    state = editorReducer(state, { type: 'pasteSlide', at: { kind: 'seconds', t: 7 } });
+
+    expect(segmentOf(state.project).slides.length).toBe(slidesBefore + 2);
+  });
+
+  it('duplicateSlide не трогает буфер: скопировали одно, дублировали другое — в буфере прежнее', () => {
+    let state = twoSlideState();
+    // Буфер наполнен копией ПЕРВОГО слайда.
+    state = editorReducer(state, { type: 'copySlide', slideId: 'slide-1' });
+    const clipboardBefore = state.slideClipboard;
+
+    // Дублируем ВТОРОЙ слайд — буфер обязан остаться прежним.
+    const secondSlideId = segmentOf(state.project).slides[1]!.id;
+    const next = editorReducer(state, {
+      type: 'duplicateSlide',
+      slideId: secondSlideId,
+      at: { kind: 'seconds', t: 6 },
+    });
+
+    expect(next.slideClipboard).toBe(clipboardBefore);
   });
 });
 
