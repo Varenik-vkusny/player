@@ -152,6 +152,9 @@ export class SlideEngine {
    * пришли.
    */
   renderAt(seconds: number): void {
+    // Переход БРОСАЕТСЯ, а не доводится, — значит за ним надо прибрать:
+    // накладка «Шторы» и «Круга» иначе останется в DOM и закроет сцену.
+    this.#running?.timeline.dispose();
     this.#running = null;
     this.#phase = null;
     this.#activate(phaseAt(this.#scheduled, seconds));
@@ -203,6 +206,7 @@ export class SlideEngine {
     this.#phase = phase;
 
     if (phase.kind === 'still') {
+      this.#running?.timeline.dispose();
       this.#running = null;
       this.#renderStates(this.#scheduled[phase.index]!.slide.states as SlideStates);
       return;
@@ -213,6 +217,10 @@ export class SlideEngine {
     const scheduled = this.#scheduled[phase.index]!;
     const previous = this.#scheduled[phase.index - 1]!.slide.states as SlideStates;
 
+    // Прежний переход, если он был, заменяется этим: его накладку снять
+    // здесь, иначе накладки копятся одна поверх другой.
+    this.#running?.timeline.dispose();
+
     const plan = planMorph(this.#elementIds, previous, scheduled.slide.states as SlideStates);
     this.#renderStates(layoutStatesFor(plan));
     this.#applyStartOfMorph(plan);
@@ -220,7 +228,14 @@ export class SlideEngine {
       index: phase.index,
       // Окно заканчивается на метке, значит начинается за длительность до неё.
       startSeconds: scheduled.seconds - scheduled.morphSeconds,
-      timeline: buildMorph(plan, this.#nodes, scheduled.morphSeconds),
+      timeline: buildMorph(
+        plan,
+        this.#nodes,
+        scheduled.morphSeconds,
+        scheduled.slide.transition,
+        this.#host,
+        this.#stage,
+      ),
     };
   }
 

@@ -7,6 +7,7 @@
  * элементов, а такое глазом не ловится.
  */
 import { describe, expect, it } from 'vitest';
+import { ANIMATABLE, TRANSITIONS } from '@player/core';
 import type { ElementState } from '@player/core';
 
 import {
@@ -14,6 +15,7 @@ import {
   morphSecondsFor,
   phaseAt,
   planMorph,
+  TECHNIQUE_PROPS,
 
   type SlideSchedule,
 } from '@player/player';
@@ -203,5 +205,33 @@ describe('phaseAt: где снимок, а где движение', () => {
     expect(phaseAt(dense, 1)).toEqual({ kind: 'still', index: 1 });
     expect(phaseAt(dense, 1.1)).toEqual({ kind: 'morph', index: 2 });
     expect(phaseAt(dense, 1.2)).toEqual({ kind: 'still', index: 2 });
+  });
+});
+
+/**
+ * `TECHNIQUE_PROPS`: состав CSS-свойств каждого приёма.
+ *
+ * `buildMorph` требует живых `HTMLElement`, которых в юнит-окружении нет
+ * (`vitest.config.ts` → `environment: 'node'`) — таблица данных остаётся
+ * единственным местом, где состав свойств приёма вообще проверяем.
+ */
+describe('TECHNIQUE_PROPS: инвариант №8 — свойство приёма, а не кода', () => {
+  it('каждый приём анимирует только разрешённые инвариантом №8 свойства', () => {
+    for (const technique of TRANSITIONS) {
+      for (const property of TECHNIQUE_PROPS[technique]) {
+        expect(ANIMATABLE).toContain(property);
+      }
+    }
+  });
+
+  it('срез не анимирует ничего', () => {
+    expect(TECHNIQUE_PROPS.cut).toEqual([]);
+  });
+
+  it('таблица покрывает перечисление целиком', () => {
+    // Не «длина восемь»: приём, забытый в таблице, дал бы пустой список,
+    // и первая проверка прошла бы по нему ВПУСТУЮ — пустое множество
+    // не содержит запрещённых свойств по построению.
+    expect(Object.keys(TECHNIQUE_PROPS).sort()).toEqual([...TRANSITIONS].sort());
   });
 });

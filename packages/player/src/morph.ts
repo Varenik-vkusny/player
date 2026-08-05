@@ -16,13 +16,32 @@ import { type ElementState, TRANSITIONS } from '@player/core';
 // вариант, записанный в ADR-002.
 import { createTimeline, engine } from 'animejs';
 
-import type { SlideStates } from './render.js';
+import type { SlideStates, StageSize } from './render.js';
 
 /**
  * Приём перехода. Тип берётся из схемы, а не объявляется здесь второй раз:
  * два описания одного перечисления разъехались бы молча.
  */
 export type Transition = (typeof TRANSITIONS)[number];
+
+/**
+ * Какие CSS-свойства играет каждый приём перехода.
+ *
+ * Правда о приёме живёт в данных, а не в ветвлении кода, который его играет:
+ * инвариант №8 — свойство ПРИЁМА, а не реализации, и охраняется тестом
+ * прямо по этой таблице (см. `morph.test.ts`), а не чтением `buildMorph` —
+ * DOM в юнит-тестах нет, и построенный таймлайн юнит-тестом непокрываем.
+ */
+export const TECHNIQUE_PROPS = {
+  cut: [],
+  morph: ['x', 'y', 'scaleX', 'scaleY', 'rotate', 'opacity'],
+  dissolve: ['opacity'],
+  slide: ['x'],
+  scale: ['scale', 'opacity'],
+  blur: ['filter', 'opacity'],
+  wipe: ['x'],
+  circle: ['scale'],
+} as const satisfies Record<Transition, readonly string[]>;
 
 /**
  * Доля перехода, которую занимает уход несовпавших и приход новых.
@@ -190,6 +209,23 @@ export interface MorphTimeline {
   seekSeconds(seconds: number): void;
   /** Мгновенно довести до конечного состояния (product.md §3). */
   finish(): void;
+  /**
+   * Снять за собой накладку, НЕ доигрывая переход.
+   *
+   * Нужен там, где переход БРОСАЮТ, а не доводят: перемотка (`renderAt`),
+   * уход в фазу `still`, замена одного перехода другим. `finish()` там
+   * не годится — он доводит картинку до конечного состояния, а бросающий
+   * вызывающий сейчас же нарисует своё.
+   *
+   * Без этого накладка «Шторы» и «Круга» остаётся в DOM НАВСЕГДА и закрывает
+   * сцену сплошным цветом: `#renderStates` на совпавшем составе узлов правит
+   * их на месте и контейнер не чистит, поэтому убрать её больше некому.
+   * Молчаливо: ни ошибки, ни предупреждения — просто пустой экран.
+   *
+   * Идемпотентен: звать можно сколько угодно раз, в том числе после
+   * `finish()`, который накладку уже снял.
+   */
+  dispose(): void;
   readonly durationSeconds: number;
 }
 
@@ -207,13 +243,84 @@ function disableEngineMainLoop(): void {
   mainLoopDisabled = true;
 }
 
+/** Таймлайн нулевой длительности: `cut` не морфит, ему играть нечего. */
+function zeroTimeline(): MorphTimeline {
+  return {
+    seekSeconds(): void {},
+    finish(): void {},
+    // Накладки у среза нет: прибирать нечего, но метод обязан быть —
+    // вызывающий не знает, какой приём играется.
+    dispose(): void {},
+    get durationSeconds(): number {
+      return 0;
+    },
+  };
+}
+
 /**
- * Строит ведомый таймлайн перехода.
+ * Заводит накладку `wipe`/`circle`: непрозрачный `div` поверх сцены, который
+ * прячет мгновенную подмену раскладки под собой. Убирается ровно в момент,
+ * когда накладка уже закрыла сцену целиком (конец её анимации совпадает
+ * с концом перехода) — снятие происходит в том же синхронном вызове
+ * `finish()`, что и настоящий рендер конечного состояния, поэтому браузер
+ * никогда не рисует кадр с убранной накладкой поверх ещё не досчитанной
+ * сцены.
+ */
+function addOverlay(
+  host: HTMLElement,
+  stage: StageSize,
+  technique: 'wipe' | 'circle',
+  timeline: ReturnType<typeof createTimeline>,
+  durationMs: number,
+): () => void {
+  const overlay = document.createElement('div');
+  overlay.style.position = 'absolute';
+  overlay.style.top = '0';
+  overlay.style.left = '0';
+  overlay.style.zIndex = '1000';
+  overlay.style.pointerEvents = 'none';
+  overlay.style.background = 'var(--scene-bg, #0f1620)';
+
+  if (technique === 'wipe') {
+    overlay.style.width = `${stage.width}px`;
+    overlay.style.height = `${stage.height}px`;
+    host.appendChild(overlay);
+    timeline.add(overlay, {
+      x: [-stage.width, 0],
+      duration: durationMs,
+      ease: 'inOutQuad',
+    }, 0);
+  } else {
+    // Круг центрирован и должен накрыть самый дальний угол сцены —
+    // диагональ, а не сторона, иначе углы остались бы видны при scale 1.
+    const diagonal = Math.sqrt(stage.width ** 2 + stage.height ** 2);
+    overlay.style.width = `${diagonal}px`;
+    overlay.style.height = `${diagonal}px`;
+    overlay.style.left = `${(stage.width - diagonal) / 2}px`;
+    overlay.style.top = `${(stage.height - diagonal) / 2}px`;
+    overlay.style.borderRadius = '50%';
+    host.appendChild(overlay);
+    timeline.add(overlay, {
+      scale: [0, 1],
+      duration: durationMs,
+      ease: 'inOutQuad',
+    }, 0);
+  }
+
+  return () => overlay.remove();
+}
+
+/**
+ * Строит ведомый таймлайн перехода для приёма `technique`.
  *
- * Анимируются только `x`, `y`, `rotate`, `scaleX`, `scaleY` и `opacity` —
- * закрытый перечень `ANIMATABLE`, инвариант №8. Изменение `width`/`height`
- * между слайдами едет через `scaleX`/`scaleY`: модель хранит геометрию,
- * композитор двигает трансформацию.
+ * `morph` — единственный приём, что реально двигает бокс: остальные семь
+ * не трогают форму совпавших элементов вообще (см. `TECHNIQUE_PROPS`),
+ * поэтому у каждого из них свой, более узкий обработчик.
+ *
+ * **`morph`.** Анимируются только `x`, `y`, `rotate`, `scaleX`, `scaleY`
+ * и `opacity` — закрытый перечень `ANIMATABLE`, инвариант №8. Изменение
+ * `width`/`height` между слайдами едет через `scaleX`/`scaleY`: модель
+ * хранит геометрию, композитор двигает трансформацию.
  *
  * Порядок сборки трансформации проверен по исходнику anime.js
  * (`core/transforms.js`, список `validTransforms`): движок склеивает строку
@@ -222,69 +329,193 @@ function disableEngineMainLoop(): void {
  * центр. Смещение поэтому считается ПО ЦЕНТРАМ: `applyElement` крутит
  * элемент с `transform-origin` по умолчанию, то есть вокруг центра, и любая
  * другая точка отсчёта дала бы рывок на последнем кадре перехода.
+ *
+ * **`dissolve`.** Полный кроссфейд: всё, что БЫЛО на сцене (`moves`
+ * и `leaves`), гаснет в первой половине окна; всё, что ЕСТЬ на следующей
+ * (`moves` и `enters`), проявляется во второй. У совпавшего элемента это
+ * два последовательных твина на одном узле — он мигает, а не едет: приём
+ * кроссфейдит сцену целиком, а не отдельный бокс.
+ *
+ * **`slide`, `scale`, `blur`.** Трогают только `leaves` и `enters` —
+ * совпавший элемент уже стоит в конечном боксе (его положила
+ * `layoutStatesFor`) и остаётся там без дополнительной анимации: наложение
+ * двух одновременных твинов на одно и то же свойство одного узла работать
+ * не может, а дробить окно на фазы для этих приёмов задание не описывает.
+ *
+ * **`wipe`, `circle`.** Ни одного элемента плана не касаются вовсе: играет
+ * накладка над сценой, `addOverlay`.
  */
 export function buildMorph(
   plan: readonly MorphPart[],
   nodes: ReadonlyMap<string, HTMLElement>,
   durationSeconds: number,
+  technique: Transition,
+  host: HTMLElement,
+  stage: StageSize,
 ): MorphTimeline {
+  if (technique === 'cut' || durationSeconds <= 0) return zeroTimeline();
+
   disableEngineMainLoop();
 
   const durationMs = durationSeconds * 1000;
   const unmatchedMs = durationMs * UNMATCHED_FRACTION;
   const timeline = createTimeline({ autoplay: false });
 
+  // Раскладку строил layoutStatesFor по этому же плану: если узла нет,
+  // разошлись план и сцена. Молчать здесь — значит показать зрителю переход,
+  // в котором часть элементов просто не участвует. Проверяется для ВСЕХ
+  // приёмов одинаково — это инвариант плана и сцены, а не деталь `morph`.
+  const nodeOf = (id: string): HTMLElement => {
+    const node = nodes.get(id);
+    if (!node) throw new Error(`Переход ссылается на элемент «${id}», которого нет на сцене`);
+    return node;
+  };
+
   for (const part of plan) {
     if (part.role === 'absent') continue;
-    const node = nodes.get(part.id);
-    if (!node) {
-      // Раскладку строил layoutStatesFor по этому же плану: если узла нет,
-      // разошлись план и сцена. Молчать здесь — значит показать зрителю
-      // переход, в котором часть элементов просто не участвует.
-      throw new Error(`Переход ссылается на элемент «${part.id}», которого нет на сцене`);
-    }
-
     // Участник перехода виден на всём его протяжении: гасит и проявляет
     // его opacity, а не visibility. Иначе уходящий исчез бы мгновенно,
     // а приходящий не мог бы проявиться вовсе.
-    node.style.visibility = '';
+    nodeOf(part.id).style.visibility = '';
+  }
 
-    switch (part.role) {
-      case 'moves': {
-        const from = part.from!;
-        const to = part.to!;
-        timeline.add(node, {
-          x: [centerShift(from.x, from.width, to.x, to.width), 0],
-          y: [centerShift(from.y, from.height, to.y, to.height), 0],
-          scaleX: [scaleFactor(from.width, to.width), 1],
-          scaleY: [scaleFactor(from.height, to.height), 1],
-          rotate: [from.rotation, to.rotation],
-          opacity: [visibleOpacity(from), visibleOpacity(to)],
-          duration: durationMs,
-          ease: 'inOutQuad',
-        }, 0);
-        break;
+  let removeOverlay: (() => void) | null = null;
+
+  switch (technique) {
+    case 'morph': {
+      for (const part of plan) {
+        if (part.role === 'absent') continue;
+        const node = nodeOf(part.id);
+        switch (part.role) {
+          case 'moves': {
+            const from = part.from!;
+            const to = part.to!;
+            timeline.add(node, {
+              x: [centerShift(from.x, from.width, to.x, to.width), 0],
+              y: [centerShift(from.y, from.height, to.y, to.height), 0],
+              scaleX: [scaleFactor(from.width, to.width), 1],
+              scaleY: [scaleFactor(from.height, to.height), 1],
+              rotate: [from.rotation, to.rotation],
+              opacity: [visibleOpacity(from), visibleOpacity(to)],
+              duration: durationMs,
+              ease: 'inOutQuad',
+            }, 0);
+            break;
+          }
+          case 'enters': {
+            // Приходящему ехать неоткуда: предыдущей позиции не существует.
+            // Он проявляется на своём месте и с задержкой — пока совпавшие едут.
+            const to = part.to!;
+            timeline.add(node, {
+              opacity: [0, visibleOpacity(to)],
+              duration: durationMs - unmatchedMs,
+              ease: 'outQuad',
+            }, unmatchedMs);
+            break;
+          }
+          case 'leaves': {
+            const from = part.from!;
+            timeline.add(node, {
+              opacity: [visibleOpacity(from), 0],
+              duration: unmatchedMs,
+              ease: 'inQuad',
+            }, 0);
+            break;
+          }
+        }
       }
-      case 'enters': {
-        // Приходящему ехать неоткуда: предыдущей позиции не существует.
-        // Он проявляется на своём месте и с задержкой — пока совпавшие едут.
-        const to = part.to!;
-        timeline.add(node, {
-          opacity: [0, visibleOpacity(to)],
-          duration: durationMs - unmatchedMs,
-          ease: 'outQuad',
-        }, unmatchedMs);
-        break;
+      break;
+    }
+
+    case 'dissolve': {
+      for (const part of plan) {
+        if (part.role === 'moves' || part.role === 'leaves') {
+          const node = nodeOf(part.id);
+          const from = part.from!;
+          timeline.add(node, {
+            opacity: [visibleOpacity(from), 0],
+            duration: unmatchedMs,
+            ease: 'inQuad',
+          }, 0);
+        }
+        if (part.role === 'moves' || part.role === 'enters') {
+          const node = nodeOf(part.id);
+          const to = part.to!;
+          timeline.add(node, {
+            opacity: [0, visibleOpacity(to)],
+            duration: durationMs - unmatchedMs,
+            ease: 'outQuad',
+          }, unmatchedMs);
+        }
       }
-      case 'leaves': {
-        const from = part.from!;
-        timeline.add(node, {
-          opacity: [visibleOpacity(from), 0],
-          duration: unmatchedMs,
-          ease: 'inQuad',
-        }, 0);
-        break;
+      break;
+    }
+
+    case 'slide': {
+      for (const part of plan) {
+        if (part.role === 'leaves') {
+          timeline.add(nodeOf(part.id), {
+            x: [0, -stage.width],
+            duration: durationMs,
+            ease: 'inOutQuad',
+          }, 0);
+        } else if (part.role === 'enters') {
+          timeline.add(nodeOf(part.id), {
+            x: [stage.width, 0],
+            duration: durationMs,
+            ease: 'inOutQuad',
+          }, 0);
+        }
       }
+      break;
+    }
+
+    case 'scale': {
+      for (const part of plan) {
+        if (part.role === 'leaves') {
+          timeline.add(nodeOf(part.id), {
+            scale: [1, 0.92],
+            opacity: [visibleOpacity(part.from!), 0],
+            duration: durationMs,
+            ease: 'inOutQuad',
+          }, 0);
+        } else if (part.role === 'enters') {
+          timeline.add(nodeOf(part.id), {
+            scale: [1.08, 1],
+            opacity: [0, visibleOpacity(part.to!)],
+            duration: durationMs,
+            ease: 'inOutQuad',
+          }, 0);
+        }
+      }
+      break;
+    }
+
+    case 'blur': {
+      for (const part of plan) {
+        if (part.role === 'leaves') {
+          timeline.add(nodeOf(part.id), {
+            filter: ['blur(0px)', 'blur(8px)'],
+            opacity: [visibleOpacity(part.from!), 0],
+            duration: durationMs,
+            ease: 'inOutQuad',
+          }, 0);
+        } else if (part.role === 'enters') {
+          timeline.add(nodeOf(part.id), {
+            filter: ['blur(8px)', 'blur(0px)'],
+            opacity: [0, visibleOpacity(part.to!)],
+            duration: durationMs,
+            ease: 'inOutQuad',
+          }, 0);
+        }
+      }
+      break;
+    }
+
+    case 'wipe':
+    case 'circle': {
+      removeOverlay = addOverlay(host, stage, technique, timeline, durationMs);
+      break;
     }
   }
 
@@ -318,6 +549,19 @@ export function buildMorph(
       timeline.currentTime = 0;
       timeline.currentTime = durationMs;
       touched = true;
+      // Накладка досчитала до полного покрытия сцены ровно к этому моменту:
+      // снять её здесь же, синхронно, — значит ни разу не отдать браузеру
+      // кадр, где накладки уже нет, а конечное состояние ещё не отрисовано.
+      if (removeOverlay) {
+        removeOverlay();
+        removeOverlay = null;
+      }
+    },
+    dispose(): void {
+      if (removeOverlay) {
+        removeOverlay();
+        removeOverlay = null;
+      }
     },
     get durationSeconds(): number {
       return durationSeconds;

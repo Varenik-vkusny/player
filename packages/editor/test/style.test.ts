@@ -421,3 +421,66 @@ describe('цвет: понимаем только то, что умеет пок
     expect(getStyleValue({ color: 'red' }, 'color')).toEqual({ kind: 'raw', text: 'red' });
   });
 });
+
+/**
+ * Ссылка на роль темы — третий вид значения, `{ kind: 'token' }`.
+ *
+ * Роли темы — `ThemeSchema` (@player/core), закрытый список из десяти CSS
+ * custom properties. Запасное значение обязательно: S11 показал, что браузер,
+ * встретив `var(--неизвестный)` без запаса, отбрасывает объявление ЦЕЛИКОМ —
+ * ни ошибки, ни предупреждения в консоли, автор видит чёрный текст и не
+ * понимает почему. Ссылка без запаса поэтому ссылкой не считается.
+ */
+describe('ссылка на роль темы разбирается в третий вид значения (kind: token)', () => {
+  it('ссылка на роль темы разбирается в третий вид значения', () => {
+    expect(getStyleValue({ color: 'var(--scene-accent, #4c8dff)' }, 'color')).toEqual({
+      kind: 'token',
+      token: '--scene-accent',
+      fallback: '#4c8dff',
+    });
+  });
+
+  it('ссылка БЕЗ запасного значения ссылкой не считается', () => {
+    // S11: неизвестный токен проваливается молча — браузер отбрасывает
+    // объявление целиком, ни ошибки, ни предупреждения. Ссылка без запаса
+    // показала бы автору чёрный текст и ничего больше.
+    expect(getStyleValue({ color: 'var(--scene-accent)' }, 'color').kind).toBe('raw');
+  });
+
+  it('ссылка на имя вне закрытого списка ссылкой не считается', () => {
+    // Иначе панель покажет «роль темы», а покрасит запасным цветом —
+    // то есть соврёт, будто тема на это влияет.
+    expect(getStyleValue({ color: 'var(--scene-выдумка, #4c8dff)' }, 'color').kind).toBe('raw');
+  });
+
+  it('обычный hex по-прежнему разбирается как цвет', () => {
+    expect(getStyleValue({ color: '#4c8dff' }, 'color')).toEqual(parsed('#4c8dff'));
+  });
+
+  it('токен распознаётся не только у color-полей — border-radius: --scene-radius', () => {
+    // ThemeSchema несёт и нецветовые роли (--scene-radius, --scene-font).
+    // Ограничение токена одним valueType === 'color' оставило бы их
+    // нераспознаваемыми панелью без причины.
+    expect(getStyleValue({ 'border-radius': 'var(--scene-radius, 28px)' }, 'border-radius')).toEqual({
+      kind: 'token',
+      token: '--scene-radius',
+      fallback: '28px',
+    });
+  });
+
+  it('запасное значение с внутренней запятой (--scene-font) разбирается целиком, не по первой запятой', () => {
+    // ThemeSchema['--scene-font'].default === 'system-ui, sans-serif' — сама
+    // запятая внутри запасного значения не должна резать его пополам.
+    expect(
+      getStyleValue({ 'font-family': 'var(--scene-font, system-ui, sans-serif)' }, 'font-family'),
+    ).toEqual({ kind: 'token', token: '--scene-font', fallback: 'system-ui, sans-serif' });
+  });
+
+  it('readStyleEntry: то же поведение, что у getStyleValue, для ссылки на роль темы', () => {
+    expect(readStyleEntry({ color: 'var(--scene-accent, #4c8dff)' }, 'color')).toEqual({
+      kind: 'token',
+      token: '--scene-accent',
+      fallback: '#4c8dff',
+    });
+  });
+});

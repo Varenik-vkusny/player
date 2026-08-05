@@ -34,6 +34,7 @@ export {
   morphSecondsFor,
   phaseAt,
   planMorph,
+  TECHNIQUE_PROPS,
   type Transition,
   type MorphPart,
   type MorphRole,

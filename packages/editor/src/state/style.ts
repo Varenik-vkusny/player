@@ -58,7 +58,7 @@
  * ключ произвольных данных и поэтому никогда не бросает даже на незнакомом
  * ключе — см. её комментарий.
  */
-import type { Element, ElementState } from '@player/core';
+import { ThemeSchema, type Element, type ElementState } from '@player/core';
 
 /** Карта style элемента — ровно то же, что `ElementStateSchema.style`. */
 export type ElementStyle = ElementState['style'];
@@ -118,7 +118,12 @@ export interface StyleFieldDef {
  * Результат чтения одного значения style.
  *
  * `parsed` — модуль разобрал значение и уверен в его смысле, можно отдавать
- * в виджет поля как есть. `raw` — под ключом лежит нечто, что этот модуль
+ * в виджет поля как есть. `token` — значение оказалось ссылкой на роль темы,
+ * `var(--roleName, fallback)`, где `--roleName` входит в закрытый список
+ * `ThemeSchema.shape` (десять ролей), а `fallback` — запасное значение,
+ * присутствие которого ОБЯЗАТЕЛЬНО (см. `tryToken`: спайк S11 — браузер
+ * молча отбрасывает объявление с неизвестным токеном целиком, ни ошибки,
+ * ни предупреждения). `raw` — под ключом лежит нечто, что этот модуль
  * не понимает, и это НЕ повод бросать исключение (см. комментарий в шапке
  * файла): `text` хранит исходное значение как строку, чтобы панель могла
  * показать его текстом и не потерять при записи соседнего поля — ни чтение,
@@ -126,6 +131,7 @@ export interface StyleFieldDef {
  */
 export type StyleReadResult =
   | { readonly kind: 'parsed'; readonly value: string | number | LengthOrPercent }
+  | { readonly kind: 'token'; readonly token: string; readonly fallback: string }
   | { readonly kind: 'raw'; readonly text: string };
 
 const TEXT_ONLY: readonly Element['type'][] = ['text'];
@@ -271,6 +277,48 @@ const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 function tryColor(raw: string | number): string | undefined {
   const text = String(raw).trim();
   return HEX_COLOR.test(text) ? text : undefined;
+}
+
+/**
+ * Ссылка на роль темы — `var(--roleName, fallback)`.
+ *
+ * Роль сцены живёт в `ThemeSchema` (@player/core) — закрытый список из
+ * десяти CSS custom properties. Элемент ссылается на роль обычной строкой
+ * в своей карте стиля, и это остаётся строкой всегда: бампа схемы такая
+ * ссылка не требует (ADR при `ThemeSchema`).
+ *
+ * Запасное значение проверяется на присутствие, а не только на синтаксис:
+ * S11 измерил, что `var(--неизвестный)` без запаса браузер отбрасывает
+ * ЦЕЛИКОМ — не как чёрный цвет, а как отсутствующее объявление, без единой
+ * строки в консоли. Автор увидел бы нередактируемый чёрный текст и не понял
+ * бы почему. Поэтому `var(--x)` без запятой — не токен вовсе, а `raw`
+ * (заряженное ружьё, которое эта функция отказывается взводить).
+ *
+ * Имя роли не входит в `ThemeSchema.shape` — тоже не токен, а `raw`: иначе
+ * панель показала бы автору «роль темы» и покрасила бы запасным значением,
+ * то есть соврала бы, что тема на элемент влияет.
+ *
+ * Разделитель — ровно первая запятая после имени роли: у `--scene-font`
+ * запасное значение само содержит запятую (`system-ui, sans-serif`,
+ * см. `STYLE_FIELDS['font-family'].default`), и `(.+)` жадно захватывает
+ * весь остаток до закрывающей скобки, а не режет по каждой запятой.
+ *
+ * Не привязана к `valueType` поля намеренно: роли темы включают не только
+ * цвета (`--scene-radius`, `--scene-font`), а `STYLE_FIELDS` содержит поля
+ * ровно тех же типов (`length-or-percent`, `choice`) — ограничение токена
+ * одним `'color'` оставило бы эти роли нераспознаваемыми без причины.
+ */
+const TOKEN_REF = /^var\(\s*(--[^\s,()]+)\s*,\s*([\s\S]+)\)$/;
+
+function tryToken(raw: string | number): { token: string; fallback: string } | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const match = TOKEN_REF.exec(raw.trim());
+  if (!match) return undefined;
+  const token = match[1]!;
+  const fallback = match[2]!.trim();
+  if (fallback === '') return undefined;
+  if (!Object.prototype.hasOwnProperty.call(ThemeSchema.shape, token)) return undefined;
+  return { token, fallback };
 }
 
 function tryLength(raw: string | number): number | undefined {
@@ -431,6 +479,8 @@ export function getStyleValue(style: ElementStyle, key: StyleFieldKey): StyleRea
   const field = requireField(key);
   if (!(key in style)) return { kind: 'parsed', value: field.default };
   const raw = style[key]!;
+  const token = tryToken(raw);
+  if (token) return { kind: 'token', token: token.token, fallback: token.fallback };
   const parsed = tryParseKnown(raw, field);
   return parsed === undefined ? { kind: 'raw', text: String(raw) } : { kind: 'parsed', value: parsed };
 }
@@ -454,6 +504,8 @@ export function readStyleEntry(style: ElementStyle, key: string): StyleReadResul
     return field ? { kind: 'parsed', value: field.default } : { kind: 'raw', text: '' };
   }
   const raw = style[key]!;
+  const token = tryToken(raw);
+  if (token) return { kind: 'token', token: token.token, fallback: token.fallback };
   if (!field) return { kind: 'raw', text: String(raw) };
   const parsed = tryParseKnown(raw, field);
   return parsed === undefined ? { kind: 'raw', text: String(raw) } : { kind: 'parsed', value: parsed };

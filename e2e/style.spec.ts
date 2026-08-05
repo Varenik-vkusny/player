@@ -49,7 +49,7 @@ async function pickColor(page: Page, label: string, hex: string): Promise<void> 
 async function computedOf(
   page: Page,
   id: string,
-  property: 'color' | 'fontWeight' | 'fontSize' | 'borderRadius',
+  property: 'color' | 'fontWeight' | 'fontSize' | 'borderRadius' | 'backgroundColor',
 ): Promise<string> {
   return page.evaluate(
     ({ elementId, prop }) => {
@@ -163,5 +163,55 @@ test.describe('секция «Вид»: правка стиля элемента
     await page.getByLabel('Скругление', { exact: true }).fill('50');
 
     await expect.poll(() => computedOf(page, 'card', 'borderRadius')).not.toBe(before);
+  });
+
+  /**
+   * ЗАВИСИМОСТЬ ОТ ФИКСТУРЫ, ещё не выполнена: этот тест требует, чтобы
+   * у элемента `card` в `fixtures/projects/demo.json` значение
+   * `style.background` было ссылкой на роль темы —
+   * `"var(--scene-surface, #1b2430)"` — а не голым hex, как сейчас
+   * (`#1b2430`, то же число, только без ссылки). Менять эталонные фикстуры
+   * без объяснения нельзя (CLAUDE.md), а эта задача фикстуры не касается
+   * (цена по схеме ноль) — правка `demo.json` заведена отдельно и не входит
+   * в объём этой сессии. До неё тест ниже красный не из-за дефекта панели,
+   * а из-за отсутствия данных для него в фикстуре.
+   */
+  // ВЫКЛЮЧЕН НАМЕРЕННО, 05.08.2026. Причина — не дефект панели, а отсутствие
+  // данных: ни одна из 16 эталонных фикстур не содержит ссылки на роль темы,
+  // а править их «чтобы починить тест» запрещено (CLAUDE.md) — сначала
+  // решение владельца. Ждёт двух вещей: применения темы к сцене (сегодня
+  // `meta.theme` не читает НИКТО) и решения по `demo.json`.
+  test.skip('ссылка на роль темы показывается панелью как роль, а не как «не распознано», и её можно отвязать', async ({
+    page,
+  }) => {
+    const errors = await openEditor(page, 'demo');
+    await page.getByTestId('element-row-card').click();
+    await expect(page.getByTestId('selection-readout')).toContainText('card');
+
+    // Панель обязана показать ИМЯ роли — не сырую строку var(...) и не
+    // «не распознано» (та же строка раньше не проходила через tryColor).
+    const tokenField = page.getByLabel('Фон (роль темы)', { exact: true });
+    await expect(tokenField).toBeVisible();
+    await expect(tokenField).toHaveValue('--scene-surface');
+    await expect(page.getByText('Фон (не распознано)')).toHaveCount(0);
+
+    const before = await computedOf(page, 'card', 'backgroundColor');
+
+    // Нажимаем по ВИДИМОЙ кнопке — не вызываем обработчик в обход интерфейса.
+    await page.getByRole('button', { name: 'Отвязать от темы' }).click();
+
+    // Вид на сцене не должен скакнуть: запасное значение и было тем, что рисовалось.
+    const afterDetach = await computedOf(page, 'card', 'backgroundColor');
+    expect(afterDetach).toBe(before);
+
+    // Поле стало обычным редактируемым цветом — не иллюзия смены подписи:
+    // правка через тот же color picker, что и у любого другого цвета,
+    // реально меняет сцену.
+    const colorField = page.getByLabel('Фон', { exact: true });
+    await expect(colorField).toBeVisible();
+    await pickColor(page, 'Фон', '#ff00aa');
+    await expect.poll(() => computedOf(page, 'card', 'backgroundColor')).toBe('rgb(255, 0, 170)');
+
+    expect(errors, 'панель не имеет права падать на ссылку на роль темы').toEqual([]);
   });
 });

@@ -329,6 +329,12 @@ function StyleFieldWidget({
   onLiveCommit,
   onCommitHistory,
 }: StyleFieldWidgetProps): ReactElement {
+  if (read.kind === 'token') {
+    return (
+      <TokenField field={field} token={read.token} fallback={read.fallback} onCommit={onCommit} />
+    );
+  }
+
   if (read.kind === 'raw') {
     return <ReadonlyField label={`${field.label} (не распознано)`} value={read.text} />;
   }
@@ -381,6 +387,68 @@ function StyleFieldWidget({
       // а не данные с диска, поэтому падаем громко, а не молчим.
       throw new Error(`Секция «Вид»: неизвестный тип значения поля «${String(field.valueType)}»`);
   }
+}
+
+interface TokenFieldProps {
+  field: StyleFieldDef;
+  /** Имя CSS custom property, например «--scene-accent». */
+  token: string;
+  /** Запасное значение из `var(--role, fallback)` — то, что реально рисуется. */
+  fallback: string;
+  onCommit: (value: string | number | LengthOrPercent) => void;
+}
+
+/**
+ * Ссылка на роль темы — третий вид значения поля (`kind: 'token'`,
+ * `state/style.ts`), отдельный от `parsed` и от `raw`.
+ *
+ * Показывает ИМЯ роли, а не сырую строку `var(--x, #y)`: автор должен видеть,
+ * что значением управляет тема сцены, а не редактировать escape-синтаксис
+ * CSS руками — синтаксис здесь деталь хранения, а не то, с чем автор
+ * взаимодействует (тот же принцип, что у `border-radius`: единица хранится
+ * в значении, но правится отдельным виджетом, не текстом).
+ *
+ * Рядом — образец запасного значения: то, что реально нарисуется, пока роль
+ * темы не объявлена (или в плеере вовсе без темы). Для цветовых полей это
+ * ещё и заливка — тот же смысл, что у `ColorField`, только не редактируемый
+ * напрямую: значение поля сейчас ссылка, а не цвет.
+ *
+ * «Отвязать от темы» пишет запасное значение как обычное авторское —
+ * `onCommit` (не `onLiveCommit`: смена целиком, без промежуточных состояний
+ * набора, как у `ColorField`/`ChoiceField`). `setStyleValue` разберёт строку
+ * тем же путём, что и любой другой ввод поля этого типа, поэтому виджет
+ * не привязан к одному `valueType` — см. комментарий у `tryToken`.
+ */
+function TokenField({ field, token, fallback, onCommit }: TokenFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {field.label} (роль темы)
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5em' }}>
+        {field.valueType === 'color' && (
+          <span
+            aria-hidden="true"
+            style={{
+              display: 'inline-block',
+              width: '1.2em',
+              height: '1.2em',
+              flexShrink: 0,
+              borderRadius: '3px',
+              background: fallback,
+            }}
+          />
+        )}
+        <input id={id} className="ed-insp-input" type="text" value={token} readOnly />
+      </div>
+      <p className="ed-insp-note">Запасное значение (без темы): {fallback}</p>
+      <button type="button" className="ed-insp-input" onClick={() => onCommit(fallback)}>
+        Отвязать от темы
+      </button>
+    </div>
+  );
 }
 
 interface LengthOrPercentFieldProps {
