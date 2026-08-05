@@ -19,6 +19,7 @@ import type { ReactElement } from 'react';
 import type { Slide, Word } from '@player/core';
 
 import { markSeconds } from '../track/marks.js';
+import { TRANSITION_INFO } from '../transitions.js';
 
 export interface SlidePanelProps {
   slides: readonly Slide[];
@@ -70,7 +71,7 @@ export function SlidePanel({
               >
                 <span className="ed-slide-time">{formatSeconds(markSeconds(slide.at, words))}</span>
                 <span className="ed-slide-transition">
-                  {slide.transition === 'morph' ? 'плавно' : 'разрез'}
+                  {TRANSITION_INFO[slide.transition].label}
                 </span>
               </button>
               <button

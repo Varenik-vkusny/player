@@ -15,6 +15,54 @@
  * правки текста (см. «Правка текста на холсте» в docs/superpowers/specs).
  */
 export const EDITOR_STYLES = `
+/* Роли хрома редактора (--ui-*). На .ed-root, а не на :root: EDITOR_STYLES
+   вешается глобальным <style> в чужой хост-документ (index.ts), и :root
+   отдал бы переменные всему документу хоста, столкнувшись с его
+   собственными. .ed-root — единственный предок всего, что рисует редактор
+   (порталов и вставок в document.body в пакете нет). Значения — шаг 1:
+   сегодняшний тёмный вид, без изменений. Полный список ролей и почему —
+   docs/design/ui-tokens.md. */
+.ed-root {
+  --ui-surface-base: #07090c;
+  --ui-surface-panel: #0b0f14;
+  --ui-surface-raised: #1b2430;
+  --ui-surface-overlay: #0b0f14e6;
+  --ui-surface-placeholder: #39414c;
+  --ui-field-bg: #07090c;
+
+  --ui-content-fg: #e6edf5;
+  --ui-content-fg-secondary: #7d8fa5;
+  --ui-content-fg-tertiary: #55637a;
+
+  --ui-line: #1c242f;
+  --ui-line-strong: #2c3a4d;
+  --ui-line-disabled: #202832;
+
+  --ui-focus: #4c8dff;
+  --ui-action-primary-bg: #4c8dff;
+  --ui-action-selected-line: #4c8dff;
+  --ui-action-selected-bg: #111a24;
+  --ui-focus-ring: #4c8dff88;
+
+  --ui-feedback-positive: #a8c686;
+  --ui-feedback-warn: #e8b64c;
+  --ui-feedback-warn-fg: #e8d9b0;
+  --ui-feedback-warn-bg: #251f10;
+  --ui-feedback-warn-bg-strong: #33290f;
+  --ui-feedback-warn-bg-hover: #453718;
+  --ui-feedback-warn-line: #6b5a2e;
+  --ui-feedback-critical: #ff8a6b;
+  --ui-feedback-critical-bg: #2c1714;
+
+  --ui-playhead: #e4572e;
+  --ui-mark-gate: #e4572e;
+  --ui-mark-tail: #31527d;
+
+  --ui-shadow-selected: 0 0 0 1px var(--ui-focus-ring), 0 10px 22px #000b;
+  --ui-motion-fast: 0.18s;
+  --ui-motion-base: 0.22s;
+}
+
 .ed-root {
   position: absolute;
   inset: 0;
@@ -31,8 +79,8 @@ export const EDITOR_STYLES = `
      шире окна — у детей grid и flex минимальный размер по умолчанию
      равен содержимому, — и сцена уезжала за край вместе с масштабом. */
   overflow: hidden;
-  background: #07090c;
-  color: #e6edf5;
+  background: var(--ui-surface-base);
+  color: var(--ui-content-fg);
   font: 14px/1.5 system-ui, sans-serif;
 }
 
@@ -48,7 +96,7 @@ export const EDITOR_STYLES = `
   flex-wrap: nowrap;
   gap: 16px;
   padding: 10px 16px;
-  border-bottom: 1px solid #1c242f;
+  border-bottom: 1px solid var(--ui-line);
   overflow: hidden;
   white-space: nowrap;
 }
@@ -56,7 +104,7 @@ export const EDITOR_STYLES = `
 /* Сжимаются подписи, а не заголовок: имя проекта важнее счётчиков. */
 .ed-title { flex: 0 0 auto; }
 .ed-muted {
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -89,7 +137,7 @@ export const EDITOR_STYLES = `
      абсолютных потомков считаются от padding-box, поэтому при border: 1px
      ручка с left: 100% вставала на пиксель внутрь угла, и растягивание
      не доезжало. outline рисуется снаружи и на раскладку не влияет. */
-  outline: 1px solid #4c8dff;
+  outline: 1px solid var(--ui-focus);
   /* Рамка не ловит указатель: перетаскивание тела элемента обрабатывает
      контейнер по геометрии. Ловят только ручки. */
   pointer-events: none;
@@ -104,9 +152,9 @@ export const EDITOR_STYLES = `
   height: 10px;
   margin: -5px 0 0 -5px;
   box-sizing: border-box;
-  border: 1px solid #4c8dff;
+  border: 1px solid var(--ui-action-selected-line);
   border-radius: 2px;
-  background: #0b0f14;
+  background: var(--ui-surface-panel);
   pointer-events: auto;
   touch-action: none;
 }
@@ -122,16 +170,16 @@ export const EDITOR_STYLES = `
 
 .ed-action {
   padding: 4px 10px;
-  border: 1px solid #2c3a4d;
+  border: 1px solid var(--ui-line-strong);
   border-radius: 6px;
-  background: #1b2430;
+  background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
 }
-.ed-action:hover { border-color: #4c8dff; }
+.ed-action:hover { border-color: var(--ui-action-selected-line); }
 
 /* Недоступная кнопка обязана ВЫГЛЯДЕТЬ недоступной.
    Здесь заданы и фон, и цвет, и cursor: pointer, поэтому браузерное
@@ -147,9 +195,9 @@ export const EDITOR_STYLES = `
 .ed-action:disabled {
   opacity: 0.4;
   cursor: default;
-  border-color: #202832;
+  border-color: var(--ui-line-disabled);
 }
-.ed-action:disabled:hover { border-color: #202832; }
+.ed-action:disabled:hover { border-color: var(--ui-line-disabled); }
 
 /* Режим «смотреть как зритель, ответивший X».
    Тот же закон, что у выделения: панель не имеет права выдавливать кнопки
@@ -164,7 +212,7 @@ export const EDITOR_STYLES = `
 }
 
 .ed-view-as-title {
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   white-space: nowrap;
 }
 
@@ -176,21 +224,21 @@ export const EDITOR_STYLES = `
 }
 
 .ed-view-as-name {
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   white-space: nowrap;
 }
 
 .ed-view-as-select {
   max-width: 140px;
-  background: #141922;
-  color: #e6ecf3;
-  border: 1px solid #2a3444;
+  background: var(--ui-surface-raised);
+  color: var(--ui-content-fg);
+  border: 1px solid var(--ui-line-strong);
   border-radius: 6px;
   padding: 2px 4px;
 }
 
 .ed-selection {
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   font-variant-numeric: tabular-nums;
   /* Тот же закон, что и у шапки: показания выделения не имеют права
      менять раскладку. Полный текст остаётся в разметке для теста
@@ -212,7 +260,7 @@ export const EDITOR_STYLES = `
   grid-template-columns: 1fr 220px 260px;
   min-height: 0;
   min-width: 0;
-  border-bottom: 1px solid #1c242f;
+  border-bottom: 1px solid var(--ui-line);
 }
 
 /* Две сцены рядом: «правлю» и «смотрю» (долг §12.5).
@@ -235,12 +283,12 @@ export const EDITOR_STYLES = `
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid #1c242f;
+  border-left: 1px solid var(--ui-line);
 }
 
 .ed-watch-title {
   padding: 2px 8px;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
@@ -253,7 +301,7 @@ export const EDITOR_STYLES = `
   min-height: 0;
 }
 
-.ed-inspector { border-left: 1px solid #1c242f; }
+.ed-inspector { border-left: 1px solid var(--ui-line); }
 
 /* Панель элементов: вставка и удаление сверху, список — снизу и растягивается.
    flex-column, а не grid с фиксированным числом строк: сообщение об ошибке
@@ -272,8 +320,8 @@ export const EDITOR_STYLES = `
   flex-direction: column;
   gap: 10px;
   padding: 12px 14px;
-  background: #0b0f14;
-  border-left: 1px solid #1c242f;
+  background: var(--ui-surface-panel);
+  border-left: 1px solid var(--ui-line);
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
@@ -286,7 +334,7 @@ export const EDITOR_STYLES = `
    что и у панели вставки фигур: колонка не должна заводить второй визуальный
    язык ради второго списка кнопок. */
 .ed-templates { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
-.ed-templates-label { font-size: 11px; color: #7d8fa5; }
+.ed-templates-label { font-size: 11px; color: var(--ui-content-fg-secondary); }
 
 .ed-delete-row {
   flex: 0 0 auto;
@@ -303,7 +351,7 @@ export const EDITOR_STYLES = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   font-size: 11px;
 }
 
@@ -333,7 +381,8 @@ export const EDITOR_STYLES = `
  * со своим потолком у списков. Ни одна из них не сжимает соседей.
  */
 .ed-slide-panel,
-.ed-segment-panel {
+.ed-segment-panel,
+.ed-theme-panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -362,8 +411,8 @@ export const EDITOR_STYLES = `
   padding: 4px 6px;
   border: 1px solid transparent;
   border-radius: 4px;
-  background: #1b2430;
-  color: #cfd8e3;
+  background: var(--ui-surface-raised);
+  color: var(--ui-content-fg);
   font: inherit;
   font-size: 12px;
   text-align: left;
@@ -371,9 +420,9 @@ export const EDITOR_STYLES = `
 }
 
 .ed-slide-row[aria-pressed='true'] {
-  border-color: #e4572e;
-  background: #24303f;
-  color: #f5f7fa;
+  border-color: var(--ui-playhead);
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg);
 }
 
 .ed-slide-time {
@@ -381,9 +430,9 @@ export const EDITOR_STYLES = `
   min-width: 44px;
 }
 
-.ed-slide-transition { color: #7d8fa5; font-size: 11px; }
+.ed-slide-transition { color: var(--ui-content-fg-secondary); font-size: 11px; }
 
-.ed-elements-empty { margin: 0; color: #7d8fa5; font-size: 12px; }
+.ed-elements-empty { margin: 0; color: var(--ui-content-fg-secondary); font-size: 12px; }
 
 .ed-elements-list {
   list-style: none;
@@ -409,15 +458,15 @@ export const EDITOR_STYLES = `
 .ed-element-on-slide {
   flex: 0 0 auto;
   width: 22px;
-  border: 1px solid #223047;
+  border: 1px solid var(--ui-line-strong);
   border-radius: 4px;
-  background: #0f1621;
-  color: #9fb2c9;
+  background: var(--ui-surface-panel);
+  color: var(--ui-content-fg-secondary);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
 }
-.ed-element-on-slide:hover { border-color: #4c8dff; color: #e6edf5; }
+.ed-element-on-slide:hover { border-color: var(--ui-action-selected-line); color: var(--ui-content-fg); }
 
 /* Настоящая кнопка, а не строка со своим обработчиком клика: Tab обходит
    список без отдельной клавиатурной машинерии (см. срез 6 плана). */
@@ -438,15 +487,15 @@ export const EDITOR_STYLES = `
   text-align: left;
   cursor: pointer;
 }
-.ed-element-row:hover { border-color: #2c3a4d; }
-.ed-element-row-selected { border-color: #4c8dff; background: #111a24; }
+.ed-element-row:hover { border-color: var(--ui-line-strong); }
+.ed-element-row-selected { border-color: var(--ui-action-selected-line); background: var(--ui-action-selected-bg); }
 
 .ed-element-type {
   flex: 0 0 auto;
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
 }
 
 .ed-element-id { flex: 0 0 auto; font-variant-numeric: tabular-nums; }
@@ -459,7 +508,7 @@ export const EDITOR_STYLES = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
 }
 
 /* Колонка «своя озвучка + лента слайдов + дорожка» — единственный ребёнок
@@ -492,13 +541,13 @@ export const EDITOR_STYLES = `
   flex-wrap: wrap;
   gap: 10px;
   padding: 8px 16px;
-  background: #0b0f14;
-  border-bottom: 1px solid #1c242f;
+  background: var(--ui-surface-panel);
+  border-bottom: 1px solid var(--ui-line);
   min-width: 0;
 }
 
 .ed-audio-current {
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   font-size: 12px;
   min-width: 0;
   overflow: hidden;
@@ -626,8 +675,8 @@ export const EDITOR_STYLES = `
   flex-direction: column;
   gap: 2px;
   padding: 6px 16px 4px;
-  background: #0b0f14;
-  border-bottom: 1px solid #1c242f;
+  background: var(--ui-surface-panel);
+  border-bottom: 1px solid var(--ui-line);
   min-width: 0;
 }
 
@@ -641,7 +690,7 @@ export const EDITOR_STYLES = `
 
 .ed-slide-strip-counter {
   font-variant-numeric: tabular-nums;
-  color: #e6edf5;
+  color: var(--ui-content-fg);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -668,7 +717,7 @@ export const EDITOR_STYLES = `
      а разметка отдаёт сюда span. Без block пустая строка схлопнулась бы
      в ноль, и место, ради которого min-height и стоит, не удержалось бы. */
   display: block;
-  color: #8b93a1;
+  color: var(--ui-content-fg-secondary);
   font-size: 12px;
   line-height: 16px;
   min-height: 16px;
@@ -699,24 +748,24 @@ export const EDITOR_STYLES = `
   padding: 0;
   margin: 0;
   box-sizing: border-box;
-  border: 1px solid #2c3a4d;
+  border: 1px solid var(--ui-line-strong);
   border-radius: 6px;
-  background: #11141a;
+  background: var(--ui-surface-panel);
   overflow: hidden;
   cursor: pointer;
   opacity: 0.78;
   transform-origin: 50% 100%;
-  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.18s, opacity 0.18s, box-shadow 0.18s;
+  transition: transform var(--ui-motion-base) cubic-bezier(0.2, 0.8, 0.2, 1), border-color var(--ui-motion-fast), opacity var(--ui-motion-fast), box-shadow var(--ui-motion-fast);
 }
 /* Наведение меняет только цвет и прозрачность — НЕ раскладку и НЕ transform:
    лента не имеет права уползать из-под курсора (product.md §2д [Р]). */
-.ed-slide-strip-card:hover { opacity: 1; border-color: #4c8dff; }
+.ed-slide-strip-card:hover { opacity: 1; border-color: var(--ui-action-selected-line); }
 
 .ed-slide-strip-card-current {
   opacity: 1;
-  border-color: #4c8dff;
+  border-color: var(--ui-action-selected-line);
   transform: translateY(-9px) scale(1.1);
-  box-shadow: 0 0 0 1px #4c8dff88, 0 10px 22px #000b;
+  box-shadow: var(--ui-shadow-selected);
   z-index: 4;
 }
 
@@ -738,8 +787,8 @@ export const EDITOR_STYLES = `
   right: 0;
   bottom: 0;
   padding: 2px 6px;
-  background: #0b0f14e6;
-  color: #b6c2ce;
+  background: var(--ui-surface-overlay);
+  color: var(--ui-content-fg-secondary);
   font-size: 10.5px;
   line-height: 1.3;
   white-space: nowrap;
@@ -753,7 +802,7 @@ export const EDITOR_STYLES = `
   position: relative;
   height: 4px;
   margin: 2px 4px 0;
-  background: #161b22;
+  background: var(--ui-surface-panel);
   border-radius: 2px;
 }
 
@@ -761,7 +810,7 @@ export const EDITOR_STYLES = `
   position: absolute;
   top: 0;
   bottom: 0;
-  background: #39414c;
+  background: var(--ui-surface-placeholder);
   border-radius: 2px;
 }
 
@@ -771,7 +820,7 @@ export const EDITOR_STYLES = `
   width: 2px;
   height: 8px;
   margin-left: -1px;
-  background: #4c8dff;
+  background: var(--ui-action-primary-bg);
   border-radius: 1px;
 }
 
@@ -780,7 +829,7 @@ export const EDITOR_STYLES = `
   display: grid;
   gap: 8px;
   padding: 10px 16px 12px;
-  background: #0b0f14;
+  background: var(--ui-surface-panel);
   min-width: 0;
 }
 
@@ -794,24 +843,24 @@ export const EDITOR_STYLES = `
 .ed-play {
   width: 34px;
   height: 34px;
-  border: 1px solid #2c3a4d;
+  border: 1px solid var(--ui-line-strong);
   border-radius: 8px;
-  background: #1b2430;
+  background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
   cursor: pointer;
 }
-.ed-play:hover:not(:disabled) { border-color: #4c8dff; }
+.ed-play:hover:not(:disabled) { border-color: var(--ui-action-selected-line); }
 .ed-play:disabled { opacity: 0.4; cursor: default; }
 
-.ed-clock { color: #7d8fa5; font-variant-numeric: tabular-nums; }
+.ed-clock { color: var(--ui-content-fg-secondary); font-variant-numeric: tabular-nums; }
 
 /* Сообщение об ошибке не имеет права двигать раскладку. Оно длинное
    и содержит путь к файлу, а флекс-строка по умолчанию расширяется
    под содержимое ребёнка. Обрезаем многоточием — полный текст всё равно
    остаётся в разметке и доступен тесту и экранному диктору. */
 .ed-failure {
-  color: #ff8a6b;
+  color: var(--ui-feedback-critical);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -836,24 +885,24 @@ export const EDITOR_STYLES = `
   padding: 8px 16px;
   font-size: 13px;
   line-height: 1.45;
-  border-bottom: 1px solid #1c242f;
+  border-bottom: 1px solid var(--ui-line);
 }
 
 .ed-workspace-readonly {
-  color: #e8c46a;
-  background: #2a2413;
+  color: var(--ui-feedback-warn-fg);
+  background: var(--ui-feedback-warn-bg);
 }
 
 .ed-workspace-error {
-  color: #ff8a6b;
-  background: #2c1714;
+  color: var(--ui-feedback-critical);
+  background: var(--ui-feedback-critical-bg);
 }
 
 /* Сообщение о том, что действие автора зацепило больше, чем видно.
    Не ошибка, поэтому не красное — но и не молчание. Перенос по словам,
    а не обрезка: смысл здесь в числе, и обрезать его нельзя. */
 .ed-notice {
-  color: #a8c686;
+  color: var(--ui-feedback-positive);
   font-size: 12px;
   line-height: 1.45;
   min-width: 0;
@@ -879,9 +928,9 @@ export const EDITOR_STYLES = `
   position: absolute;
   top: 2px;
   padding-left: 4px;
-  border-left: 1px solid #2c3a4d;
+  border-left: 1px solid var(--ui-line-strong);
   font-size: 10px;
-  color: #55637a;
+  color: var(--ui-content-fg-tertiary);
   font-variant-numeric: tabular-nums;
   /* Подпись не должна ловить курсор: под ней перемотка. */
   pointer-events: none;
@@ -895,7 +944,7 @@ export const EDITOR_STYLES = `
   bottom: 0;
   width: 1px;
   margin-left: -0.5px;
-  background: #e4572e;
+  background: var(--ui-playhead);
   pointer-events: none;
 }
 
@@ -904,16 +953,16 @@ export const EDITOR_STYLES = `
 
 .ed-add-mark {
   padding: 5px 10px;
-  border: 1px solid #2c3a4d;
+  border: 1px solid var(--ui-line-strong);
   border-radius: 6px;
-  background: #1b2430;
+  background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
 }
-.ed-add-mark:hover:not(:disabled) { border-color: #4c8dff; }
+.ed-add-mark:hover:not(:disabled) { border-color: var(--ui-action-selected-line); }
 .ed-add-mark:disabled { opacity: 0.4; cursor: default; }
 
 /* Полоса меток. Отдельной строкой под волной: лежи метки поверх неё,
@@ -926,7 +975,7 @@ export const EDITOR_STYLES = `
 .ed-marks {
   position: relative;
   height: 42px;
-  border-top: 1px solid #1c242f;
+  border-top: 1px solid var(--ui-line);
 }
 
 .ed-mark {
@@ -940,23 +989,23 @@ export const EDITOR_STYLES = `
   border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   font-size: 11px;
   line-height: 1;
   cursor: grab;
   touch-action: none;
 }
-.ed-mark:hover { color: #e6edf5; }
-.ed-mark-selected { border-color: #4c8dff; color: #e6edf5; }
+.ed-mark:hover { color: var(--ui-content-fg); }
+.ed-mark-selected { border-color: var(--ui-action-selected-line); color: var(--ui-content-fg); }
 
 /* Привязка к слову — не украшение, а то, что автор обязан видеть без
    раскрытия свойств: от неё зависит, переживёт ли метка замену озвучки.
    Классы названы состояниями якоря из product.md §4 (bound / pinned /
    orphan), а не видами ссылки: интерфейс говорит с автором на языке
    документа, а не схемы. */
-.ed-mark-bound { color: #a8c686; }
-.ed-mark-gate { color: #e4572e; }
-.ed-mark-gate.ed-mark-bound { color: #a8c686; }
+.ed-mark-bound { color: var(--ui-feedback-positive); }
+.ed-mark-gate { color: var(--ui-mark-gate); }
+.ed-mark-gate.ed-mark-bound { color: var(--ui-feedback-positive); }
 
 /* Сирота: слово потерялось, метка стоит в догадке машины.
    Отличается ДВУМЯ признаками сразу, и это не избыточность. Цвет один
@@ -964,8 +1013,8 @@ export const EDITOR_STYLES = `
    и вовсе перестаёт различать. Восклицательный знак в углу читается
    независимо от цвета и не отнимает основной знак у рода метки —
    ромб слайда и столбик гейта обязаны остаться на месте. */
-.ed-mark-orphan { color: #e8b64c; }
-.ed-mark-gate.ed-mark-orphan { color: #e8b64c; }
+.ed-mark-orphan { color: var(--ui-feedback-warn); }
+.ed-mark-gate.ed-mark-orphan { color: var(--ui-feedback-warn); }
 .ed-mark-orphan::after {
   content: '!';
   position: absolute;
@@ -974,7 +1023,7 @@ export const EDITOR_STYLES = `
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
-  color: #e8b64c;
+  color: var(--ui-feedback-warn);
 }
 
 /* Строка списка «проверьте эти места» (product.md §4). Стоит НАД полосой
@@ -982,23 +1031,23 @@ export const EDITOR_STYLES = `
 .ed-orphans {
   margin: 0;
   padding: 4px 8px;
-  border-top: 1px solid #1c242f;
-  background: #251f10;
-  color: #e8d9b0;
+  border-top: 1px solid var(--ui-line);
+  background: var(--ui-feedback-warn-bg);
+  color: var(--ui-feedback-warn-fg);
   font-size: 12px;
   line-height: 1.4;
 }
-.ed-orphans-sign { color: #e8b64c; font-weight: 700; }
+.ed-orphans-sign { color: var(--ui-feedback-warn); font-weight: 700; }
 .ed-orphans-next {
   padding: 1px 8px;
-  border: 1px solid #6b5a2e;
+  border: 1px solid var(--ui-feedback-warn-line);
   border-radius: 4px;
-  background: #33290f;
-  color: #f0e2bb;
+  background: var(--ui-feedback-warn-bg-strong);
+  color: var(--ui-feedback-warn-fg);
   font: inherit;
   cursor: pointer;
 }
-.ed-orphans-next:hover { background: #453718; }
+.ed-orphans-next:hover { background: var(--ui-feedback-warn-bg-hover); }
 
 /* Своя полоса каждому роду метки. Разведение по вертикали, а не по z-index:
    порядок наложения решает, КТО сверху, но обе метки продолжают занимать
@@ -1014,7 +1063,7 @@ export const EDITOR_STYLES = `
   top: 29px;
   height: 3px;
   border-radius: 2px;
-  background: #31527d;
+  background: var(--ui-mark-tail);
   pointer-events: none;
 }
 
@@ -1033,15 +1082,15 @@ export const EDITOR_STYLES = `
   margin: 0;
   max-height: 40px;
   overflow: auto;
-  color: #55637a;
+  color: var(--ui-content-fg-tertiary);
   font-size: 12px;
   line-height: 20px;
   user-select: text;
 }
 
 .ed-word-active {
-  color: #e6edf5;
-  background: #1b2430;
+  color: var(--ui-content-fg);
+  background: var(--ui-surface-raised);
   border-radius: 3px;
 }
 
@@ -1060,7 +1109,7 @@ export const EDITOR_STYLES = `
    ширины, и волна расползлась бы относительно собственной картинки. */
 .ed-waveform {
   display: block;
-  background: #0b0f14;
+  background: var(--ui-surface-panel);
 }
 
 /* Панель свойств.
@@ -1072,7 +1121,7 @@ export const EDITOR_STYLES = `
   flex-direction: column;
   gap: 14px;
   padding: 12px 14px;
-  background: #0b0f14;
+  background: var(--ui-surface-panel);
   /* Прокручивается сама. Длинный текст элемента не имеет права растягивать
      редактор и выдавливать сцену. */
   overflow: auto;
@@ -1085,7 +1134,7 @@ export const EDITOR_STYLES = `
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
 }
 
 .ed-insp-body { display: grid; gap: 14px; }
@@ -1098,11 +1147,11 @@ export const EDITOR_STYLES = `
 .ed-warning {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid #6b4a1f;
+  border: 1px solid var(--ui-feedback-warn-line);
   border-left-width: 3px;
   border-radius: 8px;
-  background: #241a0d;
-  color: #e8c48a;
+  background: var(--ui-feedback-warn-bg);
+  color: var(--ui-feedback-warn-fg);
   font-size: 13px;
   line-height: 1.45;
 }
@@ -1111,7 +1160,7 @@ export const EDITOR_STYLES = `
    ничего не сломано, просто действие необратимо и стоит объяснить его заранее. */
 .ed-insp-hint {
   margin: 0;
-  color: #8b93a1;
+  color: var(--ui-content-fg-secondary);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -1132,17 +1181,17 @@ export const EDITOR_STYLES = `
   min-width: 0;
 }
 
-.ed-insp-label { font-size: 11px; color: #7d8fa5; }
+.ed-insp-label { font-size: 11px; color: var(--ui-content-fg-secondary); }
 
 .ed-insp-input,
 .ed-insp-area {
   box-sizing: border-box;
   width: 100%;
   padding: 5px 7px;
-  border: 1px solid #1c242f;
+  border: 1px solid var(--ui-line);
   border-radius: 4px;
-  background: #07090c;
-  color: #e6edf5;
+  background: var(--ui-field-bg);
+  color: var(--ui-content-fg);
   font: inherit;
   /* Моноширинные цифры: иначе числа дёргаются по ширине на каждой правке
      и на каждом кадре перетаскивания элемента мышью. */
@@ -1157,18 +1206,18 @@ export const EDITOR_STYLES = `
 /* Обводку фокуса браузер рисует свою, и мы её не убираем: по панели ходят
    с клавиатуры, а потерянный фокус дороже выигрыша в виде. */
 .ed-insp-input:focus,
-.ed-insp-area:focus { border-color: #4c8dff; }
+.ed-insp-area:focus { border-color: var(--ui-action-selected-line); }
 
 /* Значение не разобралось в число или не проходит по схеме — наружу не ушло
    ничего. Это обязано быть видно: молчание автор примет за успешную правку.
    Единственный цвет вне палитры редактора, и ровно потому, что ошибка не
    должна читаться как обычное состояние. */
-.ed-insp-input[aria-invalid='true'] { border-color: #ff6b6b; }
+.ed-insp-input[aria-invalid='true'] { border-color: var(--ui-feedback-critical); }
 
 /* readonly, а не disabled: значение остаётся фокусируемым и копируемым. */
 .ed-insp-input[readonly] {
   background: transparent;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   cursor: default;
 }
 
@@ -1182,7 +1231,209 @@ export const EDITOR_STYLES = `
   margin: 0;
   font-size: 11px;
   line-height: 1.4;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
+}
+
+/* ================= КАТАЛОГ ПРИЁМОВ ПЕРЕХОДА =================
+
+   Плитка показывает приём ДВИЖЕНИЕМ, а не картинкой приёма. Это не
+   украшение: «сдвиг» и «штора» на неподвижной картинке различаются
+   только подписью, и автор выбирал бы по слову, а не по тому, что
+   увидит зритель (docs/design/screens.md §4.2, снято с натуры у Canva).
+
+   Анимируются ровно transform, opacity и filter — те же три свойства,
+   что инвариант №8 разрешает сцене. Совпадение не случайное: плитка
+   показывает то, что приём будет делать на самом деле, поэтому
+   изобразить его запрещённым свойством значило бы соврать.
+
+   Движение идёт только под курсором и у выбранной плитки. Восемь
+   одновременных петель читались бы как рябь, в которой не разобрать
+   ни одну.
+
+   Крючок — data-transition, а НЕ data-testid: последний договор
+   с тестами, и переименование в тесте молча погасило бы вид. */
+/* ДВЕ колонки, а не четыре. Замерено в браузере: панель метки отдаёт
+   каталогу 216 px, при четырёх колонках плитка выходит 49 px, а подписи
+   «Растворение» нужно 63 — она обрезалась многоточием, и все проверки
+   при этом оставались зелёными. Обрезка не ломает ничего измеримого,
+   поэтому ловится только замером scrollWidth или глазами.
+   Две колонки дают 106 px: подпись целиком, и плашка сценки вдвое шире,
+   то есть движение на ней различимо, ради чего плитка и заведена. */
+.ed-transition-catalog {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+}
+
+.ed-transition-tile {
+  position: relative;
+  /* Место под сценку сверху. overflow прячет уезжающие за край плашки —
+     без него они вылезли бы на соседние плитки. */
+  padding: 32px 4px 5px;
+  overflow: hidden;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 4px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  font-size: 10px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ed-transition-tile:hover { border-color: var(--ui-action-selected-line); }
+
+.ed-transition-tile-selected {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg);
+}
+
+/* Две плашки сценки: ::before — прежний вид, ::after — следующий.
+   В покое видна только прежняя: приём ещё не играется, и показывать
+   обе значило бы показывать середину перехода как состояние. */
+.ed-transition-tile::before,
+.ed-transition-tile::after {
+  content: '';
+  position: absolute;
+  top: 7px;
+  left: 14px;
+  right: 14px;
+  height: 18px;
+  border-radius: 3px;
+}
+
+.ed-transition-tile::before { background: var(--ui-content-fg-tertiary); }
+
+.ed-transition-tile::after {
+  background: var(--ui-action-selected-line);
+  opacity: 0;
+}
+
+/* «Срез» не анимирован НАМЕРЕННО: у него нет длительности, и мгновенность
+   честнее изобразить неподвижностью, чем быстрым движением. */
+.ed-transition-tile[data-transition='cut']::after { opacity: 0; }
+
+.ed-transition-tile:hover::before,
+.ed-transition-tile:hover::after,
+.ed-transition-tile-selected::before,
+.ed-transition-tile-selected::after {
+  animation-duration: 1.8s;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+.ed-transition-tile[data-transition='cut']:hover::before,
+.ed-transition-tile[data-transition='cut']:hover::after,
+.ed-transition-tile[data-transition='cut'].ed-transition-tile-selected::before,
+.ed-transition-tile[data-transition='cut'].ed-transition-tile-selected::after {
+  animation: none;
+}
+
+.ed-transition-tile[data-transition='morph']:hover::after,
+.ed-transition-tile[data-transition='morph'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-morph;
+}
+.ed-transition-tile[data-transition='dissolve']:hover::before,
+.ed-transition-tile[data-transition='dissolve'].ed-transition-tile-selected::before {
+  animation-name: ed-tr-fade-out;
+}
+.ed-transition-tile[data-transition='dissolve']:hover::after,
+.ed-transition-tile[data-transition='dissolve'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-fade-in;
+}
+.ed-transition-tile[data-transition='slide']:hover::before,
+.ed-transition-tile[data-transition='slide'].ed-transition-tile-selected::before {
+  animation-name: ed-tr-slide-out;
+}
+.ed-transition-tile[data-transition='slide']:hover::after,
+.ed-transition-tile[data-transition='slide'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-slide-in;
+}
+.ed-transition-tile[data-transition='scale']:hover::before,
+.ed-transition-tile[data-transition='scale'].ed-transition-tile-selected::before {
+  animation-name: ed-tr-scale-out;
+}
+.ed-transition-tile[data-transition='scale']:hover::after,
+.ed-transition-tile[data-transition='scale'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-scale-in;
+}
+.ed-transition-tile[data-transition='blur']:hover::before,
+.ed-transition-tile[data-transition='blur'].ed-transition-tile-selected::before {
+  animation-name: ed-tr-blur-out;
+}
+.ed-transition-tile[data-transition='blur']:hover::after,
+.ed-transition-tile[data-transition='blur'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-blur-in;
+}
+.ed-transition-tile[data-transition='wipe']:hover::after,
+.ed-transition-tile[data-transition='wipe'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-wipe;
+}
+/* Круглая форма стоит В ПРАВИЛЕ, а не в кадрах анимации. В кадрах она была
+   бы постоянной и потому неанимируемой, но сам факт скругления среди
+   кадров читался бы как «приём играет форму» — а он играет масштаб.
+   Плитка обязана показывать то, что приём делает на самом деле. */
+.ed-transition-tile[data-transition='circle']::after { border-radius: 50%; }
+
+.ed-transition-tile[data-transition='circle']:hover::after,
+.ed-transition-tile[data-transition='circle'].ed-transition-tile-selected::after {
+  animation-name: ed-tr-circle;
+}
+
+@keyframes ed-tr-morph {
+  0%   { opacity: 1; transform: translateX(-22%) scaleX(0.5); }
+  45%  { opacity: 1; transform: none; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes ed-tr-fade-out {
+  0%, 10% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+@keyframes ed-tr-fade-in {
+  0%, 10% { opacity: 0; }
+  55%, 100% { opacity: 1; }
+}
+@keyframes ed-tr-slide-out {
+  0%, 10% { transform: none; }
+  55%, 100% { transform: translateX(-130%); }
+}
+@keyframes ed-tr-slide-in {
+  0%, 10% { opacity: 1; transform: translateX(130%); }
+  55%, 100% { opacity: 1; transform: none; }
+}
+@keyframes ed-tr-scale-out {
+  0%, 10% { opacity: 1; transform: none; }
+  55%, 100% { opacity: 0; transform: scale(1.5); }
+}
+@keyframes ed-tr-scale-in {
+  0%, 10% { opacity: 0; transform: scale(0.4); }
+  55%, 100% { opacity: 1; transform: none; }
+}
+/* blur(0px), а не blur(0): безразмерный ноль в filter интерполируется
+   не везде одинаково, и приём выглядел бы ступенькой вместо наплыва. */
+@keyframes ed-tr-blur-out {
+  0%, 10% { opacity: 1; filter: blur(0px); }
+  55%, 100% { opacity: 0; filter: blur(5px); }
+}
+@keyframes ed-tr-blur-in {
+  0%, 10% { opacity: 0; filter: blur(5px); }
+  55%, 100% { opacity: 1; filter: blur(0px); }
+}
+@keyframes ed-tr-wipe {
+  0%, 10% { opacity: 1; transform: translateX(-105%); }
+  55%, 100% { opacity: 1; transform: none; }
+}
+@keyframes ed-tr-circle {
+  0%, 10% { opacity: 1; transform: scale(0); }
+  55%, 100% { opacity: 1; transform: scale(1.6); }
+}
+
+/* Ползунок продолжительности во всю ширину поля, как соседние вводы. */
+.ed-insp-range {
+  width: 100%;
+  accent-color: var(--ui-action-selected-line);
+  cursor: pointer;
 }
 
 .ed-insp-empty {
@@ -1207,7 +1458,7 @@ export const EDITOR_STYLES = `
   gap: 10px;
   flex: 1 1 auto;
   padding-top: 8px;
-  border-top: 1px solid #1c242f;
+  border-top: 1px solid var(--ui-line);
   min-height: 0;
   min-width: 0;
   overflow: auto;
@@ -1236,23 +1487,23 @@ export const EDITOR_STYLES = `
   text-overflow: ellipsis;
   white-space: nowrap;
   padding: 4px 8px;
-  border: 1px solid #2c3a4d;
+  border: 1px solid var(--ui-line-strong);
   border-radius: 6px;
-  background: #1b2430;
+  background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
-.ed-graph-node:hover { border-color: #4c8dff; }
-.ed-graph-node-current { border-color: #4c8dff; background: #111a24; }
+.ed-graph-node:hover { border-color: var(--ui-action-selected-line); }
+.ed-graph-node-current { border-color: var(--ui-action-selected-line); background: var(--ui-action-selected-bg); }
 
 /* Не декоративная — это предупреждение автору, что ветку никто не увидит,
    пока он не проведёт к ней ребро (см. комментарий GraphPanel.tsx). */
 .ed-graph-unreachable {
   flex: 0 0 auto;
-  color: #ff8a6b;
+  color: var(--ui-feedback-critical);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -1290,12 +1541,12 @@ export const EDITOR_STYLES = `
   min-width: 0;
   overflow-wrap: anywhere;
   font-size: 12px;
-  color: #a8c686;
+  color: var(--ui-feedback-positive);
 }
 
 .ed-graph-empty {
   margin: 0;
-  color: #7d8fa5;
+  color: var(--ui-content-fg-secondary);
   font-size: 12px;
 }
 
@@ -1322,7 +1573,7 @@ export const EDITOR_STYLES = `
   gap: 4px;
   min-width: 0;
   padding: 6px 8px;
-  border: 1px solid #ff8a6b;
+  border: 1px solid var(--ui-feedback-critical);
   border-radius: 6px;
 }
 
@@ -1331,7 +1582,7 @@ export const EDITOR_STYLES = `
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 11px;
-  color: #ff8a6b;
+  color: var(--ui-feedback-critical);
 }
 
 .ed-graph-select {
@@ -1339,10 +1590,10 @@ export const EDITOR_STYLES = `
   width: 100%;
   min-width: 0;
   padding: 4px 6px;
-  border: 1px solid #1c242f;
+  border: 1px solid var(--ui-line);
   border-radius: 4px;
-  background: #07090c;
-  color: #e6edf5;
+  background: var(--ui-field-bg);
+  color: var(--ui-content-fg);
   font: inherit;
   font-size: 12px;
 }

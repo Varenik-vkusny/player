@@ -25,7 +25,7 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Condition, Element, ElementState, Gate, Project, Slide, TimeRef, Word } from '@player/core';
+import type { Condition, Element, ElementState, Gate, Project, Slide, Theme, TimeRef, Word } from '@player/core';
 import { findSegment } from '@player/core';
 import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
@@ -40,6 +40,7 @@ import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
 import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js';
 import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
+import { ThemePanel } from './panels/ThemePanel.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
 import { answerVariables, variableRenameProblem } from './state/exits.js';
@@ -50,6 +51,7 @@ import { libraryItem } from './state/library.js';
 import { freeId, pasteProblemAt, segmentSlide, type MarkKind } from './state/project.js';
 import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import { sceneTemplate } from './state/templates.js';
+import { TRANSITION_INFO } from './transitions.js';
 import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
 import { saveWork } from './state/workspace.js';
 import { wordMarkCount } from './state/audio.js';
@@ -294,6 +296,24 @@ export function Editor({
     (transition: Slide['transition']) => {
       if (!selectedMark || selectedMark.kind !== 'slide') return;
       dispatch({ type: 'setSlideTransition', slideId: selectedMark.id, transition });
+    },
+    [selectedMark],
+  );
+
+  /**
+   * Живое событие ползунка продолжительности (`MarkPanel.tsx`, `RangeField`).
+   * `commit: false` — тот же приём, что и у `handleElementStateChangeLive`
+   * ниже: коммит-точку жеста ставит `handleCommitHistory` на `pointerup`.
+   */
+  const handleSetSlideTransitionSecondsLive = useCallback(
+    (transitionSeconds: number) => {
+      if (!selectedMark || selectedMark.kind !== 'slide') return;
+      dispatch({
+        type: 'setSlideTransitionSeconds',
+        slideId: selectedMark.id,
+        transitionSeconds,
+        commit: false,
+      });
     },
     [selectedMark],
   );
@@ -548,6 +568,16 @@ export function Editor({
     dispatch({ type: 'commit' });
   }, []);
 
+  /**
+   * Живое событие правки роли темы (`ThemePanel.tsx`) — тот же приём, что
+   * у `handleElementStateChangeLive`: `commit: false` на каждое движение
+   * пипетки/нажатие клавиши, коммит-точку ставит `handleCommitHistory`
+   * на потере фокуса поля.
+   */
+  const handleSetThemeRoleLive = useCallback((role: keyof Theme, value: string) => {
+    dispatch({ type: 'setThemeRole', role, value, commit: false });
+  }, []);
+
   const handleInsert = useCallback(
     (itemId: string) => {
       const { element, state: elementState } = createElement(
@@ -626,12 +656,21 @@ export function Editor({
    * Секунды считаются из TimeRef здесь, а не хранятся: инвариант №10 требует,
    * чтобы в проекте лежала ссылка на слово, а не результат её разрешения.
    */
+  // Секунды всех слайдов, включая нулевой: длительность перехода урезана
+  // расстоянием до ПРЕДЫДУЩЕЙ метки (ADR-020), а предыдущей у второго
+  // слайда как раз нулевой — выкинув его, получили бы не то число.
+  // Вынесено из `marks` ниже, чтобы `selectedSlideGapSeconds` не считал
+  // тот же массив второй раз тем же способом.
+  const slideSeconds = useMemo(
+    () => segment.slides.map((slide) => markSeconds(slide.at, segment.words)),
+    [segment.slides, segment.words],
+  );
+
   const marks = useMemo((): Mark[] => {
-    const words = segment.words;
     const fromGates = segment.gates.map((gate): Mark => ({
       kind: 'gate',
       id: gate.id,
-      seconds: markSeconds(gate.at, words),
+      seconds: markSeconds(gate.at, segment.words),
       anchor: anchorStateOf(gate.at),
       // Остановка ни к чему не едет: окна движения у неё нет.
       morphSeconds: 0,
@@ -640,28 +679,38 @@ export function Editor({
       title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} «${gate.id}»`,
     }));
 
-    // Секунды всех слайдов, включая нулевой: длительность перехода урезана
-    // расстоянием до ПРЕДЫДУЩЕЙ метки (ADR-020), а предыдущей у второго
-    // слайда как раз нулевой — выкинув его, получили бы не то число.
-    const slideSeconds = segment.slides.map((slide) => markSeconds(slide.at, words));
     const fromSlides = segment.slides.slice(1).map((slide, offset): Mark => {
       const index = offset + 1;
       const morphSeconds = morphSecondsFor(
         slide.transition, slide.transitionSeconds, index, slideSeconds,
       );
+      const info = TRANSITION_INFO[slide.transition];
       return {
         kind: 'slide',
         id: slide.id,
         seconds: slideSeconds[index]!,
         anchor: anchorStateOf(slide.at),
         morphSeconds,
-        title: slide.transition === 'morph'
-          ? `Слайд «${slide.id}»: плавный переход, движение ${morphSeconds.toFixed(2)} с до метки`
-          : `Слайд «${slide.id}»: разрез, без движения`,
+        title: slide.transition === 'cut'
+          ? `Слайд «${slide.id}»: ${info.label.toLowerCase()}, без движения`
+          : `Слайд «${slide.id}»: ${info.label.toLowerCase()}, движение ${morphSeconds.toFixed(2)} с до метки`,
       };
     });
     return [...fromGates, ...fromSlides];
-  }, [segment]);
+  }, [segment.gates, segment.slides, segment.words, slideSeconds]);
+
+  /**
+   * Потолок продолжительности перехода выделенного слайда — расстояние
+   * до ПРЕДЫДУЩЕГО слайда (ADR-020), передаётся в `MarkPanel` пропсом:
+   * панель сама не видит соседних меток, а `morphSecondsFor` в плеере
+   * режет длительность именно этим числом.
+   */
+  const selectedSlideGapSeconds = useMemo((): number | undefined => {
+    if (!markData || markData.kind !== 'slide') return undefined;
+    const index = segment.slides.findIndex((candidate) => candidate.id === markData.slide.id);
+    if (index <= 0) return undefined; // первый слайд меткой не бывает — см. MarkPanel.tsx
+    return slideSeconds[index]! - slideSeconds[index - 1]!;
+  }, [markData, segment.slides, slideSeconds]);
 
   // Через ref, а не через зависимость handleSelectMark: метки пересчитываются
   // на каждую правку сегмента, а обработчику нужен только их СПИСОК в момент
@@ -1091,6 +1140,11 @@ export function Editor({
             onAddCondition={handleAddCondition}
             onRemoveCondition={handleRemoveCondition}
           />
+          <ThemePanel
+            theme={currentProject.meta.theme}
+            onChangeRole={handleSetThemeRoleLive}
+            onCommitHistory={handleCommitHistory}
+          />
         </aside>
         {markData ? (
           <MarkPanel
@@ -1102,6 +1156,9 @@ export function Editor({
               && gateInsideTransition(markData.gate, segment.slides, segment.words)}
             onUpdateGate={handleUpdateGate}
             onSetSlideTransition={handleSetSlideTransition}
+            onSetSlideTransitionSeconds={handleSetSlideTransitionSecondsLive}
+            onCommitHistory={handleCommitHistory}
+            slideTransitionGapSeconds={selectedSlideGapSeconds}
             onRenameVariable={handleRenameVariable}
             variableProblemOf={variableProblemOf}
             onRemove={handleRemoveMark}

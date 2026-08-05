@@ -120,6 +120,67 @@ export function NumberField({ label, value, accepts, onCommit, onBlurCommit }: N
   );
 }
 
+interface RangeFieldProps {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  /**
+   * Живое значение — зовётся на каждое движение ползунка (`onChange`
+   * ползунка, в отличие от текстового поля, и есть уже разобранное число:
+   * `<input type="range">` физически не может вернуть то, что числом
+   * не является, у него нет промежуточных состояний вроде «1.» или «-» —
+   * значение всегда лежит между `min` и `max` с шагом `step`). Поэтому,
+   * в отличие от `NumberField`, здесь нет черновика и нечего разбирать:
+   * то, что union-компонент показывает, то и уходит наружу.
+   */
+  onCommit: (value: number) => void;
+  /**
+   * Жест (перетаскивание ползунка) закончен — точка коммита истории,
+   * как `onBlurCommit` у `NumberField`. Не блюр: отпустив кнопку мыши,
+   * ползунок остаётся сфокусированным, блюра не происходит вовсе, поэтому
+   * закрывает жест `pointerup`/`pointercancel` — тот же сигнал, которым
+   * `TrackView` закрывает перетаскивание метки по дорожке. `onBlur` тоже
+   * слушается — подстраховка на случай ухода фокуса клавишей Tab
+   * посреди жеста.
+   */
+  onCommitEnd: () => void;
+}
+
+/**
+ * Ползунок — числовое поле без набираемой строки.
+ *
+ * Та же обёртка `.ed-insp-field` и та же пара `label`/`input`, что
+ * у `NumberField`, но без его черновика: черновик существует ради
+ * состояний строки, которые ещё не разобрались в число, а у `range`
+ * таких состояний нет (см. `onCommit` выше).
+ */
+export function RangeField({ label, value, min, max, step, onCommit, onCommitEnd }: RangeFieldProps): ReactElement {
+  const id = useId();
+
+  return (
+    <div className="ed-insp-field">
+      <label className="ed-insp-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="ed-insp-range"
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onCommit(Number(event.target.value))}
+        onPointerUp={onCommitEnd}
+        onPointerCancel={onCommitEnd}
+        onBlur={onCommitEnd}
+      />
+    </div>
+  );
+}
+
 interface StringFieldProps {
   label: string;
   value: string;

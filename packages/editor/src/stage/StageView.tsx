@@ -42,7 +42,7 @@ import {
 } from 'react';
 
 import type { Element, ElementState, Slide } from '@player/core';
-import { ScenePreview, type Segment } from '@player/player';
+import { applyTheme, ScenePreview, type Segment } from '@player/player';
 
 import { boxToScreen, toScene, topmostAt, type Box, type Point } from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
@@ -312,6 +312,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     }
     renderedStatesRef.current = states;
   }, [elements, currentSlide.states]);
+
+  // Живой отклик темы на холсте (docs/design/theme-panel.md §5 — ГЛАВНАЯ
+  // ловушка задачи). Смена роли темы НЕ входит в structureKey намеренно
+  // (см. комментарий над ним): полная пересборка сцены на каждое движение
+  // пипетки цвета уничтожала бы узел под курсором редактора, тем же
+  // способом, каким это уже запрещено для pointermove. Поэтому applyTheme
+  // зовётся здесь отдельно, на том же узле stage, которым владеет
+  // ScenePreview — повторное применение безопасно: это одна запись
+  // переменной на предке (измерено S11), а не проход по потомкам, и она
+  // не трогает их собственный инлайн-стиль.
+  useLayoutEffect(() => {
+    const { stage } = requireNodes();
+    applyTheme(stage, segment.theme);
+  }, [segment.theme, requireNodes]);
 
   useLayoutEffect(syncFrame, [syncFrame]);
 

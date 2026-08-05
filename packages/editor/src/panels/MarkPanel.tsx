@@ -17,7 +17,7 @@
  * как и время гейта, правится перетаскиванием по дорожке (`moveMark`),
  * а не полем в этой панели.
  */
-import { useState, type ReactElement } from 'react';
+import { useId, useState, type ReactElement } from 'react';
 
 import type { Element, Gate, Slide, TimeRef, Word } from '@player/core';
 
@@ -37,10 +37,12 @@ import {
   setPrompt,
 } from '../state/gates.js';
 import { retargetMark, wordAnchorProblem } from '../track/marks.js';
+import { TRANSITION_INFO, TRANSITION_ORDER } from '../transitions.js';
 import {
   POSITIVE_INTEGER,
   ChoiceField,
   NumberField,
+  RangeField,
   ReadonlyField,
   StringField,
   ValidatedStringField,
@@ -69,8 +71,25 @@ export interface MarkPanelProps {
    */
   gateInsideTransition?: boolean;
   onUpdateGate: (gate: Gate) => void;
-  /** Переход выделенного слайда: плавно или резко (действие `setSlideTransition`). */
+  /** Приём перехода выделенного слайда (действие `setSlideTransition`). */
   onSetSlideTransition: (transition: Slide['transition']) => void;
+  /**
+   * Живое значение продолжительности перехода — каждое движение ползунка,
+   * `commit: false` (действие `setSlideTransitionSeconds`). Коммит-точку
+   * жеста ставит `onCommitHistory` ниже, тем же способом, что и у остальных
+   * полей-жестов панели (`Inspector.tsx`, `TrackView`).
+   */
+  onSetSlideTransitionSeconds: (transitionSeconds: number) => void;
+  /** Завершает жест, открытый `onSetSlideTransitionSeconds` (см. `state/editorHistory.ts`). */
+  onCommitHistory: () => void;
+  /**
+   * Потолок продолжительности перехода — расстояние до ПРЕДЫДУЩЕГО слайда
+   * (ADR-020, `packages/player/src/morph.ts`, `morphSecondsFor`). Панель
+   * сама его не считает: он зависит от соседних меток на дорожке, которых
+   * эта панель не видит. `undefined`, когда выделена не метка-слайд —
+   * ровно тот же приём, что и у `gateInsideTransition` выше.
+   */
+  slideTransitionGapSeconds?: number | undefined;
   /**
    * Переименование переменной остановки (действие `renameVariable`).
    *
@@ -110,6 +129,9 @@ export function MarkPanel({
   gateInsideTransition = false,
   onUpdateGate,
   onSetSlideTransition,
+  onSetSlideTransitionSeconds,
+  onCommitHistory,
+  slideTransitionGapSeconds,
   onRenameVariable,
   variableProblemOf,
   onRemove,
@@ -146,7 +168,10 @@ export function MarkPanel({
           <SlideMarkPanel
             key={mark.slide.id}
             slide={mark.slide}
+            gapSeconds={requireGapSeconds(slideTransitionGapSeconds)}
             onSetTransition={onSetSlideTransition}
+            onSetTransitionSeconds={onSetSlideTransitionSeconds}
+            onCommitHistory={onCommitHistory}
           />
         )}
         <MarkTimeBlock
@@ -711,17 +736,174 @@ function MaxAttemptsField({ gate, onUpdate }: MaxAttemptsFieldProps): ReactEleme
 // ---------------------------------------------------------------------------
 
 /**
- * Слова автора, а не схемы: `morph` и `cut` в интерфейс не течёт.
- * «Плавно» и «резко» — то, как об этом сказал владелец.
+ * Метка-слайда без потолка длительности — состояние, которого быть не должно
+ * (см. `slideTransitionGapSeconds` в `MarkPanelProps`). Падаем здесь же,
+ * а не подставляем 0 или Infinity: молчаливая подстановка нарисовала бы
+ * ползунок с ложным потолком, и автор поставил бы значение, которое плеер
+ * тут же обрежет по-настоящему.
  */
-const TRANSITION_CHOICES: readonly Choice[] = [
-  { value: 'morph', label: 'Плавно — элементы едут' },
-  { value: 'cut', label: 'Резко — элементы перепрыгивают' },
-];
+function requireGapSeconds(value: number | undefined): number {
+  if (value === undefined) {
+    throw new Error(
+      'У метки-слайда обязан быть потолок длительности перехода (расстояние до предыдущего слайда)',
+    );
+  }
+  return value;
+}
+
+/** «2,50» вместо «2.50»: тот же формат, что у соседних полей панели (`formatOffset` выше). */
+function formatSeconds(seconds: number): string {
+  return seconds.toFixed(2).replace('.', ',');
+}
+
+/** Приём есть в каталоге ядра — тип получаем из `TRANSITION_INFO`, ключи которого идут от `Slide['transition']`. */
+function isTransitionValue(value: string): value is Slide['transition'] {
+  return Object.prototype.hasOwnProperty.call(TRANSITION_INFO, value);
+}
+
+interface TransitionCatalogProps {
+  value: Slide['transition'];
+  onSelect: (transition: Slide['transition']) => void;
+}
+
+/**
+ * Каталог из восьми плиток — замена `ChoiceField` версии 8 (два значения).
+ *
+ * Слова автора, а не схемы: подписи и подсказки идут из ОДНОЙ таблицы
+ * (`transitions.ts`), а не пишутся здесь заново — вторая копия слов
+ * разошлась бы с первой молча, ровно как разошлись `SlidePanel.tsx`
+ * и `Editor.tsx` до этой сессии.
+ *
+ * Проверка `isTransitionValue` — прямой потомок прежнего
+ * `if (value !== 'morph' && value !== 'cut') throw`: обработчик клика
+ * получает `string` (тип плитки — не выразить прямо в JSX-обработчике без
+ * промежуточного шага), и narrowing к `Slide['transition']` обязан пройти
+ * явную сверку с перечислением ядра, а не приведением типа.
+ */
+function TransitionCatalog({ value, onSelect }: TransitionCatalogProps): ReactElement {
+  const labelId = useId();
+
+  const handleSelect = (candidate: string): void => {
+    if (!isTransitionValue(candidate)) {
+      throw new Error(`Неизвестный приём перехода «${candidate}»`);
+    }
+    onSelect(candidate);
+  };
+
+  return (
+    <div className="ed-insp-field">
+      <span className="ed-insp-label" id={labelId}>Переход</span>
+      <div className="ed-transition-catalog" role="group" aria-labelledby={labelId}>
+        {TRANSITION_ORDER.map((candidate) => {
+          const info = TRANSITION_INFO[candidate];
+          const selected = candidate === value;
+          return (
+            <button
+              key={candidate}
+              type="button"
+              className={selected ? 'ed-transition-tile ed-transition-tile-selected' : 'ed-transition-tile'}
+              aria-pressed={selected}
+              title={info.hint}
+              aria-label={`${info.label} — ${info.hint}`}
+              data-testid={`transition-${candidate}`}
+              // Отдельный крючок для оформления. `data-testid` — договор
+              // с тестами, и вешать на него ещё и вид значило бы, что
+              // переименование в тесте молча гасит анимацию плитки.
+              data-transition={candidate}
+              onClick={() => handleSelect(candidate)}
+            >
+              {info.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+interface TransitionSecondsControlProps {
+  slide: Slide;
+  gapSeconds: number;
+  onChangeLive: (transitionSeconds: number) => void;
+  onCommitHistory: () => void;
+}
+
+/**
+ * Продолжительность перехода к слайду — или причина, почему её не бывает.
+ *
+ * `cut` не гасит управление, а не создаёт его вовсе: у среза продолжительности
+ * не существует — `morphSecondsFor` возвращает 0 ДО всякой арифметики с
+ * длительностью (`packages/player/src/morph.ts:64-74`). Погашенный ползунок
+ * обещал бы автору величину, которой в модели нет: тот же принцип, что
+ * у направления приёма в `docs/design/screens.md` §4.2 — переключатель
+ * без смысла не гаснет, а не создаётся.
+ *
+ * Потолок — `gapSeconds`, расстояние до ПРЕДЫДУЩЕГО слайда (ADR-020: окно
+ * перехода кончается НА метке, значит удлинение уводит начало назад, в кадр,
+ * которого зритель ещё не видел). Плеер уже режет длительность этим потолком
+ * (`Math.min(transitionSeconds, gap)`); не показать его здесь значило бы дать
+ * автору поставить 3 с и увидеть на экране 1.4 без единой подсказки почему.
+ *
+ * Записанное значение может превышать потолок — так приходит из файла,
+ * ползунок сам такое создать не может (`max` ползунка — сам потолок). Тогда
+ * он встаёт НА потолок, а подпись называет ОБА числа: молча показать одно
+ * вместо другого значило бы скрыть от автора расхождение между тем, что
+ * сохранено, и тем, что реально играется.
+ */
+function TransitionSecondsControl({
+  slide,
+  gapSeconds,
+  onChangeLive,
+  onCommitHistory,
+}: TransitionSecondsControlProps): ReactElement {
+  if (slide.transition === 'cut') {
+    return (
+      <p className="ed-insp-note" data-testid="transition-seconds-none">
+        У среза нет продолжительности: он происходит мгновенно, ползунок здесь был бы обещанием того, чего не бывает.
+      </p>
+    );
+  }
+
+  const recorded = slide.transitionSeconds;
+  const played = Math.max(0, Math.min(recorded, gapSeconds));
+  const exceedsGap = recorded > gapSeconds;
+
+  return (
+    <div data-testid="transition-seconds">
+      <RangeField
+        label="Продолжительность перехода, с"
+        value={played}
+        min={0}
+        max={gapSeconds}
+        step={0.05}
+        onCommit={onChangeLive}
+        onCommitEnd={onCommitHistory}
+      />
+      {exceedsGap ? (
+        <p className="ed-insp-note" data-testid="transition-seconds-clamped">
+          Записано {formatSeconds(recorded)} с, но реально играется {formatSeconds(played)} с — дальше
+          мешает предыдущий слайд, потолок сейчас {formatSeconds(gapSeconds)} с.
+        </p>
+      ) : played === 0 ? (
+        <p className="ed-insp-note" data-testid="transition-seconds-zero">
+          Продолжительность равна нулю: переход не играется, слайд сменяется как срез.
+        </p>
+      ) : (
+        <p className="ed-insp-note" data-testid="transition-seconds-caption">
+          {formatSeconds(played)} с из потолка {formatSeconds(gapSeconds)} с — это расстояние до предыдущего слайда.
+        </p>
+      )}
+    </div>
+  );
+}
 
 interface SlideMarkPanelProps {
   slide: Slide;
+  /** Потолок длительности — см. `TransitionSecondsControl`. Всегда определён: первый слайд сюда не попадает. */
+  gapSeconds: number;
   onSetTransition: (transition: Slide['transition']) => void;
+  onSetTransitionSeconds: (transitionSeconds: number) => void;
+  onCommitHistory: () => void;
 }
 
 /**
@@ -733,27 +915,25 @@ interface SlideMarkPanelProps {
  * что стоит на нуле и двигать его нельзя. Поэтому отдельной ветки «у этого
  * слайда перехода нет» здесь НЕТ — она была бы недостижимым кодом. Защита
  * стоит там, где до неё можно дойти: `state/slides.ts`, `setTransition`
- * бросает на первом слайде.
+ * и `setTransitionSeconds` бросают на первом слайде.
  */
-function SlideMarkPanel({ slide, onSetTransition }: SlideMarkPanelProps): ReactElement {
+function SlideMarkPanel({
+  slide,
+  gapSeconds,
+  onSetTransition,
+  onSetTransitionSeconds,
+  onCommitHistory,
+}: SlideMarkPanelProps): ReactElement {
   return (
     <div className="ed-insp-block">
       <ReadonlyField label="Идентификатор" value={slide.id} />
-      <ChoiceField
-        label="Переход"
-        value={slide.transition}
-        choices={TRANSITION_CHOICES}
-        onCommit={(value) => {
-          if (value !== 'morph' && value !== 'cut') {
-            throw new Error(`Неизвестный вид перехода «${value}»`);
-          }
-          onSetTransition(value);
-        }}
+      <TransitionCatalog value={slide.transition} onSelect={onSetTransition} />
+      <TransitionSecondsControl
+        slide={slide}
+        gapSeconds={gapSeconds}
+        onChangeLive={onSetTransitionSeconds}
+        onCommitHistory={onCommitHistory}
       />
-      <p className="ed-insp-note">
-        Плавно — элементы доезжают до этого снимка. Резко — встают в него
-        мгновенно, без движения.
-      </p>
     </div>
   );
 }

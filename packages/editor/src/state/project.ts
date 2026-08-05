@@ -12,8 +12,8 @@
  * сравнением ссылок. Если редьюсер начнёт пересоздавать неизменившиеся
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
-import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, TimeRef, Word } from '@player/core';
-import { findSegment, resolveTimeRef } from '@player/core';
+import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, Theme, TimeRef, Word } from '@player/core';
+import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
 
 import { retargetMark } from '../track/marks.js';
 import { copySegment } from './duplicate.js';
@@ -113,6 +113,40 @@ export type EditorAction =
       readonly type: 'setSlideTransition';
       readonly slideId: string;
       readonly transition: Slide['transition'];
+    }
+  /**
+   * Правка ОДНОЙ роли темы сцены (схема v9, `ThemeSchema`) — `project.meta`,
+   * а не сегмент. Первое действие, которое пишет `meta`: `replaceSegment`
+   * для него не годится, у него свой путь — `replaceTheme` ниже.
+   * (`docs/design/theme-panel.md` §4).
+   *
+   * `role` — простая строка, а не `keyof Theme`: панель (`ThemePanel.tsx`)
+   * шлёт сюда только ключи `ThemeSchema.shape`, но тип действия обязан
+   * пропускать и незаконное значение — иначе проверку «роли, которой нет
+   * в схеме, редьюсер обязан бросить» было бы нечем тестировать.
+   *
+   * `commit` — тот же живой флаг, что у `setElementState`/`moveMark`/
+   * `setSlideTransitionSeconds`: пипетка цвета шлёт событие на каждое
+   * движение, а не только на закрытие, и без склейки одна смена цвета дала
+   * бы сотню шагов отмены (`state/editorHistory.ts`, `isLiveEvent`).
+   */
+  | {
+      readonly type: 'setThemeRole';
+      readonly role: string;
+      readonly value: string;
+      readonly commit?: boolean;
+    }
+  /**
+   * Продолжительность перехода к слайду. `commit` — тот же живой флаг,
+   * что и у `setElementState`/`moveMark`: ползунок шлёт это на каждое
+   * движение, коммит-точку ставит `handleCommitHistory` на отпускание
+   * (`state/editorHistory.ts`, `isLiveEvent`).
+   */
+  | {
+      readonly type: 'setSlideTransitionSeconds';
+      readonly slideId: string;
+      readonly transitionSeconds: number;
+      readonly commit?: boolean;
     }
   | { readonly type: 'selectSlide'; readonly id: string }
   // Буфер обмена слайдов (ADR-025). `at` приходит СНАРУЖИ, как и у addSlide —
@@ -420,6 +454,25 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'setSlideTransition': {
       const nextSegment = slidesApi.setTransition(currentSegment(state), action.slideId, action.transition);
+      return replaceSegment(state, nextSegment);
+    }
+
+    case 'setThemeRole': {
+      // ThemeSchema.shape — тот же закрытый список, что читает ThemePanel
+      // (editor/src/theme.ts): роль вне него законной быть не может, а
+      // молчаливое принятие опечатки в имени осело бы в meta.theme и
+      // ничего бы не покрасило (var(--неизвестное) браузер отбрасывает
+      // целиком, S11 в CLAUDE.md).
+      if (!(action.role in ThemeSchema.shape)) {
+        throw new Error(`Роли темы «${action.role}» нет в схеме: закрытый список — ThemeSchema.shape`);
+      }
+      return replaceTheme(state, action.role, action.value);
+    }
+
+    case 'setSlideTransitionSeconds': {
+      const nextSegment = slidesApi.setTransitionSeconds(
+        currentSegment(state), action.slideId, action.transitionSeconds,
+      );
       return replaceSegment(state, nextSegment);
     }
 
@@ -779,6 +832,22 @@ function replaceSegment(state: EditorState, next: Segment): EditorState {
   if (next === currentSegment(state)) return state;
   const segments = state.project.segments.map((candidate) => (candidate.id === next.id ? next : candidate));
   return { ...state, project: { ...state.project, segments } };
+}
+
+/**
+ * Правка ОДНОЙ роли темы — `project.meta.theme`, а не сегмент. Пара
+ * к `replaceSegment` выше: та же проверка «не изменилось — тот же объект
+ * по ссылке», нужная по той же причине — StageView решает, пересобирать ли
+ * сцену, сравнением ссылок.
+ *
+ * `role` проверен вызывающим (`case 'setThemeRole'`) на принадлежность
+ * `ThemeSchema.shape` ДО этого вызова; здесь он уже законный ключ `Theme`.
+ */
+function replaceTheme(state: EditorState, role: string, value: string): EditorState {
+  const theme = state.project.meta.theme as Record<string, string>;
+  if (theme[role] === value) return state;
+  const nextTheme = { ...theme, [role]: value } as Theme;
+  return { ...state, project: { ...state.project, meta: { ...state.project.meta, theme: nextTheme } } };
 }
 
 /** Заменяет элемент массива по id. Отсутствие — рассинхрон, а не штатный случай. */
