@@ -2,7 +2,7 @@
 <html lang="ru">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Каркас редактора — Сессия 19</title>
+<title>Канва в деталях — Сессия 20</title>
 
 <!--
   ПРОТОТИП, НЕ ПРОДУКТ.
@@ -11,17 +11,30 @@
   нарочно, чтобы посмотреть было нечем сломать. В `pnpm check` не входит,
   packages/ не трогает.
 
-  Сессия 19 показывает КАРКАС: зоны, два набора токенов, сетку 8px.
-  Содержимое панелей — Сессии 20-21 (planning.md §17).
+  Сессия 19 поставила КАРКАС: зоны, два набора токенов, сетку 8px.
+  Сессия 20 наполняет КАНВУ: каталоги, свойства над объектом, выделение
+  и выравнивание, тема сцены и палитры.
 
-  Что здесь уже настоящее, а не нарисованное:
-    · токены хрома и тема сцены разведены и работают;
-    · смена темы одной записью — кнопки справа вверху. Ни один элемент
-      сцены про тему не знает, меняется только переменная на предке.
-      Это ровно то, что измерил спайк S11;
-    · плавающая панель свойств стоит НАД объектом, а не сбоку.
+  Что здесь НАСТОЯЩЕЕ, а не нарисованное:
 
-  Разбор — docs/strategy.md. План — docs/planning.md §17.
+    · состав панели свойств СЧИТАЕТСЯ из `appliesTo`, а не набран руками.
+      Поэтому над картинкой полей ровно два, и это видно, а не заявлено;
+
+    · сирота цвета не изображена, а ВОСПРОИЗВЕДЕНА: элемент «Подпись»
+      ссылается на несуществующую роль без запасного значения, и браузер
+      честно отбрасывает объявление — текст чёрный на тёмном фоне.
+      Ровно то, что измерил S11 и что автор увидел бы у себя;
+
+    · смена палитры — записи на ОДНОМ узле, элементы не обходятся;
+
+    · выравнивание работает: по сцене для одного, друг по другу для двух.
+
+  Разметка ниже — только зоны. Всё, у чего есть модель, рисуется из данных
+  в main.js: элементы сцены, панель свойств, каталоги, палитры, сироты.
+  Это не экономия, а требование §16: макет без названной сущности под ним —
+  обещание, которое нечем исполнить.
+
+  Разбор — docs/strategy.md. Система — docs/design/system.md.
 -->
 
 <link rel="stylesheet" href="tokens.css">
@@ -41,12 +54,12 @@
 
     <span class="topbar__spacer"></span>
 
-    <!-- Смена темы сцены. Одна запись на предке — см. main.js. -->
-    <div class="viewswitch" role="group" aria-label="Тема сцены" id="themes">
-      <button type="button" data-theme="" aria-pressed="true">Ночь</button>
-      <button type="button" data-theme="warm" aria-pressed="false">Тепло</button>
-      <button type="button" data-theme="paper" aria-pressed="false">Бумага</button>
-    </div>
+    <!-- Один счётчик на все сироты: метки и ЦВЕТА. Одна болезнь — один
+         знак и одно место, иначе автор научится не смотреть ни туда,
+         ни туда. Число считается, а не написано. -->
+    <button type="button" class="checkcount" id="checkcount" hidden>
+      <span class="checkcount__dot"></span><span id="checkcount-text"></span>
+    </button>
 
     <button type="button" class="button-block" style="width:auto">Предпросмотр</button>
     <button type="button" class="button-block button-block--primary" style="width:auto">Отдать</button>
@@ -55,90 +68,61 @@
   <!-- ================= РЕЛЬС КАТАЛОГОВ =================
        Приём Canva: узкий рельс выбирает, что показывает широкая панель.
        Каталогов может стать сколько угодно без переверстки. -->
-  <nav class="rail" aria-label="Каталоги">
-    <button type="button" class="rail__item" aria-pressed="true">
+  <nav class="rail" aria-label="Каталоги" id="rail">
+    <button type="button" class="rail__item" data-panel="templates" aria-pressed="true">
       <span class="rail__glyph">▦</span>Шаблоны</button>
-    <button type="button" class="rail__item">
+    <button type="button" class="rail__item" data-panel="shapes">
       <span class="rail__glyph">◇</span>Фигуры</button>
-    <button type="button" class="rail__item">
+    <button type="button" class="rail__item" data-panel="text">
       <span class="rail__glyph">T</span>Текст</button>
-    <button type="button" class="rail__item">
+    <button type="button" class="rail__item" data-panel="theme">
       <span class="rail__glyph">◐</span>Тема</button>
-    <button type="button" class="rail__item">
+    <button type="button" class="rail__item" data-panel="own">
       <span class="rail__glyph">↑</span>Своё</button>
-    <button type="button" class="rail__item">
+    <button type="button" class="rail__item" data-panel="parts">
       <span class="rail__glyph">◔</span>Части</button>
   </nav>
 
-  <!-- ================= ПАНЕЛЬ КАТАЛОГА ================= -->
+  <!-- ================= ПАНЕЛЬ КАТАЛОГА =================
+       Голова и тело рисуются из данных: у каждой панели свои заголовок,
+       пояснение и состав. Седьмая панель — «Объект»: её открывает кнопка
+       «Ещё» с панели свойств, и на рельсе её нет, потому что без
+       выделения она бессмысленна. -->
   <aside class="catalog">
     <div class="catalog__head">
-      <h2 class="catalog__title">Шаблоны</h2>
-      <p class="catalog__hint">
-        Каталог — данные, а не код: пополняется записью в массив.
-        Так уже устроены заготовки элементов и шаблоны сцены.
-      </p>
+      <h2 class="catalog__title" id="catalog-title"></h2>
+      <p class="catalog__hint" id="catalog-hint"></p>
     </div>
-    <div class="catalog__body">
-      <!-- Галерея — то самое исключение из «складывать колонкой». -->
-      <div class="gallery">
-        <div class="gallery__cell">Заголовок</div>
-        <div class="gallery__cell">Список</div>
-        <div class="gallery__cell">Сравнение</div>
-        <div class="gallery__cell">Схема</div>
-        <div class="gallery__cell">Вопрос</div>
-        <div class="gallery__cell">Итог</div>
-      </div>
-    </div>
+    <div class="catalog__body" id="catalog-body"></div>
   </aside>
 
   <!-- ================= ХОЛСТ ================= -->
   <main class="stage-area">
-    <div class="scene" id="scene">
-      <h1 class="scene__title">Производная</h1>
-      <p class="scene__lead">
-        Скорость, с которой меняется величина. Не «сколько», а «как быстро».
-      </p>
-      <div class="scene__card"></div>
-      <div class="scene__dot"></div>
 
-      <!-- Выделение с ручками. Роль Handle отдельная: ручки читаются
-           на любом фоне, включая тему «бумага». -->
-      <div class="selection" style="left:8%; top:16%; width:44%; height:14%">
-        <span class="selection__handle" style="left:0;   top:0"></span>
-        <span class="selection__handle" style="left:50%; top:0"></span>
-        <span class="selection__handle" style="left:100%;top:0"></span>
-        <span class="selection__handle" style="left:0;   top:50%"></span>
-        <span class="selection__handle" style="left:100%;top:50%"></span>
-        <span class="selection__handle" style="left:0;   top:100%"></span>
-        <span class="selection__handle" style="left:50%; top:100%"></span>
-        <span class="selection__handle" style="left:100%;top:100%"></span>
+    <!-- КОНТЕКСТНАЯ ПОЛОСА СВОЙСТВ. Снято с натуры у Canva 05.08.2026:
+         у них это НЕПОДВИЖНАЯ полоса над холстом, а не панель, плавающая
+         над объектом (как ошибочно записал strategy.md §4). Появляется
+         только при выделении и меняет состав под тип.
+
+         Высота зарезервирована ВСЕГДА, даже когда полоса пуста. Это не
+         перестраховка: в Сессии 18 появляющаяся зона отняла у сцены 44px,
+         масштаб упал с 0.2083 до 0.2028 и уронил e2e про ресайз. Проверено,
+         что Canva делает так же: верх страницы стоит на одной координате
+         и с выделением, и без него. -->
+    <div class="propbar" id="propbar"></div>
+
+    <div class="stage-fit">
+      <!-- Сцена 1920x1080, как в продукте (ADR-007). Здесь она вписана
+           пропорцией, а координаты элементов заданы в тех же пикселях
+           и переводятся в проценты — чтобы числа в данных значили то же,
+           что значат в схеме, а не «столько-то от макета». -->
+      <div class="scene" id="scene">
+        <div class="scene__els" id="scene-els"></div>
+        <div class="scene__overlay" id="scene-overlay"></div>
       </div>
 
-      <!-- Свойства приходят К объекту. Состав зависит от его типа:
-           здесь выделен текст, поэтому кегль и начертание. -->
-      <div class="objectbar" style="left:30%; top:14%">
-        <button type="button" class="objectbar__btn">Georgia</button>
-        <button type="button" class="objectbar__btn">44</button>
-        <span class="objectbar__sep"></span>
-        <button type="button" class="objectbar__btn"><b>Ж</b></button>
-        <button type="button" class="objectbar__btn"><i>К</i></button>
-        <button type="button" class="objectbar__btn">≡</button>
-        <span class="objectbar__sep"></span>
-        <button type="button" class="objectbar__btn" title="Цвет из темы">
-          <span class="objectbar__swatch"></span>
-        </button>
-        <span class="objectbar__sep"></span>
-        <button type="button" class="objectbar__btn">Появление</button>
-      </div>
+      <p class="note" id="note"></p>
     </div>
-
-    <p class="note">
-      <b>Смена темы стоит одной записи.</b>
-      Нажмите «Тепло» или «Бумага»: меняется переменная на предке сцены,
-      элементы про неё не знают и не перерисовываются.
-      Измерено спайком S11 — <code>spikes/results/s11.json</code>.
-    </p>
   </main>
 
   <!-- ================= ДОРОЖКА (ориентир CapCut) ================= -->
