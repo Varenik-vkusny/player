@@ -136,7 +136,15 @@ function isLiveEvent(action: EditorAction): boolean {
       // Набор текста озвучки (AudioSourcePanel) — тот же приём, что и у
       // числовых полей Inspector.tsx: каждая буква шлёт `commit: false`,
       // коммит-точку ставит потеря фокуса поля через явное действие `commit`.
-      || action.type === 'setSpeech')
+      || action.type === 'setSpeech'
+      // Ползунок продолжительности перехода (`MarkPanel.tsx`, `RangeField`) —
+      // тот же приём: движение шлёт `commit: false`, `pointerup`/`onBlur`
+      // ползунка закрывают жест явным `commit`.
+      || action.type === 'setSlideTransitionSeconds'
+      // Правка роли темы (`ThemePanel.tsx`) — тот же приём: пипетка цвета
+      // шлёт `commit: false` на каждое движение, потеря фокуса поля
+      // закрывает жест явным `commit` (docs/design/theme-panel.md §4).
+      || action.type === 'setThemeRole')
     && (action as { commit?: boolean }).commit === false
   );
 }

@@ -171,6 +171,36 @@ export function setTransition(segment: Segment, slideId: string, transition: Sli
 }
 
 /**
+ * Сколько секунд длится переход К этому слайду.
+ *
+ * Значение хранится как есть — ровно то, что набрал автор, без урезания
+ * потолком. Урезание расстоянием до предыдущей метки (ADR-020) делает плеер
+ * при воспроизведении (`morphSecondsFor`, `packages/player/src/morph.ts`),
+ * а не эта функция: она не знает, где стоят соседние слайды (тот же довод,
+ * что у `setTransition` выше про плеер и приём).
+ *
+ * Первый слайд отвергается ПО ТОЙ ЖЕ причине, что и в `setTransition`:
+ * у него нет перехода вовсе, ехать в него неоткуда, значит и длительности
+ * ехать некуда быть.
+ */
+export function setTransitionSeconds(segment: Segment, slideId: string, transitionSeconds: number): Segment {
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+  if (index === 0) {
+    throw new Error(
+      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом части, ехать в него неоткуда',
+    );
+  }
+  if (segment.slides[index]!.transitionSeconds === transitionSeconds) return segment;
+
+  const slides = segment.slides.slice();
+  slides[index] = { ...slides[index]!, transitionSeconds };
+  return { ...segment, slides };
+}
+
+/**
  * Точечная правка состояния элемента на слайде.
  *
  * Правит СУЩЕСТВУЮЩУЮ запись — если элемента ещё нет в `states` этого

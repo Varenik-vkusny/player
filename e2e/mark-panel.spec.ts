@@ -376,15 +376,161 @@ test.describe('панель слайда: переход плавно / резк
     await mark.click();
     await expect(page.getByTestId('mark-panel')).toBeVisible();
 
-    const field = page.getByLabel('Переход', { exact: true });
-    await expect(field, 'переход больше не только для чтения').toBeEnabled();
-    await field.selectOption('cut');
+    // Каталог из восьми плиток (Сессия 23) заменил `<select>` версии 8:
+    // нажатие идёт по ВИДИМОЙ плитке, а не через программный selectOption —
+    // проверка «вызвался ли обработчик» была бы зелёной и при сломанной
+    // привязке клика к плитке.
+    const cutTile = page.getByTestId('transition-cut');
+    await expect(cutTile, 'плитка «Срез» видна в каталоге').toBeVisible();
+    await expect(cutTile, 'плавный переход выбран по умолчанию, не резкий').toHaveAttribute('aria-pressed', 'false');
+    await cutTile.click();
+    await expect(cutTile, 'плитка «Срез» стала выбранной').toHaveAttribute('aria-pressed', 'true');
 
     expect(await transitionOf(slideId), 'резкий переход дошёл до проекта').toBe('cut');
 
     // Правка обязана быть шагом истории, а не состоянием виджета.
     await page.keyboard.press('Control+z');
     expect(await transitionOf(slideId), 'отмена вернула плавный переход').toBe('morph');
+  });
+});
+
+test.describe('панель слайда: каталог из восьми приёмов и продолжительность', () => {
+  /**
+   * Фикстура `morph.json` (schemaVersion 3, мигрирует до текущей на загрузке):
+   * три слайда на 0, 1 и 2 секундах — второй слайд и берут тесты ниже,
+   * расстояние до предыдущего у него ровно 1 с.
+   */
+  async function selectSecondSlide(page: Page): Promise<string> {
+    await openEditor(page, 'morph');
+    await waitTransportReady(page);
+    const slideId = await page.evaluate(
+      () =>
+        (window as unknown as { __project: { segments: { slides: { id: string }[] }[] } })
+          .__project.segments[0]!.slides[1]!.id,
+    );
+    await page.getByTestId(`mark-slide-${slideId}`).click();
+    await expect(page.getByTestId('mark-panel')).toBeVisible();
+    return slideId;
+  }
+
+  /**
+   * Слова каталога, а не двоичный тернарник версии 8: до этой сессии ЛЮБОЙ
+   * приём, кроме `morph`, подписывался в списке слайдов словом «разрез»
+   * (`SlidePanel.tsx:73`) — слайд с активным движением выглядел неподвижным.
+   * Слом задания F проверяет именно это: возврат тернарника обязан вернуть
+   * тест в красное.
+   */
+  test('выбор «Растворение» подписывает слайд в списке этим словом, а не «разрез»', async ({ page }) => {
+    const slideId = await selectSecondSlide(page);
+
+    const dissolveTile = page.getByTestId('transition-dissolve');
+    await expect(dissolveTile, 'плитка «Растворение» видна в каталоге').toBeVisible();
+    await dissolveTile.click();
+    await expect(dissolveTile, 'плитка «Растворение» стала выбранной').toHaveAttribute('aria-pressed', 'true');
+
+    const row = page.getByTestId(`slide-${slideId}`);
+    await expect(row, 'подпись в списке слайдов — «Растворение»').toContainText('Растворение');
+    await expect(row, 'подпись НЕ осталась словом «разрез» от старого тернарника').not.toContainText('разрез');
+  });
+
+  /**
+   * У среза продолжительности не существует (`morphSecondsFor` возвращает 0
+   * ДО арифметики) — управление обязано ОТСУТСТВОВАТЬ, а не быть погашенным,
+   * и рядом обязана стоять причина словами, а не пустое место.
+   */
+  test('«Срез» — управления продолжительностью нет на странице, видна причина', async ({ page }) => {
+    await selectSecondSlide(page);
+
+    // Слайд фикстуры по умолчанию — morph: управление продолжительностью есть.
+    await expect(page.getByTestId('transition-seconds')).toBeVisible();
+    await expect(page.getByTestId('transition-seconds-none')).toHaveCount(0);
+
+    await page.getByTestId('transition-cut').click();
+
+    await expect(page.getByTestId('transition-seconds'), 'ползунка после «Среза» на странице нет').toHaveCount(0);
+    await expect(page.getByTestId('transition-seconds-none')).toContainText(/нет продолжительности/);
+  });
+
+  /**
+   * Ползунок не несёт своего состояния (в отличие от `NumberField`, у него
+   * нет черновика вовсе) — значение либо дошло до проекта через редьюсер,
+   * либо нет. Переоткрытие панели идёт через выбор ДРУГОЙ метки и возврат:
+   * `key={slide.id}` в `MarkPanel.tsx` размонтирует и заново монтирует
+   * `SlideMarkPanel`, и число обязано прийти заново из пропса, а не выжить
+   * в памяти уже уничтоженного компонента.
+   */
+  test('движение ползунка меняет число и переживает переоткрытие панели', async ({ page }) => {
+    const slideId = await selectSecondSlide(page);
+
+    const slider = page.getByLabel('Продолжительность перехода, с', { exact: true });
+    await expect(slider).toBeVisible();
+    expect(await slider.inputValue(), 'умолчание схемы — 0.6 с').toBe('0.6');
+
+    // `End` — стандартная клавиша range-инпута, ставит значение на max (=1
+    // при потолке этого слайда). Такое же нажатие пользователя мышью или
+    // клавиатурой, а не вызов обработчика в обход разметки.
+    await slider.focus();
+    await slider.press('End');
+    await expect(slider, 'значение сдвинулось от умолчания').not.toHaveJSProperty('value', '0.6');
+    const moved = await slider.inputValue();
+
+    // Другая метка — размонтирует SlideMarkPanel текущего слайда.
+    const thirdSlideId = await page.evaluate(
+      () =>
+        (window as unknown as { __project: { segments: { slides: { id: string }[] }[] } })
+          .__project.segments[0]!.slides[2]!.id,
+    );
+    await page.getByTestId(`mark-slide-${thirdSlideId}`).click();
+    await expect(page.getByTestId(`slide-${thirdSlideId}`)).toBeVisible();
+
+    // И назад — панель второго слайда монтируется заново.
+    await page.getByTestId(`mark-slide-${slideId}`).click();
+    const reopened = page.getByLabel('Продолжительность перехода, с', { exact: true });
+    await expect(reopened, 'значение пережило переоткрытие панели').toHaveJSProperty('value', moved);
+  });
+
+  /**
+   * Потолок — расстояние до ПРЕДЫДУЩЕГО слайда (ADR-020), не до следующего
+   * и не постоянная величина: `max` ползунка обязан считаться из соседних
+   * меток дорожки, а не быть захардкожен.
+   */
+  test('потолок ползунка равен расстоянию до предыдущего слайда', async ({ page }) => {
+    await selectSecondSlide(page);
+
+    const slider = page.getByLabel('Продолжительность перехода, с', { exact: true });
+    // morph.json: слайды на 0 с и 1 с — расстояние до предыдущего 1 с.
+    await expect(slider).toHaveAttribute('max', '1');
+  });
+
+  /**
+   * Подпись приёма обязана помещаться в плитку ЦЕЛИКОМ.
+   *
+   * Первая раскладка каталога была на четыре колонки: плитка выходила 49 px,
+   * подписи «Растворение» требовалось 63, и она обрезалась многоточием
+   * до «Растворен». Ни один сигнал при этом не краснел — обрезка не ломает
+   * ничего измеримого, кроме смысла: автор выбирает приём по слову, а слова
+   * ему не показали.
+   *
+   * Ловится только сравнением `scrollWidth` с `clientWidth` или глазами.
+   * Глаза не переживают сессию, поэтому здесь прогон.
+   *
+   * Красным это станет от любой из трёх правок: сузить колонку каталога,
+   * увеличить кегль подписи, дать приёму имя длиннее нынешних.
+   */
+  test('ни одна подпись приёма не обрезана шириной плитки', async ({ page }) => {
+    await selectSecondSlide(page);
+
+    const clipped = await page.evaluate(() =>
+      [...document.querySelectorAll('.ed-transition-tile')]
+        .filter((tile) => tile.scrollWidth > tile.clientWidth)
+        .map((tile) => ({
+          приём: (tile as HTMLElement).dataset['transition'],
+          надо: tile.scrollWidth,
+          есть: tile.clientWidth,
+        })),
+    );
+
+    expect(clipped, 'подписи, не поместившиеся в плитку').toEqual([]);
   });
 });
 

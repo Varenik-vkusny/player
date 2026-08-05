@@ -274,7 +274,7 @@ function isBlank(value: string | number | LengthOrPercent | null | undefined): b
  */
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
 
-function tryColor(raw: string | number): string | undefined {
+export function tryColor(raw: string | number): string | undefined {
   const text = String(raw).trim();
   return HEX_COLOR.test(text) ? text : undefined;
 }
