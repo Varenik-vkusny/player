@@ -1,0 +1,114 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>S11 — ссылка на токен через setProperty</title>
+<!--
+  Вопрос спайка: выразима ли ссылка на токен темы БЕЗ правки схемы.
+
+  `ElementStateSchema.style` — свободная карта (`Record<string, string|number>`,
+  ключи не ограничены), а `render.ts:115-116` накатывает её буквально так:
+
+      for (const [key, value] of Object.entries(state.style)) {
+        style.setProperty(key, String(value));
+      }
+
+  Значит если `setProperty('color', 'var(--scene-accent)')` работает, то
+  ссылка на токен уже сегодня хранится как обычное строковое значение стиля,
+  и бампа схемы требует только МЕСТО, где живёт сама тема.
+
+  Проверяется ровно тот вызов, которым пользуется плеер, — `setProperty`,
+  а не присваивание `style.color` и не класс. Иначе спайк проверял бы
+  не наш путь.
+
+  Отдельно и главное — тихий отказ. Неизвестный токен это ровно класс
+  дефекта anime.js с неизвестной плавностью: не бросает, а молча делает
+  не то. Нужно ЧИСЛО, а не догадка: что именно окажется на экране.
+-->
+<style>
+  /* Тема живёт на предке сцены, а не на элементе: так её смена стоит
+     одной записи, а не обхода всех элементов. */
+  #stage { --scene-accent: rgb(76, 141, 255); --scene-ink: rgb(230, 237, 245); }
+  #stage { position: relative; width: 400px; height: 200px; background: #07090c; }
+  .el { position: absolute; width: 120px; height: 40px; }
+</style>
+
+<div id="stage">
+  <div class="el" id="a" style="top:0"></div>
+  <div class="el" id="b" style="top:50px"></div>
+  <div class="el" id="c" style="top:100px"></div>
+  <div class="el" id="d" style="top:150px"></div>
+</div>
+
+<script type="module">
+  const stage = document.getElementById('stage');
+  const el = (id) => document.getElementById(id);
+
+  /** Единственный способ записи, которым пользуется плеер. */
+  const apply = (node, key, value) => node.style.setProperty(key, String(value));
+
+  const computed = (node, prop) => getComputedStyle(node).getPropertyValue(prop).trim();
+  const inline = (node, prop) => node.style.getPropertyValue(prop).trim();
+
+  const result = {};
+
+  // 1. Известный токен. Ожидание: цвет разрешается в значение переменной.
+  apply(el('a'), 'color', 'var(--scene-accent)');
+  result.known = {
+    inline: inline(el('a'), 'color'),
+    computed: computed(el('a'), 'color'),
+  };
+
+  // 2. НЕИЗВЕСТНЫЙ токен — главный вопрос спайка.
+  //    Что увидит автор, сославшийся на токен, которого в теме нет.
+  apply(el('b'), 'color', 'var(--scene-nope)');
+  result.unknown = {
+    inline: inline(el('b'), 'color'),
+    computed: computed(el('b'), 'color'),
+    // Что показал бы браузер БЕЗ нашей записи вообще — для сравнения:
+    // если совпадает, значит объявление отброшено и элемент унаследовал своё.
+    inheritedByDefault: computed(el('c'), 'color'),
+  };
+
+  // 3. Неизвестный токен с запасным значением.
+  apply(el('c'), 'color', 'var(--scene-nope, rgb(255, 0, 0))');
+  result.fallback = {
+    inline: inline(el('c'), 'color'),
+    computed: computed(el('c'), 'color'),
+  };
+
+  // 4. Токен в СОСТАВНОМ значении — фон и рамка редко бывают голым цветом.
+  apply(el('d'), 'background', 'var(--scene-accent)');
+  apply(el('d'), 'border', '2px solid var(--scene-ink)');
+  apply(el('d'), 'border-radius', '50%');
+  result.compound = {
+    background: computed(el('d'), 'background-color'),
+    border: computed(el('d'), 'border-top-color'),
+    radius: computed(el('d'), 'border-radius'),
+  };
+
+  // 5. СМЕНА ТЕМЫ. Ради этого всё и затевается: если смена значения
+  //    переменной на предке перекрашивает элементы, то переключение темы
+  //    стоит одной записи и не трогает ни один элемент сцены.
+  const before = computed(el('a'), 'color');
+  stage.style.setProperty('--scene-accent', 'rgb(0, 200, 120)');
+  const after = computed(el('a'), 'color');
+  result.themeSwap = {
+    before,
+    after,
+    changed: before !== after,
+    // Инлайновая запись элемента при этом обязана остаться прежней:
+    // перекрасил ТОКЕН, а не элемент.
+    elementInlineUnchanged: inline(el('a'), 'color') === 'var(--scene-accent)',
+  };
+
+  // 6. Переживает ли ссылка круг сериализации проекта. В схеме значение
+  //    стиля — строка, поэтому JSON.stringify/parse обязан вернуть её
+  //    байт в байт; проверяем, а не считаем очевидным.
+  const roundtrip = JSON.parse(JSON.stringify({ style: { color: 'var(--scene-accent)' } }));
+  apply(el('b'), 'color', roundtrip.style.color);
+  result.roundtrip = {
+    value: roundtrip.style.color,
+    computed: computed(el('b'), 'color'),
+  };
+
+  window.__s11 = result;
+</script>

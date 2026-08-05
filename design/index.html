@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Каркас редактора — Сессия 19</title>
+
+<!--
+  ПРОТОТИП, НЕ ПРОДУКТ.
+
+  Открывается двойным щелчком: ни сервера, ни сборки, ни модулей —
+  нарочно, чтобы посмотреть было нечем сломать. В `pnpm check` не входит,
+  packages/ не трогает.
+
+  Сессия 19 показывает КАРКАС: зоны, два набора токенов, сетку 8px.
+  Содержимое панелей — Сессии 20-21 (planning.md §17).
+
+  Что здесь уже настоящее, а не нарисованное:
+    · токены хрома и тема сцены разведены и работают;
+    · смена темы одной записью — кнопки справа вверху. Ни один элемент
+      сцены про тему не знает, меняется только переменная на предке.
+      Это ровно то, что измерил спайк S11;
+    · плавающая панель свойств стоит НАД объектом, а не сбоку.
+
+  Разбор — docs/strategy.md. План — docs/planning.md §17.
+-->
+
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="shell.css">
+
+<body>
+<div class="shell">
+
+  <!-- ================= ВЕРХНЯЯ ПОЛОСА ================= -->
+  <header class="topbar">
+    <span class="topbar__name">Производная — зачем она нужна</span>
+
+    <div class="viewswitch" role="group" aria-label="Вид">
+      <button type="button" aria-pressed="true">Линия</button>
+      <button type="button" aria-pressed="false">Карта</button>
+    </div>
+
+    <span class="topbar__spacer"></span>
+
+    <!-- Смена темы сцены. Одна запись на предке — см. main.js. -->
+    <div class="viewswitch" role="group" aria-label="Тема сцены" id="themes">
+      <button type="button" data-theme="" aria-pressed="true">Ночь</button>
+      <button type="button" data-theme="warm" aria-pressed="false">Тепло</button>
+      <button type="button" data-theme="paper" aria-pressed="false">Бумага</button>
+    </div>
+
+    <button type="button" class="button-block" style="width:auto">Предпросмотр</button>
+    <button type="button" class="button-block button-block--primary" style="width:auto">Отдать</button>
+  </header>
+
+  <!-- ================= РЕЛЬС КАТАЛОГОВ =================
+       Приём Canva: узкий рельс выбирает, что показывает широкая панель.
+       Каталогов может стать сколько угодно без переверстки. -->
+  <nav class="rail" aria-label="Каталоги">
+    <button type="button" class="rail__item" aria-pressed="true">
+      <span class="rail__glyph">▦</span>Шаблоны</button>
+    <button type="button" class="rail__item">
+      <span class="rail__glyph">◇</span>Фигуры</button>
+    <button type="button" class="rail__item">
+      <span class="rail__glyph">T</span>Текст</button>
+    <button type="button" class="rail__item">
+      <span class="rail__glyph">◐</span>Тема</button>
+    <button type="button" class="rail__item">
+      <span class="rail__glyph">↑</span>Своё</button>
+    <button type="button" class="rail__item">
+      <span class="rail__glyph">◔</span>Части</button>
+  </nav>
+
+  <!-- ================= ПАНЕЛЬ КАТАЛОГА ================= -->
+  <aside class="catalog">
+    <div class="catalog__head">
+      <h2 class="catalog__title">Шаблоны</h2>
+      <p class="catalog__hint">
+        Каталог — данные, а не код: пополняется записью в массив.
+        Так уже устроены заготовки элементов и шаблоны сцены.
+      </p>
+    </div>
+    <div class="catalog__body">
+      <!-- Галерея — то самое исключение из «складывать колонкой». -->
+      <div class="gallery">
+        <div class="gallery__cell">Заголовок</div>
+        <div class="gallery__cell">Список</div>
+        <div class="gallery__cell">Сравнение</div>
+        <div class="gallery__cell">Схема</div>
+        <div class="gallery__cell">Вопрос</div>
+        <div class="gallery__cell">Итог</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= ХОЛСТ ================= -->
+  <main class="stage-area">
+    <div class="scene" id="scene">
+      <h1 class="scene__title">Производная</h1>
+      <p class="scene__lead">
+        Скорость, с которой меняется величина. Не «сколько», а «как быстро».
+      </p>
+      <div class="scene__card"></div>
+      <div class="scene__dot"></div>
+
+      <!-- Выделение с ручками. Роль Handle отдельная: ручки читаются
+           на любом фоне, включая тему «бумага». -->
+      <div class="selection" style="left:8%; top:16%; width:44%; height:14%">
+        <span class="selection__handle" style="left:0;   top:0"></span>
+        <span class="selection__handle" style="left:50%; top:0"></span>
+        <span class="selection__handle" style="left:100%;top:0"></span>
+        <span class="selection__handle" style="left:0;   top:50%"></span>
+        <span class="selection__handle" style="left:100%;top:50%"></span>
+        <span class="selection__handle" style="left:0;   top:100%"></span>
+        <span class="selection__handle" style="left:50%; top:100%"></span>
+        <span class="selection__handle" style="left:100%;top:100%"></span>
+      </div>
+
+      <!-- Свойства приходят К объекту. Состав зависит от его типа:
+           здесь выделен текст, поэтому кегль и начертание. -->
+      <div class="objectbar" style="left:30%; top:14%">
+        <button type="button" class="objectbar__btn">Georgia</button>
+        <button type="button" class="objectbar__btn">44</button>
+        <span class="objectbar__sep"></span>
+        <button type="button" class="objectbar__btn"><b>Ж</b></button>
+        <button type="button" class="objectbar__btn"><i>К</i></button>
+        <button type="button" class="objectbar__btn">≡</button>
+        <span class="objectbar__sep"></span>
+        <button type="button" class="objectbar__btn" title="Цвет из темы">
+          <span class="objectbar__swatch"></span>
+        </button>
+        <span class="objectbar__sep"></span>
+        <button type="button" class="objectbar__btn">Появление</button>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>Смена темы стоит одной записи.</b>
+      Нажмите «Тепло» или «Бумага»: меняется переменная на предке сцены,
+      элементы про неё не знают и не перерисовываются.
+      Измерено спайком S11 — <code>spikes/results/s11.json</code>.
+    </p>
+  </main>
+
+  <!-- ================= ДОРОЖКА (ориентир CapCut) ================= -->
+  <section class="track" aria-label="Дорожка">
+    <div class="track__bar">
+      <button type="button" class="objectbar__btn">▶</button>
+      <span class="track__time">00:12.480 / 01:47.200</span>
+      <span class="topbar__spacer"></span>
+      <button type="button" class="objectbar__btn">Разрезать</button>
+      <button type="button" class="objectbar__btn">Поставить остановку</button>
+    </div>
+    <div class="track__lanes">
+      <div class="lane lane--wave">
+        <span class="playhead" style="left:22%"></span>
+      </div>
+      <div class="lane lane--marks">
+        <span class="mark" style="left:6%"></span>
+        <span class="mark" style="left:18%"></span>
+        <span class="mark mark--orphan" style="left:31%" title="Сирота: слово пропало"></span>
+        <span class="mark" style="left:44%"></span>
+        <span class="mark mark--gate" style="left:58%" title="Остановка"></span>
+        <span class="mark" style="left:72%"></span>
+        <span class="playhead" style="left:22%"></span>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>

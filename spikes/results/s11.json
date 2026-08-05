@@ -1,0 +1,37 @@
+{
+  "result": {
+    "known": {
+      "inline": "var(--scene-accent)",
+      "computed": "rgb(76, 141, 255)"
+    },
+    "unknown": {
+      "inline": "var(--scene-nope)",
+      "computed": "rgb(0, 0, 0)",
+      "inheritedByDefault": "rgb(0, 0, 0)"
+    },
+    "fallback": {
+      "inline": "var(--scene-nope, rgb(255, 0, 0))",
+      "computed": "rgb(255, 0, 0)"
+    },
+    "compound": {
+      "background": "rgb(76, 141, 255)",
+      "border": "rgb(230, 237, 245)",
+      "radius": "50%"
+    },
+    "themeSwap": {
+      "before": "rgb(76, 141, 255)",
+      "after": "rgb(0, 200, 120)",
+      "changed": true,
+      "elementInlineUnchanged": true
+    },
+    "roundtrip": {
+      "value": "var(--scene-accent)",
+      "computed": "rgb(0, 200, 120)"
+    }
+  },
+  "verdict": [
+    "ДА: известный токен разрешается — ссылка выразима без правки схемы",
+    "ТИХИЙ ОТКАЗ: неизвестный токен отбрасывает объявление целиком, элемент показывает унаследованное (rgb(0, 0, 0)). Ошибки нет — предупреждать обязан РЕДАКТОР",
+    "СМЕНА ТЕМЫ: одна запись на предке перекрашивает элементы, инлайн элемента не тронут"
+  ]
+}
