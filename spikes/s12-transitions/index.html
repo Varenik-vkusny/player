@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>S12 — «Штора» и «Круг» на transform</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #000; overflow: hidden; height: 100%; }
+  #host { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="host"><div id="stage"></div></div>
+<script type="module">
+/**
+ * S12: «Штора» и «Круг» плашкой на transform.
+ *
+ * Зачем замер. Каталог переходов (docs/design/screens.md §4.2) несёт восемь
+ * приёмов. Три «стирания» Canva сделаны clip-path, а его в ANIMATABLE нет
+ * и по инварианту №8 быть не должно: clip-path уводит с композитора. Плашкой
+ * на transform приём выразим — НО ЭТО ДОГАДКА, ПОКА НЕ ИЗМЕРЕНА.
+ *
+ * Что меряем. Стоимость самого приёма, а не сцены: пятнадцать элементов
+ * стоят неподвижно (это и есть слайд), движется только плашка поверх них.
+ * Пятнадцать — столько же, сколько в S6, иначе число не с чем сравнивать.
+ *
+ * Условия скопированы с S6 дословно (вьюпорт 380x780, dpr 2, троттлинг 4x)
+ * по той же причине.
+ *
+ * Время берёт AudioClock, а не requestAnimationFrame. Инвариант №1 действует
+ * и в оснастке: замер, где анимацию гонит кадровый цикл, дал бы более гладкие
+ * числа и был бы враньём — в продукте так не будет никогда.
+ */
+import { createTimeline, engine } from '../lib/anime.esm.min.js';
+import { renderScene, applyFit, STAGE_WIDTH, STAGE_HEIGHT } from '../lib/render.mjs';
+import { AudioClock, loadTrack } from '../lib/audio-clock.mjs';
+
+engine.useDefaultMainLoop = false;
+
+const PALETTE = ['#e4572e', '#29335c', '#f3a712', '#a8c686', '#669bbc'];
+
+/** Диаметр круга: диагональ сцены, иначе угол останется неприкрытым. */
+const DIAGONAL = Math.ceil(Math.hypot(STAGE_WIDTH, STAGE_HEIGHT));
+
+// Сцена — тот же состав, что в S6: 12 фигур и 3 текстовых блока. Текст нужен
+// обязательно: именно на нём видно, что перерисовка идёт по-настоящему,
+// а не по пустому фону.
+const SCENE = {
+  width: STAGE_WIDTH, height: STAGE_HEIGHT, background: '#11141a',
+  elements: [
+    ...Array.from({ length: 12 }, (_, i) => ({
+      id: `shape-${i}`, type: 'shape',
+      x: 80 + (i % 4) * 460, y: 80 + Math.floor(i / 4) * 240,
+      width: 180, height: 180, zIndex: 1,
+      style: { background: PALETTE[i % PALETTE.length], 'border-radius': '24px' },
+    })),
+    {
+      id: 'text-1', type: 'text', x: 80, y: 800, width: 820, height: 200, zIndex: 2,
+      content: 'Приём перехода обязан укладываться в transform, opacity и filter — '
+             + 'те же три свойства, что инвариант №8 разрешает сцене.',
+      style: { color: '#f5f7fa', 'font-family': 'system-ui, sans-serif', 'font-size': '34px', 'line-height': '1.4' },
+    },
+    {
+      id: 'text-2', type: 'text', x: 960, y: 800, width: 820, height: 120, zIndex: 2,
+      content: 'Штора — плашка, едущая по translateX.',
+      style: { color: '#9fb0c4', 'font-family': 'Georgia, serif', 'font-size': '40px' },
+    },
+    {
+      id: 'text-3', type: 'text', x: 960, y: 940, width: 820, height: 80, zIndex: 2,
+      content: 'Круг — плашка, растущая по scale.',
+      style: { color: '#6d7f95', 'font-family': 'system-ui, sans-serif', 'font-size': '28px' },
+    },
+    // Плашка «Шторы»: во всю сцену, стоит слева за краем и въезжает.
+    {
+      id: 'wipe', type: 'shape',
+      x: 0, y: 0, width: STAGE_WIDTH, height: STAGE_HEIGHT, zIndex: 10,
+      style: { background: '#0f1620' },
+    },
+    // Плашка «Круга»: диагональ сцены, круглая, растёт из центра.
+    {
+      id: 'circle', type: 'shape',
+      x: Math.round((STAGE_WIDTH - DIAGONAL) / 2),
+      y: Math.round((STAGE_HEIGHT - DIAGONAL) / 2),
+      width: DIAGONAL, height: DIAGONAL, zIndex: 10,
+      style: { background: '#0f1620', 'border-radius': '50%' },
+    },
+  ],
+};
+
+const host = document.getElementById('host');
+const stage = document.getElementById('stage');
+const nodes = renderScene(stage, SCENE);
+applyFit(stage, host.clientWidth, host.clientHeight, SCENE);
+
+/**
+ * Инвариант №8. `translateX` и `scale` — то, как anime.js называет свойства,
+ * которые мы задаём как `x` и `scale`; оба псевдонима обязаны быть в списке,
+ * иначе проверка поймает несуществующее нарушение.
+ */
+const ALLOWED = ['x', 'y', 'scale', 'rotate', 'opacity', 'filter', 'translateX', 'translateY'];
+window.__animatedProps = new Set();
+window.__illegalProps = [];
+
+/**
+ * Собирает таймлайн одного приёма.
+ *
+ * Приём длится 600 мс — то же число, что MORPH_DURATION_S в продукте.
+ * Неучаствующая плашка убирается за край сцены, а не гасится opacity:
+ * гашение само по себе стоит композиторного слоя и подмешалось бы в замер.
+ */
+function buildTimeline(technique) {
+  window.__animatedProps = new Set();
+  const tl = createTimeline({ autoplay: false, defaults: { ease: 'inOutSine' } });
+
+  const wipe = nodes.get('wipe');
+  const circle = nodes.get('circle');
+
+  // Обе плашки сначала уводятся с глаз, затем работает только нужная.
+  wipe.style.transform = `translateX(${-STAGE_WIDTH}px)`;
+  circle.style.transform = 'scale(0)';
+
+  const props = technique === 'wipe'
+    ? { x: [-STAGE_WIDTH, 0] }
+    : { scale: [0, 1] };
+  const node = technique === 'wipe' ? wipe : circle;
+
+  Object.keys(props).forEach((p) => window.__animatedProps.add(p));
+  tl.add(node, { ...props, duration: 600, loop: true, alternate: true }, 0);
+
+  window.__illegalProps = [...window.__animatedProps].filter((p) => !ALLOWED.includes(p));
+  return tl;
+}
+
+let tl = buildTimeline('wipe');
+
+/**
+ * Замер. Возвращает те же ключи, что S6, — вердикт считается по
+ * 'fps p5 (худшие кадры)', и переименование ключа сломало бы прогон молча.
+ */
+window.__measure = async (seconds = 10, technique = 'wipe') => {
+  tl = buildTimeline(technique);
+  const ctx = new AudioContext();
+  await ctx.resume();
+  const track = await loadTrack(ctx, '../assets/tone-120s.wav');
+  const clock = new AudioClock(ctx, track.buffer);
+  clock.start(0);
+
+  const frames = [];
+  let previous = performance.now();
+  await new Promise((resolve) => {
+    const frame = () => {
+      const now = performance.now();
+      frames.push(now - previous);
+      previous = now;
+      tl.currentTime = (clock.position * 1000) % tl.duration;
+      if (clock.position >= seconds) resolve();
+      else requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+  clock.stop();
+  await ctx.close();
+
+  // Первые два кадра отбрасываются: в них попадает запуск часов.
+  const intervals = frames.slice(2).sort((a, b) => a - b);
+  const at = (p) => intervals[Math.min(intervals.length - 1, Math.floor(p * intervals.length))];
+  const fps = (ms) => 1000 / ms;
+  return {
+    приём: technique,
+    кадров: intervals.length,
+    'fps медиана': +fps(at(0.5)).toFixed(1),
+    'fps p5 (худшие кадры)': +fps(at(0.95)).toFixed(1),
+    'fps минимум': +fps(intervals[intervals.length - 1]).toFixed(1),
+    'самый длинный кадр, мс': +intervals[intervals.length - 1].toFixed(2),
+    'кадров длиннее 18.2 мс (ниже 55 fps)': intervals.filter((v) => v > 18.2).length,
+  };
+};
+
+document.documentElement.dataset.ready = '1';
+</script>
+</body>
+</html>
