@@ -14,21 +14,22 @@ import {
   preloadTargetsOfExit,
   type Answers,
 } from '../src/graph.js';
-import { SCHEMA_VERSION, type Project, type Segment } from '../src/schema.js';
+import { SCHEMA_VERSION, ThemeSchema, type Project, type Segment } from '../src/schema.js';
 
 const segment = (id: string, exit: Segment['exit']): Segment => ({
   id,
   title: '',
+  description: '',
   audio: { src: `/${id}.mp3`, offset: 0, duration: 10, words: [] },
   elements: [],
-  slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+  slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
   gates: [],
   exit,
 });
 
 const project = (segments: Segment[]): Project => ({
   schemaVersion: SCHEMA_VERSION,
-  meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
+  meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
   entry: segments[0]!.id,
   segments,
 });
@@ -173,14 +174,15 @@ describe('что греть заранее', () => {
 describe('сколько частей осталось', () => {
   const line = (): Project => ({
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: '', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: '', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
     entry: 'a',
     segments: ['a', 'b', 'c'].map((id, index, all) => ({
       id,
       title: '',
+      description: '',
       audio: { src: '/a.mp3', offset: 0, duration: 5, words: [] },
       elements: [],
-      slides: [{ id: `${id}-1`, at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+      slides: [{ id: `${id}-1`, at: { kind: 'seconds', t: 0 }, transition: 'cut', transitionSeconds: 0.6, states: {} }],
       gates: [],
       exit: { rules: [], default: all[index + 1] ?? null },
     })),

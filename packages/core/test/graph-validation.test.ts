@@ -11,14 +11,15 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { ProjectSchema, SCHEMA_VERSION } from '../src/schema.js';
+import { ProjectSchema, SCHEMA_VERSION, ThemeSchema } from '../src/schema.js';
 
 const bare = (id: string, exit: unknown, gates: unknown[] = []): any => ({
   id,
   title: '',
+  description: '',
   audio: { src: `/${id}.mp3`, duration: 10, words: [] },
   elements: [],
-  slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+  slides: [{ id: `${id}-s1`, at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
   gates,
   exit,
 });
@@ -41,7 +42,7 @@ const choice = (recordAs: string, ...optionIds: string[]) => ({
 function explanation(exit: unknown, gates: unknown[] = []): any {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
     entry: 'start',
     segments: [
       bare('start', exit, gates),

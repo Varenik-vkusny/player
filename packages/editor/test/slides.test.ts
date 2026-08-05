@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { loadProject, SCHEMA_VERSION } from '@player/core';
+import { loadProject, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, ElementState, Project, Segment, Slide, TimeRef } from '@player/core';
 
 import { copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, type SlideClipboard } from '../src/state/slides.js';
@@ -37,11 +37,12 @@ function baseSegment(): Segment {
   return {
     id: 'seg-1',
     title: '',
+    description: '',
     audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
     elements: [el('shape-1')],
     slides: [
-      { id: 'slide-1', at: seconds(0), transition: 'morph', states: { 'shape-1': state() } },
-      { id: 'slide-2', at: seconds(5), transition: 'morph', states: { 'shape-1': state({ x: 50 }) } },
+      { id: 'slide-1', at: seconds(0), transition: 'morph', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+      { id: 'slide-2', at: seconds(5), transition: 'morph', transitionSeconds: 0.6, states: { 'shape-1': state({ x: 50 }) } },
     ],
     gates: [],
     exit: { rules: [], default: null },
@@ -54,13 +55,13 @@ function clipboardOf(
   states: Record<string, ElementState>,
   transition: Slide['transition'] = 'morph',
 ): SlideClipboard {
-  return { sourceSegmentId: 'other-segment', transition, states, elements };
+  return { sourceSegmentId: 'other-segment', transition, transitionSeconds: 0.6, states, elements };
 }
 
 function project(segment: Segment): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Буфер обмена слайдов', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Буфер обмена слайдов', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: segment.id,
     segments: [segment],
   };

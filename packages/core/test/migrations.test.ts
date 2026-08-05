@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { loadProject } from '../src/load.js';
 import { MIGRATIONS, migrateToCurrent, SchemaVersionError } from '../src/migrations.js';
-import { ProjectSchema, SCHEMA_VERSION } from '../src/schema.js';
+import { ProjectSchema, SCHEMA_VERSION, ThemeSchema } from '../src/schema.js';
 import { resolveTimeRef } from '../src/time.js';
 
 // fileURLToPath, а не pathname.slice(1): на Linux путь начинается со слэша,
@@ -226,6 +226,7 @@ describe('рёбра гейтов становятся правилами вых
       nodes: [{
         id: 'a',
         title: '',
+        description: '',
         audio: { src: 'a.mp3', duration: 10, words: [] },
         scene: {
           elements: [],
@@ -262,14 +263,15 @@ describe('миграция не падает своим TypeError на бито�
 describe('v3 → v4: окно дорожки и право не иметь верного ответа', () => {
   const v3 = () => ({
     schemaVersion: 3,
-    meta: { title: 'Старый проект', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Старый проект', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
     entry: 'a',
     segments: [{
       id: 'a',
       title: 'Часть',
+      description: '',
       audio: { src: '/a.mp3', duration: 10, words: [] },
       elements: [],
-      slides: [{ id: 's1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+      slides: [{ id: 's1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
       gates: [{
         id: 'g1',
         at: { kind: 'seconds', t: 2 },
@@ -344,14 +346,15 @@ describe('v3 → v4: окно дорожки и право не иметь ве�
 describe('v5 → v6: fileId — второй источник дорожки', () => {
   const v5 = () => ({
     schemaVersion: 5,
-    meta: { title: 'Проект версии 5', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Проект версии 5', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
     entry: 'a',
     segments: [{
       id: 'a',
       title: 'Часть',
+      description: '',
       audio: { src: '/a.mp3', offset: 0, duration: 10, words: [] },
       elements: [],
-      slides: [{ id: 's1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+      slides: [{ id: 's1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
       gates: [],
       exit: { rules: [], default: null },
     }],
@@ -476,5 +479,43 @@ describe('v7 → v8: появился вид orphan, содержимое не �
   it('проект v7 с диска доезжает до текущей версии и проходит валидацию', () => {
     const project = loadProject(raw('repeat.json'));
     expect(project.schemaVersion).toBe(SCHEMA_VERSION);
+  });
+});
+
+describe('v8 → v9: тема, описание части, приём и длительность перехода', () => {
+  it('единственная фикстура на v8 доходит до v9 и получает умолчания', () => {
+    // speech.json — единственный файл на диске, лежащий в версии 8
+    // (проверено: grep schemaVersion fixtures/projects/*.json). Остальные
+    // пятнадцать лежат на v1…v7 и доходят сюда всей цепочкой.
+    expect(raw('speech.json').schemaVersion).toBe(8);
+
+    const migrated = migrateToCurrent(raw('speech.json')) as { schemaVersion: number };
+    expect(migrated.schemaVersion).toBe(9);
+
+    const project = ProjectSchema.parse(migrated);
+    expect(project.segments[0]!.description).toBe('');
+    expect(project.segments[0]!.slides[0]!.transitionSeconds).toBe(0.6);
+    expect(project.meta.theme['--scene-accent']).toBe('#4c8dff');
+  });
+
+  it('все шестнадцать фикстур доходят до v9 и разбираются', () => {
+    // Фикстуры лежат на РАЗНЫХ версиях (семь на v1, остальные по одной-две
+    // на v2…v8), поэтому здесь прогоняется ВСЯ цепочка миграций, а не
+    // последний шаг. Число не пишем: оно сгниёт, считаем от каталога.
+    expect(all.length).toBeGreaterThan(0);
+    for (const name of all) {
+      const migrated = migrateToCurrent(raw(name));
+      expect(() => ProjectSchema.parse(migrated), `${name} не разобралась`).not.toThrow();
+    }
+  });
+
+  it('миграция не выдумывает содержимого: сегменты доезжают как были', () => {
+    // Валидный результат с другим смыслом — самый дорогой способ ошибиться.
+    // Три поля добавочные, значит ДО разбора содержимое обязано совпадать
+    // байт в байт: умолчания проставляет Zod, а не миграция.
+    const before = raw('speech.json');
+    const after = migrateToCurrent(before) as { segments: unknown; entry: unknown };
+    expect(after.segments).toEqual(before.segments);
+    expect(after.entry).toEqual(before.entry);
   });
 });

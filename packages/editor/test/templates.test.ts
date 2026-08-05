@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ProjectSchema, SCHEMA_VERSION } from '@player/core';
+import { ProjectSchema, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Project, Segment } from '@player/core';
 
 import { ANIMATION_PRESETS, ELEMENT_LIBRARY } from '../src/state/library.js';
@@ -22,9 +22,10 @@ function emptySegment(): Segment {
   return {
     id: 'seg-1',
     title: '',
+    description: '',
     audio: { src: 'audio/test.mp3', offset: 0, duration: 3, words: [] },
     elements: [],
-    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
     gates: [],
     exit: { rules: [], default: null },
   };
@@ -33,7 +34,7 @@ function emptySegment(): Segment {
 function projectAround(segment: Segment): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height },
+    meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height, theme: ThemeSchema.parse({}) },
     entry: segment.id,
     segments: [segment],
   };
@@ -209,25 +210,27 @@ describe('шаблон «вопрос»: варианты действитель
     return {
       project: {
         schemaVersion: SCHEMA_VERSION,
-        meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
+        meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
         entry: 'n1',
         segments: [
           { ...segment, id: 'n1', audio },
           {
             id: 'n2',
             title: 'Да',
+            description: '',
             audio,
             elements: [],
-            slides: [{ id: 'n2-slide', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+            slides: [{ id: 'n2-slide', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
             gates: [],
             exit: { rules: [], default: null },
           },
           {
             id: 'n3',
             title: 'Нет',
+            description: '',
             audio,
             elements: [],
-            slides: [{ id: 'n3-slide', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+            slides: [{ id: 'n3-slide', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
             gates: [],
             exit: { rules: [], default: null },
           },

@@ -34,7 +34,7 @@ export {
   morphSecondsFor,
   phaseAt,
   planMorph,
-  MORPH_DURATION_S,
+  type Transition,
   type MorphPart,
   type MorphRole,
   type MorphTimeline,

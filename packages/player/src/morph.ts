@@ -9,7 +9,7 @@
  * Разделение не косметическое: правило сопоставления — это модель (ADR-015),
  * а таймлайн — способ её показать. Их ошибки лечатся в разных местах.
  */
-import type { ElementState } from '@player/core';
+import { type ElementState, TRANSITIONS } from '@player/core';
 // Импорт «бочкой», а не по подпутям `animejs/timeline` и `animejs/engine`:
 // замерено — сборка выходит побайтово одинаковой (178.28 КБ), потому что
 // таймлайн и так тянет почти всё ядро движка. При равном размере выигрывает
@@ -19,13 +19,10 @@ import { createTimeline, engine } from 'animejs';
 import type { SlideStates } from './render.js';
 
 /**
- * Длительность перехода по умолчанию, секунды.
- *
- * Число одно на весь продукт и в схеме его нет: слайд описывает СОСТОЯНИЕ,
- * а не хронометраж перехода к себе. Автор управляет темпом расстановкой
- * слайдов по дорожке, а не отдельным полем длительности.
+ * Приём перехода. Тип берётся из схемы, а не объявляется здесь второй раз:
+ * два описания одного перечисления разъехались бы молча.
  */
-export const MORPH_DURATION_S = 0.6;
+export type Transition = (typeof TRANSITIONS)[number];
 
 /**
  * Доля перехода, которую занимает уход несовпавших и приход новых.
@@ -46,14 +43,15 @@ const UNMATCHED_FRACTION = 0.5;
  * бы не с той картинки, которая в тот момент на экране.
  */
 export function morphSecondsFor(
-  transition: 'morph' | 'cut',
+  transition: Transition,
+  transitionSeconds: number,
   index: number,
   seconds: readonly number[],
 ): number {
   // Первому слайду ехать неоткуда: предыдущего состояния не существует.
   if (index === 0 || transition === 'cut') return 0;
   const gap = seconds[index]! - seconds[index - 1]!;
-  return Math.max(0, Math.min(MORPH_DURATION_S, gap));
+  return Math.max(0, Math.min(transitionSeconds, gap));
 }
 
 /** Расписание одного слайда: когда его метка и сколько едут К ней. */

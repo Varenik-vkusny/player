@@ -15,9 +15,10 @@ function segment(overrides: Partial<Segment> = {}): Segment {
   return {
     id: 'seg-1',
     title: '',
+    description: '',
     audio: { src: 'a.mp3', offset: 0, duration: 10, words: [] },
     elements: [],
-    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
     gates: [],
     exit: { rules: [], default: null },
     ...overrides,
@@ -167,7 +168,7 @@ describe('removeElement: каскад по слайдам', () => {
     const { element, state } = createElement(libraryItem('shape'), segment(), emptyStates(), STAGE);
     const seg = segment({
       elements: [element],
-      slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: { [element.id]: state } }],
+      slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: { [element.id]: state } }],
     });
 
     const next = removeElement(seg, element.id);
@@ -180,8 +181,8 @@ describe('removeElement: каскад по слайдам', () => {
     const seg = segment({
       elements: [element],
       slides: [
-        { id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: { [element.id]: state } },
-        { id: 'slide-2', at: { kind: 'seconds', t: 1 }, transition: 'morph', states: { [element.id]: state } },
+        { id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: { [element.id]: state } },
+        { id: 'slide-2', at: { kind: 'seconds', t: 1 }, transition: 'morph', transitionSeconds: 0.6, states: { [element.id]: state } },
       ],
     });
 
@@ -193,11 +194,11 @@ describe('removeElement: каскад по слайдам', () => {
 
   it('слайд, не несущий состояние удаляемого элемента, остаётся тем же объектом по ссылке', () => {
     const { element, state } = createElement(libraryItem('shape'), segment(), emptyStates(), STAGE);
-    const untouched = { id: 'slide-2', at: { kind: 'seconds' as const, t: 1 }, transition: 'morph' as const, states: {} };
+    const untouched = { id: 'slide-2', at: { kind: 'seconds' as const, t: 1 }, transition: 'morph' as const, transitionSeconds: 0.6, states: {} };
     const seg = segment({
       elements: [element],
       slides: [
-        { id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: { [element.id]: state } },
+        { id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: { [element.id]: state } },
         untouched,
       ],
     });

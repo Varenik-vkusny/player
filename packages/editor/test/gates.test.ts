@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { loadProject, SCHEMA_VERSION } from '@player/core';
+import { loadProject, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, Gate, Project, Slide } from '@player/core';
 
 import {
@@ -90,15 +90,19 @@ function element(id: string): Element {
 function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'seg-1',
     segments: [
       {
         id: 'seg-1',
         title: '',
+        description: '',
         audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
         elements: [...elements],
-        slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+        slides: [{
+          id: 'slide-1', at: { kind: 'seconds', t: 0 },
+          transition: 'morph', transitionSeconds: 0.6, states: {},
+        }],
         gates: [gate],
         exit: { rules: [], default: null },
       },
@@ -660,10 +664,11 @@ describe('охранник схемы: сериализованный файл �
  * промахнулся — он ставил вопрос к тому, что сейчас едет по экрану.
  */
 describe('гейт внутри перехода между слайдами', () => {
-  const slide = (id: string, t: number, transition: 'morph' | 'cut' = 'morph'): Slide => ({
+  const slide = (id: string, t: number, transition: Slide['transition'] = 'morph'): Slide => ({
     id,
     at: { kind: 'seconds', t },
     transition,
+    transitionSeconds: 0.6,
     states: {},
   });
 

@@ -17,7 +17,7 @@
  * сегмента (`segment.exit`, `segment.gates`), а не к слайдам или элементам.
  */
 import type { Condition, Exit, ExitRule, Gate, Project, Segment } from '@player/core';
-import { findSegment } from '@player/core';
+import { DEFAULT_TRANSITION_SECONDS, findSegment } from '@player/core';
 
 import { freeId } from './elements.js';
 
@@ -42,9 +42,18 @@ export function addSegment(project: Project, audioFrom: string): { project: Proj
     // Порядковый номер нового сегмента в массиве — не id и не число сегментов
     // ДО добавления, а позиция, которую сегмент займёт (segments.length + 1).
     title: `Сегмент ${project.segments.length + 1}`,
+    // Пустое: описание пишет автор. Сочинить его за него значило бы
+    // показать на карточке карты текст, которого никто не писал.
+    description: '',
     audio: source.audio,
     elements: [],
-    slides: [{ id: freeId('slide', []), at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    slides: [{
+      id: freeId('slide', []),
+      at: { kind: 'seconds', t: 0 },
+      transition: 'morph',
+      transitionSeconds: DEFAULT_TRANSITION_SECONDS,
+      states: {},
+    }],
     gates: [],
     exit: { rules: [], default: null },
   };

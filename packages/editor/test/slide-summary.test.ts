@@ -19,7 +19,7 @@ function elementState(overrides: Partial<ElementState> = {}): ElementState {
 }
 
 function slide(id: string, states: Record<string, ElementState>, at: Slide['at'] = { kind: 'seconds', t: 0 }): Slide {
-  return { id, at, transition: 'morph', states };
+  return { id, at, transition: 'morph', transitionSeconds: 0.6, states };
 }
 
 describe('slideChangeSummary', () => {

@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest';
 
 import { alignWords, splitIntoWords } from '../src/align.js';
 import { loadProject, ProjectLoadError } from '../src/load.js';
-import { ProjectSchema, SCHEMA_VERSION } from '../src/schema.js';
+import { ProjectSchema, SCHEMA_VERSION, TRANSITIONS } from '../src/schema.js';
 
 const DIR = fileURLToPath(new URL('../../../fixtures/projects/', import.meta.url));
 const raw = (name: string): any => JSON.parse(readFileSync(join(DIR, name), 'utf8'));
@@ -174,7 +174,7 @@ describe('слайды', () => {
   it('два слайда на одной секунде — неоднозначность, а не мелочь', () => {
     const project = explanation();
     project.segments[0].slides.push({
-      id: 's2', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {},
+      id: 's2', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {},
     });
     expect(problems(project)).toMatch(/два слайда на одной секунде/);
   });
@@ -182,8 +182,8 @@ describe('слайды', () => {
   it('слайды не по порядку не проходят', () => {
     const project = explanation();
     project.segments[0].slides.push(
-      { id: 's2', at: { kind: 'seconds', t: 5 }, transition: 'morph', states: {} },
-      { id: 's3', at: { kind: 'seconds', t: 2 }, transition: 'morph', states: {} },
+      { id: 's2', at: { kind: 'seconds', t: 5 }, transition: 'morph', transitionSeconds: 0.6, states: {} },
+      { id: 's3', at: { kind: 'seconds', t: 2 }, transition: 'morph', transitionSeconds: 0.6, states: {} },
     );
     expect(problems(project)).toMatch(/идут не по порядку/);
   });
@@ -230,9 +230,10 @@ describe('переменные зрителя', () => {
     project.segments.push({
       id: 'второй',
       title: '',
+      description: '',
       audio: { src: '/b.mp3', duration: 5, words: [] },
       elements: [],
-      slides: [{ id: 'b1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+      slides: [{ id: 'b1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
       gates: [],
       exit: {
         rules: [{ id: 'r1', when: [{ kind: 'correct', variable: 'ответ' }], goto: 'intro' }],
@@ -439,5 +440,72 @@ describe('версия 4: развилка и окно дорожки', () => {
 
     project.segments[0].slides[0].at = { kind: 'seconds', t: 999 };
     expect(problems(project)).toMatch(/выходит за длительность/);
+  });
+});
+
+describe('схема v9: тема, описание части, приём и длительность перехода', () => {
+  it('слайд без transitionSeconds получает 0.6', () => {
+    // Число обязано совпасть с прежним MORPH_DURATION_S: умолчание
+    // воспроизводит сегодняшний вид, иначе 80 скриншотных эталонов
+    // покраснеют — и это единственная проверка, доказывающая, что v9
+    // ничего не изменила.
+    const project = ProjectSchema.parse(explanation());
+    const slide = project.segments[0]!.slides[0]!;
+    expect(slide.transitionSeconds).toBe(0.6);
+    expect(slide.transition).toBe('morph');
+  });
+
+  it('каталог переходов несёт восемь приёмов', () => {
+    // Поимённо, а не «длина восемь»: приём, подменённый другим, прошёл бы
+    // проверку по длине. «Штора» и «Круг» стоят здесь по замеру S12,
+    // а не по рассуждению.
+    expect([...TRANSITIONS]).toEqual([
+      'cut', 'morph', 'dissolve', 'slide', 'scale', 'blur', 'wipe', 'circle',
+    ]);
+  });
+
+  it('неизвестный приём не принимается', () => {
+    const project = explanation();
+    project.segments[0].slides[0].transition = 'выдумка';
+    expect(ProjectSchema.safeParse(project).success).toBe(false);
+  });
+
+  it('отрицательная длительность перехода не принимается', () => {
+    const project = explanation();
+    project.segments[0].slides[0].transitionSeconds = -1;
+    expect(ProjectSchema.safeParse(project).success).toBe(false);
+  });
+
+  it('сегмент без описания получает пустую строку', () => {
+    const project = ProjectSchema.parse(explanation());
+    expect(project.segments[0]!.description).toBe('');
+  });
+
+  it('проект без темы получает десять ролей со значениями по умолчанию', () => {
+    const project = ProjectSchema.parse(explanation());
+    expect(Object.keys(project.meta.theme)).toHaveLength(10);
+    expect(project.meta.theme['--scene-accent']).toBe('#4c8dff');
+    expect(project.meta.theme['--scene-radius']).toBe('28px');
+  });
+
+  it('тема закрыта: лишняя роль отбрасывается, а не сохраняется молча', () => {
+    // Закрытый список — условие того, чтобы каталог палитр остался данными.
+    // Если чужая палитра принесёт свою роль, а мы её сохраним, элементы
+    // сославшиеся на неё почернеют в проекте без этой палитры — молча,
+    // без ошибки и предупреждения (измерено S11).
+    const project = explanation();
+    project.meta.theme = { '--scene-выдумка': '#ff0000' };
+    const parsed = ProjectSchema.parse(project);
+    expect(parsed.meta.theme).not.toHaveProperty('--scene-выдумка');
+    expect(Object.keys(parsed.meta.theme)).toHaveLength(10);
+  });
+
+  it('автор может переопределить одну роль, остальные девять остаются', () => {
+    const project = explanation();
+    project.meta.theme = { '--scene-accent': '#ff0000' };
+    const parsed = ProjectSchema.parse(project);
+    expect(parsed.meta.theme['--scene-accent']).toBe('#ff0000');
+    expect(parsed.meta.theme['--scene-bg']).toBe('#0f1620');
+    expect(Object.keys(parsed.meta.theme)).toHaveLength(10);
   });
 });

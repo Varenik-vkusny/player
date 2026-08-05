@@ -61,7 +61,7 @@ export function gateInsideTransition(
   const seconds = slides.map((slide) => resolveTimeRef(slide.at, words));
   const schedule = slides.map((slide, index) => ({
     seconds: seconds[index]!,
-    morphSeconds: morphSecondsFor(slide.transition, index, seconds),
+    morphSeconds: morphSecondsFor(slide.transition, slide.transitionSeconds, index, seconds),
   }));
 
   return phaseAt(schedule, at).kind === 'morph';

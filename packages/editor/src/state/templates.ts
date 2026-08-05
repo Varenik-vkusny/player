@@ -26,7 +26,7 @@
  * `Segment`. Она ДОБАВЛЯЕТ к сегменту, а не заменяет его: у автора уже
  * могло что-то лежать (см. комментарий самой функции).
  */
-import { resolveTimeRef } from '@player/core';
+import { DEFAULT_TRANSITION_SECONDS, resolveTimeRef } from '@player/core';
 import type { Element, ElementState, Gate, Segment, TimeRef } from '@player/core';
 
 import { freeId } from './elements.js';
@@ -474,6 +474,7 @@ export function applyTemplate(
       id: freeId('slide', slides),
       at,
       transition: 'morph' as const,
+      transitionSeconds: DEFAULT_TRANSITION_SECONDS,
       states: { ...anchor.states, ...patch },
     };
     slides.splice(insertAfter + 1, 0, newSlide);

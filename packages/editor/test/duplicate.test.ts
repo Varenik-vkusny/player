@@ -15,7 +15,7 @@
  * и тест, ищущий по совпадению заголовка, продиктовал бы это поведение
  * продукту, а не проверял его.
  */
-import { ProjectSchema, SCHEMA_VERSION, type Project, type Segment } from '@player/core';
+import { ProjectSchema, SCHEMA_VERSION, ThemeSchema, type Project, type Segment } from '@player/core';
 import { describe, expect, it } from 'vitest';
 
 import { duplicateSegment } from '../src/state/project.js';
@@ -55,15 +55,16 @@ const box = (x: number) => ({
 function projectWithGate(): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Копия куска', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Копия куска', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 's-1',
     segments: [
       {
         id: 's-1',
         title: 'Кусок с вопросом',
+        description: '',
         audio: { src: '/track.mp3', offset: 0, duration: 10, words: [] },
         elements: [{ id: 'hero', type: 'text', content: 'Заголовок' }],
-        slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: { hero: box(0) } }],
+        slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: { hero: box(0) } }],
         gates: [{
           id: 'g1',
           at: { kind: 'seconds', t: 5 },
@@ -82,9 +83,10 @@ function projectWithGate(): Project {
       {
         id: 'end',
         title: 'Конец',
+        description: '',
         audio: { src: '/track.mp3', offset: 0, duration: 1, words: [] },
         elements: [],
-        slides: [{ id: 'sl-e', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+        slides: [{ id: 'sl-e', at: { kind: 'seconds', t: 0 }, transition: 'cut', transitionSeconds: 0.6, states: {} }],
         gates: [],
         exit: { rules: [], default: null },
       },
@@ -123,15 +125,16 @@ function projectWithGateAndRules(): Project {
 function projectWithSpeech(): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Копия с озвучкой', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Копия с озвучкой', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 's-1',
     segments: [{
       id: 's-1',
       title: 'Кусок с озвучкой',
+      description: '',
       speech: 'Часы это позиция.',
       audio: { src: '/track.mp3', offset: 0, duration: 4, words: [] },
       elements: [],
-      slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+      slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'cut', transitionSeconds: 0.6, states: {} }],
       gates: [],
       exit: { rules: [], default: null },
     }],

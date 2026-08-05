@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { SCHEMA_VERSION } from '@player/core';
+import { SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, ElementState, Gate, Project } from '@player/core';
 
 import { HISTORY_LIMIT } from '../src/state/history.js';
@@ -32,19 +32,20 @@ function elementState(overrides: Partial<ElementState> = {}): ElementState {
 function baseProject(): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'seg-1',
     segments: [
       {
         id: 'seg-1',
         title: '',
+        description: '',
         audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
         elements: [element('title'), element('subtitle')],
         slides: [
           {
             id: 'slide-1',
             at: { kind: 'seconds', t: 0 },
-            transition: 'morph',
+            transition: 'morph', transitionSeconds: 0.6,
             states: { title: elementState({ x: 0 }), subtitle: elementState({ x: 50 }) },
           },
         ],

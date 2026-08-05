@@ -88,7 +88,7 @@ export class SlideEngine {
     this.#scheduled = options.slides.map((slide, index) => ({
       seconds: seconds[index]!,
       slide,
-      morphSeconds: morphSecondsFor(slide.transition, index, seconds),
+      morphSeconds: morphSecondsFor(slide.transition, slide.transitionSeconds, index, seconds),
     }));
 
     this.#nodes = new Map();

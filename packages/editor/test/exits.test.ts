@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ProjectSchema, SCHEMA_VERSION } from '@player/core';
+import { ProjectSchema, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Condition, ExitRule, Gate, Project, Segment } from '@player/core';
 
 import { editorReducer, initialState } from '../src/state/project.js';
@@ -29,9 +29,10 @@ function segment(id: string, overrides: Partial<Segment> = {}): Segment {
   return {
     id,
     title: '',
+    description: '',
     audio: { src: `audio/${id}.mp3`, offset: 0, duration: 10, words: [] },
     elements: [],
-    slides: [{ id: `${id}-slide`, at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    slides: [{ id: `${id}-slide`, at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
     gates: [],
     exit: { rules: [], default: null },
     ...overrides,
@@ -72,7 +73,7 @@ function rule(id: string, when: Condition, goto: string): ExitRule {
 function project(segments: readonly Segment[], entry = 'seg-1'): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry,
     segments: [...segments],
   };
@@ -209,8 +210,8 @@ describe('emptySegments', () => {
   it('часть со вторым слайдом пустой не считается: сцена меняется во времени', () => {
     const withSlides = segment('seg-2', {
       slides: [
-        { id: 's-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} },
-        { id: 's-1', at: { kind: 'seconds', t: 2 }, transition: 'morph', states: {} },
+        { id: 's-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} },
+        { id: 's-1', at: { kind: 'seconds', t: 2 }, transition: 'morph', transitionSeconds: 0.6, states: {} },
       ],
     });
     expect(emptySegments(project([segment('seg-1'), withSlides])).map((s) => s.id)).toEqual(['seg-1']);

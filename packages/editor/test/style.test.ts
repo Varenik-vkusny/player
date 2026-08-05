@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ANIMATABLE, loadProject, SCHEMA_VERSION, type Project } from '@player/core';
+import { ANIMATABLE, loadProject, SCHEMA_VERSION, ThemeSchema, type Project } from '@player/core';
 
 import {
   getStyleValue,
@@ -325,12 +325,13 @@ describe('интеграция со схемой: результат подст�
   function baseProject(headlineStyle: ElementStyle, panelStyle: ElementStyle): Project {
     return {
       schemaVersion: SCHEMA_VERSION,
-      meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080 },
+      meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
       entry: 'seg-1',
       segments: [
         {
           id: 'seg-1',
           title: '',
+          description: '',
           audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
           elements: [
             { id: 'headline', type: 'text', content: 'Заголовок' },
@@ -341,6 +342,7 @@ describe('интеграция со схемой: результат подст�
               id: 'slide-1',
               at: { kind: 'seconds', t: 0 },
               transition: 'morph',
+              transitionSeconds: 0.6,
               states: {
                 headline: { ...baseState(), style: headlineStyle },
                 panel: { ...baseState(), width: 200, height: 200, style: panelStyle },

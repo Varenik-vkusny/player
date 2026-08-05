@@ -16,9 +16,10 @@ function segment(): Segment {
   return {
     id: 'seg-1',
     title: '',
+    description: '',
     audio: { src: 'a.mp3', offset: 0, duration: 10, words: [] },
     elements: [],
-    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: {} }],
+    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: {} }],
     gates: [],
     exit: { rules: [], default: null },
   };

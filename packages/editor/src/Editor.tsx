@@ -646,7 +646,9 @@ export function Editor({
     const slideSeconds = segment.slides.map((slide) => markSeconds(slide.at, words));
     const fromSlides = segment.slides.slice(1).map((slide, offset): Mark => {
       const index = offset + 1;
-      const morphSeconds = morphSecondsFor(slide.transition, index, slideSeconds);
+      const morphSeconds = morphSecondsFor(
+        slide.transition, slide.transitionSeconds, index, slideSeconds,
+      );
       return {
         kind: 'slide',
         id: slide.id,

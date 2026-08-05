@@ -14,7 +14,7 @@ import {
   morphSecondsFor,
   phaseAt,
   planMorph,
-  MORPH_DURATION_S,
+
   type SlideSchedule,
 } from '@player/player';
 
@@ -106,15 +106,23 @@ describe('layoutStatesFor: раскладка на время перехода',
 
 describe('morphSecondsFor: расписание перехода', () => {
   it('первому слайду ехать неоткуда', () => {
-    expect(morphSecondsFor('morph', 0, [0, 1])).toBe(0);
+    expect(morphSecondsFor('morph', 0.6, 0, [0, 1])).toBe(0);
   });
 
   it('cut — намеренный разрыв, длительности нет', () => {
-    expect(morphSecondsFor('cut', 1, [0, 1, 2])).toBe(0);
+    expect(morphSecondsFor('cut', 0.6, 1, [0, 1, 2])).toBe(0);
+  });
+
+  it('длительность берётся из слайда, а не из константы', () => {
+    // До v9 число было одно на весь продукт (MORPH_DURATION_S = 0.6).
+    // Теперь его несёт слайд, и функция обязана слушать именно его:
+    // иначе поле схемы существует, а на картинку не влияет.
+    expect(morphSecondsFor('morph', 0.3, 1, [0, 1, 2])).toBe(0.3);
+    expect(morphSecondsFor('morph', 1.5, 1, [0, 1, 2])).toBe(1);
   });
 
   it('обычный переход длится столько, сколько положено', () => {
-    expect(morphSecondsFor('morph', 1, [0, 1, 2])).toBe(MORPH_DURATION_S);
+    expect(morphSecondsFor('morph', 0.6, 1, [0, 1, 2])).toBe(0.6);
   });
 
   /**
@@ -123,13 +131,13 @@ describe('morphSecondsFor: расписание перехода', () => {
    * на чужой переход и стартовало бы не с той картинки, что на экране.
    */
   it('переход не залезает за предыдущую метку: урезается по расстоянию до неё', () => {
-    expect(morphSecondsFor('morph', 2, [0, 1, 1.2])).toBeCloseTo(0.2, 10);
+    expect(morphSecondsFor('morph', 0.6, 2, [0, 1, 1.2])).toBeCloseTo(0.2, 10);
   });
 
   it('следующий слайд на урезание больше не влияет', () => {
     // Слайды 1 и 2 стоят вплотную, но переход К слайду 1 меряется отрезком
     // 0 → 1, а не 1 → 1.2. До разворота здесь было 0.2.
-    expect(morphSecondsFor('morph', 1, [0, 1, 1.2])).toBe(MORPH_DURATION_S);
+    expect(morphSecondsFor('morph', 0.6, 1, [0, 1, 1.2])).toBe(0.6);
   });
 });
 
@@ -189,8 +197,8 @@ describe('phaseAt: где снимок, а где движение', () => {
   it('плотно стоящие слайды дают короткие окна, но не наложение', () => {
     const dense: readonly SlideSchedule[] = [
       { seconds: 0, morphSeconds: 0 },
-      { seconds: 1, morphSeconds: morphSecondsFor('morph', 1, [0, 1, 1.2]) },
-      { seconds: 1.2, morphSeconds: morphSecondsFor('morph', 2, [0, 1, 1.2]) },
+      { seconds: 1, morphSeconds: morphSecondsFor('morph', 0.6, 1, [0, 1, 1.2]) },
+      { seconds: 1.2, morphSeconds: morphSecondsFor('morph', 0.6, 2, [0, 1, 1.2]) },
     ];
     expect(phaseAt(dense, 1)).toEqual({ kind: 'still', index: 1 });
     expect(phaseAt(dense, 1.1)).toEqual({ kind: 'morph', index: 2 });

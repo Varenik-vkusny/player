@@ -14,7 +14,7 @@
  * в states предыдущего слайда, ADR-015) — то есть сцена бы обнулялась
  * при каждой вставке слайда, а не продолжалась.
  */
-import { resolveTimeRef } from '@player/core';
+import { DEFAULT_TRANSITION_SECONDS, resolveTimeRef } from '@player/core';
 import type { Element, ElementState, Segment, Slide, TimeRef, Word } from '@player/core';
 
 import { prefixOf } from './duplicate.js';
@@ -81,6 +81,7 @@ export function addSlide(segment: Segment, afterSlideId: string, at: TimeRef): S
     id: freeId('slide', segment.slides),
     at,
     transition: 'morph',
+    transitionSeconds: DEFAULT_TRANSITION_SECONDS,
     states: cloneStates(anchor.states),
   };
 
@@ -359,6 +360,15 @@ export interface SlideClipboard {
   /** Только для подписи автору («слайд из части N»). В логике НЕ участвует. */
   readonly sourceSegmentId: string;
   readonly transition: Slide['transition'];
+  /**
+   * Длительность перехода К слайду. Переносится вместе с приёмом, а не
+   * берётся умолчанием: приём и его длительность — одно свойство слайда,
+   * разделённое на два поля. Скопировать «Растворение за 1.2 с» и получить
+   * при вставке «Растворение за 0.6 с» значило бы поменять работу автора
+   * молча. ADR-025 переносить `at` запрещает, потому что это МОМЕНТ;
+   * длительность моментом не является.
+   */
+  readonly transitionSeconds: Slide['transitionSeconds'];
   readonly states: Readonly<Record<string, ElementState>>;
   /** Снимок элементов, на которые смотрят `states`. Ровно они, не все элементы части. */
   readonly elements: readonly Element[];
@@ -394,6 +404,7 @@ export function copySlideToClipboard(segment: Segment, slideId: string): SlideCl
   return {
     sourceSegmentId: segment.id,
     transition: slide.transition,
+    transitionSeconds: slide.transitionSeconds,
     states: cloneStates(slide.states),
     elements,
   };
@@ -520,6 +531,7 @@ export function pasteSlide(segment: Segment, clipboard: SlideClipboard, at: Time
     id: freeId('slide', segment.slides),
     at,
     transition: clipboard.transition,
+    transitionSeconds: clipboard.transitionSeconds,
     states,
   };
 

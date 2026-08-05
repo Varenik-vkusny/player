@@ -25,7 +25,9 @@
  *   ссылалось, обязано переехать согласованно.
  */
 import type { Gate, Segment, Slide, TimeRef, Word } from '@player/core';
-import { alignWords, resolveTimeRef, splitIntoWords } from '@player/core';
+import {
+  alignWords, DEFAULT_TRANSITION_SECONDS, resolveTimeRef, splitIntoWords,
+} from '@player/core';
 
 import { freeId } from './elements.js';
 
@@ -234,6 +236,9 @@ export function splitSegmentAtGate(
     ? {
       id: tailId!,
       title: `${segment.title || segment.id} — продолжение`,
+      // Не наследуется от исходной части: её описание описывает ЦЕЛОЕ,
+      // а не продолжение. Скопировать значило бы соврать на карте.
+      description: '',
       speech: tailSpeech,
       audio: {
         ...segment.audio,
@@ -243,7 +248,10 @@ export function splitSegmentAtGate(
         words: tailWords,
       },
       elements: usedElements(segment, [
-        { id: 'snapshot', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: snapshot },
+        {
+          id: 'snapshot', at: { kind: 'seconds', t: 0 },
+          transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: snapshot,
+        },
         ...tailSlides,
       ]),
       slides: [
@@ -254,6 +262,9 @@ export function splitSegmentAtGate(
           // потому, что картинка совпадает с предыдущим кадром, а не потому,
           // что переход её сглаживает.
           transition: 'cut',
+          // Срез не длится, поэтому число здесь роли не играет; ставим
+          // умолчание, чтобы у поля не было второго значения на один смысл.
+          transitionSeconds: DEFAULT_TRANSITION_SECONDS,
           states: snapshot,
         },
         ...tailSlides.map((slide) => ({ ...slide, at: shiftRef(slide.at, at, wordsCut) })),
@@ -274,13 +285,17 @@ export function splitSegmentAtGate(
   const branches: Segment[] = gate.config.options.map((option, index) => ({
     id: branchIds[index]!,
     title: branches_title(gate, option.id, index),
+    description: '',
     // Дорожка берётся у исходной части ПО ССЫЛКЕ и с её окном — ровно так же,
     // как это делает `addSegment`: своей озвучки у только что созданной ветки
     // взяться неоткуда, а `audio` обязательно схемой. Автор заменит её, когда
     // запишет ветку.
     audio: segment.audio,
     elements: [],
-    slides: [{ id: 'slide-1', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+    slides: [{
+      id: 'slide-1', at: { kind: 'seconds', t: 0 },
+      transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: {},
+    }],
     gates: [],
     // Ветки сходятся обратно — самый дешёвый правильный сценарий. Автор уводит
     // ветку в сторону потом, если захочет; обрыв по умолчанию заставил бы его

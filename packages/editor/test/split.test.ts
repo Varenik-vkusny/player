@@ -15,7 +15,7 @@
  *   зрителя по любой ветке. Валидность данных не равна достижимости поведения.
  */
 import {
-  loadProject, resolveTimeRef, SCHEMA_VERSION, type Project, type Segment, type Word,
+  loadProject, resolveTimeRef, SCHEMA_VERSION, ThemeSchema, type Project, type Segment, type Word,
 } from '@player/core';
 import { describe, expect, it } from 'vitest';
 
@@ -49,20 +49,21 @@ const box = (x: number) => ({
 function project(): Project {
   return {
     schemaVersion: SCHEMA_VERSION,
-    meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080 },
+    meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'whole',
     segments: [{
       id: 'whole',
       title: 'Цельное повествование',
+      description: '',
       audio: { src: '/track.mp3', offset: 0, duration: 10, words: WORDS },
       elements: [
         { id: 'hero', type: 'text', content: 'Заголовок' },
         { id: 'late', type: 'shape', content: '' },
       ],
       slides: [
-        { id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', states: { hero: box(0) } },
-        { id: 'sl-3', at: wordRef(3), transition: 'morph', states: { hero: box(300) } },
-        { id: 'sl-7', at: wordRef(7), transition: 'morph', states: { hero: box(700), late: box(50) } },
+        { id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: { hero: box(0) } },
+        { id: 'sl-3', at: wordRef(3), transition: 'morph', transitionSeconds: 0.6, states: { hero: box(300) } },
+        { id: 'sl-7', at: wordRef(7), transition: 'morph', transitionSeconds: 0.6, states: { hero: box(700), late: box(50) } },
       ],
       gates: [{
         id: 'g-fork',
@@ -303,10 +304,11 @@ function segmentWithSpeechAndWords(): Segment {
   return {
     id: 'speech-source',
     title: 'Кусок с озвучкой',
+    description: '',
     speech: 'Кошка бежала быстро домой',
     audio: { src: '/track.mp3', offset: 0, duration: 4, words },
     elements: [],
-    slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'cut', states: {} }],
+    slides: [{ id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'cut', transitionSeconds: 0.6, states: {} }],
     gates: [{
       id: 'g1',
       at: { kind: 'seconds', t: 2 },
