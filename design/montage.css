@@ -257,6 +257,55 @@
 }
 .mt-mark--on { outline: 2px solid var(--ui-content-fg); outline-offset: 1px; }
 
+/* ПОДСВЕТКА ОТ ВЫДЕЛЕНИЯ НА СЦЕНЕ — не выделение. Выделение на сцене это
+   элементы, метки на дорожке — слайды и остановки: разные сущности.
+   Поэтому знак другой (кольцо, а не обводка выделения), и он отвечает
+   на другой вопрос: «где во времени живёт то, что я держу». */
+.mt-mark--lit {
+  box-shadow: 0 0 0 3px rgba(168, 114, 11, 0.35);
+  background: var(--ui-feedback-warn);
+}
+
+/* Ручка продолжительности. Шире хвоста намеренно: при масштабе ×1 хвост
+   0.6 c это 7.2 px, и мишень в 7 px непопадаема. Ручка вылезает за край
+   влево, где места всегда больше, чем внутри хвоста. */
+.tail__grip {
+  position: absolute;
+  left: -4px; top: -3px; bottom: -3px;
+  width: 12px;
+  cursor: ew-resize;
+  border-radius: var(--radius-sm);
+}
+.tail__grip::before {
+  content: '';
+  position: absolute;
+  left: 4px; top: 4px; bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ui-action-selected-line);
+}
+.tail:hover .tail__grip::before,
+.tail--on .tail__grip::before { background: var(--ui-content-fg); }
+/* Во время жеста курсор не должен меняться под указателем и текст
+   не должен выделяться: и то и другое читается как «жест сорвался». */
+.mt-dragging { cursor: ew-resize; user-select: none; }
+.mt-dragging * { cursor: ew-resize !important; }
+
+.mt-dirs { display: flex; gap: var(--u-half); }
+.mt-dir {
+  width: 32px; height: 28px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-panel);
+  font: var(--weight-medium) var(--type-md) / 1 var(--font-ui);
+  color: var(--ui-content-fg);
+  cursor: pointer;
+}
+.mt-dir[aria-pressed="true"] {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+}
+
 /* Подпись развилки уходит ВЛЕВО от метки. Не «на случай, если не влезет»:
    развилка обязана быть последней в части (product.md §5), значит она всегда
    у правого края, и места справа нет по построению. */
@@ -578,14 +627,41 @@
 }
 .trans__demo::before { left: 6px; }
 .trans__demo::after { right: 6px; background: var(--ui-action-selected-line); }
-.trans__demo--cut::after { right: 6px; opacity: 1; }
-.trans__demo--fade::after { opacity: 0.4; }
-.trans__demo--slide::after { transform: translateX(-6px); }
-.trans__demo--scale::after { transform: scale(0.7); }
-.trans__demo--blur::after { filter: blur(2px); }
+
+/* ПЛИТКА ПОКАЗЫВАЕТ ПРИЁМ ДВИЖЕНИЕМ, а не картинкой приёма. Снято у Canva:
+   их плитки анимированы, и это не украшение — «скольжение» и «стирание»
+   на неподвижной картинке различаются только подписью.
+
+   Цикл 2.8 с, из которых движение занимает первую треть: восемь плиток,
+   дёргающихся непрерывно, читались бы хуже неподвижных. Пауза в кадрах,
+   а не пауза между повторами, — тогда все восемь идут в такт.
+
+   Анимируются только transform, opacity и filter — те же три свойства,
+   что разрешает инвариант №8 сцене. Совпадение не случайное: плитка
+   показывает ровно то, что приём будет делать на самом деле. */
+@media (prefers-reduced-motion: no-preference) {
+  .trans__demo--fade::after  { animation: mt-fade 2.8s infinite; }
+  .trans__demo--slide::after { animation: mt-slide 2.8s infinite; }
+  .trans__demo--scale::after { animation: mt-scale 2.8s infinite; }
+  .trans__demo--blur::after  { animation: mt-blur 2.8s infinite; }
+  .trans__demo--iris::after  { animation: mt-iris 2.8s infinite; }
+  .trans__demo--wipe::after  { animation: mt-wipe 2.8s infinite; }
+  .trans__demo--morph::before { animation: mt-morph 2.8s infinite; }
+}
+
+/* «Срез» не анимирован, и это не пропуск: у него нет длительности,
+   значит и показывать нечего. Мгновенность честнее изобразить
+   неподвижностью, чем быстрым движением. */
+.trans__demo--cut::after { opacity: 1; }
 .trans__demo--iris::after { border-radius: var(--radius-pill); }
-.trans__demo--wipe::after { width: 22%; }
-.trans__demo--morph::before { transform: translateX(10px); }
+
+@keyframes mt-fade  { 0%, 5% { opacity: 0 } 30%, 100% { opacity: 1 } }
+@keyframes mt-slide { 0%, 5% { transform: translateX(110%) } 30%, 100% { transform: none } }
+@keyframes mt-scale { 0%, 5% { transform: scale(0.3); opacity: 0 } 30%, 100% { transform: none; opacity: 1 } }
+@keyframes mt-blur  { 0%, 5% { filter: blur(5px); opacity: 0 } 30%, 100% { filter: none; opacity: 1 } }
+@keyframes mt-iris  { 0%, 5% { transform: scale(0.1) } 30%, 100% { transform: scale(1) } }
+@keyframes mt-wipe  { 0%, 5% { transform: scaleX(0); transform-origin: right } 30%, 100% { transform: scaleX(1); transform-origin: right } }
+@keyframes mt-morph { 0%, 5% { transform: none } 30%, 100% { transform: translateX(14px) scaleY(0.8) } }
 
 .trans__label { font: var(--weight-medium) var(--type-xs) / var(--lh-xs) var(--font-ui); color: var(--ui-content-fg); }
 .trans__law { font: var(--weight-normal) 10px / 13px var(--font-ui); }

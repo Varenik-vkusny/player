@@ -96,6 +96,16 @@
             'исчезнет первым.' }
   ];
 
+  // Направление есть не у всех приёмов, и это не «пока не сделали»:
+  // у растворения его не бывает. Поэтому переключатель НЕ СОЗДАЁТСЯ,
+  // а не гаснет, — иначе он обещал бы направление там, где его нет.
+  var DIRECTIONS = [
+    { id: 'left',  glyph: '←', label: 'Влево' },
+    { id: 'right', glyph: '→', label: 'Вправо' },
+    { id: 'up',    glyph: '↑', label: 'Вверх' },
+    { id: 'down',  glyph: '↓', label: 'Вниз' }
+  ];
+
   var LAW_LABEL = {
     ok: 'законен по №8',
     measure: 'нужен замер',
@@ -249,6 +259,20 @@
   var zoom = 1;
   var ZOOMS = [1, 2, 4, 8, 16];
 
+  /**
+   * Что выделено НА СЦЕНЕ. Приходит событием из main.js, меняется только там.
+   *
+   * Выделение на сцене — это элементы; метки на дорожке — слайды и остановки.
+   * Разные сущности, и приравнивать их нельзя. Поэтому дорожка отвечает
+   * на выделение ПОДСВЕТКОЙ, а не выделением: светятся слайды, где хоть один
+   * выделенный элемент меняет состояние. Считается из `Slide.states` —
+   * это `record` по id элемента, ноль по схеме.
+   *
+   * Обратной связи нет намеренно: выбор слайда выделение элементов не трогает.
+   * Иначе две зоны начали бы спорить, кто хозяин выделения.
+   */
+  var sceneSelection = [];
+
   function segment(id) {
     return SEGMENTS.filter(function (s) { return s.id === id; })[0];
   }
@@ -384,6 +408,54 @@
   // а она смысловой хребет, на ней стоит весь интерактив. MarkKind их уже
   // различает, так что это перестановка вида, а не модели.
   // ==========================================================================
+
+  /**
+   * Перетаскивание левого конца хвоста.
+   *
+   * Во время жеста НИЧЕГО НЕ ПЕРЕРИСОВЫВАЕТСЯ целиком: полная отрисовка
+   * заменила бы узел, за который держится указатель, и жест оборвался бы
+   * на первом же движении. Меняются стили того же узла, а `render()`
+   * вызывается один раз на `pointerup`.
+   *
+   * Это ровно то разделение, что у продукта: `onMove` зовётся многократно
+   * за жест, а точку истории ставит `onMoveEnd` (MarksLane, срез 2).
+   * Перетаскивание обязано быть ОДНИМ шагом истории, а не одним на каждое
+   * движение указателя.
+   */
+  function startDrag(slide, tail, total, body) {
+    var seg = current();
+    var cap = maxSeconds(seg, slide);
+    var rect = body.getBoundingClientRect();
+    var label = tail.querySelector('.tail__label');
+
+    function apply(clientX) {
+      // Прямоугольник меряется в начале жеста и не перемеряется: полосу
+      // нельзя прокрутить, пока указатель захвачен. Если это изменится —
+      // мерить заново на каждое движение, как делает seekToPointer.
+      var seconds = slide.at - (clientX - rect.left) / rect.width * total;
+      seconds = Math.max(0.1, Math.min(cap, Math.round(seconds * 10) / 10));
+      slide.seconds = seconds;
+      tail.style.left = ((slide.at - seconds) / total * 100) + '%';
+      tail.style.width = (seconds / total * 100) + '%';
+      if (label) label.textContent = transitionById(slide.transition).label;
+      var out = document.querySelector('.mont-range__value');
+      if (out) out.textContent = seconds.toFixed(1);
+      var range = document.querySelector('.mont-range');
+      if (range) range.value = String(seconds);
+    }
+
+    function move(event) { apply(event.clientX); }
+    function up() {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.body.classList.remove('mt-dragging');
+      render();
+    }
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.body.classList.add('mt-dragging');
+    selected = { kind: 'transition', id: slide.id };
+  }
 
   function laneHead(name, sub, extra) {
     var head = make('div', 'mt-lane__head');
@@ -534,6 +606,19 @@
           selected = { kind: 'transition', id: slide.id };
           render();
         });
+
+        // РУЧКА НА ЛЕВОМ КОНЦЕ — продолжительность задаётся прямо во времени.
+        // Ползунок в панели говорит «0.6», ручка показывает, сколько это
+        // относительно озвучки, а вопрос у автора именно второй.
+        var grip = make('span', 'tail__grip');
+        grip.title = 'Тянуть — продолжительность перехода';
+        grip.addEventListener('pointerdown', function (event) {
+          event.stopPropagation();
+          event.preventDefault();
+          startDrag(slide, tail, total, slbody);
+        });
+        tail.appendChild(grip);
+
         slbody.appendChild(tail);
       }
 
@@ -543,6 +628,13 @@
       dia.title = 'Слайд · ' + kind.label;
       if (selected && selected.kind === 'slide' && selected.id === slide.id) {
         dia.classList.add('mt-mark--on');
+      }
+      // ОТВЕТ ДОРОЖКИ НА ВЫДЕЛЕНИЕ СЦЕНЫ — подсветка, а не выделение.
+      // Слайд светится, если хоть один выделенный элемент в нём меняет
+      // состояние. Вопрос, на который это отвечает: «где во времени живёт
+      // то, что я держу». Считается из states, ноль по схеме.
+      if (sceneSelection.some(function (id) { return slide.states[id] !== undefined; })) {
+        dia.classList.add('mt-mark--lit');
       }
       dia.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -910,6 +1002,26 @@
       var chosen = transitionById(slide.transition);
       panel.appendChild(make('p', 'mont-panel__note', chosen.note));
 
+      // Направление — только у тех приёмов, у кого оно есть. Не «погашено
+      // у остальных», а НЕ СОЗДАНО: у растворения направления не бывает,
+      // и погашенный переключатель обещал бы, что бывает. Тот же принцип,
+      // что у полосы свойств Сессии 20 — состав считается из применимости.
+      if (chosen.directional) {
+        var dir = make('div', 'mont-sec');
+        dir.appendChild(make('h3', 'mont-sec__title', 'Направление'));
+        var pad = make('div', 'mt-dirs');
+        DIRECTIONS.forEach(function (d) {
+          var b = make('button', 'mt-dir', d.glyph);
+          b.type = 'button';
+          b.title = d.label;
+          b.setAttribute('aria-pressed', String((slide.dir || 'left') === d.id));
+          b.addEventListener('click', function () { slide.dir = d.id; render(); });
+          pad.appendChild(b);
+        });
+        dir.appendChild(pad);
+        panel.appendChild(dir);
+      }
+
       // Продолжительность — раскрывается ПОД каталогом, как у Canva,
       // и только у того, у кого она бывает.
       if (chosen.fixed !== 0) {
@@ -1036,10 +1148,18 @@
     } else if (trackState === 'loading') {
       text = 'Дорожка читается. Это значение TransportState, которое код различает ' +
         'с Сессии 7, а интерфейс не показывал ни разу.';
+    } else if (sceneSelection.length) {
+      var lit = seg.slides.filter(function (s) {
+        return sceneSelection.some(function (id) { return s.states[id] !== undefined; });
+      }).length;
+      text = 'На сцене выделено ' + sceneSelection.length + '. Дорожка отвечает ' +
+        'ПОДСВЕТКОЙ, а не выделением: светятся ' + lit + ' из ' + seg.slides.length +
+        ' слайдов — те, где выделенное меняет состояние. Считается из states, ' +
+        'ноль по схеме. Обратно связь не идёт: выбор слайда выделение не трогает.';
     } else {
       text = 'Часть «' + seg.title + '»: ' + seg.slides.length + ' слайдов, ' +
         seg.gates.length + ' остановок. Хвост перед ромбом — стык, в нём живёт ' +
-        'переход, и его длина это продолжительность.';
+        'переход, тяните его левый конец — это продолжительность.';
     }
     note.textContent = '';
     note.appendChild(make('b', null, 'Что здесь видно. '));
@@ -1077,6 +1197,16 @@
     node.addEventListener('click', function () {
       if ((node.dataset.view || 'line') === 'map') toMap(currentId); else toLine();
     });
+  });
+
+  // Канва сообщает о выделении, дорожка слушает. Обратного канала нет.
+  document.addEventListener('scene-selection', function (event) {
+    var ids = event.detail.ids;
+    // Перерисовываем, только если состав ИЗМЕНИЛСЯ: main.js шлёт событие
+    // на каждой своей отрисовке, включая те, где выделение то же самое.
+    if (ids.join(',') === sceneSelection.join(',')) return;
+    sceneSelection = ids;
+    if (view === 'line') { drawLanes(); drawNote(); }
   });
 
   host['track-lanes'].addEventListener('click', function (event) {
