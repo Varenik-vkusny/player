@@ -23,7 +23,8 @@
     "spike:quota": "node spikes/run-quota.mjs",
     "spike:seam": "node spikes/run-seam.mjs",
     "spike:tab-lock": "node spikes/run-tab-lock.mjs",
-    "spike:editor-stack": "vite --config spikes/editor-stack/vite.config.mjs"
+    "spike:editor-stack": "vite --config spikes/editor-stack/vite.config.mjs",
+    "spike:tokens": "node spikes/run-tokens.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
