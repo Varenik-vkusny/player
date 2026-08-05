@@ -835,15 +835,12 @@
         return frag;
       } },
 
-    parts: { title: 'Части', hint: 'Сегменты объяснения и переходы между ними.',
-      build: function () {
-        var frag = document.createDocumentFragment();
-        frag.appendChild(make('div', 'todo',
-          'Карта ветвлений — Сессия 21 (ориентир Ren\'Py). Здесь пусто ' +
-          'намеренно: развилка существует в двух видах одновременно, и это ' +
-          'самый дорогой нерешённый узел дизайна (product.md §13).'));
-        return frag;
-      } },
+    // Панель «Части» УБРАНА в Сессии 21. Части — это карта, а карта стала
+    // отдельным режимом в верхней полосе (montage.js). Заодно ушло
+    // утверждение «ориентир Ren'Py»: проверено первоисточником 05.08.2026 —
+    // доски ветвлений у Ren'Py нет вовсе, ветвление там пишется текстом,
+    // а встроенная доска это открытая заявка renpy/renpy#6676.
+    // → docs/session-21-journal.md, находка 1.
 
     object: { title: 'Объект', hint:
       'Полный состав свойств выделенного. Открывается кнопкой «Ещё…» ' +
@@ -939,15 +936,9 @@
 
   counter.addEventListener('click', function () { open('theme'); });
 
-  document.querySelectorAll('.viewswitch[aria-label="Вид"]').forEach(function (group) {
-    group.addEventListener('click', function (event) {
-      var button = event.target.closest('button');
-      if (!button) return;
-      group.querySelectorAll('button').forEach(function (other) {
-        other.setAttribute('aria-pressed', String(other === button));
-      });
-    });
-  });
+  // Переключатель «Линия | Карта» ведёт montage.js: там же живёт сам режим.
+  // Второй обработчик на те же кнопки был бы вторым источником правды
+  // о том, какой вид открыт, — а они расходятся молча.
 
   window.addEventListener('resize', fit);
   render();

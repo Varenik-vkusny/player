@@ -39,6 +39,7 @@
 
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="shell.css">
+<link rel="stylesheet" href="montage.css">
 
 <body>
 <div class="shell">
@@ -47,9 +48,13 @@
   <header class="topbar">
     <span class="topbar__name">Производная — зачем она нужна</span>
 
+    <!-- Два вида на одни данные (product.md §13). Карта — ОТДЕЛЬНЫЙ режим
+         на весь экран, а не панель: решение владельца 05.08.2026. Развилка
+         начинается на линии и обязана закончиться на карте, потому что
+         завести ветку на линии физически нечем. -->
     <div class="viewswitch" role="group" aria-label="Вид">
-      <button type="button" aria-pressed="true">Линия</button>
-      <button type="button" aria-pressed="false">Карта</button>
+      <button type="button" data-view="line" aria-pressed="true">Линия</button>
+      <button type="button" data-view="map" aria-pressed="false">Карта</button>
     </div>
 
     <span class="topbar__spacer"></span>
@@ -79,8 +84,10 @@
       <span class="rail__glyph">◐</span>Тема</button>
     <button type="button" class="rail__item" data-panel="own">
       <span class="rail__glyph">↑</span>Своё</button>
-    <button type="button" class="rail__item" data-panel="parts">
-      <span class="rail__glyph">◔</span>Части</button>
+    <!-- «Части» с рельса УБРАНЫ. Части — это карта, а карта теперь
+         отдельный режим в верхней полосе. Две двери в одно место — та же
+         ошибка, из-за которой в Сессии 20 счётчик сирот сделан один
+         на две болезни: автор перестаёт смотреть в обе. -->
   </nav>
 
   <!-- ================= ПАНЕЛЬ КАТАЛОГА =================
@@ -119,39 +126,70 @@
       <div class="scene" id="scene">
         <div class="scene__els" id="scene-els"></div>
         <div class="scene__overlay" id="scene-overlay"></div>
+
+        <!-- ГЕЙТ В РЕДАКТОРЕ. Состояние, у которого механики нет ВОВСЕ:
+             player/src/preview.ts прокидывает `gates` (строки 54 и 81),
+             но `prompt` и `options` не рисует нигде. Значит автор физически
+             не может увидеть свою остановку такой, какой её увидит зритель,
+             ни в одном месте редактора.
+
+             Отдельным узлом, а не внутри scene-overlay: main.js чистит
+             #scene-els и #scene-overlay на каждой отрисовке, и слой,
+             положенный туда, исчезал бы при любом щелчке по сцене. -->
+        <div class="gatelayer" id="gate-layer" hidden></div>
       </div>
 
       <p class="note" id="note"></p>
     </div>
   </main>
 
-  <!-- ================= ДОРОЖКА (ориентир CapCut) ================= -->
+  <!-- ================= ДОРОЖКА (ориентир CapCut, снят с натуры) =========
+       Пять полос: линейка · звук · слайды · остановки · расшифровка.
+       У каждой ГОЛОВА СЛЕВА со своим именем — там же называется причина,
+       когда полоса пуста («No tracks» у CapCut, а не просто серое поле).
+
+       Слайды и остановки разъехались по РАЗНЫМ полосам, хотя в продукте
+       сегодня лежат в одной (MarksLane берёт marks с kind). Слайдов много,
+       остановок единицы, и в общей полосе остановка теряется среди ромбов —
+       а на ней стоит весь интерактив. MarkKind их уже различает, значит
+       это перестановка вида, а не модели.
+
+       Содержимое рисуется из данных в montage.js: разметка здесь — зоны. -->
   <section class="track" aria-label="Дорожка">
-    <div class="track__bar">
-      <button type="button" class="objectbar__btn">▶</button>
-      <span class="track__time">00:12.480 / 01:47.200</span>
-      <span class="topbar__spacer"></span>
-      <button type="button" class="objectbar__btn">Разрезать</button>
-      <button type="button" class="objectbar__btn">Поставить остановку</button>
-    </div>
-    <div class="track__lanes">
-      <div class="lane lane--wave">
-        <span class="playhead" style="left:22%"></span>
-      </div>
-      <div class="lane lane--marks">
-        <span class="mark" style="left:6%"></span>
-        <span class="mark" style="left:18%"></span>
-        <span class="mark mark--orphan" style="left:31%" title="Сирота: слово пропало"></span>
-        <span class="mark" style="left:44%"></span>
-        <span class="mark mark--gate" style="left:58%" title="Остановка"></span>
-        <span class="mark" style="left:72%"></span>
-        <span class="playhead" style="left:22%"></span>
-      </div>
-    </div>
+    <div class="mt-bar" id="track-bar"></div>
+    <div class="mt-lanes" id="track-lanes"></div>
+    <!-- Свой класс, а не `.note` от сцены: у того min-height 84px и вид
+         карточки — он для пояснения ПОД СЦЕНОЙ. Взятый сюда, он съедал
+         треть дорожки и всплывал поверх полос. Высота всё равно постоянна,
+         и по той же причине: пояснение меняется по состоянию, а дорожка
+         от этого ездить не должна. -->
+    <p class="mont-note" id="mont-note"></p>
   </section>
 
 </div>
 
+<!-- ПАНЕЛЬ МОНТАЖА — ОВЕРЛЕЙ СПРАВА, а не колонка, и это право куплено
+     замером. У CapCut панель свойств выезжает поверх холста: контейнер
+     сцены `canvas-cover` дал x 651.73, y 132, w 931.55, h 524 и с выделением,
+     и без него — совпало до сотых. Значит ширину она не отнимает, масштаб
+     сцены не падает, и довод Сессии 18 (появившаяся зона уронила масштаб
+     и e2e) к оверлею не относится. Глазами колонка и оверлей неотличимы. -->
+<aside class="mont-panel" id="mont-panel" hidden></aside>
+
+<!-- ================= КАРТА — ОТДЕЛЬНЫЙ РЕЖИМ =================
+     Не панель и не вкладка каталога. Решение владельца 05.08.2026: развилка
+     начинается на линии, а закончиться обязана на карте, потому что завести
+     ветку на линии физически нечем.
+
+     Отсюда же снимается вопрос product.md §13 «карта должна быть полезной
+     на одном узле»: на карту попадают ИЗ развилки, а разрез уже породил
+     ветки. Состояние «карта из одного узла» недостижимо. -->
+<div class="mapmode" id="mapmode" hidden>
+  <div class="map__board" id="map-board"></div>
+  <aside class="map__side" id="map-side"></aside>
+</div>
+
 <script src="main.js"></script>
+<script src="montage.js"></script>
 </body>
 </html>
