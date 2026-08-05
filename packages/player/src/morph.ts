@@ -51,7 +51,7 @@ export const TECHNIQUE_PROPS = {
  * и уход поверх едущих элементов читается как мелькание: глазу негде
  * взять, что с чем связано.
  */
-const UNMATCHED_FRACTION = 0.5;
+export const UNMATCHED_FRACTION = 0.5;
 
 /**
  * Сколько длится переход к слайду `index`, секунды. Ноль — срез.
@@ -183,6 +183,52 @@ export function layoutStatesFor(plan: readonly MorphPart[]): SlideStates {
 }
 
 /**
+ * Приёмы, которые двигают СЦЕНУ ЦЕЛИКОМ, а не каждый элемент отдельно.
+ *
+ * Отличие не косметическое, и оно упирается в модель DOM. У элемента ОДИН
+ * узел. Показать старую и новую сцену одновременно — а именно этого требует
+ * настоящее растворение, сдвиг или штора — одним узлом нельзя.
+ *
+ * Отсюда единственная работающая схема: **уход (0→50%) → подмена состояний
+ * в середине → приход (50→100%)**. В середине всё либо за краем сцены, либо
+ * прозрачно, поэтому мгновенная подмена невидима. `UNMATCHED_FRACTION`
+ * и есть эта середина.
+ *
+ * `morph` сюда НЕ входит: он двигает каждый элемент из его старого состояния
+ * в новое, и обе картинки ему не нужны — нужен FLIP поверх конечной
+ * раскладки. `cut` не входит, потому что не длится.
+ */
+export const WHOLE_SCENE: ReadonlySet<Transition> = new Set([
+  'dissolve', 'slide', 'scale', 'blur', 'wipe', 'circle',
+]);
+
+/**
+ * Состояния для одной половины перехода, который двигает сцену целиком.
+ *
+ * **Набор ключей У ОБЕИХ ПОЛОВИН ОДИН** — объединение участников, — и это
+ * несущее свойство, а не удобство. `#renderStates` пересобирает контейнер,
+ * когда состав узлов изменился; пересборка в середине перехода оставила бы
+ * таймлайн с мёртвыми узлами, и вторая половина анимировала бы то, чего
+ * больше нет в документе. При совпавшем составе узлы правятся на месте.
+ *
+ * `before` — как было: у совпавших и уходящих своё прежнее состояние,
+ * у приходящих взять нечего, поэтому берётся будущее (их всё равно не видно,
+ * они прозрачны до подмены).
+ * `after` — как станет, зеркально.
+ */
+export function halfStates(
+  plan: readonly MorphPart[],
+  half: 'before' | 'after',
+): SlideStates {
+  const states: Record<string, ElementState> = {};
+  for (const part of plan) {
+    const state = half === 'before' ? (part.from ?? part.to) : (part.to ?? part.from);
+    if (state) states[part.id] = state;
+  }
+  return states;
+}
+
+/**
  * Видимая непрозрачность состояния.
  *
  * `visible: false` — это не отдельная механика прятанья, а нулевая
@@ -266,11 +312,53 @@ function zeroTimeline(): MorphTimeline {
  * никогда не рисует кадр с убранной накладкой поверх ещё не досчитанной
  * сцены.
  */
+/**
+ * Каркас приёма, двигающего сцену целиком.
+ *
+ * Первая половина — уход СТАРОГО кадра, вторая — приход НОВОГО. Между ними
+ * `slides.ts` подменяет состояния: в этот момент всё либо за краем сцены,
+ * либо прозрачно, поэтому подмена невидима.
+ *
+ * Участвуют ВСЕ, у кого есть соответствующее состояние, а не только
+ * приходящие и уходящие. Это несущее отличие: роль `moves` — элемент,
+ * который есть на обоих слайдах, — составляет БОЛЬШИНСТВО (измерено
+ * на фикстурах: 78%), потому что «новый слайд по умолчанию — копия
+ * предыдущего» (`product.md` [Р]). Приём, пропускающий `moves`,
+ * в типичном случае не делал бы НИЧЕГО и был бы неотличим от среза.
+ */
+function addWholeScene(
+  plan: readonly MorphPart[],
+  nodeOf: (id: string) => HTMLElement,
+  timeline: ReturnType<typeof createTimeline>,
+  unmatchedMs: number,
+  durationMs: number,
+  out: (from: ElementState) => Record<string, unknown>,
+  into: (to: ElementState) => Record<string, unknown>,
+): void {
+  for (const part of plan) {
+    if (part.role === 'absent') continue;
+    const node = nodeOf(part.id);
+    // Уход: все, кто был на старом кадре, — то есть `moves` и `leaves`.
+    if (part.from) {
+      timeline.add(node, { ...out(part.from), duration: unmatchedMs, ease: 'inQuad' }, 0);
+    }
+    // Приход: все, кто есть на новом, — `moves` и `enters`.
+    if (part.to) {
+      timeline.add(
+        node,
+        { ...into(part.to), duration: durationMs - unmatchedMs, ease: 'outQuad' },
+        unmatchedMs,
+      );
+    }
+  }
+}
+
 function addOverlay(
   host: HTMLElement,
   stage: StageSize,
   technique: 'wipe' | 'circle',
   timeline: ReturnType<typeof createTimeline>,
+  unmatchedMs: number,
   durationMs: number,
 ): () => void {
   const overlay = document.createElement('div');
@@ -285,11 +373,20 @@ function addOverlay(
     overlay.style.width = `${stage.width}px`;
     overlay.style.height = `${stage.height}px`;
     host.appendChild(overlay);
+    // Закрывает в первой половине, открывает во второй. Между ними
+    // `slides.ts` подменяет состояния — под сплошной плашкой этого не видно.
+    // Без второй половины новый кадр появлялся бы мгновенно на снятии
+    // накладки, то есть штора была бы половиной шторы.
     timeline.add(overlay, {
       x: [-stage.width, 0],
-      duration: durationMs,
-      ease: 'inOutQuad',
+      duration: unmatchedMs,
+      ease: 'inQuad',
     }, 0);
+    timeline.add(overlay, {
+      x: [0, stage.width],
+      duration: durationMs - unmatchedMs,
+      ease: 'outQuad',
+    }, unmatchedMs);
   } else {
     // Круг центрирован и должен накрыть самый дальний угол сцены —
     // диагональ, а не сторона, иначе углы остались бы видны при scale 1.
@@ -302,9 +399,14 @@ function addOverlay(
     host.appendChild(overlay);
     timeline.add(overlay, {
       scale: [0, 1],
-      duration: durationMs,
-      ease: 'inOutQuad',
+      duration: unmatchedMs,
+      ease: 'inQuad',
     }, 0);
+    timeline.add(overlay, {
+      scale: [1, 0],
+      duration: durationMs - unmatchedMs,
+      ease: 'outQuad',
+    }, unmatchedMs);
   }
 
   return () => overlay.remove();
@@ -427,94 +529,40 @@ export function buildMorph(
       break;
     }
 
+    // Приёмы, двигающие сцену целиком. Все четыре — один каркас с разными
+    // свойствами: уход старого кадра в первой половине, приход нового
+    // во второй. Подмену состояний между половинами делает `slides.ts`.
     case 'dissolve': {
-      for (const part of plan) {
-        if (part.role === 'moves' || part.role === 'leaves') {
-          const node = nodeOf(part.id);
-          const from = part.from!;
-          timeline.add(node, {
-            opacity: [visibleOpacity(from), 0],
-            duration: unmatchedMs,
-            ease: 'inQuad',
-          }, 0);
-        }
-        if (part.role === 'moves' || part.role === 'enters') {
-          const node = nodeOf(part.id);
-          const to = part.to!;
-          timeline.add(node, {
-            opacity: [0, visibleOpacity(to)],
-            duration: durationMs - unmatchedMs,
-            ease: 'outQuad',
-          }, unmatchedMs);
-        }
-      }
+      addWholeScene(plan, nodeOf, timeline, unmatchedMs, durationMs,
+        (from) => ({ opacity: [visibleOpacity(from), 0] }),
+        (to) => ({ opacity: [0, visibleOpacity(to)] }));
       break;
     }
 
     case 'slide': {
-      for (const part of plan) {
-        if (part.role === 'leaves') {
-          timeline.add(nodeOf(part.id), {
-            x: [0, -stage.width],
-            duration: durationMs,
-            ease: 'inOutQuad',
-          }, 0);
-        } else if (part.role === 'enters') {
-          timeline.add(nodeOf(part.id), {
-            x: [stage.width, 0],
-            duration: durationMs,
-            ease: 'inOutQuad',
-          }, 0);
-        }
-      }
+      addWholeScene(plan, nodeOf, timeline, unmatchedMs, durationMs,
+        () => ({ x: [0, -stage.width] }),
+        () => ({ x: [stage.width, 0] }));
       break;
     }
 
     case 'scale': {
-      for (const part of plan) {
-        if (part.role === 'leaves') {
-          timeline.add(nodeOf(part.id), {
-            scale: [1, 0.92],
-            opacity: [visibleOpacity(part.from!), 0],
-            duration: durationMs,
-            ease: 'inOutQuad',
-          }, 0);
-        } else if (part.role === 'enters') {
-          timeline.add(nodeOf(part.id), {
-            scale: [1.08, 1],
-            opacity: [0, visibleOpacity(part.to!)],
-            duration: durationMs,
-            ease: 'inOutQuad',
-          }, 0);
-        }
-      }
+      addWholeScene(plan, nodeOf, timeline, unmatchedMs, durationMs,
+        (from) => ({ scale: [1, 0.92], opacity: [visibleOpacity(from), 0] }),
+        (to) => ({ scale: [1.08, 1], opacity: [0, visibleOpacity(to)] }));
       break;
     }
 
     case 'blur': {
-      for (const part of plan) {
-        if (part.role === 'leaves') {
-          timeline.add(nodeOf(part.id), {
-            filter: ['blur(0px)', 'blur(8px)'],
-            opacity: [visibleOpacity(part.from!), 0],
-            duration: durationMs,
-            ease: 'inOutQuad',
-          }, 0);
-        } else if (part.role === 'enters') {
-          timeline.add(nodeOf(part.id), {
-            filter: ['blur(8px)', 'blur(0px)'],
-            opacity: [0, visibleOpacity(part.to!)],
-            duration: durationMs,
-            ease: 'inOutQuad',
-          }, 0);
-        }
-      }
+      addWholeScene(plan, nodeOf, timeline, unmatchedMs, durationMs,
+        (from) => ({ filter: ['blur(0px)', 'blur(8px)'], opacity: [visibleOpacity(from), 0] }),
+        (to) => ({ filter: ['blur(8px)', 'blur(0px)'], opacity: [0, visibleOpacity(to)] }));
       break;
     }
 
     case 'wipe':
     case 'circle': {
-      removeOverlay = addOverlay(host, stage, technique, timeline, durationMs);
+      removeOverlay = addOverlay(host, stage, technique, timeline, unmatchedMs, durationMs);
       break;
     }
   }
@@ -549,9 +597,10 @@ export function buildMorph(
       timeline.currentTime = 0;
       timeline.currentTime = durationMs;
       touched = true;
-      // Накладка досчитала до полного покрытия сцены ровно к этому моменту:
-      // снять её здесь же, синхронно, — значит ни разу не отдать браузеру
-      // кадр, где накладки уже нет, а конечное состояние ещё не отрисовано.
+      // К этому моменту накладка уже ушла с экрана (вторая половина её
+      // открывает), поэтому снятие её синхронно здесь ничего не мигает.
+      // Снять обязательно: узел, оставленный в DOM, перехватывал бы
+      // следующий переход и копился бы при перемотках.
       if (removeOverlay) {
         removeOverlay();
         removeOverlay = null;

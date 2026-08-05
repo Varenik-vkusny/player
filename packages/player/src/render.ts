@@ -14,7 +14,7 @@
  * косметическое — оно и есть условие морфинга: элемент с устойчивым `id`
  * живёт через все слайды раздела, меняя только состояние.
  */
-import type { Element, ElementState } from '@player/core';
+import type { Element, ElementState, Theme } from '@player/core';
 import { getElementRenderer } from './renderers/registry.js';
 
 export const DEFAULT_STAGE_WIDTH = 1920;
@@ -80,6 +80,29 @@ export function fitStage(hostWidth: number, hostHeight: number, stage: StageSize
  * поверх переходом (transform, opacity, filter), при этом стираются:
  * вызывающий обязан заново выставить время. См. ScenePreview.
  */
+/**
+ * Записывает тему сцены переменными на её контейнер.
+ *
+ * Переменными на ПРЕДКЕ, а не инлайном на каждом элементе, и это не приём
+ * экономии: измерено S11 — переменная на предке перекрашивает потомков,
+ * не трогая их собственный инлайн-стиль. Значит смена темы стоит одной
+ * записи и не затирает то, что автор поставил элементу руками.
+ *
+ * Здесь же и заканчивается вся цена темы для рендера: элемент ссылается
+ * на роль обычной строкой своего стиля (`var(--scene-accent, #4c8dff)`),
+ * поэтому ни схема состояний, ни `applyElement` про тему не знают вовсе.
+ *
+ * Запасное значение в ссылке обязательно и остаётся обязательным даже
+ * теперь, когда тему кто-то пишет: проект может прийти из чужого шаблона
+ * с ролью, которой у нас нет, и тогда браузер отбросит объявление ЦЕЛИКОМ,
+ * молча (S11). Эта функция от такого не страхует — страхует запас.
+ */
+export function applyTheme(host: HTMLElement, theme: Theme): void {
+  for (const [role, value] of Object.entries(theme)) {
+    host.style.setProperty(role, value);
+  }
+}
+
 export function applyElement(
   node: HTMLElement,
   element: Element,

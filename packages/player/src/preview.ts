@@ -13,7 +13,7 @@
  * рендере. Второй реализации здесь по-прежнему неоткуда взяться.
  */
 import { findSegment as findSegment } from '@player/core';
-import type { Element, ElementState, Gate, Project, Slide, Word } from '@player/core';
+import type { Element, ElementState, Gate, Project, Slide, Theme, Word } from '@player/core';
 
 import type { AudioSource } from './assets.js';
 import { applyElement, applyFit, type Fit, type StageSize } from './render.js';
@@ -53,6 +53,13 @@ export interface Segment {
   readonly slides: readonly Slide[];
   readonly gates: readonly Gate[];
   readonly stage: StageSize;
+  /**
+   * Тема сцены (схема v9). Едет здесь, а не отдельным аргументом, потому что
+   * это единственная точка, из которой вид-модель получают ОБА хоста —
+   * плеер и предпросмотр редактора. Инвариант №5 соблюдается сам собой:
+   * второго места, где тему можно было бы применить иначе, не существует.
+   */
+  readonly theme: Theme;
 }
 
 /**
@@ -80,6 +87,7 @@ export function segmentOf(project: Project, segmentId: string): Segment {
     slides: segment.slides,
     gates: segment.gates,
     stage: { width: project.meta.stageWidth, height: project.meta.stageHeight },
+    theme: project.meta.theme,
   };
 }
 
@@ -204,6 +212,7 @@ export class ScenePreview {
   #build(segment: Segment): SlideEngine {
     return new SlideEngine({
       host: this.#host,
+      theme: segment.theme,
       elements: segment.elements,
       slides: segment.slides,
       words: segment.words,

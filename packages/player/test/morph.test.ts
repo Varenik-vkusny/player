@@ -15,6 +15,8 @@ import {
   morphSecondsFor,
   phaseAt,
   planMorph,
+  halfStates,
+  WHOLE_SCENE,
   TECHNIQUE_PROPS,
 
   type SlideSchedule,
@@ -233,5 +235,55 @@ describe('TECHNIQUE_PROPS: инвариант №8 — свойство приё
     // и первая проверка прошла бы по нему ВПУСТУЮ — пустое множество
     // не содержит запрещённых свойств по построению.
     expect(Object.keys(TECHNIQUE_PROPS).sort()).toEqual([...TRANSITIONS].sort());
+  });
+});
+
+describe('halfStates: две половины перехода, двигающего сцену целиком', () => {
+  const plan = planMorph(
+    ['stays', 'goes', 'comes'],
+    { stays: state({ x: 10 }), goes: state({ x: 20 }) },
+    { stays: state({ x: 99 }), comes: state({ x: 30 }) },
+  );
+
+  it('первая половина показывает СТАРЫЕ состояния', () => {
+    const before = halfStates(plan, 'before');
+    expect(before['stays']!.x).toBe(10);
+    expect(before['goes']!.x).toBe(20);
+  });
+
+  it('вторая половина показывает НОВЫЕ состояния', () => {
+    const after = halfStates(plan, 'after');
+    expect(after['stays']!.x).toBe(99);
+    expect(after['comes']!.x).toBe(30);
+  });
+
+  it('набор ключей у обеих половин ОДИН И ТОТ ЖЕ', () => {
+    // Несущее свойство, а не совпадение. `#renderStates` пересобирает
+    // контейнер, когда состав узлов изменился. Пересборка в середине
+    // перехода оставила бы таймлайн с узлами, которых больше нет
+    // в документе, и вторая половина анимировала бы пустоту — молча,
+    // без единой ошибки.
+    //
+    // Что должно сломаться, чтобы покраснело: любая правка halfStates,
+    // роняющая участника из одной половины, — например «уходящего
+    // во второй половине не показываем».
+    expect(Object.keys(halfStates(plan, 'before')).sort())
+      .toEqual(Object.keys(halfStates(plan, 'after')).sort());
+  });
+
+  it('участник без обоих состояний не попадает никуда', () => {
+    const ghost = planMorph(['ghost'], {}, {});
+    expect(Object.keys(halfStates(ghost, 'before'))).toEqual([]);
+    expect(Object.keys(halfStates(ghost, 'after'))).toEqual([]);
+  });
+
+  it('приёмы, двигающие сцену целиком, перечислены поимённо', () => {
+    // Поимённо, а не «размер шесть»: приём, случайно попавший в набор,
+    // получил бы подмену состояний в середине, которая ему не нужна,
+    // и это не упало бы ни на одном тесте.
+    expect([...WHOLE_SCENE].sort())
+      .toEqual(['blur', 'circle', 'dissolve', 'scale', 'slide', 'wipe']);
+    expect(WHOLE_SCENE.has('morph')).toBe(false);
+    expect(WHOLE_SCENE.has('cut')).toBe(false);
   });
 });

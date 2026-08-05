@@ -690,7 +690,7 @@
         "rotation": 0,
         "zIndex": 1,
         "style": {
-          "background": "#1b2430",
+          "background": "var(--scene-surface, #1b2430)",
           "border-radius": "28px",
           "border": "2px solid #2c3a4d",
           "opacity": "0"

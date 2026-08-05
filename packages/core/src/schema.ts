@@ -937,4 +937,5 @@ export type Condition = z.infer<typeof ConditionSchema>;
 export type ExitRule = z.infer<typeof ExitRuleSchema>;
 export type Exit = z.infer<typeof ExitSchema>;
 export type Segment = z.infer<typeof SegmentSchema>;
+export type Theme = z.infer<typeof ThemeSchema>;
 export type Project = z.infer<typeof ProjectSchema>;

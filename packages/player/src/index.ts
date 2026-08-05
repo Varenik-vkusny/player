@@ -30,11 +30,14 @@ export {
 export {
   buildMorph,
   indexAt,
+  halfStates,
   layoutStatesFor,
   morphSecondsFor,
   phaseAt,
   planMorph,
   TECHNIQUE_PROPS,
+  UNMATCHED_FRACTION,
+  WHOLE_SCENE,
   type Transition,
   type MorphPart,
   type MorphRole,
@@ -49,6 +52,7 @@ export {
 } from './renderers/registry.js';
 export {
   applyElement,
+  applyTheme,
   applyFit,
   fitStage,
   renderScene,

@@ -14,24 +14,29 @@
  *
  * `transition: 'cut'` — намеренный разрыв, применяется мгновенно.
  */
-import type { Element, Slide, Word } from '@player/core';
+import type { Element, Slide, Theme, Word } from '@player/core';
 import { resolveTimeRef } from '@player/core';
 
 import {
   buildMorph,
+  halfStates,
   indexAt,
   layoutStatesFor,
   morphSecondsFor,
   phaseAt,
   planMorph,
+  UNMATCHED_FRACTION,
+  WHOLE_SCENE,
   type MorphPart,
   type MorphTimeline,
   type Phase,
 } from './morph.js';
-import { applyElement, renderScene, type SlideStates, type StageSize } from './render.js';
+import { applyElement, applyTheme, renderScene, type SlideStates, type StageSize } from './render.js';
 
 export interface SlideEngineOptions {
   host: HTMLElement;
+  /** Тема сцены (схема v9). Пишется переменными на контейнер один раз при сборке. */
+  theme: Theme;
   elements: readonly Element[];
   slides: readonly Slide[];
   words: readonly Word[];
@@ -57,6 +62,12 @@ interface Running {
   readonly index: number;
   readonly startSeconds: number;
   readonly timeline: MorphTimeline;
+  /** План перехода. Нужен, чтобы пересобрать состояния половины при подмене. */
+  readonly plan: readonly MorphPart[];
+  /** Двигает ли приём сцену целиком — тогда в середине нужна подмена состояний. */
+  readonly wholeScene: boolean;
+  /** Какая половина сейчас отрисована. Меняется в `#drive` при переходе середины. */
+  half: 'before' | 'after';
 }
 
 /** Одинаковы ли две фазы. Пересобирать сцену надо только при смене. */
@@ -77,6 +88,11 @@ export class SlideEngine {
 
   constructor(options: SlideEngineOptions) {
     this.#host = options.host;
+    // Тема — переменными на контейнере, до первой отрисовки: элементы
+    // ссылаются на роли, и роль обязана существовать раньше, чем на неё
+    // сошлются. Иначе первый кадр браузер нарисует, отбросив объявление
+    // целиком и МОЛЧА (S11).
+    applyTheme(options.host, options.theme);
     this.#elements = options.elements;
     this.#elementIds = options.elements.map((element) => element.id);
     this.#stage = options.stage;
@@ -192,6 +208,25 @@ export class SlideEngine {
       this.settle();
       return;
     }
+
+    // Подмена состояний в середине. Считается ОТ ВРЕМЕНИ, а не флагом
+    // «уже подменяли»: время прыгает в обе стороны, и при перемотке назад
+    // сцена обязана вернуться к старой картинке, а не остаться на новой.
+    if (running.wholeScene) {
+      const want = elapsed >= running.timeline.durationSeconds * UNMATCHED_FRACTION
+        ? 'after'
+        : 'before';
+      if (want !== running.half) {
+        this.#renderStates(halfStates(running.plan, want));
+        this.#hideForHalf(running.plan, want);
+        running.half = want;
+      }
+    }
+
+    // Строго ПОСЛЕ подмены: `applyElement` стирает transform, opacity
+    // и filter (см. render.ts), то есть ровно то, что накрутил переход.
+    // Выставление времени возвращает их — иначе кадр после подмены был бы
+    // без анимации вовсе.
     running.timeline.seekSeconds(elapsed);
   }
 
@@ -222,10 +257,20 @@ export class SlideEngine {
     this.#running?.timeline.dispose();
 
     const plan = planMorph(this.#elementIds, previous, scheduled.slide.states as SlideStates);
-    this.#renderStates(layoutStatesFor(plan));
-    this.#applyStartOfMorph(plan);
+    const wholeScene = WHOLE_SCENE.has(scheduled.slide.transition);
+
+    // Приём, двигающий сцену целиком, начинает со СТАРОЙ картинки: ей ещё
+    // предстоит уйти. `morph` начинает с конечной раскладки, потому что
+    // двигает трансформацию поверх неё (FLIP), а не саму раскладку.
+    this.#renderStates(wholeScene ? halfStates(plan, 'before') : layoutStatesFor(plan));
+    if (wholeScene) this.#hideForHalf(plan, 'before');
+    else this.#applyStartOfMorph(plan);
+
     this.#running = {
       index: phase.index,
+      plan,
+      wholeScene,
+      half: 'before',
       // Окно заканчивается на метке, значит начинается за длительность до неё.
       startSeconds: scheduled.seconds - scheduled.morphSeconds,
       timeline: buildMorph(
@@ -248,6 +293,25 @@ export class SlideEngine {
    * форсируется, и поведение выглядит исправным — ровно та ошибка, на
    * которой обожглись в S1 с нулевыми кадрами прежнего таймлайна.
    */
+  /**
+   * Прячет участников, которых в этой половине быть не должно.
+   *
+   * Нужно после КАЖДОЙ подмены состояний, а не один раз в начале: уходящий
+   * элемент во второй половине берёт своё СТАРОЕ состояние (другого у него
+   * нет), а вместе с ним и старую непрозрачность — то есть снова стал бы
+   * виден, хотя уже ушёл. Симметрично приходящий в первой половине.
+   *
+   * Анимация приёма ложится поверх этого следующим же выставлением времени.
+   */
+  #hideForHalf(plan: readonly MorphPart[], half: 'before' | 'after'): void {
+    const hidden = half === 'before' ? 'enters' : 'leaves';
+    for (const part of plan) {
+      if (part.role !== hidden) continue;
+      const node = this.#nodes.get(part.id);
+      if (node) node.style.opacity = '0';
+    }
+  }
+
   #applyStartOfMorph(plan: readonly MorphPart[]): void {
     for (const part of plan) {
       if (part.role !== 'enters') continue;

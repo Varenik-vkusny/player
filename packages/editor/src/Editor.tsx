@@ -1148,6 +1148,7 @@ export function Editor({
           onCommitHistory={handleCommitHistory}
         />
         <SlideStrip
+          theme={segment.theme}
           slides={segment.slides}
           words={segment.words}
           elements={segment.elements}
