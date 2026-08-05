@@ -1,0 +1,674 @@
+/*
+  МОНТАЖ: дорожка, переходы, карта. Сессия 21.
+
+  ОТДЕЛЬНЫМ ФАЙЛОМ ОТ shell.css НАМЕРЕННО, и это не вкусовщина. Грабля
+  Сессии 20: правка комментария в shell.css дважды оставляла текст
+  комментария голым кодом, потому что замена начиналась сразу после `*​/`.
+  Новый файл этой опасности не имеет вовсе.
+
+  Роли берутся из tokens.css и НЕ ЗАВОДЯТСЯ заново. Единственное значение,
+  которое здесь переопределяется, — высота зоны дорожки: полос стало пять
+  вместо двух, и 200px в них не помещаются. Переопределение стоит здесь,
+  а не правкой tokens.css, чтобы файл Сессии 20 остался нетронутым.
+*/
+
+:root {
+  /* Линейка 24 + звук 56 + слайды 34 + остановки 34 + слова 28 + отступы,
+     плюс полоса кнопок 40. Считано по составу, а не подобрано на глаз. */
+  --zone-track-h: 272px;
+  --mt-lane-head-w: 120px;
+}
+
+/* Пояснение под дорожкой — леса макета, в продукт не идут.
+   Высота ПОСТОЯННА, и это не педантизм: текст меняется по состоянию,
+   а полосы дорожки живут в зоне фиксированной высоты — «плавающее»
+   пояснение отнимало бы у них высоту ровно так же, как в Сессии 18
+   появившаяся зона отняла ширину у сцены и уронила масштаб. */
+.mont-note {
+  flex: 0 0 auto;
+  height: 34px;
+  margin: 0;
+  padding: var(--u-half) var(--u2);
+  overflow: hidden;
+  border-top: 1px solid var(--ui-line);
+  background: var(--ui-surface-raised);
+  font: var(--weight-normal) var(--type-xs) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-secondary);
+}
+.mont-note b { color: var(--ui-content-fg); font-weight: var(--weight-bold); }
+
+/* ==========================================================================
+   ДОРОЖКА
+   ========================================================================== */
+
+.track {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ui-surface-panel);
+  border-top: 1px solid var(--ui-line);
+}
+
+.mt-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--u);
+  height: 40px;
+  padding: 0 var(--u2);
+  border-bottom: 1px solid var(--ui-line);
+  flex: 0 0 auto;
+}
+
+.mont-spacer { flex: 1 1 auto; }
+.mont-sep { width: 1px; height: 20px; background: var(--ui-line); }
+.mont-zoom {
+  min-width: 26px;
+  text-align: center;
+  font: var(--weight-medium) var(--type-xs) / var(--lh-xs) var(--font-mono);
+  color: var(--ui-content-fg-secondary);
+}
+
+.mont-btn {
+  font: var(--weight-medium) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg);
+  background: var(--ui-action-secondary-bg);
+  border: 0;
+  border-radius: var(--radius-sm);
+  padding: var(--u-half) var(--u);
+  cursor: pointer;
+}
+.mont-btn:hover:not(:disabled) { background: var(--ui-action-hover-bg); }
+.mont-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.mont-btn--play {
+  width: 28px; height: 28px; padding: 0;
+  border-radius: var(--radius-pill);
+  background: var(--ui-content-fg);
+  color: var(--ui-surface-base);
+}
+.mont-btn--wide { width: 100%; margin-top: var(--u); }
+.mont-btn--primary {
+  background: var(--ui-action-primary-bg);
+  color: var(--ui-action-primary-fg);
+}
+.mont-btn--primary:disabled { background: var(--ui-action-secondary-bg); color: var(--ui-content-fg); }
+
+.mont-clock {
+  font: var(--weight-medium) var(--type-sm) / var(--lh-sm) var(--font-mono);
+  color: var(--ui-content-fg);
+}
+/* Погашенные часы — не «спрятанные»: 00:00.0 / 00:00.0 при отсутствии звука
+   сообщает, что дорожка есть и она пуста, а не что её нет. */
+.mont-clock--off { color: var(--ui-content-fg-tertiary); }
+
+.mt-lanes {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Прокрутка по горизонтали — следствие масштаба, а не украшение:
+     при ×1 хвост перехода в 0.6 c дал 7.2 px, то есть стык неадресуем.
+     Ширину шкалы в пикселях кладёт JS в --mt-track-w. */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.mt-lane {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--ui-line);
+  min-width: calc(var(--mt-lane-head-w) + var(--mt-track-w, 100%));
+}
+.mt-lane:last-child { border-bottom: 0; }
+
+/* Голова полосы — приём CapCut. Там же живёт причина, когда полоса пуста. */
+.mt-lane__head {
+  /* Липкая: прокрутив дорожку вправо, автор не имеет права потерять имена
+     полос и причину, по которой полоса пуста. Причина в голове — весь
+     смысл головы (находка 4: погашенное обязано называть, чего не хватает). */
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: 0 0 var(--mt-lane-head-w);
+  width: var(--mt-lane-head-w);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  padding: 0 var(--u);
+  border-right: 1px solid var(--ui-line);
+  background: var(--ui-surface-raised);
+  overflow: hidden;
+}
+.mt-lane__name {
+  font: var(--weight-bold) var(--type-xs) / var(--lh-xs) var(--font-ui);
+  color: var(--ui-content-fg);
+}
+.mt-lane__sub {
+  font: var(--weight-normal) var(--type-xs) / var(--lh-xs) var(--font-ui);
+  color: var(--ui-content-fg-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mt-lane__body {
+  position: relative;
+  flex: 0 0 var(--mt-track-w, auto);
+  width: var(--mt-track-w, 100%);
+  min-width: 0;
+}
+
+.mt-lane--ruler { height: 24px; }
+.mt-lane--sound { height: 56px; }
+.mt-lane--slides { height: 34px; }
+.mt-lane--stops { height: 34px; }
+.mt-lane--words { height: 28px; }
+
+.tick {
+  position: absolute;
+  top: 4px;
+  font: var(--weight-normal) var(--type-xs) / var(--lh-xs) var(--font-mono);
+  color: var(--ui-content-fg-tertiary);
+  padding-left: 3px;
+  border-left: 1px solid var(--ui-line-strong);
+  white-space: nowrap;
+}
+
+.wave { display: flex; align-items: center; gap: 1px; height: 100%; padding: var(--u-half) 2px; }
+.wave__bar { flex: 1 1 auto; background: var(--ui-action-selected-line); opacity: 0.55; border-radius: 1px; }
+
+/* Пустое состояние — ПРИГЛАШЕНИЕ. У CapCut тело пустой дорожки это
+   зона-приёмник, а не пустота. */
+.mt-lane__empty,
+.mt-lane__skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--u);
+  height: 100%;
+  margin: var(--u-half);
+  border-radius: var(--radius-sm);
+  font: var(--weight-normal) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-secondary);
+}
+.mt-lane__empty { border: 1px dashed var(--ui-line-strong); background: var(--ui-surface-raised); }
+.mt-lane__empty-sign { font-size: var(--type-lg); color: var(--ui-content-fg-tertiary); }
+
+/* Скелет, а НЕ пустая волна. Пустая волна изображала бы тишину там,
+   где файл ещё не прочитан, — эти два состояния не имеют права выглядеть
+   одинаково (комментарий в самом продукте, TrackView.tsx:155). */
+.mt-lane__skeleton {
+  background: repeating-linear-gradient(
+    90deg, var(--ui-surface-raised) 0 6px, transparent 6px 12px);
+  border: 1px solid var(--ui-line);
+}
+
+/* ХВОСТ = СТЫК. Длина хвоста и есть продолжительность перехода.
+   Рисуется ПЕРЕД ромбом, потому что окно движения кончается на метке
+   (ADR-020), а не начинается с неё. */
+.tail {
+  position: absolute;
+  top: 8px;
+  height: 18px;
+  min-width: 6px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--ui-action-selected-bg);
+  border-left: 2px solid var(--ui-action-selected-line);
+  cursor: pointer;
+  overflow: hidden;
+}
+.tail:hover { background: rgba(76, 141, 255, 0.26); }
+.tail--on { background: var(--ui-action-selected-line); }
+.tail--on .tail__label { color: var(--ui-action-primary-fg); }
+/* Приём, который ещё не измерен или имеет цену, помечен на самой дорожке:
+   узнавать об этом из панели поздно. */
+.tail--check { border-left-color: var(--ui-feedback-warn); }
+.tail__label {
+  display: block;
+  padding-left: 3px;
+  font: var(--weight-medium) var(--type-xs) / 18px var(--font-ui);
+  color: var(--ui-content-fg-secondary);
+  white-space: nowrap;
+}
+
+.mt-mark {
+  position: absolute;
+  top: 50%;
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  padding: 0;
+  border: 1px solid var(--ui-surface-base);
+  background: var(--ui-action-selected-line);
+  cursor: pointer;
+}
+.mt-mark--slide { transform: rotate(45deg); border-radius: 2px; }
+.mt-mark--gate {
+  border-radius: var(--radius-pill);
+  background: var(--ui-feedback-info);
+}
+/* Развилка отличается от вопроса ЗНАЧКОМ, а не оттенком: два состояния
+   с одним знаком автор перестаёт различать. */
+.mt-mark--fork {
+  width: 16px; height: 16px; margin: -8px 0 0 -8px;
+  background: var(--ui-feedback-warn);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  border-radius: 0;
+}
+.mt-mark--on { outline: 2px solid var(--ui-content-fg); outline-offset: 1px; }
+
+/* ПОДСВЕТКА ОТ ВЫДЕЛЕНИЯ НА СЦЕНЕ — не выделение. Выделение на сцене это
+   элементы, метки на дорожке — слайды и остановки: разные сущности.
+   Поэтому знак другой (кольцо, а не обводка выделения), и он отвечает
+   на другой вопрос: «где во времени живёт то, что я держу». */
+.mt-mark--lit {
+  box-shadow: 0 0 0 3px rgba(168, 114, 11, 0.35);
+  background: var(--ui-feedback-warn);
+}
+
+/* Ручка продолжительности. Шире хвоста намеренно: при масштабе ×1 хвост
+   0.6 c это 7.2 px, и мишень в 7 px непопадаема. Ручка вылезает за край
+   влево, где места всегда больше, чем внутри хвоста. */
+.tail__grip {
+  position: absolute;
+  left: -4px; top: -3px; bottom: -3px;
+  width: 12px;
+  cursor: ew-resize;
+  border-radius: var(--radius-sm);
+}
+.tail__grip::before {
+  content: '';
+  position: absolute;
+  left: 4px; top: 4px; bottom: 4px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--ui-action-selected-line);
+}
+.tail:hover .tail__grip::before,
+.tail--on .tail__grip::before { background: var(--ui-content-fg); }
+/* Во время жеста курсор не должен меняться под указателем и текст
+   не должен выделяться: и то и другое читается как «жест сорвался». */
+.mt-dragging { cursor: ew-resize; user-select: none; }
+.mt-dragging * { cursor: ew-resize !important; }
+
+.mt-dirs { display: flex; gap: var(--u-half); }
+.mt-dir {
+  width: 32px; height: 28px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-panel);
+  font: var(--weight-medium) var(--type-md) / 1 var(--font-ui);
+  color: var(--ui-content-fg);
+  cursor: pointer;
+}
+.mt-dir[aria-pressed="true"] {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+}
+
+/* Подпись развилки уходит ВЛЕВО от метки. Не «на случай, если не влезет»:
+   развилка обязана быть последней в части (product.md §5), значит она всегда
+   у правого края, и места справа нет по построению. */
+.fork-label {
+  position: absolute;
+  top: 2px;
+  transform: translateX(-100%);
+  margin-left: -12px;
+  font: var(--weight-medium) var(--type-xs) / var(--lh-xs) var(--font-ui);
+  color: var(--ui-feedback-warn);
+  white-space: nowrap;
+}
+
+.mt-lane__body--text { display: flex; align-items: center; padding: 0 var(--u); overflow: hidden; }
+/* Отступ полем, а не пробелом в тексте: конечный пробел внутри <span>
+   схлопывается разметкой, и слова слипались в одно длинное — «итогдакаса…».
+   Видно только глазами: данные при этом верные, слов ровно четырнадцать. */
+.word {
+  margin-right: 4px;
+  font: var(--weight-normal) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-secondary);
+}
+.mt-lane__hint { font: var(--weight-normal) var(--type-sm) / var(--lh-sm) var(--font-ui); color: var(--ui-content-fg-tertiary); }
+
+/* Головка идёт СКВОЗЬ все полосы, включая линейку: именно это связывает
+   пять полос в одну шкалу. Снято у CapCut. */
+.mt-head {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1px;
+  background: var(--ui-content-fg);
+  pointer-events: none;
+}
+.mt-head::before {
+  content: '';
+  position: absolute;
+  top: 0; left: -4px;
+  width: 9px; height: 9px;
+  border-radius: 2px;
+  background: var(--ui-content-fg);
+}
+
+/* ==========================================================================
+   ГЕЙТ В РЕДАКТОРЕ
+   Состояние, у которого механики нет вовсе: preview.ts прокидывает gates,
+   но prompt и options не рисует нигде. Автор не может увидеть свою
+   остановку такой, какой её увидит зритель.
+   ========================================================================== */
+.gatelayer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 12, 20, 0.55);
+  z-index: 5;
+}
+.gatecard {
+  width: min(78%, 560px);
+  padding: var(--u3);
+  border-radius: var(--radius-lg);
+  background: var(--ui-surface-overlay);
+  box-shadow: var(--ui-shadow-overlay);
+  text-align: center;
+}
+.gatecard__kind {
+  font: var(--weight-bold) var(--type-xs) / var(--lh-xs) var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-feedback-warn);
+}
+.gatecard__prompt {
+  margin-top: var(--u);
+  font: var(--weight-bold) var(--type-lg) / var(--lh-lg) var(--font-ui);
+  color: var(--ui-content-fg);
+}
+.gatecard__opts { display: flex; flex-direction: column; gap: var(--u); margin-top: var(--u2); }
+.gatecard__opt {
+  padding: var(--u) var(--u2);
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-base);
+  font: var(--weight-medium) var(--type-md) / var(--lh-md) var(--font-ui);
+  color: var(--ui-content-fg);
+  cursor: pointer;
+}
+.gatecard__opt--right { border-color: var(--ui-feedback-positive); }
+.gatecard__foot {
+  margin-top: var(--u2);
+  font: var(--weight-normal) var(--type-xs) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-tertiary);
+}
+
+/* ==========================================================================
+   КАРТА — отдельный режим на весь экран, а не панель.
+   Пункт «Части» с рельса убран: две двери в одно место — та же ошибка,
+   из-за которой счётчик сирот сделан один на две болезни.
+   ========================================================================== */
+.mapmode {
+  position: fixed;
+  left: 0; right: 0;
+  top: var(--zone-topbar-h);
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr var(--zone-catalog-w);
+  background: var(--ui-surface-canvas);
+  z-index: 20;
+}
+/* Без этой строки атрибут `hidden` НЕ РАБОТАЕТ: он даёт display:none
+   из браузерной таблицы стилей, а `display:grid` выше — из авторской,
+   и авторская выигрывает. Карта висела поверх всего экрана при верном
+   mapmode.hidden === true. Это зеркало граблей из CLAUDE.md
+   («style.display='' не перебивает display:none из таблицы стилей»):
+   состояние в коде правильное, юнит-тест на него зелёный, зритель видит
+   поломку. Ловится только глазами в браузере. */
+.mapmode[hidden] { display: none; }
+
+.map__board {
+  overflow: auto;
+  padding: var(--u4);
+  /* Сетка, а не пустое поле: место читается как пространство раскладки.
+     Снято у Twine. */
+  background-image:
+    linear-gradient(var(--ui-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--ui-line) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.map__row { display: flex; gap: var(--u4); justify-content: center; margin-bottom: var(--u6); }
+.map__cell { display: flex; flex-direction: column; align-items: center; }
+
+.node {
+  width: 260px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-panel);
+  box-shadow: var(--ui-shadow-overlay);
+  cursor: pointer;
+  overflow: hidden;
+}
+/* Пунктир = ветка родилась пустой. Взято у Twine, где пустой узел тоже
+   пунктирный. Это узкое место product.md §5, и его показывают, а не прячут. */
+.node--empty { border-style: dashed; box-shadow: none; background: var(--ui-surface-raised); }
+.node--current { outline: 2px solid var(--ui-action-selected-line); outline-offset: 1px; }
+
+/* Метка старта — НАСТОЯЩИЙ УЗЕЛ ВНУТРИ ШАПКИ, а не псевдоэлемент снаружи.
+   Снаружи она была: content и left:-58px стояли верно, а видно её не было —
+   у карточки overflow:hidden ради скругления ленты, и он её срезал.
+   getComputedStyle при этом возвращал всё правильное. Поймалось только
+   взглядом на картинку.
+
+   Сама метка — приём Twine: на одном узле логически избыточна, но объявляет,
+   что узлов будет много. */
+.node__start {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: rgba(18, 160, 95, 0.14);
+  font: var(--weight-bold) 10px / 16px var(--font-ui);
+  color: var(--ui-feedback-positive);
+}
+.node__dur--none { font-style: italic; }
+
+.node__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--u);
+  padding: var(--u) var(--u2);
+  border-bottom: 1px solid var(--ui-line);
+}
+.node__title { flex: 1 1 auto; min-width: 0; font: var(--weight-bold) var(--type-md) / var(--lh-md) var(--font-ui); color: var(--ui-content-fg); }
+.node__dur { font: var(--weight-normal) var(--type-xs) / var(--lh-xs) var(--font-mono); color: var(--ui-content-fg-tertiary); }
+
+/* ЛЕНТА СЛАЙДОВ — тело карточки. Это и есть «ноды в структуре видео»:
+   клип у CapCut показывает себя лентой кадров, а не ссылкой на себя. */
+.node__strip {
+  position: relative;
+  display: flex;
+  gap: 1px;
+  height: 52px;
+  padding: 1px;
+  background: var(--ui-line);
+}
+.thumb {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  background: var(--scene-bg, #0f1620);
+  overflow: hidden;
+}
+.thumb__el { position: absolute; border-radius: 1px; }
+
+/* Остановка лежит ПОВЕРХ ленты, на своей секунде: развилка обязана быть
+   видна на карточке, иначе рёбра выходят из ниоткуда. */
+.node__pin {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--ui-feedback-info);
+}
+.node__pin--fork { width: 3px; background: var(--ui-feedback-warn); }
+
+.node__about {
+  padding: var(--u) var(--u2) 0;
+  font: var(--weight-normal) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-secondary);
+}
+.node__about--none { color: var(--ui-content-fg-tertiary); font-style: italic; }
+
+.node__facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--u);
+  padding: var(--u-half) var(--u2) var(--u);
+  font: var(--weight-normal) var(--type-xs) / var(--lh-xs) var(--font-ui);
+  color: var(--ui-content-fg-tertiary);
+}
+.node__acts { padding: 0 var(--u2) var(--u2); }
+
+.map__outs { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-top: var(--u); }
+.edge {
+  position: relative;
+  padding: 2px var(--u);
+  border-radius: var(--radius-pill);
+  background: var(--ui-surface-panel);
+  border: 1px solid var(--ui-line-strong);
+  font: var(--weight-medium) var(--type-xs) / var(--lh-xs) var(--font-ui);
+  color: var(--ui-content-fg-secondary);
+}
+.edge--else { border-style: dashed; }
+.edge--end { border-color: transparent; background: transparent; color: var(--ui-content-fg-tertiary); }
+
+.map__side {
+  overflow: auto;
+  padding: var(--u3);
+  background: var(--ui-surface-panel);
+  border-left: 1px solid var(--ui-line);
+}
+
+/* ==========================================================================
+   ПАНЕЛЬ МОНТАЖА (общая для линии и карты)
+
+   ОВЕРЛЕЙ, а не колонка. Измерено на CapCut 05.08.2026: их правая панель
+   выезжает поверх холста, контейнер сцены совпал до сотых с выделением
+   и без него. Колонка отняла бы ширину и уронила масштаб сцены — ровно
+   то, что случилось в Сессии 18. Глазами два решения неотличимы.
+   ========================================================================== */
+.mont-panel {
+  position: fixed;
+  right: 0;
+  top: calc(var(--zone-topbar-h) + var(--zone-propbar-h));
+  bottom: var(--zone-track-h);
+  width: var(--zone-catalog-w);
+  overflow: auto;
+  padding: var(--u3);
+  background: var(--ui-surface-overlay);
+  border-left: 1px solid var(--ui-line);
+  box-shadow: var(--ui-shadow-overlay);
+  z-index: 15;
+}
+.mont-panel[hidden] { display: none; }
+
+
+.mont-panel__title { margin: 0 0 var(--u) 0; font: var(--weight-bold) var(--type-lg) / var(--lh-lg) var(--font-ui); color: var(--ui-content-fg); }
+.mont-panel__hint { margin: 0 0 var(--u2) 0; font: var(--weight-normal) var(--type-sm) / var(--lh-md) var(--font-ui); color: var(--ui-content-fg-secondary); }
+.mont-panel__note {
+  margin: var(--u) 0 0 0;
+  padding-left: var(--u);
+  border-left: 2px solid var(--ui-line-strong);
+  font: var(--weight-normal) var(--type-xs) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-tertiary);
+}
+.mont-sec { margin-top: var(--u3); }
+.mont-sec__title { margin: 0 0 var(--u) 0; font: var(--weight-bold) var(--type-sm) / var(--lh-sm) var(--font-ui); color: var(--ui-content-fg); }
+.mont-row {
+  padding: var(--u-half) var(--u);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-raised);
+  font: var(--weight-normal) var(--type-sm) / var(--lh-md) var(--font-ui);
+  color: var(--ui-content-fg);
+  margin-bottom: 2px;
+}
+.mont-field { display: flex; justify-content: space-between; gap: var(--u); padding: var(--u-half) 0; border-bottom: 1px solid var(--ui-line); }
+.mont-field__label { font: var(--weight-normal) var(--type-sm) / var(--lh-md) var(--font-ui); color: var(--ui-content-fg-secondary); }
+.mont-field__value { font: var(--weight-medium) var(--type-sm) / var(--lh-md) var(--font-ui); color: var(--ui-content-fg); text-align: right; }
+.mont-field__value--none { color: var(--ui-content-fg-tertiary); font-style: italic; }
+
+/* Каталог переходов — три колонки, как у Canva. «Срез» стоит первым,
+   потому что «нет перехода» это ЗАПИСЬ каталога, а не пустой выбор. */
+.trans { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--u); }
+.trans__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--u-half);
+  padding: var(--u-half);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--radius-md);
+  background: var(--ui-surface-panel);
+  cursor: pointer;
+}
+.trans__card[aria-pressed="true"] { border-color: var(--ui-action-selected-line); background: var(--ui-action-selected-bg); }
+.trans__demo {
+  display: block;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-raised);
+  position: relative;
+  overflow: hidden;
+}
+.trans__demo::before, .trans__demo::after {
+  content: '';
+  position: absolute;
+  top: 6px; bottom: 6px;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--ui-line-strong);
+}
+.trans__demo::before { left: 6px; }
+.trans__demo::after { right: 6px; background: var(--ui-action-selected-line); }
+
+/* ПЛИТКА ПОКАЗЫВАЕТ ПРИЁМ ДВИЖЕНИЕМ, а не картинкой приёма. Снято у Canva:
+   их плитки анимированы, и это не украшение — «скольжение» и «стирание»
+   на неподвижной картинке различаются только подписью.
+
+   Цикл 2.8 с, из которых движение занимает первую треть: восемь плиток,
+   дёргающихся непрерывно, читались бы хуже неподвижных. Пауза в кадрах,
+   а не пауза между повторами, — тогда все восемь идут в такт.
+
+   Анимируются только transform, opacity и filter — те же три свойства,
+   что разрешает инвариант №8 сцене. Совпадение не случайное: плитка
+   показывает ровно то, что приём будет делать на самом деле. */
+@media (prefers-reduced-motion: no-preference) {
+  .trans__demo--fade::after  { animation: mt-fade 2.8s infinite; }
+  .trans__demo--slide::after { animation: mt-slide 2.8s infinite; }
+  .trans__demo--scale::after { animation: mt-scale 2.8s infinite; }
+  .trans__demo--blur::after  { animation: mt-blur 2.8s infinite; }
+  .trans__demo--iris::after  { animation: mt-iris 2.8s infinite; }
+  .trans__demo--wipe::after  { animation: mt-wipe 2.8s infinite; }
+  .trans__demo--morph::before { animation: mt-morph 2.8s infinite; }
+}
+
+/* «Срез» не анимирован, и это не пропуск: у него нет длительности,
+   значит и показывать нечего. Мгновенность честнее изобразить
+   неподвижностью, чем быстрым движением. */
+.trans__demo--cut::after { opacity: 1; }
+.trans__demo--iris::after { border-radius: var(--radius-pill); }
+
+@keyframes mt-fade  { 0%, 5% { opacity: 0 } 30%, 100% { opacity: 1 } }
+@keyframes mt-slide { 0%, 5% { transform: translateX(110%) } 30%, 100% { transform: none } }
+@keyframes mt-scale { 0%, 5% { transform: scale(0.3); opacity: 0 } 30%, 100% { transform: none; opacity: 1 } }
+@keyframes mt-blur  { 0%, 5% { filter: blur(5px); opacity: 0 } 30%, 100% { filter: none; opacity: 1 } }
+@keyframes mt-iris  { 0%, 5% { transform: scale(0.1) } 30%, 100% { transform: scale(1) } }
+@keyframes mt-wipe  { 0%, 5% { transform: scaleX(0); transform-origin: right } 30%, 100% { transform: scaleX(1); transform-origin: right } }
+@keyframes mt-morph { 0%, 5% { transform: none } 30%, 100% { transform: translateX(14px) scaleY(0.8) } }
+
+.trans__label { font: var(--weight-medium) var(--type-xs) / var(--lh-xs) var(--font-ui); color: var(--ui-content-fg); }
+.trans__law { font: var(--weight-normal) 10px / 13px var(--font-ui); }
+.trans__law--ok { color: var(--ui-feedback-positive); }
+.trans__law--measure { color: var(--ui-feedback-warn); }
+.trans__law--cost { color: var(--ui-feedback-info); }
+
+.mont-range__line { display: flex; align-items: center; gap: var(--u); }
+.mont-range { flex: 1 1 auto; }
+.mont-range__value { font: var(--weight-medium) var(--type-sm) / var(--lh-sm) var(--font-mono); color: var(--ui-content-fg); min-width: 28px; text-align: right; }
