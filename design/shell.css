@@ -190,6 +190,15 @@ body {
   background: var(--ui-action-primary-bg);
   color: var(--ui-action-primary-fg);
 }
+/* Погашенная кнопка обязана ВЫГЛЯДЕТЬ погашенной. Иначе «Своим цветом
+   нельзя» читается как обычное действие: причина написана прямо на ней,
+   а глаз видит рабочую кнопку. */
+.button-block[disabled] {
+  background: transparent;
+  color: var(--ui-content-fg-tertiary);
+  box-shadow: inset 0 0 0 1px var(--ui-line);
+  cursor: default;
+}
 
 /* ================= ХОЛСТ ================= */
 
@@ -197,6 +206,36 @@ body {
   grid-area: stage;
   background: var(--ui-surface-canvas);
   position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ---- Контекстная полоса свойств (у Canva снято 05.08.2026) ----
+   Высота ПОСТОЯННА и зарезервирована даже пустой: появляющаяся зона
+   отнимает ширину/высоту у сцены и роняет её масштаб — Сессия 18.
+   Пустая полоса ничего не рисует: ни фона, ни рамки. */
+.propbar {
+  flex: none;
+  height: var(--zone-propbar-h);
+  display: flex;
+  align-items: center;
+  gap: var(--u-half);
+  padding: 0 var(--u2);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.propbar:not(:empty) {
+  background: var(--ui-surface-panel);
+  border-bottom: 1px solid var(--ui-line);
+}
+.propbar::-webkit-scrollbar { display: none; }
+
+.stage-fit {
+  flex: 1;
   /* Колонкой, а не place-items: center. Так пояснение встаёт ПОД сценой,
      а не поверх неё: наложенная подсказка закрывала правый нижний угол
      работы автора — видно только глазами, ни один замер этого не ловит. */
@@ -221,42 +260,56 @@ body {
   position: relative;
   overflow: hidden;
   font-family: var(--scene-font);
+  /* ЦВЕТ ХРОМА НЕ ИМЕЕТ ПРАВА ПРОТЕКАТЬ В СЦЕНУ.
+     Найдено глазами в Сессии 20 и ни одним замером не ловится. Элемент
+     «Подпись» ссылается на несуществующую роль без запасного значения:
+     браузер отбрасывает объявление, и цвет НАСЛЕДУЕТСЯ. Пока сцена
+     наследовала светлый текст редактора, сирота выглядела нормально —
+     а у зрителя в bare.html тот же элемент чёрный. То есть редактор
+     СВОИМ цветом маскировал дефект, который увидит зритель. */
+  color: initial;
 }
 
-/* Элементы сцены ссылаются на ТОКЕНЫ ТЕМЫ и всегда с запасным значением.
-   Запасное — не перестраховка: S11 измерил, что неизвестный токен
-   отбрасывает объявление целиком и молча. */
-.scene__title {
+/* Сцена ровно 1920x1080 и вписывается масштабом — приём продукта
+   (ADR-007). Повторён здесь не для верности референсу, а чтобы пиксели
+   в данных значили ровно то же, что в схеме: 84px кегля — это 84px кегля,
+   а не «столько-то от ширины макета». */
+.scene__els {
   position: absolute;
-  left: 8%; top: 18%;
-  margin: 0;
-  font-family: var(--scene-font-display, Georgia, serif);
-  font-size: clamp(20px, 4.4cqw, 44px);
-  color: var(--scene-ink, #e8eef6);
+  left: 0; top: 0;
+  width: 1920px;
+  height: 1080px;
+  transform-origin: 0 0;
+  transform: scale(var(--fit, 0.469));
 }
-.scene__lead {
+
+.scene__overlay { position: absolute; inset: 0; }
+/* Выделение и панель свойств лежат НАД работой автора, но не ловят
+   нажатия сами — иначе панель перехватила бы клик по элементу под ней.
+   Это тот же класс дефекта, что нашли четыре e2e в Сессии 15: кликабельная
+   сцена перехватывала нажатия по кнопкам ответа в гейте. */
+.scene__overlay { pointer-events: none; }
+.scene__overlay > * { pointer-events: auto; }
+
+/* ---- Элемент сцены ----
+   Инлайновый стиль пишется ровно так же, как его пишет плеер:
+   style.setProperty (render.ts:115). Поэтому ссылка на несуществующую
+   роль здесь не изображается, а ПРОИСХОДИТ. */
+.el {
   position: absolute;
-  left: 8%; top: 40%;
-  width: 52%;
   margin: 0;
-  font-size: clamp(12px, 2.2cqw, 20px);
-  line-height: 1.5;
-  color: var(--scene-ink-muted, #93a4b8);
+  cursor: pointer;
 }
-.scene__card {
-  position: absolute;
-  right: 8%; top: 26%;
-  width: 26%; aspect-ratio: 1;
+.el--text { display: flex; align-items: flex-start; }
+.el--image {
+  /* Картинки в макете нет и подделывать её нечем: показан бокс с именем
+     файла — это `content` элемента, а не отдельное поле схемы. */
+  display: grid;
+  place-items: center;
   background: var(--scene-surface, #1b2430);
-  border: 2px solid var(--scene-line, #2c3a4c);
-  border-radius: var(--scene-radius, 28px);
-}
-.scene__dot {
-  position: absolute;
-  right: 14%; top: 38%;
-  width: 12%; aspect-ratio: 1;
-  background: var(--scene-accent, #4c8dff);
-  border-radius: 50%;
+  color: var(--scene-ink-muted, #93a4b8);
+  font-size: 28px;
+  overflow: hidden;
 }
 
 /* ---- Выделение и ручки ----
@@ -283,17 +336,35 @@ body {
    как раз заменили на контекстную. У нас сегодня наоборот — автор
    ходит к неподвижному Inspector.tsx, и это одна из причин «трудоёмко».
    Разбор — docs/strategy.md §4. */
-.objectbar {
+/* Пилюля над объектом — ровно две кнопки, замок и «ещё». Это ВСЁ, что
+   у Canva плавает над работой автора; свойства живут в неподвижной полосе.
+   Причина видна, как только посмотришь на настоящий редактор: панель
+   свойств шириной в двадцать кнопок, вися над объектом, закрывала бы
+   ровно то, что автор правит. */
+.pill {
   position: absolute;
   display: flex;
-  align-items: center;
-  gap: var(--u-half);
-  padding: var(--u-half);
+  gap: 2px;
+  padding: 2px;
   background: var(--ui-surface-overlay);
-  border: 1px solid var(--ui-line-strong);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--radius-pill);
   box-shadow: var(--ui-shadow-overlay);
-  transform: translate(-50%, -100%);
+  transform: translate(-50%, calc(-100% - var(--u)));
+}
+
+.rotate {
+  position: absolute;
+  width: 28px; height: 28px;
+  display: grid;
+  place-items: center;
+  background: var(--ui-surface-overlay);
+  border: 1px solid var(--ui-line);
+  border-radius: 50%;
+  box-shadow: var(--ui-shadow-overlay);
+  color: var(--ui-content-fg-secondary);
+  transform: translate(-50%, var(--u));
+  cursor: grab;
 }
 .objectbar__btn {
   appearance: none;
@@ -307,13 +378,285 @@ body {
   white-space: nowrap;
 }
 .objectbar__btn:hover { background: var(--ui-action-hover-bg); color: var(--ui-content-fg); }
-.objectbar__swatch {
-  width: 16px; height: 16px;
+/* ---- Показ цвета: приём Canva ----
+   Цвет текста — буква с цветной чертой под ней; заливка — круг с обводкой.
+   Обводка обязательна: без неё белая заливка на белой полосе исчезает,
+   и кнопка становится невидимой. */
+.ink { display: inline-grid; justify-items: center; gap: 2px; }
+.ink__glyph {
+  font: var(--weight-bold) var(--type-md) / 14px var(--font-ui);
+  color: var(--ui-content-fg);
+}
+.ink__rule {
+  width: 18px; height: 4px;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--ui-line-strong);
+}
+.ink__fill {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px var(--ui-line-strong);
+}
+/* Значение не задано — не притворяемся, что цвет есть. */
+.ink--none {
+  background: repeating-linear-gradient(
+    45deg, transparent 0 4px, var(--ui-line-strong) 4px 5px);
+}
+.ink--mixed {
+  background: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+.ink--orphan { box-shadow: inset 0 0 0 2px var(--ui-feedback-critical); }
+.objectbar__sep { width: 1px; height: 20px; background: var(--ui-line-strong); }
+
+/* Панели НЕТ, когда ничего не выделено. Это не мелочь оформления:
+   именно так «куча кнопок в одном месте» перестаёт существовать —
+   контролы не прячутся, а не создаются вовсе. */
+.objectbar__btn--on {
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg);
+  box-shadow: inset 0 0 0 1px var(--ui-action-selected-line);
+}
+.objectbar__btn[disabled] {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+.objectbar__btn[disabled]:hover { background: transparent; color: var(--ui-content-fg-tertiary); }
+
+.objectbar__count {
+  font: var(--weight-medium) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  color: var(--ui-content-fg-tertiary);
+  padding: 0 var(--u-half);
+  white-space: nowrap;
+}
+
+/* Сирота ЦВЕТА на своём месте. Знак критический и тот же, что у сироты
+   метки: одна болезнь — один знак. Показывать её обязан редактор,
+   потому что плеер не предупредит НИКОГДА (S11). */
+.objectbar__swatch--orphan {
+  border-color: var(--ui-feedback-critical);
+  box-shadow: 0 0 0 1px var(--ui-feedback-critical);
+}
+.objectbar__warn { color: var(--ui-feedback-critical); font-weight: var(--weight-bold); }
+
+/* «Разное»: у нескольких выделенных общего значения нет, и врать одним
+   цветом нельзя. Косая — признак «значения расходятся». */
+.objectbar__swatch--mixed {
+  background: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+
+/* ---- Выделение группы ----
+   Рамка на каждом участнике тонкая и без ручек, ручки только у общей
+   рамки: восемь ручек на каждом из трёх объектов — это 24 мишени,
+   среди которых нужная не находится. */
+.selection--member { outline-style: dashed; outline-color: var(--ui-action-selected-line); }
+.selection--group { outline-width: 1px; }
+
+/* Направляющие. НАРИСОВАНЫ, механики за ними нет — `guides` приходит
+   в редактор Сессией 22 отдельным ADR. */
+.guide {
+  position: absolute;
+  background: var(--ui-feedback-warn);
+  pointer-events: none;
+  opacity: 0.9;
+}
+.guide--v { top: 0; bottom: 0; width: 1px; }
+.guide--h { left: 0; right: 0; height: 1px; }
+
+/* ================= СЧЁТЧИК «ПРОВЕРЬТЕ N МЕСТ» =================
+   Один на все сироты — и меток, и цветов. Два счётчика научили бы
+   не смотреть ни в один. */
+.checkcount {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--u);
+  border: 1px solid var(--ui-feedback-critical);
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: var(--weight-medium) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  padding: var(--u-half) var(--u2);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+}
+.checkcount:hover { background: var(--ui-action-hover-bg); }
+.checkcount__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ui-feedback-critical);
+}
+
+/* ================= СОДЕРЖИМОЕ ПАНЕЛЕЙ ================= */
+
+.psec { margin: 0 0 var(--u3); }
+.psec:last-child { margin-bottom: 0; }
+.psec__title {
+  margin: 0 0 var(--u) 0;
+  font: var(--weight-bold) var(--type-sm) / var(--lh-sm) var(--font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ui-content-fg-tertiary);
+}
+.psec__note {
+  margin: var(--u) 0 0;
+  color: var(--ui-content-fg-secondary);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ---- Роли темы ---- */
+.roles { display: grid; gap: var(--u-half); }
+.role {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: var(--u);
+  padding: var(--u-half) var(--u);
+  border-radius: var(--radius-sm);
+  background: var(--ui-surface-raised);
+  cursor: pointer;
+  text-align: left;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+}
+.role:hover { background: var(--ui-action-hover-bg); }
+.role__swatch {
+  width: 24px; height: 24px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--ui-line-strong);
-  background: var(--scene-accent, #4c8dff);
 }
-.objectbar__sep { width: 1px; height: 20px; background: var(--ui-line-strong); }
+.role__swatch--type {
+  display: grid; place-items: center;
+  font-size: var(--type-md);
+  color: var(--ui-content-fg);
+  background: var(--ui-surface-overlay);
+}
+.role__label { font-size: var(--type-sm); line-height: var(--lh-sm); }
+.role__what { color: var(--ui-content-fg-tertiary); font-size: var(--type-xs); }
+.role__token {
+  font: var(--weight-normal) var(--type-xs) / var(--lh-xs) var(--font-mono);
+  color: var(--ui-content-fg-tertiary);
+  white-space: nowrap;
+}
+
+/* ---- Палитры: галерея, потому что смотрят глазами, а не читают ---- */
+.palettes { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--u); }
+.palette {
+  border: 1px solid var(--ui-line);
+  background: var(--ui-surface-raised);
+  border-radius: var(--radius-md);
+  padding: var(--u);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.palette:hover { border-color: var(--ui-line-strong); }
+.palette[aria-pressed="true"] {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+}
+.palette__strip { display: flex; height: 28px; border-radius: var(--radius-sm); overflow: hidden; }
+.palette__strip span { flex: 1; }
+.palette__label {
+  display: block;
+  margin-top: var(--u-half);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+
+/* ---- Шрифтовые пары: показаны своим шрифтом, иначе выбор вслепую ---- */
+.fontpair {
+  display: block; width: 100%; text-align: left;
+  border: 1px solid var(--ui-line);
+  background: var(--ui-surface-raised);
+  border-radius: var(--radius-md);
+  padding: var(--u) var(--u2);
+  margin-bottom: var(--u-half);
+  cursor: pointer;
+  color: inherit;
+}
+.fontpair:hover { border-color: var(--ui-line-strong); }
+.fontpair[aria-pressed="true"] {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+}
+.fontpair__display { display: block; font-size: var(--type-lg); line-height: var(--lh-lg); }
+.fontpair__body { display: block; font-size: var(--type-sm); color: var(--ui-content-fg-secondary); }
+
+/* ---- Сироты цвета ---- */
+.orphan {
+  border: 1px solid var(--ui-feedback-critical);
+  border-radius: var(--radius-md);
+  padding: var(--u2);
+  margin-bottom: var(--u);
+  background: var(--ui-surface-raised);
+}
+.orphan__where { font-weight: var(--weight-medium); font-size: var(--type-sm); }
+.orphan__what {
+  margin: var(--u-half) 0 var(--u);
+  font: var(--weight-normal) var(--type-xs) / var(--lh-xs) var(--font-mono);
+  color: var(--ui-content-fg-secondary);
+  word-break: break-all;
+}
+.orphan__why {
+  margin: 0 0 var(--u2);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+  color: var(--ui-content-fg-secondary);
+}
+.orphan__acts { display: grid; gap: var(--u-half); }
+
+/* ---- Поля панели «Объект» ---- */
+.fields { display: grid; gap: var(--u-half); }
+.field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--u);
+  padding: var(--u-half) var(--u);
+  background: var(--ui-surface-raised);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
+.field__label { color: var(--ui-content-fg-secondary); }
+.field__value {
+  font: var(--weight-normal) var(--type-sm) / var(--lh-sm) var(--font-mono);
+  color: var(--ui-content-fg);
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Третий вид значения — «ссылка на роль». Сегодняшняя панель его НЕ ИМЕЕТ:
+   tryColor (style.ts:271) принимает ровно #RRGGBB, поэтому var(--scene-…)
+   разбирается как {kind:'raw'} и показывается текстом. Находка Сессии 20,
+   журнал, находка 1. */
+.field__value--token {
+  color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+  padding: 0 var(--u-half);
+  border-radius: var(--radius-sm);
+}
+.field__value--orphan { color: var(--ui-feedback-critical); }
+.field__row-swatch {
+  display: inline-block; width: 12px; height: 12px; vertical-align: -2px;
+  margin-right: var(--u-half);
+  border-radius: 2px; border: 1px solid var(--ui-line-strong);
+}
+
+/* Честная заглушка. Показывает, чего ЕЩЁ НЕТ, и не притворяется. */
+.todo {
+  border: 1px dashed var(--ui-line-strong);
+  border-radius: var(--radius-md);
+  padding: var(--u2);
+  color: var(--ui-content-fg-secondary);
+  font-size: var(--type-sm);
+  line-height: var(--lh-sm);
+}
 
 /* ================= ДОРОЖКА =================
    Ориентир CapCut, зафиксирован в product.md §13 ещё до этой сессии.
@@ -378,6 +721,12 @@ body {
    Только для этой страницы. В продукт не идёт. */
 .note {
   max-width: 560px;
+  /* Высота ПОСТОЯННА: текст пояснения меняется по состоянию выделения,
+     от этого менялось число строк, а вместе с ним — вертикальное
+     положение сцены в центрированной колонке. Замерено: ширина сцены
+     не менялась (900px), а верх уезжал. В продукте этих лесов нет,
+     но правило то же, что у зон: то, что не про сцену, сцену не двигает. */
+  min-height: 84px;
   margin: 0;
   padding: var(--u2);
   background: var(--ui-surface-overlay);
