@@ -17,7 +17,7 @@
  * как и время гейта, правится перетаскиванием по дорожке (`moveMark`),
  * а не полем в этой панели.
  */
-import { useId, useState, type ReactElement } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 
 import type { Element, Gate, Slide, TimeRef, Word } from '@player/core';
 
@@ -138,8 +138,46 @@ export function MarkPanel({
   onSplitAtGate,
   splitBlockedReason,
 }: MarkPanelProps): ReactElement {
+  const containerRef = useRef<HTMLElement>(null);
+  const markId = mark.kind === 'gate' ? mark.gate.id : mark.slide.id;
+
+  /**
+   * Задача 6: щелчок по хвосту ведёт к каталогу приёмов.
+   *
+   * Прокручивает саму панель (она и есть «правая колонка» — `.ed-inspector`
+   * скроллится сама, `styles.ts`), а не только реагирует на клик по хвосту:
+   * выделение слайда ЛЮБЫМ виджетом дорожки (хвост, ромб) приводит к одному
+   * и тому же — каталог должен быть виден, раз слайд выбран.
+   *
+   * Зависимость — `kind` и `id`, а не `mark` целиком: `mark` меняет ссылку
+   * на КАЖДОЕ живое движение ползунка длительности или ручки стыка
+   * (`onSetSlideTransitionSeconds`/`onTransitionSecondsLive` дальше по цепочке
+   * дают новый `Segment`), а скроллить нужно один раз, при смене ВЫДЕЛЕНИЯ,
+   * а не на каждый кадр жеста — иначе прокрутка дёргалась бы под пальцем.
+   *
+   * `container.scrollTop`, а не `scrollIntoView`: он прокрутил бы и предков,
+   * то есть увёл бы всю страницу редактора (тот же довод, что у прокрутки
+   * за головкой в `TrackView`, Задача 4). `getBoundingClientRect` для обоих
+   * элементов, а не `offsetTop`: `.ed-inspector` не позиционирован, и
+   * `offsetTop` мерил бы смещение не от него, а от ближайшего предка,
+   * у которого `position` не `static`.
+   */
+  useLayoutEffect(() => {
+    if (mark.kind !== 'slide') return;
+    const container = containerRef.current;
+    if (!container) return;
+    const catalog = container.querySelector<HTMLElement>('.ed-transition-catalog');
+    if (!catalog) return;
+    const containerRect = container.getBoundingClientRect();
+    const catalogRect = catalog.getBoundingClientRect();
+    // Уже целиком видно — трогать прокрутку незачем.
+    if (catalogRect.top >= containerRect.top && catalogRect.bottom <= containerRect.bottom) return;
+    container.scrollTop += catalogRect.top - containerRect.top;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mark.kind, markId]);
+
   return (
-    <aside className="ed-inspector" data-testid="mark-panel">
+    <aside className="ed-inspector" data-testid="mark-panel" ref={containerRef}>
       {/* «Остановка», а не «Гейт»: внутреннее слово в интерфейс не течёт
           (product.md §2). Автор видит остановку, вопрос и развилку. */}
       <h2 className="ed-insp-title">{mark.kind === 'gate' ? 'Остановка' : 'Слайд'}</h2>
