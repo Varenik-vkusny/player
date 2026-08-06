@@ -50,7 +50,10 @@ const LANE_H: Readonly<Record<LaneName, number>> = {
   slides: 34,
   stops: 34,
   words: 28,
-  marks: 34,
+  // Слитая полоса выше разделённой не по прихоти: в ней два ряда меток
+  // лежат друг под другом внутри ОДНОГО тела (ed-mark-slide и ed-mark-gate
+  // разведены по top), и 34 их не вмещают — сама метка 14 px высотой.
+  marks: 40,
 };
 
 /** Ужатая волна. Ниже уже не волна, а полоска шума. */
@@ -78,6 +81,22 @@ export function lanesOf(tier: TrackTier): readonly LaneName[] {
 export function laneHeight(lane: LaneName, tier: TrackTier): number {
   if (lane === 'sound' && COMPACT_SOUND.has(tier)) return SOUND_COMPACT_H;
   return LANE_H[lane];
+}
+
+/**
+ * Высота ТЕЛА меток: слайды и остановки — две головы, но одно тело.
+ *
+ * Так уже устроен продукт: `.ed-mark-slide` и `.ed-mark-gate` разведены
+ * по `top` внутри одного полотна, а не по двум узлам. Разделять полотно
+ * ради двух подписей значило бы переписать жесты перетаскивания метки
+ * и ручки стыка — то есть ради вида тронуть то, что к виду не относится.
+ *
+ * Поэтому «две полосы» здесь — это две ГОЛОВЫ и две высоты, а тело
+ * по-прежнему одно и ровно такой суммарной высоты.
+ */
+export function marksBodyHeight(tier: TrackTier): number {
+  if (lanesOf(tier).includes('marks')) return laneHeight('marks', tier);
+  return laneHeight('slides', tier) + SEPARATOR_H + laneHeight('stops', tier);
 }
 
 /**

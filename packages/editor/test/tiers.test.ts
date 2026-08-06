@@ -6,6 +6,7 @@ import {
   hiddenNote,
   laneHeight,
   lanesOf,
+  marksBodyHeight,
   minHeightOf,
   resolveDrag,
   TRACK_MAX_H,
@@ -67,6 +68,25 @@ describe('ступени дорожки: сколько полос помеща�
       expect(lanesOf(tier), `${tier} разделяет метки`).toContain('stops');
       expect(lanesOf(tier), `${tier} не сливает метки`).not.toContain('marks');
     }
+  });
+
+  test('тело меток равно сумме своих голов, а в слитом виде — своей полосе', () => {
+    // Несущее: голов две, а полотно одно. Разойдись эти числа — подписи
+    // «Слайды» и «Остановки» встанут не напротив своих рядов меток,
+    // и автор будет читать чужую подпись, ничего не заподозрив.
+    for (const tier of ['full', 'compact', 'dense'] as const) {
+      expect(marksBodyHeight(tier), `тело меток на ${tier}`).toBe(
+        laneHeight('slides', tier) + 1 + laneHeight('stops', tier),
+      );
+    }
+    expect(marksBodyHeight('minimal')).toBe(laneHeight('marks', 'minimal'));
+  });
+
+  test('слитая полоса меток не ниже разделённой строки', () => {
+    // В слитом виде два ряда меток лежат внутри ОДНОГО тела, а сама метка
+    // 14 px. Сделай слитую полосу вровень с одной разделённой — нижний ряд
+    // обрежется молча.
+    expect(laneHeight('marks', 'minimal')).toBeGreaterThan(laneHeight('slides', 'minimal'));
   });
 
   test('волна ужимается раньше меток', () => {
