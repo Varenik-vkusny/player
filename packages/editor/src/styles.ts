@@ -19,46 +19,71 @@ export const EDITOR_STYLES = `
    вешается глобальным <style> в чужой хост-документ (index.ts), и :root
    отдал бы переменные всему документу хоста, столкнувшись с его
    собственными. .ed-root — единственный предок всего, что рисует редактор
-   (порталов и вставок в document.body в пакете нет). Значения — шаг 1:
-   сегодняшний тёмный вид, без изменений. Полный список ролей и почему —
-   docs/design/ui-tokens.md. */
+   (порталов и вставок в document.body в пакете нет). Значения — ШАГ 2:
+   светлые, снятые с design/tokens.css. Список ролей при этом НЕ ТРОНУТ —
+   поменялись только значения, и это лучшая проверка системы, какая
+   возможна: будь роли привязаны к тёмному, список не пережил бы смены.
+   Полный список ролей и почему — docs/design/ui-tokens.md.
+
+   Откат стоит правки ЭТОГО блока и больше ничего: ни одно правило ниже
+   цвета не называет. Тёмный набор вторым не сохранён намеренно — два
+   набора без нужды это долг, а не гибкость.
+
+   Откуда какое значение:
+     18 ролей  — прямой заменой из design/tokens.css по совпадающему имени;
+     11 ролей  — выведены из родителя, у которого светлое значение есть
+                 (поля от surface-raised, погашенная рамка от line,
+                 семейство warn от feedback-warn, критическая плашка
+                 от feedback-critical);
+      3 роли   — головка и метки, сняты с МОНТАЖА прототипа
+                 (design/montage.css). Оговорка ui-tokens.md §3 про то,
+                 что прототип-де рисовал только канву, верна для Сессии 20
+                 и неверна для Сессии 21: монтаж рисует и головку, и метки,
+                 и хвост, и выражает их через уже решённые роли. */
 .ed-root {
-  --ui-surface-base: #07090c;
-  --ui-surface-panel: #0b0f14;
-  --ui-surface-raised: #1b2430;
-  --ui-surface-overlay: #0b0f14e6;
-  --ui-surface-placeholder: #39414c;
-  --ui-field-bg: #07090c;
+  --ui-surface-base: #ffffff;
+  --ui-surface-panel: #ffffff;
+  --ui-surface-raised: #f2f3f5;
+  --ui-surface-overlay: #ffffff;
+  --ui-surface-placeholder: #c9ced6;
+  --ui-field-bg: #f2f3f5;
+  /* Поле вокруг сцены. Единственная роль, оставшаяся ТЁМНОЙ при светлом
+     хроме, и это не недоделка: её значение связано с preview.html
+     инвариантом №5 — см. .ed-stage-host ниже. */
+  --ui-surface-canvas: #07090c;
 
-  --ui-content-fg: #e6edf5;
-  --ui-content-fg-secondary: #7d8fa5;
-  --ui-content-fg-tertiary: #55637a;
+  --ui-content-fg: #0e1318;
+  --ui-content-fg-secondary: #5b6472;
+  --ui-content-fg-tertiary: #838b99;
 
-  --ui-line: #1c242f;
-  --ui-line-strong: #2c3a4d;
-  --ui-line-disabled: #202832;
+  --ui-line: #e3e6ea;
+  --ui-line-strong: #c9ced6;
+  --ui-line-disabled: #eef0f3;
 
   --ui-focus: #4c8dff;
   --ui-action-primary-bg: #4c8dff;
   --ui-action-selected-line: #4c8dff;
-  --ui-action-selected-bg: #111a24;
+  --ui-action-selected-bg: #e8f0ff;
   --ui-focus-ring: #4c8dff88;
 
-  --ui-feedback-positive: #a8c686;
-  --ui-feedback-warn: #e8b64c;
-  --ui-feedback-warn-fg: #e8d9b0;
-  --ui-feedback-warn-bg: #251f10;
-  --ui-feedback-warn-bg-strong: #33290f;
-  --ui-feedback-warn-bg-hover: #453718;
-  --ui-feedback-warn-line: #6b5a2e;
-  --ui-feedback-critical: #ff8a6b;
-  --ui-feedback-critical-bg: #2c1714;
+  --ui-feedback-positive: #12a05f;
+  --ui-feedback-warn: #a8720b;
+  --ui-feedback-warn-fg: #6b4907;
+  --ui-feedback-warn-bg: #fdf6e6;
+  --ui-feedback-warn-bg-strong: #f8e9c7;
+  --ui-feedback-warn-bg-hover: #f2dda6;
+  --ui-feedback-warn-line: #e0c584;
+  --ui-feedback-critical: #d32f2f;
+  --ui-feedback-critical-bg: #fdecec;
 
-  --ui-playhead: #e4572e;
-  --ui-mark-gate: #e4572e;
-  --ui-mark-tail: #31527d;
+  /* Головка — ИНК, а не красная: так в монтаже прототипа (.mt-head берёт
+     var(--ui-content-fg)). На светлой дорожке красная головка спорила бы
+     с меткой сироты, у которой красный несёт смысл, а у головки нет. */
+  --ui-playhead: #0e1318;
+  --ui-mark-gate: #2f6fe0;
+  --ui-mark-tail: #93b4f0;
 
-  --ui-shadow-selected: 0 0 0 1px var(--ui-focus-ring), 0 10px 22px #000b;
+  --ui-shadow-selected: 0 0 0 1px var(--ui-focus-ring), 0 10px 22px #0e131826;
   --ui-motion-fast: 0.18s;
   --ui-motion-base: 0.22s;
 }
@@ -111,11 +136,30 @@ export const EDITOR_STYLES = `
 }
 
 /* Сцена вписывается в эту область. Overflow скрыт, потому что летербокс
-   считается от размеров именно этого узла. */
+   считается от размеров именно этого узла.
+
+   ФОН ЗДЕСЬ — ЧАСТЬ ИНВАРИАНТА №5, а не оформление, и он ОБЯЗАН совпадать
+   с фоном #stage-host в apps/playground/preview.html. Причина измерена
+   и описана там же: Chromium выбирает режим сглаживания текста по тому,
+   какой непрозрачный фон лежит под узлом со сценой, — субпиксельный
+   (цветная кайма) или чёрно-белый. Разные фоны у двух хостов дают разные
+   каймы букв при полностью одинаковом рендере.
+
+   Проверено прогоном 06.08.2026 при переводе хрома на светлые значения:
+   узел без своего фона унаследовал белый от .ed-root, и паритет упал
+   с 0 до 0.2825 % пикселей при пороге 0.1 — то есть светлый хром сломал
+   инвариант №5, не тронув ни строки рендера. С этим объявлением — снова 0.
+
+   Поэтому поле вокруг сцены у автора остаётся тёмным, хотя весь остальной
+   хром светлый: у прототипа --ui-surface-canvas светлый, и взять его
+   значение отсюда нельзя, пока preview.html тёмный. Осветлять надо ОБА хоста
+   одной правкой, и это перезапишет скриншотные эталоны — снимки берутся
+   именно с #stage-host preview.html вместе с летербоксом. */
 .ed-stage-host {
   position: relative;
   overflow: hidden;
   min-height: 0;
+  background-color: var(--ui-surface-canvas);
 }
 
 /* Правка текста на холсте (двойной клик, StageView.beginTextEdit). Пока
