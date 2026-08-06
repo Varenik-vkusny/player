@@ -674,6 +674,10 @@ export function Editor({
       anchor: anchorStateOf(gate.at),
       // Остановка ни к чему не едет: окна движения у неё нет.
       morphSeconds: 0,
+      // Потолка длительности у остановки тоже нет — поле есть только потому,
+      // что интерфейс Mark общий для гейта и слайда; ручка стыка (Задача 5)
+      // рисуется лишь там, где morphSeconds > 0, а это у гейта никогда не так.
+      gapSeconds: 0,
       // Подсказка автору при наведении: словами продукта, а не схемы.
       // Развилка от вопроса отличается отсутствием верного ответа.
       title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} «${gate.id}»`,
@@ -691,6 +695,11 @@ export function Editor({
         seconds: slideSeconds[index]!,
         anchor: anchorStateOf(slide.at),
         morphSeconds,
+        // Потолок ручки стыка (Задача 5, ADR-020) — расстояние до
+        // ПРЕДЫДУЩЕЙ метки, то же вычисление, что у selectedSlideGapSeconds
+        // ниже, но для КАЖДОГО слайда: ручка тянет ту метку, на которой
+        // начался жест, а не обязательно выбранную.
+        gapSeconds: slideSeconds[index]! - slideSeconds[index - 1]!,
         title: slide.transition === 'cut'
           ? `Слайд «${slide.id}»: ${info.label.toLowerCase()}, без движения`
           : `Слайд «${slide.id}»: ${info.label.toLowerCase()}, движение ${morphSeconds.toFixed(2)} с до метки`,
@@ -733,6 +742,21 @@ export function Editor({
     },
     [segment.words],
   );
+
+  /**
+   * Живое событие ручки стыка на дорожке (Задача 5, `MarksLane.tsx`).
+   *
+   * Тот же dispatch, что `handleSetSlideTransitionSecondsLive` выше, и то же
+   * действие `setSlideTransitionSeconds`, но ЭТОТ обработчик принимает id
+   * явно: ручка на дорожке может тянуть метку, которая сейчас не выделена
+   * в панели, а `handleSetSlideTransitionSecondsLive` работает только
+   * с `selectedMark`. Коммит-точку жеста ставит `handleCommitHistory`
+   * напрямую в проп `TrackView.onTransitionSecondsCommit` ниже — отдельного
+   * обработчика для неё заводить незачем, `onMoveMarkEnd` устроен так же.
+   */
+  const handleTrackTransitionSecondsLive = useCallback((id: string, transitionSeconds: number) => {
+    dispatch({ type: 'setSlideTransitionSeconds', slideId: id, transitionSeconds, commit: false });
+  }, []);
 
   const handleAddGate = useCallback(() => {
     const id = freeId('gate', currentSegment.gates);
@@ -1230,6 +1254,8 @@ export function Editor({
           onMoveMark={handleMoveMark}
           onMoveMarkEnd={handleCommitHistory}
           onAddGate={handleAddGate}
+          onTransitionSecondsLive={handleTrackTransitionSecondsLive}
+          onTransitionSecondsCommit={handleCommitHistory}
         />
       </div>
     </div>

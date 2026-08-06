@@ -24,6 +24,7 @@
     "spike:seam": "node spikes/run-seam.mjs",
     "spike:tab-lock": "node spikes/run-tab-lock.mjs",
     "spike:editor-stack": "vite --config spikes/editor-stack/vite.config.mjs",
+    "spike:map-stack": "vite --config spikes/map-stack/vite.config.mjs",
     "spike:tokens": "node spikes/run-tokens.mjs",
     "spike:transitions": "node spikes/run-transitions.mjs"
   },
