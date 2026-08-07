@@ -171,6 +171,19 @@ export function Editor({
 
   const transport = useTransport(segment.source, segment.duration, gateSeconds, segment.offset);
 
+  /**
+   * Имя звука в голове полосы `sound` дорожки (каркас, задача 2.1).
+   *
+   * Настоящее человеческое имя файла грузится АСИНХРОННО из хранилища
+   * плеера, и делает это уже `AudioSourcePanel` (`getAudio(source.fileId)`)
+   * — тот компонент менять нельзя (закрытый список задачи), а второй
+   * асинхронный запрос к тому же хранилищу отсюда завёл бы вторую правду
+   * об одном и том же имени. Здесь — тот же запасной вид, что `AudioSourcePanel`
+   * сама показывает ДО того, как асинхронное имя пришло: идентификатор
+   * файла или URL, не выдуманное «красивое» имя.
+   */
+  const soundLabel = segment.source.kind === 'file' ? segment.source.fileId : segment.source.url;
+
   const selected =
     state.selectedId === undefined
       ? undefined
@@ -1247,6 +1260,7 @@ export function Editor({
         />
         <TrackView
           transport={transport}
+          soundLabel={soundLabel}
           words={segment.words}
           marks={marks}
           selectedMark={selectedMark}

@@ -129,14 +129,49 @@ test.describe('метки на дорожке', () => {
         .__transport.durationSeconds,
     );
 
-    const ids = await page
-      .locator('[data-testid^="mark-slide-"]')
-      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset['testid'] ?? ''));
-    expect(ids.length, 'на дорожке нет меток слайдов').toBeGreaterThan(3);
+    /*
+     * Берём только те метки, которые САМИ ловят указатель в своей середине.
+     *
+     * Раньше здесь стояли метки по индексам (2, середина, последняя), и это
+     * работало по удаче. На `demo` соседние слайды отстоят на 0.4 с из 48.6:
+     * при ×1 и вьюпорте 1280 (полотно 1128) их центры разведены на 9.3 px
+     * при ширине метки 18 — метки перекрываются ВСЕГДА, и вопрос только
+     * в том, чей центр остался снаружи. Замерено: просвет до ближайшей
+     * соседки больше половины метки у 12 из 14, лучший 16.2 px, худший 4.6.
+     *
+     * Перекрытие при ×1 — не дефект, а известное свойство, ради которого
+     * и заведены ступени масштаба (`zoom.ts`: 0.6 с из 107 даёт 7.2 px,
+     * «по такой мишени физически нельзя попасть»).
+     *
+     * Критерий взят не порогом в пикселях, а `elementFromPoint` — тем же,
+     * по которому судит сам Playwright («intercepts pointer events»).
+     * Порог пришлось бы подбирать под сегодняшнюю плотность, то есть
+     * заменить одну удачу другой; hit-test же учитывает и порядок в DOM
+     * (метка, нарисованная поверх, кликабельна и при тесном соседстве).
+     *
+     * Что должно сломаться, чтобы тест покраснел: перемотка на метку
+     * перестанет работать, либо метки станут недостижимы ВСЕ — тогда
+     * падает проверка ниже, и падает с внятной причиной, а не таймаутом
+     * на перехваченном щелчке.
+     */
+    const ids = await page.evaluate(() => {
+      const nodes = [...document.querySelectorAll('[data-testid^="mark-slide-"]')] as HTMLElement[];
+      return nodes
+        .filter((node) => {
+          const rect = node.getBoundingClientRect();
+          const x = rect.x + rect.width / 2;
+          const y = rect.y + rect.height / 2;
+          if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
+          const hit = document.elementFromPoint(x, y);
+          return hit === node || node.contains(hit);
+        })
+        .map((node) => node.dataset['testid'] ?? '');
+    });
+    expect(ids.length, 'ни по одной метке нельзя попасть указателем в её середину').toBeGreaterThan(2);
 
     // Несколько разных меток, а не одна: попадание в одну может совпасть
     // с тем местом, где головка и так стояла.
-    for (const id of [ids[2]!, ids[Math.floor(ids.length / 2)]!, ids[ids.length - 1]!]) {
+    for (const id of [ids[0]!, ids[Math.floor(ids.length / 2)]!, ids[ids.length - 1]!]) {
       await page.getByTestId(id).click();
       const box = await page.getByTestId(id).boundingBox();
       if (!box) throw new Error(`метка ${id} не видна`);

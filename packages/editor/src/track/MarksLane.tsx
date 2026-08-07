@@ -12,17 +12,14 @@
 import {
   Fragment,
   useCallback,
-  useLayoutEffect,
   useRef,
-  useState,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
-  type RefObject,
 } from 'react';
 
 import type { MarkKind } from '../state/project.js';
 import type { MarkAnchor } from './marks.js';
-import { canvasWidth, ratioToX, type ZoomStep } from './zoom.js';
+import { ratioToX } from './zoom.js';
 
 export interface Mark {
   readonly kind: MarkKind;
@@ -81,16 +78,16 @@ export interface MarksLaneProps {
   onTransitionSecondsLive: (id: string, seconds: number) => void;
   /** Жест ручки стыка завершён — точка коммита истории, как `onMoveEnd`. */
   onTransitionSecondsCommit: () => void;
-  /** Ступень масштаба дорожки (`zoom.ts`) — та же, что и у волны сверху. */
-  zoom: ZoomStep;
   /**
-   * Контейнер прокрутки полосы меток. Заводится и передаётся сверху
-   * (`TrackView`), а не внутри самого компонента: волна ведёт прокрутку,
-   * полоса меток повторяет её `scrollLeft` — синхронизация односторонняя
-   * (track-zoom.md §3 у полосы меток), и вести её может только тот, кто
-   * видит обе стороны разом.
+   * Ширина полотна в пикселях (`zoom.ts: canvasWidth`), посчитанная
+   * наверху (`TrackView`). Полоса меток стоит теперь в ОБЩЕМ контейнере
+   * прокрутки со всеми остальными полосами (каркас, задача 2.1) — своего
+   * `ResizeObserver` и своего контейнера у неё больше нет, и мерить ширину
+   * самой было бы второй правдой о том же числе.
    */
-  scrollContainerRef: RefObject<HTMLDivElement | null>;
+  canvasWidthPx: number;
+  /** Высота тела меток на текущей ступени (`tiers.ts: marksBodyHeight`). */
+  heightPx: number;
 }
 
 export function MarksLane({
@@ -102,8 +99,8 @@ export function MarksLane({
   onMoveEnd,
   onTransitionSecondsLive,
   onTransitionSecondsCommit,
-  zoom,
-  scrollContainerRef,
+  canvasWidthPx,
+  heightPx,
 }: MarksLaneProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef<{ kind: MarkKind; id: string; pointerId: number } | null>(null);
@@ -116,25 +113,6 @@ export function MarksLane({
     markSeconds: number;
     gapSeconds: number;
   } | null>(null);
-  const [laneWidth, setLaneWidth] = useState(0);
-
-  // Тот же приём, что в TrackView: наблюдатель стоит на КОНТЕЙНЕРЕ прокрутки,
-  // а не на полотне (.ed-marks) — полотно само раздувается от zoom, и
-  // наблюдатель на нём мерил бы то, что сам же раздувает.
-  useLayoutEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) throw new Error('MarksLane: контейнер прокрутки не смонтирован');
-    const measure = (): void => setLaneWidth(container.clientWidth);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
-  }, [scrollContainerRef]);
-
-  // Полотно полосы меток шириной laneWidth × zoom — та же функция, что и
-  // у волны, значением совпадает с ней по построению (оба контейнера —
-  // родные дети одной колонки одинаковой ширины).
-  const canvasWidthPx = canvasWidth(laneWidth, zoom);
 
   const secondsAt = useCallback(
     (clientX: number): number => {
@@ -235,84 +213,82 @@ export function MarksLane({
   );
 
   return (
-    <div className="ed-marks-scroll" ref={scrollContainerRef}>
-      <div
-        className="ed-marks"
-        ref={laneRef}
-        style={{ width: `${canvasWidthPx}px` }}
-        data-testid="marks-lane"
-      >
-        {/* Хвосты и их ручки рисуются ДО кнопок меток, чтобы ромб оставался
-            сверху и ловил нажатие (Задача 6): он орган управления, а хвост
-            раньше был картинкой. Хвост сам теперь тоже кликабелен — клик
-            без перетаскивания выделяет метку (Задача 6), а ручка на его
-            левом конце тянет длительность перехода (Задача 5); это два
-            разных элемента ровно потому, что жесты у них разные. */}
-        {marks
-          .filter((mark) => mark.morphSeconds > 0)
-          .map((mark) => {
-            const tailLeft = ratioToX((mark.seconds - mark.morphSeconds) / durationSeconds, canvasWidthPx);
-            const tailWidth = ratioToX(mark.morphSeconds / durationSeconds, canvasWidthPx);
-            return (
-              <Fragment key={`tail:${mark.kind}:${mark.id}`}>
-                <button
-                  type="button"
-                  className="ed-mark-tail"
-                  data-testid={`mark-tail-${mark.id}`}
-                  title={mark.title}
-                  aria-label={mark.title}
-                  style={{ left: `${tailLeft}px`, width: `${tailWidth}px` }}
-                  onClick={() => onSelect(mark.kind, mark.id)}
-                />
-                {/* Ручка на ЛЕВОМ конце хвоста — шире хвоста и вылезает
-                    влево (Задача 5): при ×1 хвост сам по себе всего 7.2px,
-                    непопадаемая мишень, ради этого и затевалась вся задача. */}
-                <button
-                  type="button"
-                  className="ed-mark-transition-handle"
-                  data-testid={`mark-transition-${mark.id}`}
-                  title="Потянуть — изменить длительность перехода"
-                  aria-label={`Длительность перехода к метке «${mark.id}»`}
-                  style={{ left: `${tailLeft}px` }}
-                  onPointerDown={(event) => handleTransitionDown(event, mark)}
-                  onPointerMove={handleTransitionMove}
-                  onPointerUp={handleTransitionUp}
-                  onPointerCancel={handleTransitionUp}
-                />
-              </Fragment>
-            );
-          })}
-        {marks.map((mark) => {
-          const isSelected = selected?.kind === mark.kind && selected.id === mark.id;
+    <div
+      className="ed-marks"
+      ref={laneRef}
+      style={{ width: `${canvasWidthPx}px`, height: `${heightPx}px` }}
+      data-testid="marks-lane"
+    >
+      {/* Хвосты и их ручки рисуются ДО кнопок меток, чтобы ромб оставался
+          сверху и ловил нажатие (Задача 6): он орган управления, а хвост
+          раньше был картинкой. Хвост сам теперь тоже кликабелен — клик
+          без перетаскивания выделяет метку (Задача 6), а ручка на его
+          левом конце тянет длительность перехода (Задача 5); это два
+          разных элемента ровно потому, что жесты у них разные. */}
+      {marks
+        .filter((mark) => mark.morphSeconds > 0)
+        .map((mark) => {
+          const tailLeft = ratioToX((mark.seconds - mark.morphSeconds) / durationSeconds, canvasWidthPx);
+          const tailWidth = ratioToX(mark.morphSeconds / durationSeconds, canvasWidthPx);
           return (
-            <button
-              type="button"
-              key={`${mark.kind}:${mark.id}`}
-              className={[
-                'ed-mark',
-                `ed-mark-${mark.kind}`,
-                `ed-mark-${mark.anchor}`,
-                isSelected ? 'ed-mark-selected' : '',
-              ]
-                .filter(Boolean)
-                .join(' ')}
-              style={{ left: `${ratioToX(mark.seconds / durationSeconds, canvasWidthPx)}px` }}
-              data-testid={`mark-${mark.kind}-${mark.id}`}
-              data-anchor={mark.anchor}
-              title={mark.title}
-              aria-label={mark.title}
-              onPointerDown={(event) => handleDown(event, mark)}
-              onPointerMove={handleMove}
-              onPointerUp={handleUp}
-              onPointerCancel={handleUp}
-            >
-              {/* Ромб у слайда, столбик у гейта: род метки должен читаться
-                  с одного взгляда, а не по цвету — цвет уходит на выделение. */}
-              {mark.kind === 'slide' ? '◆' : '▮'}
-            </button>
+            <Fragment key={`tail:${mark.kind}:${mark.id}`}>
+              <button
+                type="button"
+                className="ed-mark-tail"
+                data-testid={`mark-tail-${mark.id}`}
+                title={mark.title}
+                aria-label={mark.title}
+                style={{ left: `${tailLeft}px`, width: `${tailWidth}px` }}
+                onClick={() => onSelect(mark.kind, mark.id)}
+              />
+              {/* Ручка на ЛЕВОМ конце хвоста — шире хвоста и вылезает
+                  влево (Задача 5): при ×1 хвост сам по себе всего 7.2px,
+                  непопадаемая мишень, ради этого и затевалась вся задача. */}
+              <button
+                type="button"
+                className="ed-mark-transition-handle"
+                data-testid={`mark-transition-${mark.id}`}
+                title="Потянуть — изменить длительность перехода"
+                aria-label={`Длительность перехода к метке «${mark.id}»`}
+                style={{ left: `${tailLeft}px` }}
+                onPointerDown={(event) => handleTransitionDown(event, mark)}
+                onPointerMove={handleTransitionMove}
+                onPointerUp={handleTransitionUp}
+                onPointerCancel={handleTransitionUp}
+              />
+            </Fragment>
           );
         })}
-      </div>
+      {marks.map((mark) => {
+        const isSelected = selected?.kind === mark.kind && selected.id === mark.id;
+        return (
+          <button
+            type="button"
+            key={`${mark.kind}:${mark.id}`}
+            className={[
+              'ed-mark',
+              `ed-mark-${mark.kind}`,
+              `ed-mark-${mark.anchor}`,
+              isSelected ? 'ed-mark-selected' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ left: `${ratioToX(mark.seconds / durationSeconds, canvasWidthPx)}px` }}
+            data-testid={`mark-${mark.kind}-${mark.id}`}
+            data-anchor={mark.anchor}
+            title={mark.title}
+            aria-label={mark.title}
+            onPointerDown={(event) => handleDown(event, mark)}
+            onPointerMove={handleMove}
+            onPointerUp={handleUp}
+            onPointerCancel={handleUp}
+          >
+            {/* Ромб у слайда, столбик у гейта: род метки должен читаться
+                с одного взгляда, а не по цвету — цвет уходит на выделение. */}
+            {mark.kind === 'slide' ? '◆' : '▮'}
+          </button>
+        );
+      })}
     </div>
   );
 }

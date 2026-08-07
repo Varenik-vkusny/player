@@ -12,6 +12,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
 } from 'react';
@@ -22,15 +23,102 @@ import { plural, type PluralForms } from '../plural.js';
 import type { MarkKind } from '../state/project.js';
 import { nextOrphan } from './marks.js';
 import { MarksLane, type Mark } from './MarksLane.js';
+import {
+  lanesOf,
+  laneHeight,
+  marksBodyHeight,
+  minHeightOf,
+  SEPARATOR_H,
+  trackTier,
+  TRACK_DEFAULT_H,
+  TRANSPORT_H,
+  type LaneName,
+  type TrackTier,
+} from './tiers.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
 import { canvasWidth, largestFittingZoom, zoomBlockedReason, zoomFits, ZOOM_STEPS, type ZoomStep } from './zoom.js';
+
+/** Разделитель между полосами — толщиной из `tiers.ts`, который её же и складывает. */
+const SEPARATOR: CSSProperties = { borderTop: `${SEPARATOR_H}px solid var(--ui-line)` };
+
+/**
+ * Тела полос дорожки (задача 2.1, каркас): та же последовательность, что
+ * и головы (`lanesOf(tier)`), но `slides` и `stops` слиты в одно тело
+ * `marks` — так уже устроен продукт (`tiers.ts: marksBodyHeight`, разметка
+ * `.ed-mark-slide`/`.ed-mark-gate` разведена по `top` внутри ОДНОГО полотна).
+ */
+function bodyLanesOf(tier: TrackTier): readonly LaneName[] {
+  const lanes: LaneName[] = [];
+  for (const lane of lanesOf(tier)) {
+    if (lane === 'stops') continue; // слито в предыдущую 'slides' → 'marks'
+    lanes.push(lane === 'slides' ? 'marks' : lane);
+  }
+  return lanes;
+}
+
+/** Заголовок головы полосы — словами автора, не схемы (`product.md` §2а). */
+function laneTitle(lane: LaneName, _soundLabel: string): string {
+  switch (lane) {
+    case 'ruler':
+      return '';
+    case 'sound':
+      // «Звук», а не имя файла: заголовок называет ПОЛОСУ, подпись под ним —
+      // её содержимое, как у остальных («Слайды» / «6»). Имя файла ушло
+      // в подпись ещё и потому, что человеческого имени сюда не доходит:
+      // оно грузится асинхронно внутри AudioSourcePanel, и в крупной строке
+      // стоял бы сырой идентификатор.
+      return 'Звук';
+    case 'slides':
+      return 'Слайды';
+    case 'stops':
+      return 'Остановки';
+    case 'words':
+      return 'Расшифровка';
+    case 'marks':
+      // Достижимо только на ступени 'minimal' (слайды и остановки слиты
+      // уже в головах) — эта ступень в задаче 2.1 не включается: высота
+      // дорожки не меняется ничем (ручка — задача 2.2), тир всегда 'full'.
+      return 'Слайды и остановки';
+  }
+}
+
+/** Подпись под заголовком головы — содержимое полосы: число или имя звука. */
+function laneNote(
+  lane: LaneName,
+  counts: { slides: number; stops: number; words: number },
+  soundLabel: string,
+): string {
+  switch (lane) {
+    case 'ruler':
+      return '';
+    case 'sound':
+      return soundLabel;
+    case 'slides':
+      return String(counts.slides);
+    case 'stops':
+      return String(counts.stops);
+    case 'words':
+      return String(counts.words);
+    case 'marks':
+      return String(counts.slides + counts.stops);
+  }
+}
 
 /** Винительный падеж: «Проверьте 1 метку / 2 метки / 5 меток». */
 const ORPHAN_MARKS: PluralForms = { one: 'метку', few: 'метки', many: 'меток' };
 
 export interface TrackViewProps {
   transport: TransportApi;
+  /**
+   * Имя звука в голове полосы `sound` (каркас, задача 2.1). Считается наверху
+   * (`Editor.tsx`) от `segment.source`: у файла имя грузится асинхронно из
+   * хранилища плеера уже внутри `AudioSourcePanel` (тот компонент трогать
+   * нельзя — закрытый список задачи), поэтому здесь тот же запасной вид,
+   * что показывает сама панель ДО того, как асинхронное имя пришло —
+   * идентификатор файла или URL, а не выдуманное «красивое» имя.
+   */
+  soundLabel: string;
   words: readonly Word[];
   marks: readonly Mark[];
   selectedMark: { kind: MarkKind; id: string } | undefined;
@@ -64,6 +152,7 @@ function tickStep(duration: number, width: number): number {
 
 export function TrackView({
   transport,
+  soundLabel,
   words,
   marks,
   selectedMark,
@@ -76,16 +165,17 @@ export function TrackView({
 }: TrackViewProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const laneScrollRef = useRef<HTMLDivElement>(null);
-  const marksScrollRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
-  // Высота КАНВЫ волны (A1) — источник живой, а не константа 72: скролбар
-  // полосы волны теперь виден (решение владельца 06.08.2026) и отнимает
-  // высоту у clientHeight контейнера, а не у его offsetHeight, толщиной,
-  // которая зависит от ОС и настроек (measured: 72 → 57 в живом Chrome).
-  // 72 здесь — только запасное значение ДО первого замера ResizeObserver'ом.
-  const [waveHeight, setWaveHeight] = useState(72);
   const [zoom, setZoom] = useState<ZoomStep>(1);
   const draggingRef = useRef(false);
+
+  // Высота дорожки (каркас, задача 2.1): состояние заводится сейчас, чтобы
+  // 2.2 добавляла только жест тяги за кромку. Между перезагрузками НЕ
+  // сохраняется — решение владельца 06.08.2026: чтение хранилища может
+  // бросить, а глушить ошибку запрещено (CLAUDE.md). Сеттер этой сессией
+  // никто не зовёт — тяги ещё нет, — значит ступень всегда 'full'.
+  const [trackHeight] = useState<number>(TRACK_DEFAULT_H);
+  const tier = trackTier(trackHeight);
 
   const { positionSeconds, durationSeconds, peaks, failure, isPlaying } = transport;
 
@@ -96,17 +186,16 @@ export function TrackView({
   // (docs/plans/2026-08-06-track-zoom.md, Задача 2, шаг 3). Наблюдателем,
   // а не по событию окна: дорожка меняет ширину и когда окно не трогали —
   // например, если рядом откроется панель.
+  //
+  // Только ШИРИНА (каркас, задача 2.1): высота волны раньше бралась отсюда
+  // же (clientHeight контейнера) обходом видимого скролбара одной полосы —
+  // теперь контейнер общий на пять полос, скролбар отнимает высоту у ВСЕГО
+  // стека, а не у волны, и высота волны считается формулой (laneHeight ниже),
+  // а не измерением.
   useLayoutEffect(() => {
     const container = laneScrollRef.current;
     if (!container) throw new Error('TrackView: контейнер прокрутки не смонтирован');
-    const measure = (): void => {
-      setWidth(container.clientWidth);
-      // Тот же наблюдатель меряет и высоту (A1): clientHeight, а не константа,
-      // потому что классический скролбар отнимает высоту именно у него, и
-      // ResizeObserver по умолчанию наблюдает content-box — размер, который
-      // скролбар как раз меняет при появлении/исчезновении.
-      setWaveHeight(container.clientHeight);
-    };
+    const measure = (): void => setWidth(container.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(container);
@@ -197,6 +286,24 @@ export function TrackView({
     (word) => positionSeconds >= word.start && positionSeconds < word.end,
   );
 
+  // Каркас (задача 2.1): состав полос — из tiers.ts, не хардкод. Числа
+  // считаются от уже пришедших данных (marks по kind, words.length), а не
+  // заводят новых пропов. Пустой случай (0 остановок, нет расшифровки)
+  // решён минимально: подпись просто показывает «0».
+  const laneCounts = {
+    slides: marks.filter((mark) => mark.kind === 'slide').length,
+    stops: marks.filter((mark) => mark.kind === 'gate').length,
+    words: words.length,
+  };
+  const headLanes = lanesOf(tier);
+  const bodyLanes = bodyLanesOf(tier);
+  // Сумма высот полос БЕЗ транспорта. Считается тем же способом, что
+  // и minHeightOf() (сложением, а не числом), поэтому головы и тела сходятся
+  // на одно и то же число по построению — ту самую сходимость, ради которой
+  // marksBodyHeight() прибавляет разделитель внутри себя.
+  const lanesTotalHeight = minHeightOf(tier) - TRANSPORT_H;
+  const soundHeight = laneHeight('sound', tier);
+
   return (
     <section className="ed-track" aria-label="Дорожка">
       <div className="ed-transport">
@@ -267,52 +374,6 @@ export function TrackView({
         </span>
       </div>
 
-      {/* Контейнер прокрутки полотна волны (track-zoom.md §2). laneRef
-          остаётся на ПОЛОТНЕ (.ed-lane), а не на этом контейнере: seekToPointer
-          меряет getBoundingClientRect() полотна, и у прокрученного полотна
-          left уходит в минус ровно на величину прокрутки — формула
-          (clientX − rect.left) / rect.width продолжает работать без правки
-          (замер 06.08.2026, docs/design/track-zoom.md §3). Эту функцию
-          и её пару в MarksLane трогать нельзя. */}
-      <div
-        className="ed-lane-scroll"
-        ref={laneScrollRef}
-        onScroll={(event) => {
-          // Односторонняя синхронизация: волна ведёт, полоса меток
-          // повторяет (track-zoom.md §3 у полосы меток) — иначе метка
-          // стояла бы не под своим местом волны.
-          const marksContainer = marksScrollRef.current;
-          if (marksContainer) marksContainer.scrollLeft = event.currentTarget.scrollLeft;
-        }}
-      >
-        <div
-          className="ed-lane"
-          ref={laneRef}
-          style={{ width: `${canvasWidthPx}px` }}
-          onPointerDown={handleDown}
-          onPointerMove={handleMove}
-          onPointerUp={handleUp}
-          onPointerCancel={handleUp}
-          data-testid="track-lane"
-        >
-          <Waveform peaks={peaks} width={canvasWidthPx} height={waveHeight} progress={progress} />
-
-          <div className="ed-ticks" aria-hidden="true">
-            {ticks.map((t) => (
-              <span key={t} className="ed-tick" style={{ left: `${(t / durationSeconds) * 100}%` }}>
-                {formatTime(t)}
-              </span>
-            ))}
-          </div>
-
-          <div
-            className="ed-playhead"
-            data-testid="playhead"
-            style={{ left: `${progress * 100}%` }}
-          />
-        </div>
-      </div>
-
       {/*
         Список «проверьте эти места» (`product.md` §4 [Р]) — строкой над
         дорожкой, а не отдельной панелью.
@@ -351,34 +412,163 @@ export function TrackView({
         </p>
       )}
 
-      <MarksLane
-        marks={marks}
-        durationSeconds={durationSeconds}
-        selected={selectedMark}
-        onSelect={onSelectMark}
-        onMove={onMoveMark}
-        onMoveEnd={onMoveMarkEnd}
-        onTransitionSecondsLive={onTransitionSecondsLive}
-        onTransitionSecondsCommit={onTransitionSecondsCommit}
-        zoom={zoom}
-        scrollContainerRef={marksScrollRef}
-      />
-
-      <p className="ed-words" data-testid="track-words">
-        {/* Слово автора — «расшифровка»; «транскрипт» живёт в схеме и коде
-            (product.md §2а). И это не просто «пусто»: часть без озвучки —
-            законный случай, поэтому строка сразу говорит, что делать. */}
-        {words.length === 0
-          ? 'Расшифровки нет — метки этой части ставятся по секундам'
-          : words.map((word, index) => (
-              <span
-                key={`${word.start}-${index}`}
-                className={index === activeIndex ? 'ed-word ed-word-active' : 'ed-word'}
-              >
-                {word.text}{' '}
+      {/* Пять полос дорожки (каркас, задача 2.1): состав и высоты — из
+          tiers.ts (lanesOf/laneHeight/marksBodyHeight), а не хардкод.
+          Головы стоят СНАРУЖИ контейнера прокрутки, отдельной колонкой
+          грида, и НЕ липкие (position: sticky запрещён): e2e/track-zoom.spec.ts:57
+          считает ожидаемое положение метки от .x контейнера .ed-lane-scroll
+          («внешняя правда, независимая от того, что нарисовало само
+          полотно») — с липкой головой внутри контейнера этот .x стал бы
+          левым краем ГОЛОВЫ, и проверка разъехалась бы ровно на 120px. */}
+      <div className="ed-lanes">
+        <div className="ed-lane-heads" style={{ height: `${lanesTotalHeight}px` }}>
+          {headLanes.map((lane, index) => (
+            <div
+              key={lane}
+              className="ed-lane-head"
+              style={{ height: `${laneHeight(lane, tier)}px`, ...(index > 0 ? SEPARATOR : {}) }}
+            >
+              <span className="ed-lane-head-title">{laneTitle(lane, soundLabel)}</span>
+              {/* title дублирует подпись НЕ для красоты: голова 120 px, шрифт
+                  подписи 10 px, и длинное имя звука обрезается многоточием.
+                  Обрезка не роняет ничего и не подаёт сигнала — у проекта уже
+                  есть случай, когда не влезшая подпись прожила сессию
+                  незамеченной при зелёных тестах. */}
+              <span className="ed-lane-head-note" title={laneNote(lane, laneCounts, soundLabel)}>
+                {laneNote(lane, laneCounts, soundLabel)}
               </span>
-            ))}
-      </p>
+            </div>
+          ))}
+        </div>
+
+        {/* Контейнер прокрутки — ЕДИНСТВЕННЫЙ на все пять полос (было два:
+            .ed-lane-scroll у волны и .ed-marks-scroll у меток с
+            односторонней синхронизацией scrollLeft между ними; каркас,
+            задача 2.1, свёл их в один — синхронизировать больше нечего).
+            Имя СОХРАНЕНО: e2e/track-zoom.spec.ts:57 считает положение метки
+            от .x именно этого контейнера. laneRef стоит НЕ здесь, а на
+            полотне (.ed-lane-bodies) — seekToPointer меряет
+            getBoundingClientRect() полотна, а не контейнера: контейнер стоит
+            на месте, полотно уезжает под него при прокрутке (замер
+            06.08.2026, docs/design/track-zoom.md §3). */}
+        {/* Высота НЕ задаётся: контейнер обнимает стек полос сам.
+            Жёсткая высота при overflow-y: hidden означала бы, что
+            горизонтальный скролбар отъедает высоту ИЗНУТРИ и срезает низ
+            последней полосы. В headless этого не увидеть никогда — там
+            скролбар накладной и нулевой толщины (замерено: thicknessProbe 0
+            даже с отключённым OverlayScrollbar), а в живом Chrome он
+            классический, 15 px (замерено в браузере владельца). То есть
+            дефект был бы виден автору и невидим всем 279 e2e разом.
+            Высота-по-содержимому снимает это независимо от толщины: сколько
+            скролбар займёт, на столько контейнер и вырастет. */}
+        <div className="ed-lane-scroll" ref={laneScrollRef}>
+          {/* laneRef стоит на ПОЛОТНЕ, а не на полосе волны: ось времени — это
+              полотно целиком, и от него считают секунду все поверхности
+              перемотки. Пока полос было две, `.ed-lane` совпадала с полотном
+              по ширине, и разница не значила ничего; с пятью полосами такое
+              совпадение — то самое необъявленное, которое однажды кончается.
+              Ширина у полотна задана явно, у полос она 100% от него. */}
+          <div className="ed-lane-bodies" ref={laneRef} style={{ width: `${canvasWidthPx}px` }}>
+            {bodyLanes.map((lane, index) => {
+              const border = index > 0 ? SEPARATOR : {};
+              if (lane === 'ruler') {
+                return (
+                  <div
+                    key={lane}
+                    className="ed-ruler-body"
+                    style={{ height: `${laneHeight('ruler', tier)}px`, ...border }}
+                    // Линейка перематывает — в монтажной программе это ГЛАВНАЯ
+                    // поверхность перемотки, и до перекладки она работала
+                    // случайно: контейнер прокрутки БЫЛ полосой волны, поэтому
+                    // «щёлкнуть по дорожке» и «попасть в волну» совпадали.
+                    // Полос стало пять — совпадение кончилось, и линейка,
+                    // на которую автор целится первой, замолчала бы.
+                    onPointerDown={handleDown}
+                    onPointerMove={handleMove}
+                    onPointerUp={handleUp}
+                    onPointerCancel={handleUp}
+                    data-testid="track-ruler"
+                  >
+                    <div className="ed-ticks" aria-hidden="true">
+                      {ticks.map((t) => (
+                        <span key={t} className="ed-tick" style={{ left: `${(t / durationSeconds) * 100}%` }}>
+                          {formatTime(t)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              }
+              if (lane === 'sound') {
+                return (
+                  <div
+                    key={lane}
+                    className="ed-lane"
+                    style={{ height: `${soundHeight}px`, ...border }}
+                    onPointerDown={handleDown}
+                    onPointerMove={handleMove}
+                    onPointerUp={handleUp}
+                    onPointerCancel={handleUp}
+                    data-testid="track-lane"
+                  >
+                    <Waveform peaks={peaks} width={canvasWidthPx} height={soundHeight} progress={progress} />
+                  </div>
+                );
+              }
+              if (lane === 'marks') {
+                // .ed-marks сама несёт border-top статически в styles.ts —
+                // она никогда не первая полоса ни на одной ступени (перед
+                // ней всегда идут ruler и sound), поэтому лишний пропс
+                // здесь не нужен.
+                return (
+                  <MarksLane
+                    key={lane}
+                    marks={marks}
+                    durationSeconds={durationSeconds}
+                    selected={selectedMark}
+                    onSelect={onSelectMark}
+                    onMove={onMoveMark}
+                    onMoveEnd={onMoveMarkEnd}
+                    onTransitionSecondsLive={onTransitionSecondsLive}
+                    onTransitionSecondsCommit={onTransitionSecondsCommit}
+                    canvasWidthPx={canvasWidthPx}
+                    heightPx={marksBodyHeight(tier)}
+                  />
+                );
+              }
+              // 'words': слово автора — «расшифровка»; «транскрипт» живёт
+              // в схеме и коде (product.md §2а). И это не просто «пусто»:
+              // часть без озвучки — законный случай, поэтому строка сразу
+              // говорит, что делать.
+              return (
+                <p
+                  key={lane}
+                  className="ed-words-body"
+                  data-testid="track-words"
+                  style={{ height: `${laneHeight('words', tier)}px`, ...border }}
+                >
+                  {words.length === 0
+                    ? 'Расшифровки нет — метки этой части ставятся по секундам'
+                    : words.map((word, wordIndex) => (
+                        <span
+                          key={`${word.start}-${wordIndex}`}
+                          className={wordIndex === activeIndex ? 'ed-word ed-word-active' : 'ed-word'}
+                        >
+                          {word.text}{' '}
+                        </span>
+                      ))}
+                </p>
+              );
+            })}
+
+            {/* Головка едет через ВСЕ полосы сверху донизу — раньше стояла
+                только над волной (.ed-lane, 72px), теперь родитель — весь
+                стек тел (.ed-lane-bodies), и top:0/bottom:0 в CSS дают ей
+                высоту стека без единой правки самого правила. */}
+            <div className="ed-playhead" data-testid="playhead" style={{ left: `${progress * 100}%` }} />
+          </div>
+        </div>
+      </div>
     </section>
   );
 }

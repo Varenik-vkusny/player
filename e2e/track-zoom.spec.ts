@@ -46,7 +46,7 @@ test.describe('масштаб дорожки: e2e', () => {
    * Что должно сломаться: сдвиг базовой ширины полотна при zoom === 1 —
    * например, если `canvasWidth` перестанет совпадать с шириной КОНТЕЙНЕРА
    * прокрутки (добавочный отступ, лишний множитель). Ожидаемое положение
-   * считается от ширины `.ed-marks-scroll` (внешняя правда, независимая от
+   * считается от ширины `.ed-lane-scroll` (внешняя правда, независимая от
    * того, что нарисовало само полотно) — не от ширины самого `.ed-marks`,
    * иначе тест сверял бы полотно само с собой и остался бы зелёным при любой
    * ошибке в canvasWidth.
@@ -54,7 +54,7 @@ test.describe('масштаб дорожки: e2e', () => {
   test('при ×1 положение метки совпадает с вычисленным от доли', async ({ page }) => {
     await openEditor(page, 'transitions');
 
-    const container = await page.locator('.ed-marks-scroll').boundingBox();
+    const container = await page.locator('.ed-lane-scroll').boundingBox();
     // s-4 — известная секунда фикстуры (18.00 с, приём slide).
     const mark = await page.getByTestId('mark-slide-s-4').boundingBox();
     if (!container || !mark) throw new Error('полоса меток или метка не видны');
@@ -134,13 +134,26 @@ test.describe('масштаб дорожки: e2e', () => {
     }, Math.floor(maxScroll * 0.4));
     const actualScrollLeft = await page.evaluate(() => document.querySelector('.ed-lane-scroll')!.scrollLeft);
 
-    const canvasWidthPx = await page.evaluate(() => document.querySelector('.ed-lane')!.clientWidth);
+    const canvasWidthPx = await page.evaluate(() => document.querySelector('.ed-lane-bodies')!.clientWidth);
     const duration = await durationOf(page);
 
     const clickXInContainer = container.width / 2;
     const expectedSeconds = ((actualScrollLeft + clickXInContainer) / canvasWidthPx) * duration;
 
-    await page.mouse.click(container.x + clickXInContainer, container.y + container.height / 2);
+    /*
+     * Щелчок кладётся В ЛИНЕЙКУ, а не в середину контейнера по высоте.
+     *
+     * До каркаса это было одно и то же: контейнер прокрутки БЫЛ полосой
+     * волны, и его вертикальная середина всегда попадала в поверхность
+     * перемотки. С пятью полосами середина контейнера (90 из 180) приходится
+     * на полосу МЕТОК, которая не перематывает, — измерено elementFromPoint.
+     * Тест целился в совпадение, а не в предмет проверки; предмет — «щелчок
+     * по оси времени даёт свою секунду после прокрутки», и линейка есть
+     * ось времени по определению.
+     */
+    const ruler = await page.getByTestId('track-ruler').boundingBox();
+    if (!ruler) throw new Error('линейка не видна');
+    await page.mouse.click(container.x + clickXInContainer, ruler.y + ruler.height / 2);
 
     const actual = await page.evaluate(
       () => (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds,
