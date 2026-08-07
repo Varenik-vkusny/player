@@ -83,7 +83,7 @@ function inputGate(overrides: Partial<Gate> = {}): Gate {
 }
 
 function element(id: string): Element {
-  return { id, type: 'shape', content: '' };
+  return { id, type: 'shape', content: '', locked: false };
 }
 
 /** Минимальный проект с одним гейтом — ровно то, что нужно `loadProject`, не больше. */

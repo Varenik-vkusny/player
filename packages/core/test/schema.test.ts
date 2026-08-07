@@ -206,6 +206,75 @@ describe('слайды', () => {
     expect(ProjectSchema.safeParse(withDirection('slide')).success).toBe(true);
   });
 
+  /**
+   * Группы (v11). Каждый запрет проверяется отдельно, потому что каждый
+   * снимается отдельно: у всех четырёх свой слом внутри `superRefine`
+   * сегмента, и убрав один, краснеет ровно один тест.
+   *
+   * Положительной половины «группа с ребёнком проходит» здесь нет намеренно:
+   * её проверяет `grouped` внутри первых трёх тестов — они начинают
+   * с законного проекта и портят ровно одно место.
+   */
+  describe('v11: вложенность в группу', () => {
+    /** Законный проект: группа `g` и вложенный в неё `box`. */
+    function grouped(): any {
+      const project = explanation();
+      const segment = project.segments[0];
+      segment.elements = [
+        { id: 'g', type: 'group', content: '' },
+        { id: 'box', type: 'shape', content: '', parentId: 'g' },
+      ];
+      segment.slides[0].states = {
+        g: { x: 0, y: 0, width: 400, height: 300 },
+        box: { x: 0, y: 0, width: 100, height: 100 },
+      };
+      return project;
+    }
+
+    it('законная группа с ребёнком проходит', () => {
+      expect(ProjectSchema.safeParse(grouped()).success).toBe(true);
+    });
+
+    it('ссылка на несуществующую группу не проходит', () => {
+      const project = grouped();
+      project.segments[0].elements[1].parentId = 'нет-такого';
+      expect(problems(project)).toMatch(/которой нет в этом сегменте/);
+    });
+
+    it('вложение не в группу, а в обычный элемент, не проходит', () => {
+      // Слом, отличающий его от соседа: снять проверку типа родителя.
+      // Ссылка при этом остаётся разрешимой, поэтому предыдущий тест
+      // от этого слома не краснеет.
+      const project = grouped();
+      project.segments[0].elements[0] = { id: 'g', type: 'shape', content: '' };
+      expect(problems(project)).toMatch(/Вкладывать можно только в group/);
+    });
+
+    it('цикл вложенности не проходит', () => {
+      // Группа внутри группы законна, поэтому цикл строится из двух групп.
+      // Без проверки цикла подъём до корня не кончился бы никогда.
+      const project = grouped();
+      project.segments[0].elements = [
+        { id: 'g', type: 'group', content: '', parentId: 'h' },
+        { id: 'h', type: 'group', content: '', parentId: 'g' },
+      ];
+      project.segments[0].slides[0].states = {
+        g: { x: 0, y: 0, width: 400, height: 300 },
+        h: { x: 0, y: 0, width: 400, height: 300 },
+      };
+      expect(problems(project)).toMatch(/зациклена/);
+    });
+
+    it('ребёнок на слайде, где нет его группы, не проходит', () => {
+      // Не выдумка: именно так выглядел бы слайд, с которого автор убрал
+      // группу, не убрав её содержимое. Координаты ребёнка отсчитываются
+      // от группы, поэтому позиции у него не было бы вовсе.
+      const project = grouped();
+      delete project.segments[0].slides[0].states.g;
+      expect(problems(project)).toMatch(/а его группы .* — нет/);
+    });
+  });
+
   // Теста «отсутствие направления не превращается в „left"» здесь НЕТ,
   // и это результат проверки сломом. Слом (`.default('left')` у поля)
   // покрасил 138 тестов в 15 файлах: умолчание противоречит самому

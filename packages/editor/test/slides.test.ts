@@ -14,11 +14,11 @@ import { copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, p
 import { serializeProject } from '../src/state/save.js';
 
 function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
-  return { id, type, content };
+  return { id, type, content, locked: false };
 }
 
 function state(overrides: Partial<ElementState> = {}): ElementState {
-  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {}, ...overrides };
 }
 
 const seconds = (t: number): TimeRef => ({ kind: 'seconds', t });
@@ -107,7 +107,9 @@ describe('pasteSlide: элементы (ADR-025, таблица из трёх с
     const next = pasteSlide(segment, clipboard, seconds(3));
 
     const created = next.elements.find((e) => e.id === 'text-9');
-    expect(created).toEqual({ id: 'text-9', type: 'text', content: 'привет' });
+    // `locked: false` появилось в v11: поле с умолчанием, и созданный
+    // элемент обязан его нести — иначе он не прошёл бы разбор схемы.
+    expect(created).toEqual({ id: 'text-9', type: 'text', content: 'привет', locked: false });
     const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
     expect(inserted.states['text-9']).toEqual(state({ x: 12 }));
   });

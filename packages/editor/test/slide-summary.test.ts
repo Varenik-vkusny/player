@@ -11,11 +11,11 @@ import { slideChangeSummary } from '../src/track/slide-summary.js';
  * если это текст и он непуст; иначе id»).
  */
 function element(id: string, overrides: Partial<Element> = {}): Element {
-  return { id, type: 'shape', content: '', ...overrides };
+  return { id, type: 'shape', content: '', locked: false, ...overrides };
 }
 
 function elementState(overrides: Partial<ElementState> = {}): ElementState {
-  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {}, ...overrides };
 }
 
 function slide(id: string, states: Record<string, ElementState>, at: Slide['at'] = { kind: 'seconds', t: 0 }): Slide {

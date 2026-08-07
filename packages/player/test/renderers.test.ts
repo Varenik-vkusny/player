@@ -21,6 +21,8 @@ function stateFor(): ElementState {
     zIndex: 0,
     opacity: 1,
     visible: true,
+    flipX: false,
+    flipY: false,
     style: {},
   };
 }
@@ -61,7 +63,7 @@ describe('ADR-023: реестр DOM-рендереров', () => {
     });
 
     const node = nodeStub();
-    const element = { id: 'el-1', type: 'test_custom' as Element['type'], content: 'Привет' };
+    const element = { id: 'el-1', type: 'test_custom' as Element['type'], content: 'Привет', locked: false };
 
     applyElement(node, element, stateFor());
 
@@ -70,7 +72,7 @@ describe('ADR-023: реестр DOM-рендереров', () => {
   });
 
   it('падает громко на незарегистрированном типе, а не рисует пустой узел', () => {
-    const element = { id: 'el-unknown', type: 'unregistered_type' as Element['type'], content: '' };
+    const element = { id: 'el-unknown', type: 'unregistered_type' as Element['type'], content: '', locked: false };
 
     expect(() => applyElement(nodeStub(), element, stateFor())).toThrow(
       /Для типа элемента «unregistered_type» не зарегистрирован DOM-рендерер/,

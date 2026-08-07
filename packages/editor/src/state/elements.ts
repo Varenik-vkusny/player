@@ -79,6 +79,8 @@ export function createElement(
     id: freeId(item.id, segment.elements),
     type: item.type,
     content: item.content,
+    // v11: элемент из каталога кладётся верхним уровнем и незапертым.
+    locked: false,
   };
   const state: ElementState = {
     x: withinStage(stage.width / 2 - item.width / 2 + shift, item.width, stage.width),
@@ -89,6 +91,8 @@ export function createElement(
     zIndex: nextZIndex(currentStates),
     opacity: 1,
     visible: true,
+    flipX: false,
+    flipY: false,
     style: { ...item.style },
   };
   return { element, state };

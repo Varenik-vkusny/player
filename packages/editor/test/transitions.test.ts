@@ -18,11 +18,11 @@ import { TRANSITION_INFO, TRANSITION_ORDER } from '../src/transitions.js';
 import { setTransitionSeconds } from '../src/state/slides.js';
 
 function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
-  return { id, type, content };
+  return { id, type, content, locked: false };
 }
 
 function state(overrides: Partial<ElementState> = {}): ElementState {
-  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {}, ...overrides };
 }
 
 const seconds = (t: number): TimeRef => ({ kind: 'seconds', t });

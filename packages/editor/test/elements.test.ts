@@ -156,7 +156,7 @@ describe('createElement: фабрики трёх видов', () => {
   });
 
   it('уникальность id — среди всех элементов сегмента, а не только видимых на текущем слайде', () => {
-    const seg = segment({ elements: [{ id: 'shape-1', type: 'shape', content: '' }] });
+    const seg = segment({ elements: [{ id: 'shape-1', type: 'shape', content: '', locked: false }] });
     // states пуст — на текущем слайде элемента не видно, но id уже занят на уровне сегмента.
     const { element } = createElement(libraryItem('shape'), seg, emptyStates(), STAGE);
     expect(element.id).not.toBe('shape-1');
@@ -209,8 +209,8 @@ describe('removeElement: каскад по слайдам', () => {
   });
 
   it('элементы, не задетые удалением, остаются теми же объектами по ссылке', () => {
-    const el = { id: 'a', type: 'shape' as const, content: '' };
-    const other = { id: 'b', type: 'shape' as const, content: '' };
+    const el = { id: 'a', type: 'shape' as const, content: '', locked: false };
+    const other = { id: 'b', type: 'shape' as const, content: '', locked: false };
     const seg = segment({ elements: [el, other] });
 
     const next = removeElement(seg, el.id);
@@ -228,7 +228,7 @@ describe('removeElement: каскад по слайдам', () => {
 describe('removeElement: гейты не трогает', () => {
   it('gates остаются тем же массивом по ссылке', () => {
     const g = gate('gate-1');
-    const seg = segment({ elements: [{ id: 'a', type: 'shape', content: '' }], gates: [g] });
+    const seg = segment({ elements: [{ id: 'a', type: 'shape', content: '', locked: false }], gates: [g] });
     const next = removeElement(seg, 'a');
     expect(next.gates).toBe(seg.gates);
   });
