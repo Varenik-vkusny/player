@@ -188,6 +188,32 @@ describe('слайды', () => {
     expect(problems(project)).toMatch(/идут не по порядку/);
   });
 
+  it('направление у приёма, у которого его нет, — не проходит', () => {
+    // Появилось в v10. Что должно сломаться, чтобы покраснел: снятие
+    // superRefine со SlideSchema. Проверено прицельно — краснеет только он.
+    //
+    // Обе половины нужны. Без первой тест прошёл бы у схемы, которая
+    // запрещает направление ВСЕМ; без второй — у схемы, которая
+    // не проверяет ничего.
+    const withDirection = (transition: string): any => {
+      const project = explanation();
+      project.segments[0].slides[0].transition = transition;
+      project.segments[0].slides[0].transitionDirection = 'up';
+      return project;
+    };
+
+    expect(problems(withDirection('dissolve'))).toMatch(/его не имеет/);
+    expect(ProjectSchema.safeParse(withDirection('slide')).success).toBe(true);
+  });
+
+  // Теста «отсутствие направления не превращается в „left"» здесь НЕТ,
+  // и это результат проверки сломом. Слом (`.default('left')` у поля)
+  // покрасил 138 тестов в 15 файлах: умолчание противоречит самому
+  // superRefine — оно проставило бы направление и слайдам с `dissolve`, —
+  // а лишний ключ в файле ловит roundtrip «в тексте файла нет ключей
+  // сверх схемы». Свойство защищено и без отдельного теста; свой был бы
+  // декоративным. Решение записано комментарием у поля в схеме.
+
   it('состояние несуществующего элемента не проходит', () => {
     const project = explanation();
     project.segments[0].slides[0].states['нет-такого'] = { x: 0, y: 0, width: 1, height: 1 };

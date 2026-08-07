@@ -86,7 +86,25 @@ function summarize(element: Element, state: ElementState | undefined): string {
       const background = state?.style['background'];
       return background === undefined ? 'фигура' : `фигура, фон ${background}`;
     }
+    case 'video':
+      return summarizeVideo(element.content);
   }
+}
+
+/**
+ * Появилось в v10. Отдельно от `summarizeImage` не ради симметрии,
+ * а потому что подписи разные: у видео и картинки по-разному звучит
+ * пустота, и «встроенная картинка» о видео сказать нельзя.
+ *
+ * Ветки `data:` здесь намеренно НЕТ. У картинки она есть, потому что
+ * картинка встраивается в проект строкой; видео так встроить нельзя —
+ * замер квоты `localStorage` дал 5 242 869 символов на весь проект,
+ * а это меньше секунды видео в base64. Появится встроенное видео —
+ * появится и ветка, но не раньше, чем появится способ его хранить.
+ */
+function summarizeVideo(content: string): string {
+  if (content === '') return 'пусто, ждёт файла';
+  return truncate(content);
 }
 
 function summarizeImage(content: string): string {

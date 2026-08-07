@@ -230,6 +230,18 @@ function ElementFields({
           <StringField label="Путь к картинке" value={element.content} onCommit={onContentChange} />
         </div>
       )}
+      {element.type === 'video' && (
+        <div className="ed-insp-block">
+          {/*
+            Подпись отличается от картинкиной намеренно. Две панели рядом
+            уже давали два одинаковых заголовка («Фон» у роли темы и «Фон»
+            у стиля элемента), и поймал это строгий режим Playwright
+            в тесте ПРО ДРУГОЕ. «Путь к видео» с «Путь к картинке»
+            не совпадает, и совпасть не может: типы взаимоисключающие.
+          */}
+          <StringField label="Путь к видео" value={element.content} onCommit={onContentChange} />
+        </div>
+      )}
     </div>
   );
 }

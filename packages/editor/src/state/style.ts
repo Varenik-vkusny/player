@@ -58,7 +58,7 @@
  * ключ произвольных данных и поэтому никогда не бросает даже на незнакомом
  * ключе — см. её комментарий.
  */
-import { ThemeSchema, type Element, type ElementState } from '@player/core';
+import { ELEMENT_TYPES, ThemeSchema, type Element, type ElementState } from '@player/core';
 
 /** Карта style элемента — ровно то же, что `ElementStateSchema.style`. */
 export type ElementStyle = ElementState['style'];
@@ -135,9 +135,12 @@ export type StyleReadResult =
   | { readonly kind: 'raw'; readonly text: string };
 
 const TEXT_ONLY: readonly Element['type'][] = ['text'];
-// Схема v3 знает ровно три типа элемента (ElementSchema.type) — в отличие
-// от v2, «group» среди них больше нет.
-const ALL_TYPES: readonly Element['type'][] = ['text', 'image', 'shape'];
+// Ссылка на перечень схемы, а не своя копия. Копия здесь уже была и уже
+// разошлась: она перечисляла три типа, комментарий рядом называл версию
+// схемы v3, а схема к тому времени ушла вперёд. Неполный массив ошибкой
+// не является — он типизирован как Element['type'][], — поэтому разойтись
+// он мог только молча. → ELEMENT_TYPES в @player/core
+const ALL_TYPES: readonly Element['type'][] = ELEMENT_TYPES;
 
 /**
  * Восемь полей, ключи kebab-case — как в фикстурах. Значения по умолчанию
