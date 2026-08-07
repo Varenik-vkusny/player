@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { loadProject, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, ElementState, Project, Segment, Slide, TimeRef } from '@player/core';
 
-import { copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, type SlideClipboard } from '../src/state/slides.js';
+import { copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
 import { serializeProject } from '../src/state/save.js';
 
 function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
@@ -275,5 +275,55 @@ describe('duplicateSlideAt: композиция copySlideToClipboard + pasteSli
     const inserted = next.slides.find((s) => slideSeconds(s) === 3)!;
     expect(inserted.states['shape-1']).toEqual(segment.slides[1]!.states['shape-1']);
     expect(next.elements).toHaveLength(segment.elements.length);
+  });
+});
+
+/**
+ * Направление перехода (v10). Проверяется здесь, а не через редьюсер, по той
+ * же причине, что и остальное в этом файле: логика чистая.
+ */
+describe('направление перехода: смена приёма не оставляет невыразимого состояния', () => {
+  function directed(): Segment {
+    const segment = baseSegment();
+    return setTransitionDirection(setTransition(segment, 'slide-2', 'slide'), 'slide-2', 'up');
+  }
+
+  it('направление ставится приёму, у которого оно есть', () => {
+    expect(directed().slides[1]!.transitionDirection).toBe('up');
+  });
+
+  it('приёму без направления его поставить НЕЛЬЗЯ — падает громко', () => {
+    // «Растворение» направления не имеет. Молчаливое принятие записало бы
+    // в проект поле, которое схема отвергнет при сохранении: сломали бы
+    // в панели, а упало бы в другом месте и позже.
+    const segment = setTransition(baseSegment(), 'slide-2', 'dissolve');
+    expect(() => setTransitionDirection(segment, 'slide-2', 'up')).toThrow(/нет направления/);
+  });
+
+  it('СМЕНА приёма на ненаправленный СБРАСЫВАЕТ направление', () => {
+    // Тот же дефект с другой стороны, и эта сторона опаснее: здесь автор
+    // ничего запрещённого не делает — он просто передумал. Без сброса
+    // проект переставал бы проходить валидацию после обычного клика.
+    const after = setTransition(directed(), 'slide-2', 'dissolve');
+
+    expect(after.slides[1]!.transition).toBe('dissolve');
+    expect(after.slides[1]!.transitionDirection).toBeUndefined();
+    expect('transitionDirection' in after.slides[1]!).toBe(false);
+  });
+
+  it('сброшенное направление доживает до файла: сохранённый проект валиден', () => {
+    // Контрольная строка. Проверка «поля нет в объекте» прошла бы и у кода,
+    // который кладёт туда undefined — а `undefined` в JSON исчезает молча,
+    // и разница между «нет ключа» и «ключ со значением undefined» видна
+    // только тому, кто сериализует. Здесь она и проверяется.
+    const segment = setTransition(directed(), 'slide-2', 'dissolve');
+    const project: Project = {
+      schemaVersion: SCHEMA_VERSION,
+      meta: { title: 'т', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
+      entry: segment.id,
+      segments: [segment],
+    };
+
+    expect(() => loadProject(JSON.parse(serializeProject(project)))).not.toThrow();
   });
 });

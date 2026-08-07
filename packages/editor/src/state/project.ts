@@ -12,7 +12,10 @@
  * сравнением ссылок. Если редьюсер начнёт пересоздавать неизменившиеся
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
-import type { Condition, Element, ElementState, Gate, Project, Segment, Slide, Theme, TimeRef, Word } from '@player/core';
+import type {
+  Condition, Element, ElementState, Gate, Project, Segment, Slide, Theme, TimeRef,
+  TransitionDirection, Word,
+} from '@player/core';
 import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
 
 import { retargetMark } from '../track/marks.js';
@@ -113,6 +116,21 @@ export type EditorAction =
       readonly type: 'setSlideTransition';
       readonly slideId: string;
       readonly transition: Slide['transition'];
+    }
+  /**
+   * Куда едет переход (схема v10). Отдельное действие, а не поле
+   * у `setSlideTransition`: приём и направление правятся разными жестами
+   * автора — плиткой каталога и кнопкой-стрелкой, — и склейка заставила бы
+   * каждый из них знать текущее значение второго.
+   *
+   * Обратной операции «снять направление» нет намеренно: снимает его смена
+   * приёма на ненаправленный, и делает это `slides.setTransition`. Ручное
+   * снятие было бы вторым способом прийти в то же состояние.
+   */
+  | {
+      readonly type: 'setSlideTransitionDirection';
+      readonly slideId: string;
+      readonly direction: TransitionDirection;
     }
   /**
    * Правка ОДНОЙ роли темы сцены (схема v9, `ThemeSchema`) — `project.meta`,
@@ -454,6 +472,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'setSlideTransition': {
       const nextSegment = slidesApi.setTransition(currentSegment(state), action.slideId, action.transition);
+      return replaceSegment(state, nextSegment);
+    }
+
+    case 'setSlideTransitionDirection': {
+      const nextSegment = slidesApi.setTransitionDirection(
+        currentSegment(state), action.slideId, action.direction,
+      );
       return replaceSegment(state, nextSegment);
     }
 

@@ -36,6 +36,8 @@ export {
   phaseAt,
   planMorph,
   TECHNIQUE_PROPS,
+  motionOf,
+  FROZEN_DIRECTION,
   UNMATCHED_FRACTION,
   WHOLE_SCENE,
   type Transition,

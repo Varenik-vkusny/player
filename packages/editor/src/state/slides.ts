@@ -14,8 +14,10 @@
  * в states предыдущего слайда, ADR-015) — то есть сцена бы обнулялась
  * при каждой вставке слайда, а не продолжалась.
  */
-import { DEFAULT_TRANSITION_SECONDS, resolveTimeRef } from '@player/core';
-import type { Element, ElementState, Segment, Slide, TimeRef, Word } from '@player/core';
+import { DEFAULT_TRANSITION_SECONDS, DIRECTED_TRANSITIONS, resolveTimeRef } from '@player/core';
+import type {
+  Element, ElementState, Segment, Slide, TimeRef, TransitionDirection, Word,
+} from '@player/core';
 
 import { prefixOf } from './duplicate.js';
 import { freeId } from './elements.js';
@@ -166,7 +168,62 @@ export function setTransition(segment: Segment, slideId: string, transition: Sli
   if (segment.slides[index]!.transition === transition) return segment;
 
   const slides = segment.slides.slice();
-  slides[index] = { ...slides[index]!, transition };
+  /**
+   * Смена приёма СБРАСЫВАЕТ направление, если новый приём его не имеет.
+   *
+   * Без этого получается состояние, которое схема не принимает: автор
+   * ставит «Сдвиг» со стрелкой вверх, потом переключает на «Растворение» —
+   * направление остаётся, и `superRefine` у `SlideSchema` отвергает проект
+   * целиком. Сломали бы в панели перехода, а упало бы при сохранении.
+   *
+   * Сброс молчаливый и это нормально: направления у «Растворения»
+   * не существует, автору нечего сообщать. Вернёт «Сдвиг» — выберет заново.
+   */
+  const next: Slide = { ...slides[index]!, transition };
+  if (!(DIRECTED_TRANSITIONS as readonly string[]).includes(transition)) {
+    delete (next as { transitionDirection?: unknown }).transitionDirection;
+  }
+  slides[index] = next;
+  return { ...segment, slides };
+}
+
+/**
+ * Куда едет переход к этому слайду.
+ *
+ * Отвергает направление у приёма, который его не имеет, — тем же списком
+ * `DIRECTED_TRANSITIONS`, которым это проверяет схема. Дублирование здесь
+ * намеренное и не является второй правдой: список ОДИН, в ядре; повторена
+ * только точка отказа. Схема ловит битый файл, эта функция — битое
+ * действие, и ловить его надо там, где оно произошло, а не при сохранении.
+ *
+ * Первый слайд отвергается по той же причине, что в `setTransition`:
+ * перехода в него не существует.
+ */
+export function setTransitionDirection(
+  segment: Segment,
+  slideId: string,
+  direction: TransitionDirection,
+): Segment {
+  const index = slideIndex(segment, slideId);
+  if (index < 0) {
+    throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
+  }
+  if (index === 0) {
+    throw new Error(
+      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом части, ехать в него неоткуда',
+    );
+  }
+
+  const slide = segment.slides[index]!;
+  if (!(DIRECTED_TRANSITIONS as readonly string[]).includes(slide.transition)) {
+    throw new Error(
+      `У приёма «${slide.transition}» нет направления: оно есть только у ${DIRECTED_TRANSITIONS.join(', ')}`,
+    );
+  }
+  if (slide.transitionDirection === direction) return segment;
+
+  const slides = segment.slides.slice();
+  slides[index] = { ...slide, transitionDirection: direction };
   return { ...segment, slides };
 }
 

@@ -19,7 +19,8 @@
  */
 import { useId, useLayoutEffect, useRef, useState, type ReactElement } from 'react';
 
-import type { Element, Gate, Slide, TimeRef, Word } from '@player/core';
+import { DEFAULT_TRANSITION_DIRECTION, DIRECTED_TRANSITIONS } from '@player/core';
+import type { Element, Gate, Slide, TimeRef, TransitionDirection, Word } from '@player/core';
 
 import {
   addOption,
@@ -37,7 +38,9 @@ import {
   setPrompt,
 } from '../state/gates.js';
 import { retargetMark, wordAnchorProblem } from '../track/marks.js';
-import { TRANSITION_INFO, TRANSITION_ORDER } from '../transitions.js';
+import {
+  DIRECTION_INFO, DIRECTION_ORDER, TRANSITION_INFO, TRANSITION_ORDER,
+} from '../transitions.js';
 import {
   POSITIVE_INTEGER,
   ChoiceField,
@@ -73,6 +76,8 @@ export interface MarkPanelProps {
   onUpdateGate: (gate: Gate) => void;
   /** Приём перехода выделенного слайда (действие `setSlideTransition`). */
   onSetSlideTransition: (transition: Slide['transition']) => void;
+  /** Направление перехода (действие `setSlideTransitionDirection`, схема v10). */
+  onSetSlideTransitionDirection: (direction: TransitionDirection) => void;
   /**
    * Живое значение продолжительности перехода — каждое движение ползунка,
    * `commit: false` (действие `setSlideTransitionSeconds`). Коммит-точку
@@ -129,6 +134,7 @@ export function MarkPanel({
   gateInsideTransition = false,
   onUpdateGate,
   onSetSlideTransition,
+  onSetSlideTransitionDirection,
   onSetSlideTransitionSeconds,
   onCommitHistory,
   slideTransitionGapSeconds,
@@ -208,6 +214,7 @@ export function MarkPanel({
             slide={mark.slide}
             gapSeconds={requireGapSeconds(slideTransitionGapSeconds)}
             onSetTransition={onSetSlideTransition}
+            onSetTransitionDirection={onSetSlideTransitionDirection}
             onSetTransitionSeconds={onSetSlideTransitionSeconds}
             onCommitHistory={onCommitHistory}
           />
@@ -859,6 +866,62 @@ function TransitionCatalog({ value, onSelect }: TransitionCatalogProps): ReactEl
   );
 }
 
+interface DirectionControlProps {
+  slide: Slide;
+  onSelect: (direction: TransitionDirection) => void;
+}
+
+/**
+ * Четыре кнопки-стрелки, снятые с натуры Canva (панель перехода, 07.08.2026).
+ *
+ * Показывается ТОЛЬКО у приёмов, у которых направление есть — тем же списком
+ * `DIRECTED_TRANSITIONS`, которым это проверяет схема. Показать их у
+ * «Растворения» значило бы дать автору выбор, ни на что не влияющий:
+ * ровно тот дефект, из-за которого у первого слайда нет поля перехода
+ * (`state/slides.ts`, `setTransition`).
+ *
+ * Подсветка при `undefined` берётся из `DEFAULT_TRANSITION_DIRECTION` ядра,
+ * а не пишется здесь числом: панель обязана подсвечивать то, что нарисуется.
+ * Значение в схеме умолчанием НЕ проставляется — отсюда и подсветка
+ * вычисляемая, а не прочитанная.
+ */
+function DirectionControl({ slide, onSelect }: DirectionControlProps): ReactElement | null {
+  const labelId = useId();
+
+  if (!(DIRECTED_TRANSITIONS as readonly string[]).includes(slide.transition)) return null;
+
+  const active = slide.transitionDirection ?? DEFAULT_TRANSITION_DIRECTION;
+  const what = slide.transition === 'wipe' ? 'штора' : 'сцена';
+
+  return (
+    <div className="ed-insp-field">
+      <span className="ed-insp-label" id={labelId}>Направление</span>
+      <div className="ed-direction-row" role="group" aria-labelledby={labelId}>
+        {DIRECTION_ORDER.map((candidate) => {
+          const info = DIRECTION_INFO[candidate];
+          const selected = candidate === active;
+          return (
+            <button
+              key={candidate}
+              type="button"
+              className={selected ? 'ed-direction-btn ed-direction-btn-selected' : 'ed-direction-btn'}
+              aria-pressed={selected}
+              // Стрелка без слова не читается диктором и ничего не говорит
+              // о том, ЧТО поедет: у «Шторы» едет плашка, у «Сдвига» — сцена.
+              title={`Едет ${what} ${info.label}`}
+              aria-label={`Едет ${what} ${info.label}`}
+              data-testid={`transition-direction-${candidate}`}
+              onClick={() => onSelect(candidate)}
+            >
+              {info.glyph}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 interface TransitionSecondsControlProps {
   slide: Slide;
   gapSeconds: number;
@@ -940,6 +1003,7 @@ interface SlideMarkPanelProps {
   /** Потолок длительности — см. `TransitionSecondsControl`. Всегда определён: первый слайд сюда не попадает. */
   gapSeconds: number;
   onSetTransition: (transition: Slide['transition']) => void;
+  onSetTransitionDirection: (direction: TransitionDirection) => void;
   onSetTransitionSeconds: (transitionSeconds: number) => void;
   onCommitHistory: () => void;
 }
@@ -959,6 +1023,7 @@ function SlideMarkPanel({
   slide,
   gapSeconds,
   onSetTransition,
+  onSetTransitionDirection,
   onSetTransitionSeconds,
   onCommitHistory,
 }: SlideMarkPanelProps): ReactElement {
@@ -966,6 +1031,7 @@ function SlideMarkPanel({
     <div className="ed-insp-block">
       <ReadonlyField label="Идентификатор" value={slide.id} />
       <TransitionCatalog value={slide.transition} onSelect={onSetTransition} />
+      <DirectionControl slide={slide} onSelect={onSetTransitionDirection} />
       <TransitionSecondsControl
         slide={slide}
         gapSeconds={gapSeconds}

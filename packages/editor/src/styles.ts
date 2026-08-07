@@ -1598,6 +1598,40 @@ export const EDITOR_STYLES = `
   color: var(--ui-content-fg);
 }
 
+/* Четыре кнопки-стрелки направления (схема v10), снято с натуры Canva.
+   Ряд, а не сетка: подписи здесь нет вовсе — только глиф, — поэтому
+   грабля обрезки, из-за которой каталог приёмов сделан в две колонки,
+   тут неприменима по построению. Четыре кнопки в ряд на 106 px дают
+   по 24 px на кнопку: мишень крупнее метки на дорожке при ×1 (9.3 px),
+   по которой «физически нельзя попасть». */
+.ed-direction-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.ed-direction-btn {
+  padding: 4px 0;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 4px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  /* Стрелка крупнее подписи плитки: она и есть всё содержимое кнопки. */
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+  cursor: pointer;
+}
+
+.ed-direction-btn:hover { border-color: var(--ui-action-selected-line); }
+
+.ed-direction-btn-selected {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg);
+}
+
 /* Две плашки сценки: ::before — прежний вид, ::after — следующий.
    В покое видна только прежняя: приём ещё не играется, и показывать
    обе значило бы показывать середину перехода как состояние. */
