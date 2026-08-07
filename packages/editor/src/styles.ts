@@ -868,13 +868,63 @@ export const EDITOR_STYLES = `
   border-radius: 1px;
 }
 
-/* Дорожка. */
+/* Дорожка. position: relative держит абсолютную ручку тяги
+   (.ed-track-resize-handle, задача 2.2) — ручка не участвует в гриде,
+   не толкает .ed-transport вниз и не входит в minHeightOf() из tiers.ts:
+   она лежит в верхнем паддинге секции (padding-top 10px > её высоты 6px). */
 .ed-track {
+  position: relative;
   display: grid;
   gap: 8px;
   padding: 10px 16px 12px;
   background: var(--ui-surface-panel);
   min-width: 0;
+}
+
+/* Ручка тяги за верхнюю кромку (задача 2.2): полоса 6px, cursor: row-resize.
+   touch-action: none — тот же приём, что у .ed-ruler-body/.ed-lane: жест
+   тяги не должен превращаться в прокрутку страницы на тач-устройстве. */
+.ed-track-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+/* Корешок свёрнутой дорожки (задача 2.2): кнопка развернуть, имя звука,
+   часы. Высота задаётся инлайн из TrackView (COLLAPSED_H) — число тира,
+   а не константа CSS, тем же приёмом, что и у .ed-lane-heads. */
+.ed-track-collapsed {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ed-track-expand {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: var(--ui-surface-raised);
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.ed-track-expand:hover { border-color: var(--ui-action-selected-line); }
+
+.ed-track-collapsed-name {
+  color: var(--ui-content-fg-secondary);
+  font-size: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Высота ЯВНО задана числом TRANSPORT_H из tiers.ts (каркас, задача 2.1):

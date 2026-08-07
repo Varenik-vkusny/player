@@ -24,10 +24,13 @@ import type { MarkKind } from '../state/project.js';
 import { nextOrphan } from './marks.js';
 import { MarksLane, type Mark } from './MarksLane.js';
 import {
+  COLLAPSED_H,
+  hiddenNote,
   lanesOf,
   laneHeight,
   marksBodyHeight,
   minHeightOf,
+  resolveDrag,
   SEPARATOR_H,
   trackTier,
   TRACK_DEFAULT_H,
@@ -169,13 +172,20 @@ export function TrackView({
   const [zoom, setZoom] = useState<ZoomStep>(1);
   const draggingRef = useRef(false);
 
-  // Высота дорожки (каркас, задача 2.1): состояние заводится сейчас, чтобы
-  // 2.2 добавляла только жест тяги за кромку. Между перезагрузками НЕ
-  // сохраняется — решение владельца 06.08.2026: чтение хранилища может
-  // бросить, а глушить ошибку запрещено (CLAUDE.md). Сеттер этой сессией
-  // никто не зовёт — тяги ещё нет, — значит ступень всегда 'full'.
-  const [trackHeight] = useState<number>(TRACK_DEFAULT_H);
+  // Высота дорожки и складывание (задача 2.2: жест тяги за кромку). Одно
+  // состояние на оба поля НАМЕРЕННО — resolveDrag() из tiers.ts возвращает
+  // { collapsed, height } одним значением ровно затем, чтобы вызывающий
+  // не мог применить высоту, забыв про складывание. Между перезагрузками
+  // НЕ сохраняется — решение владельца 06.08.2026: чтение хранилища может
+  // бросить, а глушить ошибку запрещено (CLAUDE.md); заводить ради каркаса
+  // ещё один слот хранения значило бы расширять объём.
+  const [track, setTrack] = useState<{ collapsed: boolean; height: number }>({
+    collapsed: false,
+    height: TRACK_DEFAULT_H,
+  });
+  const { collapsed, height: trackHeight } = track;
   const tier = trackTier(trackHeight);
+  const resizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
 
   const { positionSeconds, durationSeconds, peaks, failure, isPlaying } = transport;
 
@@ -274,6 +284,53 @@ export function TrackView({
     }
   }, []);
 
+  /**
+   * Ручка тяги за верхнюю кромку `.ed-track` (задача 2.2). Тот же приём из
+   * трёх обработчиков, что у handleDown/handleMove/handleUp выше и
+   * у MarksLane.handleDown — setPointerCapture на pointerdown, чтение
+   * захваченного состояния на pointermove, снятие на pointerup/cancel.
+   *
+   * `startHeight` берётся из ВИДИМОЙ высоты в момент нажатия (COLLAPSED_H,
+   * если дорожка уже свёрнута) — иначе тяга вверх из свёрнутого состояния
+   * считала бы от забытой большой высоты и подскакивала бы рывком.
+   *
+   * Возвращаемое resolveDrag() значение применяется ОДНИМ вызовом setTrack —
+   * не двумя setState (collapsed и height по отдельности), чтобы не оставить
+   * кадр, в котором применена высота без складывания или наоборот.
+   */
+  const handleResizeDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>): void => {
+      resizeRef.current = {
+        pointerId: event.pointerId,
+        startY: event.clientY,
+        startHeight: collapsed ? COLLAPSED_H : trackHeight,
+      };
+      event.currentTarget.setPointerCapture(event.pointerId);
+    },
+    [collapsed, trackHeight],
+  );
+
+  const handleResizeMove = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    const drag = resizeRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // Тянем вверх (clientY уменьшается) — дорожка растёт: знак разности
+    // переворачивает направление экрана в направление роста высоты.
+    const rawHeight = drag.startHeight + (drag.startY - event.clientY);
+    setTrack(resolveDrag(rawHeight));
+  }, []);
+
+  const handleResizeUp = useCallback((event: ReactPointerEvent<HTMLDivElement>): void => {
+    resizeRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }, []);
+
+  /** Двойной щелчок по ручке — свернуть/развернуть, без пересчёта высоты. */
+  const handleResizeDoubleClick = useCallback((): void => {
+    setTrack((current) => ({ collapsed: !current.collapsed, height: current.height }));
+  }, []);
+
   const orphanCount = marks.filter((mark) => mark.anchor === 'orphan').length;
 
   const step = tickStep(durationSeconds, canvasWidthPx);
@@ -297,6 +354,12 @@ export function TrackView({
   };
   const headLanes = lanesOf(tier);
   const bodyLanes = bodyLanesOf(tier);
+  // Скрытые полосы называют себя (задача 2.2): счётчик — в голове линейки,
+  // полное предложение — в title. hiddenNote(tier) === undefined значит
+  // «скрывать нечего» — тогда голова линейки пуста, а не «0»: пустая
+  // строка и «скрывать нечего» разные случаи (tiers.ts).
+  const hiddenLaneNote = hiddenNote(tier);
+  const hiddenLaneCount = lanesOf('full').length - headLanes.length;
   // Сумма высот полос БЕЗ транспорта. Считается тем же способом, что
   // и minHeightOf() (сложением, а не числом), поэтому головы и тела сходятся
   // на одно и то же число по построению — ту самую сходимость, ради которой
@@ -306,6 +369,48 @@ export function TrackView({
 
   return (
     <section className="ed-track" aria-label="Дорожка">
+      {/* Ручка тяги (задача 2.2): полоса 6px по верхней кромке .ed-track,
+          позиционирована абсолютно — не участвует в гриде секции и не
+          толкает .ed-transport вниз: она лежит целиком в верхнем паддинге
+          секции (padding-top 10px > высоты ручки 6px). Двойной щелчок —
+          свернуть/развернуть; тяга — resolveDrag() из tiers.ts. */}
+      <div
+        className="ed-track-resize-handle"
+        data-testid="track-resize-handle"
+        onPointerDown={handleResizeDown}
+        onPointerMove={handleResizeMove}
+        onPointerUp={handleResizeUp}
+        onPointerCancel={handleResizeUp}
+        onDoubleClick={handleResizeDoubleClick}
+      />
+
+      {collapsed ? (
+        // Корешок свёрнутой дорожки: кнопка развернуть, имя звука, часы.
+        // Высота РОВНО COLLAPSED_H (28) — то же число, что использует
+        // resolveDrag(). Часы — ТА ЖЕ разметка/формат, что у .ed-transport
+        // ниже (data-testid="track-clock", formatTime): свёрнутая дорожка
+        // не должна отнимать у автора положение во времени, а второй
+        // способ его показывать завёл бы вторую правду о том же числе.
+        <div className="ed-track-collapsed" style={{ height: `${COLLAPSED_H}px` }} data-testid="track-collapsed">
+          <button
+            type="button"
+            className="ed-track-expand"
+            data-testid="track-expand"
+            onClick={() => setTrack((current) => ({ collapsed: false, height: current.height }))}
+            aria-label="Развернуть дорожку"
+            title="Развернуть дорожку"
+          >
+            ▸
+          </button>
+          <span className="ed-track-collapsed-name" title={soundLabel}>
+            {soundLabel}
+          </span>
+          <code className="ed-clock" data-testid="track-clock">
+            {formatTime(positionSeconds)} / {formatTime(durationSeconds)}
+          </code>
+        </div>
+      ) : (
+        <>
       <div className="ed-transport">
         <button
           type="button"
@@ -422,23 +527,41 @@ export function TrackView({
           левым краем ГОЛОВЫ, и проверка разъехалась бы ровно на 120px. */}
       <div className="ed-lanes">
         <div className="ed-lane-heads" style={{ height: `${lanesTotalHeight}px` }}>
-          {headLanes.map((lane, index) => (
-            <div
-              key={lane}
-              className="ed-lane-head"
-              style={{ height: `${laneHeight(lane, tier)}px`, ...(index > 0 ? SEPARATOR : {}) }}
-            >
-              <span className="ed-lane-head-title">{laneTitle(lane, soundLabel)}</span>
-              {/* title дублирует подпись НЕ для красоты: голова 120 px, шрифт
-                  подписи 10 px, и длинное имя звука обрезается многоточием.
-                  Обрезка не роняет ничего и не подаёт сигнала — у проекта уже
-                  есть случай, когда не влезшая подпись прожила сессию
-                  незамеченной при зелёных тестах. */}
-              <span className="ed-lane-head-note" title={laneNote(lane, laneCounts, soundLabel)}>
-                {laneNote(lane, laneCounts, soundLabel)}
-              </span>
-            </div>
-          ))}
+          {headLanes.map((lane, index) => {
+            // Голова линейки (задача 2.2): у неё нет своего счёта (laneNote
+            // вернула бы ''), поэтому здесь показывается число СКРЫТЫХ
+            // полос, а полное предложение hiddenNote(tier) уходит в title —
+            // та же причина, что у обрезанной подписи звука: 120px головы
+            // и 10px шрифта не вмещают предложение целиком.
+            const isRuler = lane === 'ruler';
+            const noteText = isRuler
+              ? hiddenLaneNote !== undefined
+                ? String(hiddenLaneCount)
+                : ''
+              : laneNote(lane, laneCounts, soundLabel);
+            const noteTitle = isRuler ? (hiddenLaneNote ?? '') : noteText;
+            return (
+              <div
+                key={lane}
+                className="ed-lane-head"
+                style={{ height: `${laneHeight(lane, tier)}px`, ...(index > 0 ? SEPARATOR : {}) }}
+              >
+                <span className="ed-lane-head-title">{laneTitle(lane, soundLabel)}</span>
+                {/* title дублирует подпись НЕ для красоты: голова 120 px, шрифт
+                    подписи 10 px, и длинное имя звука обрезается многоточием.
+                    Обрезка не роняет ничего и не подаёт сигнала — у проекта уже
+                    есть случай, когда не влезшая подпись прожила сессию
+                    незамеченной при зелёных тестах. */}
+                <span
+                  className="ed-lane-head-note"
+                  data-testid={isRuler ? 'hidden-lanes-note' : undefined}
+                  title={noteTitle}
+                >
+                  {noteText}
+                </span>
+              </div>
+            );
+          })}
         </div>
 
         {/* Контейнер прокрутки — ЕДИНСТВЕННЫЙ на все пять полос (было два:
@@ -569,6 +692,8 @@ export function TrackView({
           </div>
         </div>
       </div>
+        </>
+      )}
     </section>
   );
 }
