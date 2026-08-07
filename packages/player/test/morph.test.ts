@@ -18,6 +18,8 @@ import {
   halfStates,
   WHOLE_SCENE,
   TECHNIQUE_PROPS,
+  motionOf,
+  FROZEN_DIRECTION,
 
   type SlideSchedule,
 } from '@player/player';
@@ -235,6 +237,48 @@ describe('TECHNIQUE_PROPS: инвариант №8 — свойство приё
     // и первая проверка прошла бы по нему ВПУСТУЮ — пустое множество
     // не содержит запрещённых свойств по построению.
     expect(Object.keys(TECHNIQUE_PROPS).sort()).toEqual([...TRANSITIONS].sort());
+  });
+});
+
+/**
+ * Направление перехода (v10). Та же причина, что у `TECHNIQUE_PROPS`:
+ * `buildMorph` требует живого DOM, которого в юнит-окружении нет, поэтому
+ * проверяемы данные и чистая функция, а не построенный таймлайн.
+ */
+describe('направление перехода: ось, знак и замороженные умолчания', () => {
+  const stage = { width: 1920, height: 1080 };
+
+  it('горизонтальные направления едут по x, вертикальные по y', () => {
+    expect(motionOf('left', stage).axis).toBe('x');
+    expect(motionOf('right', stage).axis).toBe('x');
+    expect(motionOf('up', stage).axis).toBe('y');
+    expect(motionOf('down', stage).axis).toBe('y');
+  });
+
+  it('знак растёт вправо и вниз, убывает влево и вверх', () => {
+    // Знак — это то, ЧТО ЛОМАЕТСЯ незаметно: перепутанный, он даёт
+    // осмысленную с виду анимацию, едущую не туда. Ни один скриншотный
+    // эталон её не поймает, если снят не в середине перехода.
+    expect(motionOf('left', stage).sign).toBe(-1);
+    expect(motionOf('up', stage).sign).toBe(-1);
+    expect(motionOf('right', stage).sign).toBe(1);
+    expect(motionOf('down', stage).sign).toBe(1);
+  });
+
+  it('размах берётся по своей оси, а не всегда по ширине', () => {
+    // Сцена не квадратная, и подстановка ширины вместо высоты дала бы
+    // недоезд или перелёт ровно на разницу — 840 px на 1920×1080.
+    expect(motionOf('left', stage).span).toBe(1920);
+    expect(motionOf('up', stage).span).toBe(1080);
+  });
+
+  it('умолчания заморожены по приёму: сцена едет влево, штора вправо', () => {
+    // Это не вкусовщина и не симметрия, а защита уже сохранённых проектов:
+    // сегодня сцена уезжает влево, а штора едет вправо. Общее умолчание
+    // на оба приёма переписало бы вид одному из них у всех, кто направление
+    // не выбирал.
+    expect(FROZEN_DIRECTION.slide).toBe('left');
+    expect(FROZEN_DIRECTION.wipe).toBe('right');
   });
 });
 

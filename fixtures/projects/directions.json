@@ -1,0 +1,320 @@
+{
+  "schemaVersion": 10,
+  "meta": {
+    "title": "Направление перехода",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-directions",
+  "segments": [
+    {
+      "id": "s-directions",
+      "title": "Куда едет переход",
+      "description": "Фикстура схемы v10: направление у приёмов, которые его имеют. Длительность 16 с выбрана так, чтобы три снимка из пяти (0.25, 0.5, 0.75) попали ВНУТРЬ окон перехода — иначе направление в эталон не попало бы вовсе, и фикстура сторожила бы пустоту.",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "offset": 0,
+        "duration": 16,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "block",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "mate",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "caption",
+          "type": "text",
+          "content": "Направление перехода"
+        }
+      ],
+      "slides": [
+        {
+          "id": "d-0",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "cut",
+          "transitionSeconds": 0.6,
+          "states": {
+            "block": {
+              "x": 160,
+              "y": 160,
+              "width": 360,
+              "height": 260,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#3b82f6",
+                "border-radius": "16px"
+              }
+            },
+            "mate": {
+              "x": 1400,
+              "y": 700,
+              "width": 300,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#e4572e",
+                "border-radius": "16px"
+              }
+            },
+            "caption": {
+              "x": 160,
+              "y": 960,
+              "width": 1600,
+              "height": 80,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "44px",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        },
+        {
+          "id": "d-1",
+          "at": {
+            "kind": "seconds",
+            "t": 4.4
+          },
+          "transition": "slide",
+          "transitionDirection": "up",
+          "transitionSeconds": 1.2,
+          "states": {
+            "block": {
+              "x": 700,
+              "y": 300,
+              "width": 360,
+              "height": 260,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#3b82f6",
+                "border-radius": "16px"
+              }
+            },
+            "mate": {
+              "x": 1200,
+              "y": 200,
+              "width": 300,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#e4572e",
+                "border-radius": "16px"
+              }
+            },
+            "caption": {
+              "x": 160,
+              "y": 960,
+              "width": 1600,
+              "height": 80,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "44px",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        },
+        {
+          "id": "d-2",
+          "at": {
+            "kind": "seconds",
+            "t": 8.4
+          },
+          "transition": "slide",
+          "transitionDirection": "right",
+          "transitionSeconds": 1.2,
+          "states": {
+            "block": {
+              "x": 240,
+              "y": 620,
+              "width": 360,
+              "height": 260,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#3b82f6",
+                "border-radius": "16px"
+              }
+            },
+            "mate": {
+              "x": 900,
+              "y": 120,
+              "width": 300,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#e4572e",
+                "border-radius": "16px"
+              }
+            },
+            "caption": {
+              "x": 160,
+              "y": 960,
+              "width": 1600,
+              "height": 80,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "44px",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        },
+        {
+          "id": "d-3",
+          "at": {
+            "kind": "seconds",
+            "t": 12.4
+          },
+          "transition": "wipe",
+          "transitionDirection": "down",
+          "transitionSeconds": 1.2,
+          "states": {
+            "block": {
+              "x": 1200,
+              "y": 640,
+              "width": 360,
+              "height": 260,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#3b82f6",
+                "border-radius": "16px"
+              }
+            },
+            "mate": {
+              "x": 300,
+              "y": 220,
+              "width": 300,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#e4572e",
+                "border-radius": "16px"
+              }
+            },
+            "caption": {
+              "x": 160,
+              "y": 960,
+              "width": 1600,
+              "height": 80,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "44px",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        },
+        {
+          "id": "d-4",
+          "at": {
+            "kind": "seconds",
+            "t": 15
+          },
+          "transition": "wipe",
+          "transitionDirection": "left",
+          "transitionSeconds": 1,
+          "states": {
+            "block": {
+              "x": 780,
+              "y": 400,
+              "width": 360,
+              "height": 260,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#3b82f6",
+                "border-radius": "16px"
+              }
+            },
+            "mate": {
+              "x": 160,
+              "y": 660,
+              "width": 300,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 1,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "#e4572e",
+                "border-radius": "16px"
+              }
+            },
+            "caption": {
+              "x": 160,
+              "y": 960,
+              "width": 1600,
+              "height": 80,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "#f5f7fa",
+                "font-size": "44px",
+                "font-family": "system-ui, sans-serif"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": {
+        "rules": [],
+        "default": null
+      }
+    }
+  ]
+}

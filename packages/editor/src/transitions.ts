@@ -35,7 +35,7 @@
  * собирать этот файл, если каталог схемы и эта таблица разойдутся числом
  * значений в любую сторону.
  */
-import type { Slide } from '@player/core';
+import type { Slide, TransitionDirection } from '@player/core';
 
 export interface TransitionInfo {
   readonly label: string;
@@ -81,3 +81,35 @@ export const TRANSITION_INFO: Record<Slide['transition'], TransitionInfo> = {
 export const TRANSITION_ORDER: readonly Slide['transition'][] = Object.keys(
   TRANSITION_INFO,
 ) as Slide['transition'][];
+
+/**
+ * Подписи направлений — та же таблица-единственный-источник, что и выше.
+ *
+ * `glyph` — стрелка, которую видит автор. Символ, а не картинка: у Canva
+ * на кнопках тоже стрелки, а иконка потребовала бы своего файла и своего
+ * же расхождения с подписью.
+ *
+ * `label` — словом, для `aria-label` и `title`. Кнопка со стрелкой без слова
+ * недоступна с экранного диктора, а «стрелка вверх» без пояснения ничего
+ * не говорит о том, ЧТО поедет вверх — отсюда `hint` у контрола целиком.
+ *
+ * Порядок объявления — порядок кнопок, снятый с натуры Canva: ← → ↑ ↓.
+ * Тип ключа — `TransitionDirection` из ядра, поэтому разойтись с каталогом
+ * схемы этот файл не сможет: TypeScript откажется собираться.
+ */
+export interface DirectionInfo {
+  readonly glyph: string;
+  readonly label: string;
+}
+
+export const DIRECTION_INFO: Record<TransitionDirection, DirectionInfo> = {
+  left: { glyph: '←', label: 'влево' },
+  right: { glyph: '→', label: 'вправо' },
+  up: { glyph: '↑', label: 'вверх' },
+  down: { glyph: '↓', label: 'вниз' },
+};
+
+/** Порядок кнопок — порядок объявления `DIRECTION_INFO`, как у каталога приёмов. */
+export const DIRECTION_ORDER: readonly TransitionDirection[] = Object.keys(
+  DIRECTION_INFO,
+) as TransitionDirection[];

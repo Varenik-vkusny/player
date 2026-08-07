@@ -25,7 +25,10 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Condition, Element, ElementState, Gate, Project, Slide, Theme, TimeRef, Word } from '@player/core';
+import type {
+  Condition, Element, ElementState, Gate, Project, Slide, Theme, TimeRef,
+  TransitionDirection, Word,
+} from '@player/core';
 import { findSegment } from '@player/core';
 import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
@@ -309,6 +312,14 @@ export function Editor({
     (transition: Slide['transition']) => {
       if (!selectedMark || selectedMark.kind !== 'slide') return;
       dispatch({ type: 'setSlideTransition', slideId: selectedMark.id, transition });
+    },
+    [selectedMark],
+  );
+
+  const handleSetSlideTransitionDirection = useCallback(
+    (direction: TransitionDirection) => {
+      if (!selectedMark || selectedMark.kind !== 'slide') return;
+      dispatch({ type: 'setSlideTransitionDirection', slideId: selectedMark.id, direction });
     },
     [selectedMark],
   );
@@ -1193,6 +1204,7 @@ export function Editor({
               && gateInsideTransition(markData.gate, segment.slides, segment.words)}
             onUpdateGate={handleUpdateGate}
             onSetSlideTransition={handleSetSlideTransition}
+            onSetSlideTransitionDirection={handleSetSlideTransitionDirection}
             onSetSlideTransitionSeconds={handleSetSlideTransitionSecondsLive}
             onCommitHistory={handleCommitHistory}
             slideTransitionGapSeconds={selectedSlideGapSeconds}

@@ -1,9 +1,13 @@
 /**
- * Миграции схемы: v1 → v2 → v3 → v4.
+ * Миграции схемы: вся цепочка от v1 до текущей версии.
  *
  * Главное здесь — не «проект открылся», а «проект означает то же самое».
  * Валидный результат с другим смыслом — самый дорогой способ ошибиться:
  * он выглядит как успех.
+ *
+ * Номера версий в этой шапке когда-то перечислялись поимённо («v1 → v2 →
+ * v3 → v4») и отстали на шесть бампов. Здесь их больше нет намеренно:
+ * текущая версия живёт в SCHEMA_VERSION, а не в комментарии.
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -12,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 
 import { loadProject } from '../src/load.js';
 import { MIGRATIONS, migrateToCurrent, SchemaVersionError } from '../src/migrations.js';
-import { ProjectSchema, SCHEMA_VERSION, ThemeSchema } from '../src/schema.js';
+import { ElementSchema, ProjectSchema, SCHEMA_VERSION, ThemeSchema } from '../src/schema.js';
 import { resolveTimeRef } from '../src/time.js';
 
 // fileURLToPath, а не pathname.slice(1): на Linux путь начинается со слэша,
@@ -483,14 +487,19 @@ describe('v7 → v8: появился вид orphan, содержимое не �
 });
 
 describe('v8 → v9: тема, описание части, приём и длительность перехода', () => {
-  it('единственная фикстура на v8 доходит до v9 и получает умолчания', () => {
+  it('единственная фикстура на v8 доходит до конца цепочки и получает умолчания', () => {
     // speech.json — единственный файл на диске, лежащий в версии 8
     // (проверено: grep schemaVersion fixtures/projects/*.json). Остальные
-    // пятнадцать лежат на v1…v7 и доходят сюда всей цепочкой.
+    // лежат на v1…v9 и доходят сюда всей цепочкой. Их количество здесь
+    // не пишем: оно уже сгнило однажды в соседнем тесте.
     expect(raw('speech.json').schemaVersion).toBe(8);
 
+    // SCHEMA_VERSION, а не литерал. Здесь стояла «9», и она означала
+    // не «девятую версию», а «текущую» — то есть число, которое обязано
+    // было устареть при следующем бампе. Оно и устарело: на v10 тест
+    // покраснел, хотя миграция отработала верно.
     const migrated = migrateToCurrent(raw('speech.json')) as { schemaVersion: number };
-    expect(migrated.schemaVersion).toBe(9);
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
 
     const project = ProjectSchema.parse(migrated);
     expect(project.segments[0]!.description).toBe('');
@@ -498,10 +507,15 @@ describe('v8 → v9: тема, описание части, приём и дли
     expect(project.meta.theme['--scene-accent']).toBe('#4c8dff');
   });
 
-  it('все шестнадцать фикстур доходят до v9 и разбираются', () => {
-    // Фикстуры лежат на РАЗНЫХ версиях (семь на v1, остальные по одной-две
-    // на v2…v8), поэтому здесь прогоняется ВСЯ цепочка миграций, а не
-    // последний шаг. Число не пишем: оно сгниёт, считаем от каталога.
+  it('все фикстуры каталога доходят до текущей версии и разбираются', () => {
+    // Фикстуры лежат на РАЗНЫХ версиях (несколько на v1, остальные по
+    // одной-две на v2…v9), поэтому здесь прогоняется ВСЯ цепочка миграций,
+    // а не последний шаг.
+    //
+    // Тело считало от каталога и было право; сгнило ИМЯ — «шестнадцать»
+    // при семнадцати файлах — и комментарий, называвший потолок v7.
+    // Отсюда правило на будущее: количество не пишем нигде, включая
+    // название теста.
     expect(all.length).toBeGreaterThan(0);
     for (const name of all) {
       const migrated = migrateToCurrent(raw(name));
@@ -517,5 +531,51 @@ describe('v8 → v9: тема, описание части, приём и дли
     const after = migrateToCurrent(before) as { segments: unknown; entry: unknown };
     expect(after.segments).toEqual(before.segments);
     expect(after.entry).toEqual(before.entry);
+  });
+});
+
+/**
+ * Тестов здесь ДВА, и это результат проверки сломом, а не скромности.
+ *
+ * Написано было четыре. Прицельные сломы показали, что два из них —
+ * дубликаты уже существующего:
+ *
+ *   - «старый плеер обязан отказаться от версии из будущего» краснел
+ *     ровно вместе с «проект из будущей версии не открывается молча»,
+ *     то есть проверял чужое утверждение;
+ *   - «миграция не выдумывает содержимого» краснело вместе с таким же
+ *     тестом блока v8→v9: оба гоняют ВСЮ цепочку через `migrateToCurrent`,
+ *     и слома, который различил бы их, не существует.
+ *
+ * Оба удалены. Тест, который нельзя покрасить отдельно от соседа, ничего
+ * не доказывает сверх соседа — он только делает счёт больше.
+ */
+describe('v9 → v10: видео как тип элемента и направление перехода', () => {
+  it('фикстура на v9 существует и доезжает до текущей версии', () => {
+    // Предмет теста — ЗАКРЕПЛЕНИЕ, и это сказано вслух, чтобы тест
+    // не выглядел поведенческим. Блок называет себя «v9 → v10» и обязан
+    // гонять этот шаг с настоящего файла; если transitions.json когда-то
+    // бампнут до v10, блок молча перестанет проверять то, что называет.
+    // Краснеет он именно на этом.
+    expect(raw('transitions.json').schemaVersion).toBe(9);
+
+    const migrated = migrateToCurrent(raw('transitions.json')) as { schemaVersion: number };
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
+    expect(() => ProjectSchema.parse(migrated)).not.toThrow();
+  });
+
+  it('перечень типов элемента ЗАКРЫТ: «video» проходит, «hologram» — нет', () => {
+    // Доказано прицельным сломом: при подмене `z.enum(ELEMENT_TYPES)`
+    // на `z.string()` из 1349 тестов покраснел ровно ЭТОТ. Закрытость
+    // перечня не проверял больше никто.
+    //
+    // Положительная половина сама по себе была бы декоративной: заготовку
+    // «Видео» уже проверяет library.test.ts, параметризованный каталогом.
+    // Ценность здесь в отрицательной половине — она и есть контрольная
+    // строка, отличающая закрытое перечисление от «любой строки».
+    const withVideo = { id: 'talking-head', type: 'video', content: 'head.mp4' };
+
+    expect(ElementSchema.parse(withVideo).type).toBe('video');
+    expect(() => ElementSchema.parse({ ...withVideo, type: 'hologram' })).toThrow();
   });
 });

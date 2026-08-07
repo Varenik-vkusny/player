@@ -278,6 +278,7 @@ export class SlideEngine {
         this.#nodes,
         scheduled.morphSeconds,
         scheduled.slide.transition,
+        scheduled.slide.transitionDirection,
         this.#host,
         this.#stage,
       ),

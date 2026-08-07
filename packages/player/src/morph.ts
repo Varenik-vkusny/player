@@ -9,7 +9,7 @@
  * Разделение не косметическое: правило сопоставления — это модель (ADR-015),
  * а таймлайн — способ её показать. Их ошибки лечатся в разных местах.
  */
-import { type ElementState, TRANSITIONS } from '@player/core';
+import { type ElementState, TRANSITIONS, type TransitionDirection } from '@player/core';
 // Импорт «бочкой», а не по подпутям `animejs/timeline` и `animejs/engine`:
 // замерено — сборка выходит побайтово одинаковой (178.28 КБ), потому что
 // таймлайн и так тянет почти всё ядро движка. При равном размере выигрывает
@@ -36,12 +36,52 @@ export const TECHNIQUE_PROPS = {
   cut: [],
   morph: ['x', 'y', 'scaleX', 'scaleY', 'rotate', 'opacity'],
   dissolve: ['opacity'],
-  slide: ['x'],
+  // С v10 у `slide` и `wipe` есть направление, поэтому едут они по ЛЮБОЙ
+  // из двух осей. Инвариант №8 это не трогает: `y` в `ANIMATABLE` стоит
+  // ровно на тех же правах, что `x`, — обе уходят в `transform`.
+  slide: ['x', 'y'],
   scale: ['scale', 'opacity'],
   blur: ['filter', 'opacity'],
-  wipe: ['x'],
+  wipe: ['x', 'y'],
   circle: ['scale'],
 } as const satisfies Record<Transition, readonly string[]>;
+
+/**
+ * Умолчание направления — ПО ПРИЁМУ, и это не изящество, а осторожность.
+ *
+ * У `slide` и `wipe` сегодняшнее движение противоположно: сцена уезжает
+ * ВЛЕВО, а штора едет ВПРАВО. Одно общее умолчание неизбежно поменяло бы
+ * картинку одному из двух — то есть переписало бы вид уже сохранённых
+ * проектов, где направление не выбирали.
+ *
+ * Поэтому здесь заморожено сегодняшнее поведение, а не выбран красивый
+ * общий ответ. `DEFAULT_TRANSITION_DIRECTION` из ядра — умолчание для
+ * ПАНЕЛИ автора (что подсветить), и оно к этой таблице отношения не имеет.
+ */
+export const FROZEN_DIRECTION = {
+  slide: 'left',
+  wipe: 'right',
+} as const satisfies Record<'slide' | 'wipe', TransitionDirection>;
+
+/**
+ * Ось и знак движения. Вынесено функцией, потому что формула у сцены
+ * и у шторы одна, а знаки противоположны — и это надо было увидеть один
+ * раз, а не повторить в двух местах с шансом ошибиться в одном.
+ *
+ * `sign` — куда УВЕЛИЧИВАЕТСЯ координата при движении в эту сторону:
+ * влево и вверх это минус, вправо и вниз — плюс.
+ */
+export function motionOf(
+  direction: TransitionDirection,
+  stage: StageSize,
+): { axis: 'x' | 'y'; sign: -1 | 1; span: number } {
+  const horizontal = direction === 'left' || direction === 'right';
+  return {
+    axis: horizontal ? 'x' : 'y',
+    sign: direction === 'left' || direction === 'up' ? -1 : 1,
+    span: horizontal ? stage.width : stage.height,
+  };
+}
 
 /**
  * Доля перехода, которую занимает уход несовпавших и приход новых.
@@ -357,6 +397,9 @@ function addOverlay(
   host: HTMLElement,
   stage: StageSize,
   technique: 'wipe' | 'circle',
+  // Круг направления не имеет: он растёт из центра, у него нет стороны.
+  // Снято с натуры — у Canva «Круговое стирание» стрелок на плитке нет.
+  direction: TransitionDirection | undefined,
   timeline: ReturnType<typeof createTimeline>,
   unmatchedMs: number,
   durationMs: number,
@@ -377,13 +420,17 @@ function addOverlay(
     // `slides.ts` подменяет состояния — под сплошной плашкой этого не видно.
     // Без второй половины новый кадр появлялся бы мгновенно на снятии
     // накладки, то есть штора была бы половиной шторы.
+    //
+    // Штора приходит С противоположной стороны и уходит В сторону
+    // направления: она едет НАСКВОЗЬ, а не туда-обратно.
+    const { axis, sign, span } = motionOf(direction ?? FROZEN_DIRECTION.wipe, stage);
     timeline.add(overlay, {
-      x: [-stage.width, 0],
+      [axis]: [-sign * span, 0],
       duration: unmatchedMs,
       ease: 'inQuad',
     }, 0);
     timeline.add(overlay, {
-      x: [0, stage.width],
+      [axis]: [0, sign * span],
       duration: durationMs - unmatchedMs,
       ease: 'outQuad',
     }, unmatchedMs);
@@ -452,6 +499,13 @@ export function buildMorph(
   nodes: ReadonlyMap<string, HTMLElement>,
   durationSeconds: number,
   technique: Transition,
+  /**
+   * `undefined` — автор не выбирал. Тогда берётся `FROZEN_DIRECTION`, то есть
+   * сегодняшнее поведение приёма, а не общее умолчание: см. таблицу.
+   * Приёмы без направления его просто игнорируют — схема к ним направление
+   * и не пропустит (superRefine у `SlideSchema`).
+   */
+  direction: TransitionDirection | undefined,
   host: HTMLElement,
   stage: StageSize,
 ): MorphTimeline {
@@ -540,9 +594,12 @@ export function buildMorph(
     }
 
     case 'slide': {
+      // Старый кадр уезжает В сторону направления, новый приезжает
+      // С противоположной — иначе они разъехались бы, а не сменили друг друга.
+      const { axis, sign, span } = motionOf(direction ?? FROZEN_DIRECTION.slide, stage);
       addWholeScene(plan, nodeOf, timeline, unmatchedMs, durationMs,
-        () => ({ x: [0, -stage.width] }),
-        () => ({ x: [stage.width, 0] }));
+        () => ({ [axis]: [0, sign * span] }),
+        () => ({ [axis]: [-sign * span, 0] }));
       break;
     }
 
@@ -562,7 +619,9 @@ export function buildMorph(
 
     case 'wipe':
     case 'circle': {
-      removeOverlay = addOverlay(host, stage, technique, timeline, unmatchedMs, durationMs);
+      removeOverlay = addOverlay(
+        host, stage, technique, direction, timeline, unmatchedMs, durationMs,
+      );
       break;
     }
   }
