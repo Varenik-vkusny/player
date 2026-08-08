@@ -1256,6 +1256,18 @@ export function Editor({
             выделение. Справа «смотрю»: полный сегмент в секунду головки —
             единственное место, где автор видит сам ПЕРЕХОД. */}
         <div className="ed-stages">
+        {/*
+          Полоска и холст — колонка. Полоска стоит НАД холстом в раскладке,
+          а не поверх него: лёжа поверх, она перехватывала бы нажатия
+          по элементам под собой (журнал Сессии 29, §8).
+        */}
+        <div className="ed-stage-cell">
+        <ArrangeBar
+          selectedCount={state.selectedIds.length}
+          onAlign={handleAlign}
+          onDistribute={handleDistribute}
+          onLayer={handleLayer}
+        />
         <StageView
           ref={stageRef}
           segment={segment}
@@ -1268,15 +1280,8 @@ export function Editor({
           onCommitHistory={handleCommitHistory}
           onImageDrop={handleImageDrop}
           onReady={handleReady}
-          toolbar={
-            <ArrangeBar
-              selectedCount={state.selectedIds.length}
-              onAlign={handleAlign}
-              onDistribute={handleDistribute}
-              onLayer={handleLayer}
-            />
-          }
         />
+        </div>
         <div className="ed-watch" aria-label="Как это выглядит на дорожке">
           <span className="ed-watch-title">
             смотрю · {transport.positionSeconds.toFixed(2)} с

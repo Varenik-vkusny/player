@@ -185,20 +185,39 @@ export const EDITOR_STYLES = `
    раздвигая, она меняла бы площадь сцены на каждое выделение, сцена
    перемасштабировалась бы, и элементы дёргались бы под курсором автора
    ровно в тот момент, когда он в них целится. */
+/* Колонка «полоска сверху, холст под ней». min-height: 0 обязателен, иначе
+   содержимое не даёт грид-ячейке сжаться и дорожка уезжает за край окна —
+   та же причина, что у .ed-main. */
+.ed-stage-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ed-stage-cell > .ed-stage-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Строка полоски. Высота ЗАДАНА и не зависит от того, есть ли выделение:
+   меняйся она, холст менял бы размер в момент выделения, сцена
+   пересчитывала бы масштаб, и элемент уезжал бы из-под курсора между двумя
+   кликами двойного щелчка. Пустая строка — цена постоянства, и она мала. */
+.ed-arrange-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  flex: none;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-surface-panel);
+}
+
 .ed-arrange {
-  position: absolute;
-  top: 8px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px;
-  border: 1px solid var(--ui-line);
-  border-radius: 8px;
-  background: var(--ui-surface-panel);
-  box-shadow: var(--ui-shadow-selected);
 }
 
 .ed-arrange-btn {
