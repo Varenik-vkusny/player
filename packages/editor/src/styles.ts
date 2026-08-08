@@ -72,6 +72,12 @@ export const EDITOR_STYLES = `
      и Figma: у обеих направляющие в малиновом конце спектра. */
   --ui-guide: #e0398f;
 
+  /* Заливка рамки обведения — ОТДЕЛЬНАЯ роль, а не --ui-focus-ring.
+     Кольцо фокуса задумано для теней и держит 53 % непрозрачности; заливкой
+     оно закрашивает холст так, что автор не видит, что именно обводит.
+     Проверено глазами 09.08.2026: на тёмном холсте разница решающая. */
+  --ui-marquee-fill: #4c8dff22;
+
   --ui-feedback-positive: #12a05f;
   --ui-feedback-warn: #a8720b;
   --ui-feedback-warn-fg: #6b4907;
@@ -214,6 +220,14 @@ export const EDITOR_STYLES = `
   background: var(--ui-surface-panel);
 }
 
+/* Подсказка в пустой строке. Без неё белая полоса над тёмным холстом
+   читается как поломка вёрстки, а не как «здесь пока нечего показывать»:
+   проверено глазами 09.08.2026. */
+.ed-arrange-hint {
+  font-size: 12px;
+  color: var(--ui-content-fg-tertiary);
+}
+
 .ed-arrange {
   display: flex;
   align-items: center;
@@ -274,7 +288,7 @@ export const EDITOR_STYLES = `
 .ed-marquee {
   position: absolute;
   outline: 1px solid var(--ui-focus);
-  background: var(--ui-focus-ring);
+  background: var(--ui-marquee-fill);
   pointer-events: none;
 }
 

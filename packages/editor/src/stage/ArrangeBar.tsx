@@ -167,7 +167,13 @@ export function ArrangeBar({
 }: ArrangeBarProps): ReactElement | null {
   // Ничего не выделено — кнопок нет, но СТРОКА остаётся: её высота
   // постоянна, иначе холст менял бы размер в момент выделения (см. шапку).
-  if (selectedCount === 0) return <div className="ed-arrange-row" />;
+  if (selectedCount === 0) {
+    return (
+      <div className="ed-arrange-row">
+        <span className="ed-arrange-hint">Выделите элементы, чтобы выровнять и разложить</span>
+      </div>
+    );
+  }
 
   /**
    * Раскладка требует трёх: между двумя элементами промежуток ровно один,
