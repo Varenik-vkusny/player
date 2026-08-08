@@ -80,6 +80,118 @@ async function drag(
   await page.mouse.up();
 }
 
+/** Экранный прямоугольник узла сцены — по нему строится путь резиновой рамки. */
+async function screenBoundsOf(
+  page: Page,
+  selector: string,
+): Promise<{ left: number; top: number; right: number; bottom: number }> {
+  return page.evaluate((css) => {
+    const node = document.querySelector<HTMLElement>(css);
+    if (!node) throw new Error(`нет узла ${css}`);
+    const rect = node.getBoundingClientRect();
+    return { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom };
+  }, selector);
+}
+
+/**
+ * Обводит прямоугольник указателем: нажатие на пустом месте, протаскивание,
+ * отпускание.
+ *
+ * Shift зажимается КЛАВИАТУРОЙ, а не опцией `page.mouse.down` — по той же
+ * причине, что и в `clickElement`: лишний ключ в опциях выбрасывается молча.
+ */
+async function marquee(
+  page: Page,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  shift = false,
+): Promise<void> {
+  if (shift) await page.keyboard.down('Shift');
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 6; step += 1) {
+    await page.mouse.move(from.x + ((to.x - from.x) * step) / 6, from.y + ((to.y - from.y) * step) / 6);
+  }
+  await page.mouse.up();
+  if (shift) await page.keyboard.up('Shift');
+}
+
+test.describe('резиновая рамка', () => {
+  test('обведение пустого места выделяет всех, кого накрыло', async ({ page }) => {
+    await openEditor(page, 'morph');
+
+    const host = await screenBoundsOf(page, '.ed-stage-host');
+    await marquee(
+      page,
+      { x: host.left + 4, y: host.top + 4 },
+      { x: host.right - 4, y: host.bottom - 4 },
+    );
+
+    // На первом слайде фикстуры видимы ровно двое: mover и leaver.
+    // `label` лежит там же, но с visible: false — рамка обязана его
+    // пропустить, как пропускает клик (см. isVisible в StageView).
+    await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
+  });
+
+  test('обведение вокруг одного выделяет только его', async ({ page }) => {
+    await openEditor(page, 'morph');
+
+    const host = await screenBoundsOf(page, '.ed-stage-host');
+    const mover = await screenBoundsOf(page, '[data-id="mover"]');
+    await marquee(
+      page,
+      { x: Math.max(host.left + 2, mover.left - 20), y: Math.max(host.top + 2, mover.top - 20) },
+      { x: mover.right + 20, y: mover.bottom + 20 },
+    );
+
+    await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
+    await expect(page.getByTestId('selection-frame')).toBeVisible();
+  });
+
+  test('рамка с Shift ДОБАВЛЯЕТ к выделению, а не переключает его', async ({ page }) => {
+    await openEditor(page, 'morph');
+
+    // mover выделен кликом. Рамка накрывает ОБОИХ, включая уже выделенного.
+    await clickElement(page, 'mover');
+    await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
+
+    const host = await screenBoundsOf(page, '.ed-stage-host');
+    await marquee(
+      page,
+      { x: host.left + 4, y: host.top + 4 },
+      { x: host.right - 4, y: host.bottom - 4 },
+      true,
+    );
+
+    /**
+     * Несущее свойство среза.
+     *
+     * Реализация «цикл по onSelect с additive = true» переключила бы уже
+     * выделенный mover и оставила бы ОДНОГО leaver — и выглядела бы при этом
+     * совершенно рабочей на всех остальных проверках файла. Дефект вылезал
+     * бы только при повторном обведении и читался бы автором как «рамка
+     * иногда не берёт элемент».
+     */
+    await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
+  });
+
+  test('щелчок по пустому месту по-прежнему снимает выделение', async ({ page }) => {
+    await openEditor(page, 'morph');
+
+    await clickElement(page, 'mover');
+    await expect(page.getByTestId('selection-frame')).toBeVisible();
+
+    // Щелчок без протаскивания — рамка нулевого размера. Порог MARQUEE_MIN_PX
+    // обязан отличить её от жеста, иначе поведение «щёлкнул мимо всего»
+    // потерялось бы вместе с прежней веткой.
+    const host = await screenBoundsOf(page, '.ed-stage-host');
+    await page.mouse.click(host.left + 4, host.top + 4);
+
+    await expect(page.getByTestId('selection-frame')).toHaveCount(0);
+    await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(0);
+  });
+});
+
 test.describe('множественное выделение', () => {
   test('Shift-клик добавляет второй элемент, не снимая первого', async ({ page }) => {
     await openEditor(page, 'morph');
