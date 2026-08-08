@@ -8,7 +8,7 @@
  * требования сессии.
  *
  * **1. `select`/`selectSegment`/`selectSlide` в историю не пишутся.**
- * Секция вида (`selectedId`, `currentSegmentId`, `currentSlideId`) вообще
+ * Секция вида (`selectedIds`, `currentSegmentId`, `currentSlideId`) вообще
  * не входит в снимок — история хранит `History<Project>`, а не
  * `History<EditorState>`. Переключения меняют только вид в возвращаемом
  * `HistoryState`, `history` при этом остаётся тем же объектом по ссылке.
@@ -66,11 +66,11 @@ export type HistoryEditorAction = EditorAction | HistoryNavAction | CommitAction
 
 export interface HistoryState {
   readonly history: History<Project>;
-  readonly selectedId: string | undefined;
+  readonly selectedIds: readonly string[];
   /**
    * Сегмент, который автор сейчас правит — состояние вида, как и
-   * `selectedId`: снимок истории его не несёт, а после undo/redo его чинит
-   * `afterNav` так же, как чинит `selectedId`.
+   * `selectedIds`: снимок истории его не несёт, а после undo/redo его чинит
+   * `afterNav` так же, как чинит `selectedIds`.
    */
   readonly currentSegmentId: string;
   /** Слайд текущего сегмента — тоже вид, не данные. См. `currentSegmentId`. */
@@ -85,7 +85,7 @@ export interface HistoryState {
   /**
    * Отчёт о последнем переносе меток (`replaceSegmentAudio` с расшифровкой,
    * `state/project.ts`) — сообщение автору о последнем действии, а не
-   * свойство проекта, поэтому живёт здесь же, рядом с `selectedId`
+   * свойство проекта, поэтому живёт здесь же, рядом с `selectedIds`
    * и `currentSlideId`, вне `History<Project>`. `undefined` — либо ничего ещё
    * не переносили, либо последняя замена была без расшифровки. Undo/redo
    * сбрасывает его в `undefined`: отчёт относится к правке, от которой автор
@@ -94,7 +94,7 @@ export interface HistoryState {
    */
   readonly lastRetarget: RetargetReport | undefined;
   /**
-   * Буфер обмена слайдов (ADR-025) — состояние вида, как и `selectedId`
+   * Буфер обмена слайдов (ADR-025) — состояние вида, как и `selectedIds`
    * и `currentSlideId`: снимок истории его не несёт. Отличие от
    * `lastRetarget`: undo/redo НЕ сбрасывает его (см. `afterNav` ниже) —
    * буфер обязан пережить отмену, это предмет в руке автора, а не отчёт
@@ -115,10 +115,27 @@ function requireSegment(project: Project, segmentId: string): Segment {
   return segment;
 }
 
+/**
+ * Одинаковы ли два выделения.
+ *
+ * Нужно затем, чтобы undo/redo не возвращал НОВЫЙ объект состояния там, где
+ * выделение не изменилось: сцена в браузере обновляется точечно и решает,
+ * что перерисовывать, сравнением ссылок (см. шапку `state/project.ts`).
+ * До перехода на список здесь стояло обычное `===` двух строк, и оно
+ * молча перестало бы работать на массивах — сравнивало бы ссылки,
+ * а не содержимое, и давало бы «изменилось» на каждом шаге.
+ *
+ * Порядок значим: `[a, b]` и `[b, a]` — разные выделения, потому что
+ * порядок выделения сохраняется намеренно.
+ */
+function sameIds(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+
 export function initialHistoryState(project: Project): HistoryState {
   return {
     history: createHistory(project),
-    selectedId: undefined,
+    selectedIds: [],
     currentSegmentId: project.entry,
     currentSlideId: firstSlideId(requireSegment(project, project.entry)),
     gestureOpen: false,
@@ -184,10 +201,11 @@ function afterNav(state: HistoryState, history: History<Project>): HistoryState 
   const slideExists = segment.slides.some((slide) => slide.id === state.currentSlideId);
   const currentSlideId = slideExists ? state.currentSlideId : firstSlideId(segment);
 
-  const selectedId =
-    state.selectedId !== undefined && hasElement(history.present, currentSegmentId, state.selectedId)
-      ? state.selectedId
-      : undefined;
+  // Выделение ФИЛЬТРУЕТСЯ, а не сбрасывается целиком: undo мог убрать один
+  // элемент из трёх выделенных, и снимать выделение с уцелевших двух незачем.
+  const selectedIds = state.selectedIds.filter(
+    (id) => hasElement(history.present, currentSegmentId, id),
+  );
 
   // Отчёт о переносе меток сбрасывается: он про правку, от которой автор
   // только что отошёл undo/redo, а не про текущее восстановленное состояние.
@@ -201,7 +219,7 @@ function afterNav(state: HistoryState, history: History<Project>): HistoryState 
     history,
     currentSegmentId,
     currentSlideId,
-    selectedId,
+    selectedIds,
     gestureOpen: false,
     lastRetarget: undefined,
     slideClipboard: state.slideClipboard,
@@ -224,7 +242,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   // эта тройка и есть EditorState, которым он оперирует.
   const before: EditorState = {
     project: state.history.present,
-    selectedId: state.selectedId,
+    selectedIds: state.selectedIds,
     currentSegmentId: state.currentSegmentId,
     currentSlideId: state.currentSlideId,
     lastRetarget: state.lastRetarget,
@@ -235,26 +253,26 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   if (action.type === 'select') {
     // Правило №1: select истории не касается вовсе, даже когда меняет
     // выделение. history остаётся тем же объектом по ссылке.
-    return after.selectedId === state.selectedId ? state : { ...state, selectedId: after.selectedId };
+    return sameIds(after.selectedIds, state.selectedIds) ? state : { ...state, selectedIds: after.selectedIds };
   }
 
   if (action.type === 'selectSegment' || action.type === 'selectSlide') {
     // То же правило №1, только для переключения вида: это тоже вид,
     // а не данные. Без отдельной ветки generic-путь ниже (после этой)
     // сравнил бы after.project === before.project (верно, project
-    // не менялся) и перенёс бы только selectedId — смена сегмента/слайда
+    // не менялся) и перенёс бы только selectedIds — смена сегмента/слайда
     // потерялась бы.
     const unchanged =
       after.currentSegmentId === state.currentSegmentId &&
       after.currentSlideId === state.currentSlideId &&
-      after.selectedId === state.selectedId;
+      sameIds(after.selectedIds, state.selectedIds);
     return unchanged
       ? state
       : {
           ...state,
           currentSegmentId: after.currentSegmentId,
           currentSlideId: after.currentSlideId,
-          selectedId: after.selectedId,
+          selectedIds: after.selectedIds,
         };
   }
 
@@ -262,7 +280,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     // То же правило №1, только для буфера обмена: copySlide — тоже вид,
     // а не данные, и project он НЕ трогает вовсе (ADR-025). Без отдельной
     // ветки ниже сработал бы generic-путь `after.project === before.project`
-    // (следующая ветка) — он переносит только selectedId, а slideClipboard
+    // (следующая ветка) — он переносит только selectedIds, а slideClipboard
     // остался бы лежать в `after` и потерялся молча: автор нажал бы
     // «Копировать», история осталась бы прежней, ошибки нигде бы не было,
     // но и буфер до HistoryState не долетел бы.
@@ -275,7 +293,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     // editorReducer сам решил, что правки не было (например, replaceElement
     // тем же объектом). Выделение он всё равно мог поменять
     // (removeElement снимает его) — это переносим, шага истории не создаём.
-    return after.selectedId === state.selectedId ? state : { ...state, selectedId: after.selectedId };
+    return sameIds(after.selectedIds, state.selectedIds) ? state : { ...state, selectedIds: after.selectedIds };
   }
 
   const live = isLiveEvent(action);
@@ -287,7 +305,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   // оставляют теми же значениями, что и before.
   return {
     history,
-    selectedId: after.selectedId,
+    selectedIds: after.selectedIds,
     currentSegmentId: after.currentSegmentId,
     currentSlideId: after.currentSlideId,
     gestureOpen: live,

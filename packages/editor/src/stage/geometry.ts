@@ -200,3 +200,47 @@ export function rotate(point: Point, center: Point, degrees: number): Point {
     y: center.y + dx * sin + dy * cos,
   };
 }
+
+/**
+ * Охватывающий прямоугольник нескольких боксов — рамка множественного
+ * выделения.
+ *
+ * Считается ПО УГЛАМ, а не по полям `x/y/width/height`, и это не педантизм:
+ * повёрнутый элемент выходит за свой неповёрнутый бокс, и рамка, посчитанная
+ * без углов, обрезала бы его — тем сильнее, чем больше угол. Ошибка
+ * правдоподобная: на неповёрнутых элементах обе формулы дают одно и то же,
+ * а расходятся только там, где автор что-то повернул.
+ *
+ * Результат всегда `rotation: 0`. У множественного выделения своего угла нет:
+ * два элемента, повёрнутых по-разному, не имеют общего наклона, а выбрать
+ * чей-то один значило бы соврать про остальных.
+ *
+ * `undefined` на пустом списке: «рамки нет» — это отсутствие рамки,
+ * а не рамка нулевого размера в начале координат.
+ */
+export function unionBox(boxes: readonly Box[]): Box | undefined {
+  let left = Number.POSITIVE_INFINITY;
+  let top = Number.POSITIVE_INFINITY;
+  let right = Number.NEGATIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+
+  for (const box of boxes) {
+    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    const corners: readonly Point[] = [
+      { x: box.x, y: box.y },
+      { x: box.x + box.width, y: box.y },
+      { x: box.x + box.width, y: box.y + box.height },
+      { x: box.x, y: box.y + box.height },
+    ];
+    for (const corner of corners) {
+      const point = box.rotation ? rotate(corner, center, box.rotation) : corner;
+      left = Math.min(left, point.x);
+      top = Math.min(top, point.y);
+      right = Math.max(right, point.x);
+      bottom = Math.max(bottom, point.y);
+    }
+  }
+
+  if (!Number.isFinite(left)) return undefined;
+  return { x: left, y: top, width: right - left, height: bottom - top, rotation: 0 };
+}

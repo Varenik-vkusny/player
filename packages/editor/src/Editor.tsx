@@ -51,7 +51,7 @@ import { createGate, gateInsideTransition } from './state/gates.js';
 import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
-import { freeId, pasteProblemAt, segmentSlide, type MarkKind } from './state/project.js';
+import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, type MarkKind } from './state/project.js';
 import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import { sceneTemplate } from './state/templates.js';
 import { TRANSITION_INFO } from './transitions.js';
@@ -187,10 +187,11 @@ export function Editor({
    */
   const soundLabel = segment.source.kind === 'file' ? segment.source.fileId : segment.source.url;
 
+  // Ровно одно, а не «первое из списка»: показать свойства первого при трёх
+  // выделенных значит соврать автору о том, что он сейчас правит.
+  const soleId = soleSelectedId(state.selectedIds);
   const selected =
-    state.selectedId === undefined
-      ? undefined
-      : segment.elements.find((element) => element.id === state.selectedId);
+    soleId === undefined ? undefined : segment.elements.find((element) => element.id === soleId);
 
   /**
    * Состояние выделенного элемента на ТЕКУЩЕМ слайде.
@@ -231,16 +232,24 @@ export function Editor({
 
   // Метка могла исчезнуть не только через кнопку удаления, но и через Ctrl+Z
   // (отмена её добавления) — тот же случай, что и «выделенного элемента нет
-  // в восстановленном проекте» для state.selectedId, только selectedMark
+  // в восстановленном проекте» для state.selectedIds, только selectedMark
   // здесь не часть history и сама себя не проверяет.
   useEffect(() => {
     if (selectedMark && !markData) setSelectedMark(undefined);
   }, [selectedMark, markData]);
 
-  const handleSelect = useCallback((id: string | undefined) => {
+  /**
+   * `additive` — автор держал Shift: добавить к выделению, а не заменить его.
+   *
+   * Признак приходит СНАРУЖИ, от того, кто видел событие мыши или клавиатуры,
+   * а не считывается здесь из какого-нибудь общего состояния клавиш: такое
+   * состояние обязательно разъедется с действительностью, стоит окну потерять
+   * фокус с зажатым Shift.
+   */
+  const handleSelect = useCallback((id: string | undefined, additive = false) => {
     // Выделение элемента и метки взаимоисключающи (см. комментарий выше).
     setSelectedMark(undefined);
-    dispatch({ type: 'select', id });
+    dispatch({ type: 'select', id, mode: additive ? 'toggle' : 'replace' });
   }, []);
 
   /**
@@ -635,11 +644,18 @@ export function Editor({
   const [removalMessage, setRemovalMessage] = useState<string | undefined>(undefined);
 
   const handleDeleteSelected = useCallback(() => {
-    const id = state.selectedId;
-    if (id === undefined) return;
-    setRemovalMessage(formatRemovalMessage(id, statesOnSlides(segment.slides, id)));
-    dispatch({ type: 'removeElement', id });
-  }, [state.selectedId, segment.slides]);
+    const ids = state.selectedIds;
+    if (ids.length === 0) return;
+    // Сообщение о каскаде — про один элемент. При пачке оно не собирается:
+    // сложить три отчёта в одну строку значит выдумать формулировку,
+    // которой автор ещё не видел. Пачка удаляется молча, поштучно — с отчётом.
+    setRemovalMessage(
+      ids.length === 1
+        ? formatRemovalMessage(ids[0]!, statesOnSlides(segment.slides, ids[0]!))
+        : undefined,
+    );
+    dispatch({ type: 'removeElement', ids });
+  }, [state.selectedIds, segment.slides]);
 
   // Ошибка вставки картинки: файл не картинка, либо кодирование не удалось.
   // Падает громко (CLAUDE.md), но громко — это видимое сообщение автору,
@@ -929,7 +945,7 @@ export function Editor({
     const handleKeyDown = (event: KeyboardEvent): void => {
       const active = document.activeElement;
       const context: KeyContext = {
-        hasSelection: state.selectedId !== undefined,
+        hasSelection: state.selectedIds.length > 0,
         // Правка текста на холсте (двойной клик по элементу, StageView.
         // beginTextEdit) ставит узлу contentEditable и фокусирует его —
         // проверка честная (реальное свойство DOM активного элемента),
@@ -947,16 +963,33 @@ export function Editor({
           handleDeleteSelected();
           return;
         case 'nudge': {
-          const id = state.selectedId;
-          if (id === undefined) return; // keyToIntent уже проверил hasSelection — здесь просто защита типов
-          const currentState = currentSlide.states[id];
-          if (!currentState) return; // элемент не появляется на этом слайде — двигать нечего
-          dispatch({
-            type: 'setElementState',
-            elementId: id,
-            patch: { x: currentState.x + intent.dx, y: currentState.y + intent.dy },
-            at: headTimeRef(),
-          });
+          /**
+           * Двигаются ВСЕ выделенные, каждый на одну и ту же дельту.
+           *
+           * Те, кого нет на этом слайде, пропускаются: их некуда двигать,
+           * но это не повод не двигать остальных.
+           *
+           * `commit: false` у каждого плюс один `commit` в конце — это одно
+           * нажатие стрелки, значит ОДИН шаг отмены. Без этого Ctrl+Z после
+           * сдвига троих возвращал бы их по одному, и автор видел бы, как
+           * пачка разъезжается. Тот же приём, которым уже коммитится
+           * перетаскивание (см. `handleCommitHistory`).
+           */
+          const at = headTimeRef();
+          let moved = false;
+          for (const id of state.selectedIds) {
+            const currentState = currentSlide.states[id];
+            if (!currentState) continue;
+            dispatch({
+              type: 'setElementState',
+              elementId: id,
+              patch: { x: currentState.x + intent.dx, y: currentState.y + intent.dy },
+              at,
+              commit: false,
+            });
+            moved = true;
+          }
+          if (moved) dispatch({ type: 'commit' });
           return;
         }
         case 'undo':
@@ -979,7 +1012,7 @@ export function Editor({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [state.selectedId, currentSlide, handleDeleteSelected, handleSelect]);
+  }, [state.selectedIds, currentSlide, handleDeleteSelected, handleSelect]);
 
   return (
     <div className="ed-root">
@@ -1112,7 +1145,7 @@ export function Editor({
           ref={stageRef}
           segment={segment}
           currentSlide={currentSlide}
-          selectedId={state.selectedId}
+          selectedIds={state.selectedIds}
           onSelect={handleSelect}
           onElementStateChange={handleElementStateChangeLive}
           onElementContentChange={handleElementContentChange}
@@ -1135,7 +1168,7 @@ export function Editor({
               type="button"
               className="ed-action"
               onClick={handleDeleteSelected}
-              disabled={state.selectedId === undefined}
+              disabled={state.selectedIds.length === 0}
             >
               Удалить
             </button>
@@ -1152,7 +1185,7 @@ export function Editor({
           ) : null}
           <ElementList
             rows={elementRows}
-            selectedId={state.selectedId}
+            selectedIds={state.selectedIds}
             onSelect={handleSelect}
             onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
             onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
