@@ -39,6 +39,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
+  type ReactNode,
 } from 'react';
 
 import type { Element, ElementState, Slide } from '@player/core';
@@ -136,6 +137,15 @@ export interface StageViewProps {
   onCommitHistory: () => void;
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
   onImageDrop?: (file: File) => void;
+  /**
+   * Полоска расположения, лежащая ПОВЕРХ холста.
+   *
+   * Приходит готовым узлом, а не собирается здесь: её кнопки правят проект,
+   * а StageView про действия редактора не знает и знать не должен. Но жить
+   * она обязана внутри контейнера сцены — только так её появление
+   * и исчезновение не меняет площадь холста и не перемасштабирует сцену.
+   */
+  toolbar?: ReactNode;
   onReady?: (preview: ScenePreview | null) => void;
 }
 
@@ -226,6 +236,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     onCommitHistory,
     onImageDrop,
     onReady,
+    toolbar,
   }: StageViewProps,
   ref,
 ): ReactElement {
@@ -953,6 +964,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       onDrop={handleDrop}
     >
       <div ref={stageRef} />
+      {toolbar}
       {/*
         Рамка обведения — соседка сцены, а не её потомок: служебных узлов
         внутри сцены быть не должно, иначе они попадут в скриншотный паритет

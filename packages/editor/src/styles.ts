@@ -181,6 +181,64 @@ export const EDITOR_STYLES = `
 
 /* Рамка выделения. Соседка сцены, а не её потомок: служебных узлов
    внутри сцены быть не должно. */
+/* Полоска расположения. Лежит ПОВЕРХ холста абсолютом, а не раздвигает его:
+   раздвигая, она меняла бы площадь сцены на каждое выделение, сцена
+   перемасштабировалась бы, и элементы дёргались бы под курсором автора
+   ровно в тот момент, когда он в них целится. */
+.ed-arrange {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  background: var(--ui-surface-panel);
+  box-shadow: var(--ui-shadow-selected);
+}
+
+.ed-arrange-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  cursor: pointer;
+}
+
+.ed-arrange-btn svg {
+  width: 16px;
+  height: 16px;
+  /* Значок рисуется прямоугольниками без собственной заливки: цвет берётся
+     от кнопки, поэтому гашение и наведение красят его сами собой. */
+  fill: currentColor;
+}
+
+.ed-arrange-btn:hover:not(:disabled) {
+  background: var(--ui-action-selected-bg);
+}
+
+.ed-arrange-btn:disabled {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+
+.ed-arrange-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--ui-line);
+}
+
 /* Направляющая при перетаскивании. Толщина приходит из разметки в пикселях
    контейнера, поэтому линия остаётся волосяной на любом масштабе сцены.
    Цвет отдельной ролью: направляющая обязана отличаться от рамки выделения,

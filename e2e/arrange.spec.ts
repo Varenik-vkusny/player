@@ -94,6 +94,24 @@ async function dragTo(
   }
 }
 
+/**
+ * Клик по элементу НА СЦЕНЕ. Shift зажимается КЛАВИАТУРОЙ: у `mouse.click`
+ * полей модификаторов нет вовсе, и лишний ключ в опциях выбрасывается молча
+ * (грабля Сессии 28 — тест выглядел бы как проверка Shift, а кликал бы без).
+ */
+async function clickElement(page: Page, id: string, shift = false): Promise<void> {
+  const center = await centerOnScreen(page, id);
+  if (shift) await page.keyboard.down('Shift');
+  await page.mouse.click(center.x, center.y);
+  if (shift) await page.keyboard.up('Shift');
+}
+
+/** Выделяет несколько элементов подряд: первый обычным кликом, прочие с Shift. */
+async function selectAll(page: Page, ids: readonly string[]): Promise<void> {
+  for (const [index, id] of ids.entries()) await clickElement(page, id, index > 0);
+  await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(ids.length);
+}
+
 test.describe('направляющие и прилипание', () => {
   test('при перетаскивании появляется направляющая, и после отпускания её нет', async ({ page }) => {
     await openEditor(page, 'morph');
@@ -167,5 +185,130 @@ test.describe('направляющие и прилипание', () => {
     const after = await stateOf(page, 'mover');
     expect(after.x).not.toBe(mover.x + 300);
     expect(Math.abs(after.x - (mover.x + 300 + 20 / scale))).toBeLessThan(1);
+  });
+});
+
+/**
+ * Фикстура `transitions`: на первом слайде три ВИДИМЫХ элемента разного
+ * размера — `stays` (80,120,220×200), `goes` (1500,740,300×220)
+ * и `caption` (80,980,1760×80). Разные размеры здесь не украшение:
+ * на одинаковых элементах «равные промежутки» и «равные расстояния между
+ * центрами» дают одну и ту же раскладку, и тест на раскладку был бы
+ * зелёным у обеих реализаций.
+ */
+test.describe('полоска расположения', () => {
+  test('полоски нет, пока ничего не выделено, и она появляется с выделением', async ({ page }) => {
+    await openEditor(page, 'transitions');
+
+    await expect(page.getByTestId('arrange-bar')).toHaveCount(0);
+    await clickElement(page, 'stays');
+    await expect(page.getByTestId('arrange-bar')).toBeVisible();
+  });
+
+  test('«разложить» погашено при двух выделенных и живо при трёх', async ({ page }) => {
+    await openEditor(page, 'transitions');
+
+    await selectAll(page, ['stays', 'goes']);
+    // Между двумя элементами промежуток ровно один, равнять его нечему.
+    await expect(page.getByTestId('distribute-y')).toBeDisabled();
+
+    await clickElement(page, 'caption', true);
+    await expect(page.getByTestId('distribute-y')).toBeEnabled();
+  });
+
+  test('выравнивание по левому краю ставит троих в столбик', async ({ page }) => {
+    await openEditor(page, 'transitions');
+    await selectAll(page, ['stays', 'goes', 'caption']);
+
+    await page.getByTestId('align-left').click();
+
+    // Общая рамка начинается на 80 (там стоят stays и caption), значит
+    // приехать обязан goes — и ровно туда же, а не «примерно».
+    await expect.poll(() => stateOf(page, 'goes').then((s) => s.x)).toBe(80);
+    expect((await stateOf(page, 'stays')).x).toBe(80);
+    expect((await stateOf(page, 'caption')).x).toBe(80);
+  });
+
+  test('один Ctrl+Z возвращает ВСЮ раскладку: выравнивание — ОДИН шаг истории', async ({ page }) => {
+    await openEditor(page, 'transitions');
+
+    const before = {
+      stays: (await stateOf(page, 'stays')).y,
+      goes: (await stateOf(page, 'goes')).y,
+      caption: (await stateOf(page, 'caption')).y,
+    };
+
+    await selectAll(page, ['stays', 'goes', 'caption']);
+    await page.getByTestId('align-top').click();
+    await expect.poll(() => stateOf(page, 'goes').then((s) => s.y)).toBe(before.stays);
+
+    await page.keyboard.press('Control+z');
+
+    // Все трое разом. Без общего коммита отмена возвращала бы их по одному,
+    // и автор смотрел бы, как ряд разъезжается обратно.
+    await expect.poll(() => stateOf(page, 'goes').then((s) => s.y)).toBe(before.goes);
+    expect((await stateOf(page, 'stays')).y).toBe(before.stays);
+    expect((await stateOf(page, 'caption')).y).toBe(before.caption);
+  });
+
+  test('«разложить поровну» делает равными ПРОМЕЖУТКИ между краями', async ({ page }) => {
+    await openEditor(page, 'transitions');
+    await selectAll(page, ['stays', 'goes', 'caption']);
+
+    await page.getByTestId('distribute-y').click();
+
+    // Порядок сверху вниз: stays (120), goes, caption (980). Крайние стоят
+    // на месте, средний приезжает так, чтобы оба промежутка совпали.
+    await expect.poll(() => stateOf(page, 'goes').then((s) => s.y)).toBe(540);
+
+    const stays = await stateOf(page, 'stays');
+    const goes = await stateOf(page, 'goes');
+    const caption = await stateOf(page, 'caption');
+    expect(stays.y).toBe(120);
+    expect(caption.y).toBe(980);
+    expect(goes.y - (stays.y + stays.height)).toBe(caption.y - (goes.y + goes.height));
+  });
+
+  test('«на передний план» и правда кладёт элемент ПОВЕРХ остальных', async ({ page }) => {
+    await openEditor(page, 'transitions');
+
+    // caption лежит выше всех (zIndex 2 против 1 у остальных).
+    const before = await stateOf(page, 'stays');
+    expect(before.zIndex).toBeLessThan((await stateOf(page, 'caption')).zIndex);
+
+    await clickElement(page, 'stays');
+    await page.getByTestId('layer-front').click();
+
+    const after = await stateOf(page, 'stays');
+    expect(after.zIndex).toBeGreaterThan((await stateOf(page, 'caption')).zIndex);
+    expect(after.zIndex).toBeGreaterThan((await stateOf(page, 'goes')).zIndex);
+  });
+
+  test('порядок наложения проверяется ПОПАДАНИЕМ, а не только числом', async ({ page }) => {
+    /*
+     * Число в проекте могло вырасти, а на экране ничего не поменяться:
+     * между `zIndex` в состоянии и тем, что перехватывает клик, лежит
+     * весь рендер. Поэтому здесь проверяется то, что видит автор, —
+     * кто выделяется кликом в общую точку.
+     *
+     * caption занимает всю ширину внизу (80,980,1760×80). Двигаем goes
+     * так, чтобы он лёг поверх caption, и кликаем в пересечение.
+     */
+    await openEditor(page, 'transitions');
+
+    await selectAll(page, ['goes', 'caption']);
+    await page.getByTestId('align-left').click();
+    await page.getByTestId('align-top').click();
+    // Теперь оба начинаются в одной точке, goes целиком внутри полосы caption.
+
+    await clickElement(page, 'goes');
+    await page.getByTestId('layer-back').click();
+    // goes ушёл вниз — клик в общую точку обязан достаться caption.
+    await page.mouse.click(0, 0); // снять выделение, чтобы проверка была честной
+    await clickElement(page, 'caption');
+    await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
+
+    const captionRow = page.locator('.ed-element-row[aria-pressed="true"]');
+    await expect(captionRow).toContainText('caption');
   });
 });
