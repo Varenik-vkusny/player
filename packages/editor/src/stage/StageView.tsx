@@ -44,7 +44,15 @@ import {
 import type { Element, ElementState, Slide } from '@player/core';
 import { applyTheme, ScenePreview, type Segment } from '@player/player';
 
-import { boxToScreen, toScene, topmostAt, unionBox, type Box, type Point } from './geometry.js';
+import {
+  boxToScreen,
+  intersectsRect,
+  toScene,
+  topmostAt,
+  unionBox,
+  type Box,
+  type Point,
+} from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
 import { angleTo, centerOf, moveBox, resizeBox, rotateBox } from './transform.js';
 
@@ -104,6 +112,14 @@ export interface StageViewProps {
    */
   onSelect: (id: string | undefined, additive?: boolean) => void;
   /**
+   * Выделить список — итог обведения резиновой рамкой.
+   *
+   * Отдельно от `onSelect`, а не циклом по нему: пять пойманных элементов
+   * дали бы пять шагов истории, и `Ctrl+Z` снимал бы выделение по одному.
+   * `additive` — рамка с зажатым Shift, добавляет к уже выделенным.
+   */
+  onSelectMany: (ids: readonly string[], additive: boolean) => void;
+  /**
    * Правка состояния элемента жестом (перетаскивание, ручка) на ТЕКУЩЕМ
    * слайде. Вызывается МНОГОКРАТНО за один жест — каждое `pointermove` даёт
    * свой вызов, — и это намеренно живое, некоммитящее событие: коммит-точку
@@ -139,6 +155,39 @@ interface Gesture {
   readonly grabOffset: number;
 }
 
+/**
+ * Жест резиновой рамки: автор нажал на ПУСТОМ месте холста и тянет.
+ *
+ * Отдельно от `Gesture`, а не полем в нём: у рамки нет ни взятого элемента,
+ * ни стартовых боксов, ни угла захвата, и втискивание её в ту же запись
+ * заставило бы каждую ветку `handleMove` спрашивать «а это вообще элемент?».
+ */
+interface Marquee {
+  readonly pointerId: number;
+  /** Точка нажатия в координатах СЦЕНЫ: рамка живёт там же, где элементы. */
+  readonly startPoint: Point;
+  /** Автор держал Shift — рамка добавляет к выделению, а не заменяет его. */
+  readonly additive: boolean;
+}
+
+/**
+ * Ниже этого размера в ЭКРАННЫХ пикселях рамка считается щелчком, а не жестом.
+ *
+ * Порог экранный, а не сценический, намеренно: дрожание руки — это пиксели
+ * на экране, и на масштабе 25 % те же три пикселя означают двенадцать единиц
+ * сцены. Сценический порог заставил бы автора на мелком масштабе промахиваться
+ * мимо «просто щёлкнуть по пустому месту».
+ */
+const MARQUEE_MIN_PX = 3;
+
+/** Прямоугольник между двумя точками — рамку тянут в любую из четырёх сторон. */
+const areaBetween = (a: Point, b: Point): { x: number; y: number; width: number; height: number } => ({
+  x: Math.min(a.x, b.x),
+  y: Math.min(a.y, b.y),
+  width: Math.abs(b.x - a.x),
+  height: Math.abs(b.y - a.y),
+});
+
 const boxOf = (state: ElementState): Box => ({
   x: state.x,
   y: state.y,
@@ -155,6 +204,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     currentSlide,
     selectedIds,
     onSelect,
+    onSelectMany,
     onElementStateChange,
     onElementContentChange,
     onCommitHistory,
@@ -176,8 +226,16 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
    * в секунду ровно там, где считается плавность перетаскивания.
    */
   const gestureMovedRef = useRef(false);
+  const marqueeRef = useRef<Marquee | null>(null);
 
   const [frame, setFrame] = useState<Frame | null>(null);
+  /** Рамка в пикселях контейнера — то, что рисуется. `null` — жеста нет. */
+  const [marquee, setMarquee] = useState<{
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const elements = segment.elements;
 
@@ -403,19 +461,23 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
    * это ответ самого рендера на вопрос «что сейчас на экране», а не вторая
    * реализация той же логики.
    */
-  const hitElementAt = useCallback(
-    (point: Point): { id: string; box: Box } | undefined => {
-      const states = currentSlide.states;
-      const layers = elements
+  const visibleLayers = useCallback(
+    (): readonly (Box & { zIndex: number; id: string })[] =>
+      elements
         .filter((element) => isVisible(element.id))
         .map((element) => {
-          const state = states[element.id]!; // isVisible гарантирует отрисованный узел ⇒ состояние есть
+          const state = currentSlide.states[element.id]!; // isVisible гарантирует отрисованный узел ⇒ состояние есть
           return { ...boxOf(state), zIndex: state.zIndex, id: element.id };
-        });
-      const hit = topmostAt(layers, point);
+        }),
+    [elements, currentSlide, isVisible],
+  );
+
+  const hitElementAt = useCallback(
+    (point: Point): { id: string; box: Box } | undefined => {
+      const hit = topmostAt(visibleLayers(), point);
       return hit ? { id: hit.id, box: { x: hit.x, y: hit.y, width: hit.width, height: hit.height, rotation: hit.rotation } } : undefined;
     },
-    [elements, currentSlide, isVisible],
+    [visibleLayers],
   );
 
   const beginGesture = useCallback(
@@ -581,7 +643,26 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       const point = scenePointOf(event);
       const hit = hitElementAt(point);
       if (!hit) {
-        onSelect(undefined);
+        /**
+         * Нажатие на пустом месте начинает резиновую рамку.
+         *
+         * Выделение снимается ЗДЕСЬ, а не на отпускании, и это сознательно
+         * сохраняет прежнее поведение простого щелчка мимо всего: он и был
+         * снятием выделения на `pointerdown`. Рамка нулевого размера — тот же
+         * щелчок, и на отпускании она ничего не добавит.
+         *
+         * С зажатым Shift не снимаем: обведение с Shift обязано ДОБАВЛЯТЬ,
+         * а не начинать с пустого места.
+         */
+        if (!event.shiftKey) onSelect(undefined);
+        const { host } = requireNodes();
+        marqueeRef.current = {
+          pointerId: event.pointerId,
+          startPoint: point,
+          additive: event.shiftKey,
+        };
+        setMarquee(null);
+        host.setPointerCapture(event.pointerId);
         return;
       }
 
@@ -607,7 +688,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
       beginGesture('body', hit.id, hit.box, event, alreadySelected ? selectedIds : []);
     },
-    [scenePointOf, hitElementAt, onSelect, beginGesture, selectedIds],
+    [scenePointOf, hitElementAt, onSelect, beginGesture, selectedIds, requireNodes],
   );
 
   const handleGripDown = useCallback(
@@ -627,6 +708,28 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
   const handleMove = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const dragging = marqueeRef.current;
+      if (dragging && dragging.pointerId === event.pointerId) {
+        // Рамка живёт в координатах сцены и переводится в экранные ровно
+        // одним способом — тем же, каким переводится рамка выделения.
+        // Считать её сразу в пикселях контейнера значило бы завести второй
+        // перевод между пространствами, а он обязан быть один (ADR-007).
+        const { host, stage } = requireNodes();
+        const area = areaBetween(dragging.startPoint, scenePointOf(event));
+        const hostRect = host.getBoundingClientRect();
+        const screen = boxToScreen(stage.getBoundingClientRect(), segment.stage.width, {
+          ...area,
+          rotation: 0,
+        });
+        setMarquee({
+          left: screen.left - hostRect.left,
+          top: screen.top - hostRect.top,
+          width: screen.width,
+          height: screen.height,
+        });
+        return;
+      }
+
       const gesture = gestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
 
@@ -666,11 +769,40 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         rotation: round(next.rotation),
       });
     },
-    [scenePointOf, onElementStateChange],
+    [scenePointOf, onElementStateChange, requireNodes, segment.stage.width],
   );
 
   const endGesture = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
+      const dragging = marqueeRef.current;
+      if (dragging && dragging.pointerId === event.pointerId) {
+        marqueeRef.current = null;
+        const { host } = requireNodes();
+        if (host.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId);
+        const drawn = marquee;
+        setMarquee(null);
+
+        /**
+         * Рамка меньше порога — это был щелчок по пустому месту, а не жест.
+         *
+         * Проверяется по НАРИСОВАННОМУ прямоугольнику, то есть в экранных
+         * пикселях: дрожание руки измеряется на экране, а не в единицах сцены.
+         * Выделение при таком щелчке уже снято на нажатии — здесь просто
+         * нечего добавлять.
+         */
+        if (!drawn || (drawn.width < MARQUEE_MIN_PX && drawn.height < MARQUEE_MIN_PX)) return;
+
+        const area = areaBetween(dragging.startPoint, scenePointOf(event));
+        const caught = visibleLayers()
+          .filter((layer) => intersectsRect(layer, area))
+          .map((layer) => layer.id);
+        // Пустая рамка при обычном обведении ничего не выделяет — выделение
+        // уже снято на нажатии. С Shift пустая рамка тоже безвредна:
+        // добавить нечего, состояние вернётся то же по ссылке.
+        onSelectMany(caught, dragging.additive);
+        return;
+      }
+
       const gesture = gestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gestureRef.current = null;
@@ -696,7 +828,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // без движения), это безопасный no-op на стороне историй.
       onCommitHistory();
     },
-    [onCommitHistory, onSelect],
+    [onCommitHistory, onSelect, onSelectMany, marquee, requireNodes, scenePointOf, visibleLayers],
   );
 
   /**
@@ -731,6 +863,23 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       onDrop={handleDrop}
     >
       <div ref={stageRef} />
+      {/*
+        Рамка обведения — соседка сцены, а не её потомок: служебных узлов
+        внутри сцены быть не должно, иначе они попадут в скриншотный паритет
+        рендера (инвариант №5) и в сохранённый проект.
+      */}
+      {marquee ? (
+        <div
+          className="ed-marquee"
+          data-testid="marquee"
+          style={{
+            left: `${marquee.left}px`,
+            top: `${marquee.top}px`,
+            width: `${marquee.width}px`,
+            height: `${marquee.height}px`,
+          }}
+        />
+      ) : null}
       <Overlay frame={frame} showHandles={selectedIds.length === 1} onGripDown={handleGripDown} />
     </div>
   );

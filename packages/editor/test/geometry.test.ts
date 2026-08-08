@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { boxToScreen, hitTest, stageScale, toScene, toScreen, topmostAt, unionBox } from '../src/stage/geometry.js';
+import {
+  boxToScreen,
+  hitTest,
+  intersectsRect,
+  stageScale,
+  toScene,
+  toScreen,
+  topmostAt,
+  unionBox,
+} from '../src/stage/geometry.js';
 import type { Box, Layer, Rect } from '../src/stage/geometry.js';
 
 const LOGICAL_WIDTH = 1920;
@@ -294,5 +303,67 @@ describe('unionBox: общая рамка множественного выде�
     const a: Box = { x: 0, y: 0, width: 50, height: 50, rotation: 30 };
     const b: Box = { x: 200, y: 200, width: 50, height: 50, rotation: -70 };
     expect(unionBox([a, b])!.rotation).toBe(0);
+  });
+});
+
+describe('intersectsRect: что поймала резиновая рамка', () => {
+  const box: Box = { x: 100, y: 100, width: 200, height: 100, rotation: 0 };
+
+  it('рамка, накрывшая элемент целиком, его ловит', () => {
+    expect(intersectsRect(box, { x: 50, y: 50, width: 400, height: 300 })).toBe(true);
+  });
+
+  it('рамка, прошедшая мимо, не ловит', () => {
+    expect(intersectsRect(box, { x: 400, y: 400, width: 100, height: 100 })).toBe(false);
+  });
+
+  it('рамка, задевшая угол, ловит: касание считается попаданием', () => {
+    // Правый нижний угол области ровно в левом верхнем углу элемента.
+    // Слом: строгое сравнение вместо нестрогого — автор, обводящий пачку
+    // и промахнувшийся ровно в край, не поймал бы ничего.
+    expect(intersectsRect(box, { x: 0, y: 0, width: 100, height: 100 })).toBe(true);
+  });
+
+  it('рамка целиком ВНУТРИ элемента его ловит', () => {
+    // Разделяющей оси нет ни одной, хотя ни один угол области не лежит
+    // внутри... наоборот: все углы области внутри элемента. Проверка
+    // «попал ли хоть один угол области в элемент» дала бы тот же ответ,
+    // а вот проверка «попал ли угол ЭЛЕМЕНТА в область» — нет.
+    expect(intersectsRect(box, { x: 150, y: 120, width: 20, height: 20 })).toBe(true);
+  });
+
+  it('рамка, пересекающая элемент крест-накрест, ловит', () => {
+    // Ни один угол одного не лежит внутри другого — только рёбра пересекаются.
+    // Слом: проверка по углам вместо разделяющих осей вернула бы false.
+    expect(intersectsRect(box, { x: 150, y: 0, width: 20, height: 400 })).toBe(true);
+  });
+
+  it('ПОВЁРНУТЫЙ элемент не ловится рамкой, задевшей только его описанный прямоугольник', () => {
+    /*
+     * Квадрат 100×100 под 45° занимает описанный прямоугольник
+     * от −20.71 до 120.71 по обеим осям, но сам туда не достаёт: его
+     * ближний край — прямая x + y = 29.29.
+     *
+     * Область (−20,−20)…(−10,−10) лежит ВНУТРИ описанного прямоугольника
+     * и целиком снаружи самого квадрата. Реализация, сравнивающая область
+     * с `unionBox([box])`, вернула бы true и хватала бы элемент, которого
+     * рамка не касалась.
+     *
+     * Это и есть тест, ради которого написана теорема о разделяющей оси:
+     * на неповёрнутых элементах обе реализации совпадают, и подмена была
+     * бы не видна ни в одном другом тесте файла.
+     */
+    const rotated: Box = { x: 0, y: 0, width: 100, height: 100, rotation: 45 };
+    expect(unionBox([rotated])!.x).toBeCloseTo(50 - 50 * Math.SQRT2, 6);
+    expect(intersectsRect(rotated, { x: -20, y: -20, width: 10, height: 10 })).toBe(false);
+    // А по центру той же диагонали — ловится: элемент там действительно есть.
+    expect(intersectsRect(rotated, { x: -20, y: 45, width: 30, height: 10 })).toBe(true);
+  });
+
+  it('рамка нулевой площади работает как точка', () => {
+    // Протаскивание строго по горизонтали даёт height: 0. Вырожденная
+    // область обязана вести себя как отрезок, а не как «ничего».
+    expect(intersectsRect(box, { x: 50, y: 150, width: 300, height: 0 })).toBe(true);
+    expect(intersectsRect(box, { x: 50, y: 350, width: 300, height: 0 })).toBe(false);
   });
 });

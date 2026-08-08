@@ -252,6 +252,12 @@ export function Editor({
     dispatch({ type: 'select', id, mode: additive ? 'toggle' : 'replace' });
   }, []);
 
+  /** Итог обведения резиновой рамкой — один шаг истории на весь улов. */
+  const handleSelectMany = useCallback((ids: readonly string[], additive: boolean) => {
+    setSelectedMark(undefined);
+    dispatch({ type: 'selectMany', ids, mode: additive ? 'add' : 'replace' });
+  }, []);
+
   /**
    * Нажатие по метке на дорожке ведёт туда головку.
    *
@@ -1147,6 +1153,7 @@ export function Editor({
           currentSlide={currentSlide}
           selectedIds={state.selectedIds}
           onSelect={handleSelect}
+          onSelectMany={handleSelectMany}
           onElementStateChange={handleElementStateChangeLive}
           onElementContentChange={handleElementContentChange}
           onCommitHistory={handleCommitHistory}

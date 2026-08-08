@@ -115,6 +115,24 @@ export type EditorAction =
       readonly id: string | undefined;
       readonly mode?: 'replace' | 'toggle';
     }
+  /**
+   * Выделить СПИСОК элементов одним действием — резиновая рамка.
+   *
+   * Отдельное действие, а не цикл по `select`, и это не стилистика.
+   * Рамка, поймавшая пять элементов, через `select` дала бы пять шагов
+   * истории (`Ctrl+Z` снимал бы выделение по одному элементу) и пять
+   * перерисовок сцены за один жест.
+   *
+   * `mode`: `'replace'` или отсутствует — выделены ровно эти;
+   * `'add'` — добавить к уже выделенным (рамка с зажатым Shift).
+   * Пустой список при `'replace'` очищает выделение: обвели пустоту —
+   * значит ничего не выделено.
+   */
+  | {
+      readonly type: 'selectMany';
+      readonly ids: readonly string[];
+      readonly mode?: 'replace' | 'add';
+    }
   // `commit` — не про то, ЧТО меняется, а про то, стал ли этот вызов
   // отдельным шагом истории. Отсутствие (undefined) значит «да, как обычно»;
   // `commit: false` — сигнал редьюсеру истории (`state/editorHistory.ts`),
@@ -414,6 +432,30 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       const already = state.selectedIds.length === 1 && state.selectedIds[0] === action.id;
       return already ? state : { ...state, selectedIds: [action.id] };
+    }
+
+    case 'selectMany': {
+      for (const id of action.ids) {
+        if (!hasElement(state.project, state.currentSegmentId, id)) {
+          throw new Error(`Нельзя выделить элемент «${id}»: его нет в проекте`);
+        }
+      }
+
+      // Порядок выделения сохраняется, повторы схлопываются: рамка может
+      // накрыть элемент, уже выделенный Shift-кликом до неё.
+      const base = action.mode === 'add' ? state.selectedIds : [];
+      const next: string[] = [];
+      for (const id of [...base, ...action.ids]) {
+        if (!next.includes(id)) next.push(id);
+      }
+
+      // Тот же список по составу и порядку обязан вернуть ТО ЖЕ состояние
+      // по ссылке: обведение, ничего не изменившее, не должно пересобирать
+      // сцену и класть в историю пустой шаг.
+      const same =
+        next.length === state.selectedIds.length &&
+        next.every((id, index) => id === state.selectedIds[index]);
+      return same ? state : { ...state, selectedIds: next };
     }
 
     case 'replaceElement': {
