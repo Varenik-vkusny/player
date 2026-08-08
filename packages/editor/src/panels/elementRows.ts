@@ -88,6 +88,14 @@ function summarize(element: Element, state: ElementState | undefined): string {
     }
     case 'video':
       return summarizeVideo(element.content);
+    /**
+     * Группа (v11) описывается собой, а не содержимым: сколько в ней детей,
+     * знает сегмент, а сюда приходит один элемент со своим состоянием.
+     * Тянуть сюда весь список ради числа значило бы поменять сигнатуру
+     * ради подписи.
+     */
+    case 'group':
+      return 'группа';
   }
 }
 

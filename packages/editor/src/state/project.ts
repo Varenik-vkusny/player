@@ -37,11 +37,27 @@ export { freeId } from './elements.js';
 
 export interface EditorState {
   readonly project: Project;
-  /** Выделенный элемент. undefined — выделения нет. */
-  readonly selectedId: string | undefined;
+  /**
+   * Выделенные элементы. Пустой список — выделения нет.
+   *
+   * СПИСОК, а не «один плюс остальные». Второе поле рядом с одиночным
+   * выделением пришлось бы согласовывать в каждом действии редьюсера,
+   * и разъехаться они могли бы молча — ровно та ошибка, которую в v10
+   * пришлось чинить у перечня типов элемента.
+   *
+   * Порядок значим: первым идёт тот, кого выделили раньше. Это опора
+   * для будущего выравнивания — «по кому равняем» у Canva определяется
+   * не порядком, но опция «по первому выделенному» без порядка невыразима.
+   *
+   * Местам, которым нужно «ровно один» (инспектор, ручки изменения размера),
+   * отвечает `soleSelectedId` ниже, а не собственная проверка длины: иначе
+   * условие «а если выделено несколько» разошлось бы по коду в десятке мест
+   * с разными ответами.
+   */
+  readonly selectedIds: readonly string[];
   /**
    * Сегмент, который автор сейчас правит. Не в истории: это вид, а не
-   * данные, как и `selectedId` — переключение сегмента само по себе ничего
+   * данные, как и `selectedIds` — переключение сегмента само по себе ничего
    * в проекте не меняет.
    */
   readonly currentSegmentId: string;
@@ -53,7 +69,7 @@ export interface EditorState {
   readonly currentSlideId: string;
   /**
    * Отчёт о последнем переносе меток (`replaceSegmentAudio` с расшифровкой) —
-   * сообщение автору, а не свойство проекта, поэтому живёт рядом с `selectedId`
+   * сообщение автору, а не свойство проекта, поэтому живёт рядом с `selectedIds`
    * и `currentSlideId`, а не внутри `project`/истории отмены. `undefined` —
    * либо ничего ещё не переносили, либо последняя замена была без расшифровки
    * (путь «без расшифровки» законен и отчёта не производит).
@@ -62,7 +78,7 @@ export interface EditorState {
   /**
    * Буфер обмена слайдов (ADR-025: «слайд переносит состояние, а не
    * момент»). Состояние ВИДА, а не данные проекта — живёт рядом
-   * с `selectedId`/`lastRetarget`, вне истории отмены. Отличие от
+   * с `selectedIds`/`lastRetarget`, вне истории отмены. Отличие от
    * `lastRetarget`, который undo/redo сбрасывает: буфер отмену обязан
    * ПЕРЕЖИТЬ — это предмет в руке автора, а не отчёт о правке, от которой
    * он отошёл. `undefined` — буфер пуст, ничего не скопировано и не вырезано.
@@ -70,11 +86,35 @@ export interface EditorState {
   readonly slideClipboard: SlideClipboard | undefined;
 }
 
+/**
+ * Единственный выделенный элемент — или `undefined`, если их ноль либо
+ * несколько.
+ *
+ * Существует затем, чтобы вопрос «а что показывать, когда выделено
+ * несколько» имел ОДИН ответ на весь редактор. Инспектор правит поля одного
+ * элемента, ручки изменения размера тянут один бокс — и тому и другому
+ * нужен именно этот случай, а не «первый из списка»: показать свойства
+ * первого при трёх выделенных значит соврать автору о том, что он правит.
+ */
+export function soleSelectedId(selectedIds: readonly string[]): string | undefined {
+  return selectedIds.length === 1 ? selectedIds[0] : undefined;
+}
+
 /** Метки на дорожке, которые двигаются перетаскиванием: гейт или слайд. */
 export type MarkKind = 'gate' | 'slide';
 
 export type EditorAction =
-  | { readonly type: 'select'; readonly id: string | undefined }
+  /**
+   * `mode` отсутствует или `'replace'` — выделить только этот элемент.
+   * `'toggle'` — добавить к выделению или убрать из него (Shift-клик).
+   * `id: undefined` очищает выделение при любом режиме: «щёлкнул мимо всего»
+   * означает одно и то же с Shift и без него.
+   */
+  | {
+      readonly type: 'select';
+      readonly id: string | undefined;
+      readonly mode?: 'replace' | 'toggle';
+    }
   // `commit` — не про то, ЧТО меняется, а про то, стал ли этот вызов
   // отдельным шагом истории. Отсутствие (undefined) значит «да, как обычно»;
   // `commit: false` — сигнал редьюсеру истории (`state/editorHistory.ts`),
@@ -92,7 +132,8 @@ export type EditorAction =
       readonly state: ElementState;
       readonly at: TimeRef;
     }
-  | { readonly type: 'removeElement'; readonly id: string }
+  /** Удаляет элементы целиком из сегмента. Список, а не один: см. редьюсер. */
+  | { readonly type: 'removeElement'; readonly ids: readonly string[] }
   | {
       readonly type: 'setElementState';
       readonly elementId: string;
@@ -241,7 +282,7 @@ export function initialState(project: Project): EditorState {
   const segment = requireSegment(project, project.entry);
   return {
     project,
-    selectedId: undefined,
+    selectedIds: [],
     currentSegmentId: project.entry,
     currentSlideId: requireFirstSlide(segment).id,
     lastRetarget: undefined,
@@ -356,11 +397,23 @@ function slideForEdit(segment: Segment, at: TimeRef): { segment: Segment; slideI
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'select': {
-      if (state.selectedId === action.id) return state;
-      if (action.id !== undefined && !hasElement(state.project, state.currentSegmentId, action.id)) {
+      if (action.id === undefined) {
+        return state.selectedIds.length === 0 ? state : { ...state, selectedIds: [] };
+      }
+      if (!hasElement(state.project, state.currentSegmentId, action.id)) {
         throw new Error(`Нельзя выделить элемент «${action.id}»: его нет в проекте`);
       }
-      return { ...state, selectedId: action.id };
+
+      if (action.mode === 'toggle') {
+        const next = state.selectedIds.includes(action.id)
+          ? state.selectedIds.filter((id) => id !== action.id)
+          // В конец, а не в начало: порядок выделения сохраняется (см. `selectedIds`).
+          : [...state.selectedIds, action.id];
+        return { ...state, selectedIds: next };
+      }
+
+      const already = state.selectedIds.length === 1 && state.selectedIds[0] === action.id;
+      return already ? state : { ...state, selectedIds: [action.id] };
     }
 
     case 'replaceElement': {
@@ -395,15 +448,23 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       });
       // Новый элемент сразу выделен: автор только что его создал и,
       // скорее всего, тут же начнёт править — незачем кликать по нему заново.
-      return { ...next, selectedId: action.element.id, currentSlideId: slideId };
+      return { ...next, selectedIds: [action.element.id], currentSlideId: slideId };
     }
 
     case 'removeElement': {
-      const nextSegment = removeElementFromSegment(currentSegment(state), action.id);
+      /**
+       * Удаление пачкой — ОДИН шаг истории, а не по шагу на элемент.
+       *
+       * Автор выделил три и нажал Delete: это один его жест, и Ctrl+Z обязан
+       * вернуть все три разом. Отдельные шаги заставили бы жать отмену
+       * трижды, причём порядок возврата зависел бы от порядка удаления —
+       * то же правило, по которому перетаскивание уже коммитится целиком.
+       */
+      const nextSegment = action.ids.reduce(removeElementFromSegment, currentSegment(state));
       const next = replaceSegment(state, nextSegment);
-      if (state.selectedId !== action.id) return next;
-      // Удалили то, что было выделено, — выделять больше нечего.
-      return { ...next, selectedId: undefined };
+      const selectedIds = state.selectedIds.filter((id) => !action.ids.includes(id));
+      // Удалили выделенное — снимаем именно его, остальное выделение живёт.
+      return selectedIds.length === state.selectedIds.length ? next : { ...next, selectedIds };
     }
 
     case 'setElementState': {
@@ -448,7 +509,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       );
       // Убранный элемент больше не на сцене — держать его выделенным значило бы
       // показывать свойства того, чего в этом кадре нет.
-      return next.selectedId === action.elementId ? { ...next, selectedId: undefined } : next;
+      return next.selectedIds.includes(action.elementId)
+        ? { ...next, selectedIds: next.selectedIds.filter((id) => id !== action.elementId) }
+        : next;
     }
 
     case 'addSlide': {
@@ -621,7 +684,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         project,
         currentSegmentId: segment.id,
         currentSlideId: requireFirstSlide(segment).id,
-        selectedId: undefined,
+        selectedIds: [],
       };
     }
 
@@ -635,7 +698,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         project,
         currentSegmentId: project.entry,
         currentSlideId: requireFirstSlide(entry).id,
-        selectedId: undefined,
+        selectedIds: [],
       };
     }
 
@@ -670,7 +733,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         currentSegmentId: action.id,
         currentSlideId: requireFirstSlide(segment).id,
-        selectedId: undefined,
+        selectedIds: [],
       };
     }
 
@@ -714,7 +777,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         project,
         currentSlideId: requireFirstSlide(head).id,
-        selectedId: undefined,
+        selectedIds: [],
       };
     }
 

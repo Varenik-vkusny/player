@@ -15,7 +15,7 @@ import type { ElementRow } from './elementRows.js';
 
 export interface ElementListProps {
   rows: readonly ElementRow[];
-  selectedId: string | undefined;
+  selectedIds: readonly string[];
   onSelect: (id: string) => void;
   /** Поместить элемент на текущий слайд — §12.4. */
   onPutOnSlide: (id: string) => void;
@@ -25,7 +25,7 @@ export interface ElementListProps {
 
 export function ElementList({
   rows,
-  selectedId,
+  selectedIds,
   onSelect,
   onPutOnSlide,
   onRemoveFromSlide,
@@ -42,9 +42,9 @@ export function ElementList({
               <button
                 type="button"
                 className={
-                  row.id === selectedId ? 'ed-element-row ed-element-row-selected' : 'ed-element-row'
+                  selectedIds.includes(row.id) ? 'ed-element-row ed-element-row-selected' : 'ed-element-row'
                 }
-                aria-pressed={row.id === selectedId}
+                aria-pressed={selectedIds.includes(row.id)}
                 data-testid={`element-row-${row.id}`}
                 onClick={() => onSelect(row.id)}
               >

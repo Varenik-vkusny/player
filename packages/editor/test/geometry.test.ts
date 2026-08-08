@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { boxToScreen, hitTest, stageScale, toScene, toScreen, topmostAt } from '../src/stage/geometry.js';
+import { boxToScreen, hitTest, stageScale, toScene, toScreen, topmostAt, unionBox } from '../src/stage/geometry.js';
 import type { Box, Layer, Rect } from '../src/stage/geometry.js';
 
 const LOGICAL_WIDTH = 1920;
@@ -257,5 +257,42 @@ describe('вырожденные входы падают громко', () => {
     expect(() => toScene(stageRect(1), 0, 0, 0)).toThrow(RangeError);
     expect(() => toScreen(stageRect(1), -1, point)).toThrow(RangeError);
     expect(() => boxToScreen(stageRect(1), Number.NaN, box)).toThrow(RangeError);
+  });
+});
+
+describe('unionBox: общая рамка множественного выделения', () => {
+  it('на пустом списке рамки НЕТ, а не рамка нулевого размера', () => {
+    // Слом: вернуть {x:0,y:0,width:0,height:0}. Тогда при снятом выделении
+    // в углу сцены висела бы точка — рамка того, чего не выделено.
+    expect(unionBox([])).toBeUndefined();
+  });
+
+  it('охватывает два неповёрнутых бокса', () => {
+    const a: Box = { x: 10, y: 20, width: 30, height: 40, rotation: 0 };
+    const b: Box = { x: 100, y: 0, width: 10, height: 10, rotation: 0 };
+    expect(unionBox([a, b])).toEqual({ x: 10, y: 0, width: 100, height: 60, rotation: 0 });
+  });
+
+  it('ПОВЁРНУТЫЙ бокс охватывается по углам, а не по своим x/y/width/height', () => {
+    // Несущий случай. Квадрат 100×100, повёрнутый на 45°, занимает
+    // ширину 100·√2 ≈ 141.42, а не 100. Формула «по полям бокса» дала бы
+    // ровно 100 и обрезала бы элемент — и только на повёрнутых, поэтому
+    // ошибка выглядела бы как редкий глюк, а не как неверная формула.
+    const box: Box = { x: 0, y: 0, width: 100, height: 100, rotation: 45 };
+    const union = unionBox([box])!;
+    const diagonal = 100 * Math.SQRT2;
+    expect(union.width).toBeCloseTo(diagonal, 6);
+    expect(union.height).toBeCloseTo(diagonal, 6);
+    // Центр остался на месте: поворот вокруг центра его не двигает.
+    expect(union.x + union.width / 2).toBeCloseTo(50, 6);
+    expect(union.y + union.height / 2).toBeCloseTo(50, 6);
+  });
+
+  it('у общей рамки своего угла нет: rotation всегда 0', () => {
+    // Два элемента, повёрнутых по-разному, общего наклона не имеют.
+    // Слом: унаследовать rotation первого — рамка поехала бы косо.
+    const a: Box = { x: 0, y: 0, width: 50, height: 50, rotation: 30 };
+    const b: Box = { x: 200, y: 200, width: 50, height: 50, rotation: -70 };
+    expect(unionBox([a, b])!.rotation).toBe(0);
   });
 });

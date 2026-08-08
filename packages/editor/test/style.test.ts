@@ -318,8 +318,8 @@ describe('demo.json: обход каждого элемента и каждог�
 });
 
 describe('интеграция со схемой: результат подставляется в состояние слайда и проходит loadProject', () => {
-  function baseState(): { x: number; y: number; width: number; height: number; rotation: number; zIndex: number; opacity: number; visible: boolean; style: ElementStyle } {
-    return { x: 0, y: 0, width: 400, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {} };
+  function baseState(): { x: number; y: number; width: number; height: number; rotation: number; zIndex: number; opacity: number; visible: boolean; flipX: boolean; flipY: boolean; style: ElementStyle } {
+    return { x: 0, y: 0, width: 400, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {} };
   }
 
   function baseProject(headlineStyle: ElementStyle, panelStyle: ElementStyle): Project {
@@ -334,8 +334,8 @@ describe('интеграция со схемой: результат подст�
           description: '',
           audio: { src: 'audio/test.mp3', offset: 0, duration: 10, words: [] },
           elements: [
-            { id: 'headline', type: 'text', content: 'Заголовок' },
-            { id: 'panel', type: 'shape', content: '' },
+            { id: 'headline', type: 'text', content: 'Заголовок', locked: false },
+            { id: 'panel', type: 'shape', content: '', locked: false },
           ],
           slides: [
             {

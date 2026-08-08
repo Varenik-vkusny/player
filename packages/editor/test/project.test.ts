@@ -21,11 +21,11 @@ import { timeRefAt } from '../src/track/marks.js';
  */
 
 function element(id: string): Element {
-  return { id, type: 'shape', content: '' };
+  return { id, type: 'shape', content: '', locked: false };
 }
 
 function elementState(overrides: Partial<ElementState> = {}): ElementState {
-  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {}, ...overrides };
 }
 
 function gate(id: string): Gate {
@@ -87,19 +87,40 @@ function slideOf(project: Project): Slide {
 describe('select', () => {
   it('устанавливает выделение по id существующего элемента', () => {
     const next = editorReducer(baseState(), { type: 'select', id: 'title' });
-    expect(next.selectedId).toBe('title');
+    expect(next.selectedIds).toEqual(['title']);
   });
 
   it('повторное выделение того же элемента не создаёт новое состояние', () => {
-    const state = { ...baseState(), selectedId: 'title' };
+    const state = { ...baseState(), selectedIds: ['title'] };
     const next = editorReducer(state, { type: 'select', id: 'title' });
     expect(next).toBe(state);
   });
 
   it('id undefined снимает выделение', () => {
-    const state = { ...baseState(), selectedId: 'title' };
+    const state = { ...baseState(), selectedIds: ['title'] };
     const next = editorReducer(state, { type: 'select', id: undefined });
-    expect(next.selectedId).toBeUndefined();
+    expect(next.selectedIds).toEqual([]);
+  });
+
+  it('mode toggle добавляет к выделению, сохраняя порядок', () => {
+    // Порядок — не косметика: на него обопрётся выравнивание «по первому
+    // выделенному». Слом: класть в начало вместо конца.
+    const state = { ...baseState(), selectedIds: ['title'] };
+    const next = editorReducer(state, { type: 'select', id: 'subtitle', mode: 'toggle' });
+    expect(next.selectedIds).toEqual(['title', 'subtitle']);
+  });
+
+  it('mode toggle по уже выделенному убирает его из выделения', () => {
+    const state = { ...baseState(), selectedIds: ['title', 'subtitle'] };
+    const next = editorReducer(state, { type: 'select', id: 'title', mode: 'toggle' });
+    expect(next.selectedIds).toEqual(['subtitle']);
+  });
+
+  it('обычный клик по одному из выделенных схлопывает выделение до него', () => {
+    // Отличие от toggle. Без этого Shift был бы неотличим от его отсутствия.
+    const state = { ...baseState(), selectedIds: ['title', 'subtitle'] };
+    const next = editorReducer(state, { type: 'select', id: 'title' });
+    expect(next.selectedIds).toEqual(['title']);
   });
 
   it('выделение несуществующего элемента бросает ошибку', () => {
@@ -156,7 +177,7 @@ describe('addElement', () => {
 
     expect(segmentOf(next.project).elements).toEqual([...segmentOf(state.project).elements, created]);
     expect(slideOf(next.project).states[created.id]).toBe(createdState);
-    expect(next.selectedId).toBe(created.id);
+    expect(next.selectedIds).toEqual([created.id]);
     expect(segmentOf(next.project).gates).toBe(segmentOf(state.project).gates);
   });
 
@@ -176,7 +197,7 @@ describe('removeElement', () => {
   it('удаляет элемент; gates остаются тем же массивом по ссылке', () => {
     const state = baseState();
 
-    const next = editorReducer(state, { type: 'removeElement', id: 'subtitle' });
+    const next = editorReducer(state, { type: 'removeElement', ids: ['subtitle'] });
 
     expect(segmentOf(next.project).elements.some((e) => e.id === 'subtitle')).toBe(false);
     expect(segmentOf(next.project).gates).toBe(segmentOf(state.project).gates);
@@ -185,31 +206,44 @@ describe('removeElement', () => {
   it('каскадом снимает состояние удалённого элемента со слайда', () => {
     const state = baseState();
 
-    const next = editorReducer(state, { type: 'removeElement', id: 'title' });
+    const next = editorReducer(state, { type: 'removeElement', ids: ['title'] });
 
     expect(slideOf(next.project).states.title).toBeUndefined();
   });
 
   it('удаление выделенного элемента снимает выделение', () => {
-    const state = { ...baseState(), selectedId: 'title' };
+    const state = { ...baseState(), selectedIds: ['title'] };
 
-    const next = editorReducer(state, { type: 'removeElement', id: 'title' });
+    const next = editorReducer(state, { type: 'removeElement', ids: ['title'] });
 
-    expect(next.selectedId).toBeUndefined();
+    expect(next.selectedIds).toEqual([]);
   });
 
   it('удаление другого элемента не трогает текущее выделение', () => {
-    const state = { ...baseState(), selectedId: 'title' };
+    const state = { ...baseState(), selectedIds: ['title'] };
 
-    const next = editorReducer(state, { type: 'removeElement', id: 'subtitle' });
+    const next = editorReducer(state, { type: 'removeElement', ids: ['subtitle'] });
 
-    expect(next.selectedId).toBe('title');
+    expect(next.selectedIds).toEqual(['title']);
   });
 
   it('удаление несуществующего элемента бросает ошибку', () => {
-    expect(() => editorReducer(baseState(), { type: 'removeElement', id: 'ghost' })).toThrow(
+    expect(() => editorReducer(baseState(), { type: 'removeElement', ids: ['ghost'] })).toThrow(
       /ghost/,
     );
+  });
+
+  it('удаляет пачку за ОДИН вызов: оба исчезают и выделение снимается с обоих', () => {
+    // Что должно сломаться, чтобы покраснел: удаление по одному элементу
+    // за действие. Тогда второй остался бы в сегменте. Один вызов = один
+    // шаг истории, значит Ctrl+Z вернёт обоих разом (см. редьюсер).
+    const state = { ...baseState(), selectedIds: ['title', 'subtitle'] };
+
+    const next = editorReducer(state, { type: 'removeElement', ids: ['title', 'subtitle'] });
+
+    expect(segmentOf(next.project).elements.map((e) => e.id)).not.toContain('title');
+    expect(segmentOf(next.project).elements.map((e) => e.id)).not.toContain('subtitle');
+    expect(next.selectedIds).toEqual([]);
   });
 });
 
@@ -418,7 +452,7 @@ describe('элемент на слайде: поместить и убрать (
   it('убранный элемент перестаёт быть выделенным: свойств у него в этом кадре нет', () => {
     const selected = editorReducer(baseState(), { type: 'select', id: 'subtitle' });
     const next = editorReducer(selected, { type: 'removeElementFromSlide', elementId: 'subtitle' });
-    expect(next.selectedId).toBeUndefined();
+    expect(next.selectedIds).toEqual([]);
   });
 
   it('поместить на слайд — вид берётся с ближайшего слайда, где элемент известен', () => {
@@ -664,11 +698,11 @@ describe('редьюсер: переключение сегмента откры
   }
 
   it('selectSegment переключает сегмент, слайд на первый слайд нового сегмента, и снимает выделение', () => {
-    const state = { ...initialState(twoSegments()), selectedId: 'something' };
+    const state = { ...initialState(twoSegments()), selectedIds: ['something'] };
     const next = editorReducer(state, { type: 'selectSegment', id: 'seg-2' });
     expect(next.currentSegmentId).toBe('seg-2');
     expect(next.currentSlideId).toBe('slide-2');
-    expect(next.selectedId).toBeUndefined();
+    expect(next.selectedIds).toEqual([]);
   });
 
   it('после переключения addElement кладёт элемент в НОВЫЙ сегмент, старый не меняется', () => {
@@ -736,7 +770,7 @@ describe('охранник целостности: серия правок ос�
       at: { kind: 'seconds', t: 0 },
     });
 
-    state = editorReducer(state, { type: 'removeElement', id: created.element.id });
+    state = editorReducer(state, { type: 'removeElement', ids: [created.element.id] });
 
     // Каскад обязан снять состояние вместе с элементом — иначе serializeProject
     // упадёт на ссылке в никуда.
@@ -1044,7 +1078,7 @@ describe('замена озвучки с расшифровкой', () => {
 
     expect(next.history.past.length).toBe(before + 1);
     // Отчёт о переносе доходит и до состояния поверх истории — сообщение
-    // автору живёт рядом с selectedId/currentSlideId, а не только внутри
+    // автору живёт рядом с selectedIds/currentSlideId, а не только внутри
     // одного вызова editorReducer.
     // Полный набор, а не toMatchObject: нули в `orphaned` и `toSeconds`
     // утверждают, что при полном совпадении расшифровок ни одна метка

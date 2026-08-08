@@ -14,11 +14,11 @@ import { historyReducer, initialHistoryState } from '../src/state/editorHistory.
  */
 
 function element(id: string): Element {
-  return { id, type: 'shape', content: '' };
+  return { id, type: 'shape', content: '', locked: false };
 }
 
 function elementState(overrides: Partial<ElementState> = {}): ElementState {
-  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {}, ...overrides };
 }
 
 function baseProject(): Project {

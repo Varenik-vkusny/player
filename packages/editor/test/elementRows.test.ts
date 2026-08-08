@@ -5,7 +5,7 @@ import type { Element, ElementState } from '@player/core';
 import { toRows } from '../src/panels/elementRows.js';
 
 function element(overrides: Partial<Element> & { id: string }): Element {
-  return { type: 'shape', content: '', ...overrides };
+  return { type: 'shape', content: '', locked: false, ...overrides };
 }
 
 function state(overrides: Partial<ElementState> = {}): ElementState {
@@ -18,6 +18,8 @@ function state(overrides: Partial<ElementState> = {}): ElementState {
     zIndex: 0,
     opacity: 1,
     visible: true,
+    flipX: false,
+    flipY: false,
     style: {},
     ...overrides,
   };

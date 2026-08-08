@@ -362,6 +362,8 @@ function finalState(te: TemplateElement, item: ReturnType<typeof libraryItem>, w
     zIndex,
     opacity: 1,
     visible: true,
+    flipX: false,
+    flipY: false,
     style: te.style ? { ...item.style, ...te.style } : { ...item.style },
   };
 }
@@ -423,7 +425,13 @@ export function applyTemplate(
     const height = te.height ?? item.height;
     const zIndex = startZ + index;
 
-    const element: Element = { id: freeId(item.id, elements), type: item.type, content: te.content ?? item.content };
+    const element: Element = {
+      id: freeId(item.id, elements),
+      type: item.type,
+      content: te.content ?? item.content,
+      // v11: шаблон кладёт элементы верхним уровнем и незапертыми.
+      locked: false,
+    };
     elements.push(element);
     newElements.push(element);
 

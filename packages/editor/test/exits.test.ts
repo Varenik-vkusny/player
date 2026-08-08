@@ -202,7 +202,7 @@ describe('emptySegments', () => {
 
   it('часть с элементом пустой не считается — автор уже что-то положил', () => {
     const filled = segment('seg-2', {
-      elements: [{ id: 'title', type: 'text', content: 'Разбор' }],
+      elements: [{ id: 'title', type: 'text', content: 'Разбор', locked: false }],
     });
     expect(emptySegments(project([segment('seg-1'), filled])).map((s) => s.id)).toEqual(['seg-1']);
   });

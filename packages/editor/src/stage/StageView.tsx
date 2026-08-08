@@ -44,7 +44,7 @@ import {
 import type { Element, ElementState, Slide } from '@player/core';
 import { applyTheme, ScenePreview, type Segment } from '@player/player';
 
-import { boxToScreen, toScene, topmostAt, type Box, type Point } from './geometry.js';
+import { boxToScreen, toScene, topmostAt, unionBox, type Box, type Point } from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
 import { angleTo, centerOf, moveBox, resizeBox, rotateBox } from './transform.js';
 
@@ -95,8 +95,14 @@ export interface StageViewProps {
   segment: Segment;
   /** Слайд, который автор сейчас правит: именно его states рисует и меняет сцена. */
   currentSlide: Slide;
-  selectedId: string | undefined;
-  onSelect: (id: string | undefined) => void;
+  selectedIds: readonly string[];
+  /**
+   * `additive` — автор держал Shift: добавить к выделению, а не заменить.
+   * Признак снимается с самого события мыши здесь же, а не берётся
+   * из общего состояния клавиш: то разъедется с действительностью, стоит
+   * окну потерять фокус с зажатым Shift.
+   */
+  onSelect: (id: string | undefined, additive?: boolean) => void;
   /**
    * Правка состояния элемента жестом (перетаскивание, ручка) на ТЕКУЩЕМ
    * слайде. Вызывается МНОГОКРАТНО за один жест — каждое `pointermove` даёт
@@ -117,8 +123,17 @@ export interface StageViewProps {
 interface Gesture {
   readonly pointerId: number;
   readonly grip: Grip | 'body';
+  /** За кого взялись. Ручки изменения размера работают только с ним. */
   readonly elementId: string;
   readonly startBox: Box;
+  /**
+   * Стартовые боксы ВСЕХ, кого двигает этот жест, включая взятого.
+   *
+   * Нужны именно стартовые: считать смещение от текущего положения на каждом
+   * `pointermove` значило бы накапливать ошибку округления — пачка расползлась
+   * бы за одно долгое перетаскивание, и тем сильнее, чем дольше тянут.
+   */
+  readonly startBoxes: ReadonlyMap<string, Box>;
   readonly startPoint: Point;
   /** Для вращения: угол, зафиксированный в момент захвата. */
   readonly grabOffset: number;
@@ -138,7 +153,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   {
     segment,
     currentSlide,
-    selectedId,
+    selectedIds,
     onSelect,
     onElementStateChange,
     onElementContentChange,
@@ -153,6 +168,14 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const previewRef = useRef<ScenePreview | null>(null);
   const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
   const gestureRef = useRef<Gesture | null>(null);
+  /**
+   * Двинулся ли указатель за текущий жест.
+   *
+   * Отдельной ссылкой, а не полем `Gesture`: тот readonly и пересоздавать его
+   * на каждом `pointermove` значило бы мусорить объектами десятки раз
+   * в секунду ровно там, где считается плавность перетаскивания.
+   */
+  const gestureMovedRef = useRef(false);
 
   const [frame, setFrame] = useState<Frame | null>(null);
 
@@ -180,7 +203,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   /** Пересчитывает рамку выделения в пикселях контейнера. */
   const syncFrame = useCallback((): void => {
     const { host, stage } = requireNodes();
-    const selectedState = selectedId === undefined ? undefined : currentSlide.states[selectedId];
+    // Рамка строится по тем выделенным, кто ЕСТЬ на этом слайде: элемент
+    // может быть выделен и при этом не появляться в текущем кадре.
+    const boxes = selectedIds
+      .map((id) => currentSlide.states[id])
+      .filter((state): state is ElementState => state !== undefined)
+      .map(boxOf);
+    const selectedState = boxes.length === 1 ? boxes[0]! : unionBox(boxes);
     if (!selectedState) {
       setFrame(null);
       return;
@@ -197,7 +226,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       height: screen.height,
       rotation: selectedState.rotation,
     });
-  }, [requireNodes, selectedId, currentSlide, segment.stage.width]);
+  }, [requireNodes, selectedIds, currentSlide, segment.stage.width]);
 
   /**
    * Сегмент из ОДНОГО слайда — то, что реально показывает и правит сцена.
@@ -390,14 +419,31 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   );
 
   const beginGesture = useCallback(
-    (grip: Grip | 'body', elementId: string, box: Box, event: ReactPointerEvent<HTMLElement>): void => {
+    (
+      grip: Grip | 'body',
+      elementId: string,
+      box: Box,
+      event: ReactPointerEvent<HTMLElement>,
+      /** Кого ещё тянуть вместе со взятым. Для ручек — никого. */
+      alsoMove: readonly string[] = [],
+    ): void => {
       const { host } = requireNodes();
       const point = scenePointOf(event);
+      const startBoxes = new Map<string, Box>([[elementId, box]]);
+      for (const id of alsoMove) {
+        if (id === elementId) continue;
+        const state = currentSlide.states[id];
+        // Выделенный, которого нет на этом слайде, не двигается: двигать
+        // нечего. Это не ошибка — элемент просто не появляется в этом кадре.
+        if (state) startBoxes.set(id, boxOf(state));
+      }
+      gestureMovedRef.current = false;
       gestureRef.current = {
         pointerId: event.pointerId,
         grip,
         elementId,
         startBox: box,
+        startBoxes,
         startPoint: point,
         // Разница между текущим поворотом и углом захвата. Без неё элемент
         // прыгнул бы в момент, когда его схватили за ручку вращения.
@@ -538,22 +584,45 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         onSelect(undefined);
         return;
       }
-      onSelect(hit.id);
-      beginGesture('body', hit.id, hit.box, event);
+
+      const additive = event.shiftKey;
+      const alreadySelected = selectedIds.includes(hit.id);
+
+      /**
+       * Клик по УЖЕ выделенному внутри пачки её не схлопывает.
+       *
+       * Без этого множественное выделение было бы бесполезно: автор выделил
+       * три элемента, взялся за один, чтобы подвинуть все, — и в момент
+       * нажатия остались бы двое невыделенных, то есть поехал бы один.
+       * Так же ведёт себя Canva.
+       */
+      if (additive) {
+        onSelect(hit.id, true);
+        // Shift-клик — жест выделения, а не перетаскивания: начинать
+        // перетаскивание тем же нажатием значило бы двигать пачку каждый раз,
+        // когда автор просто добавляет к ней элемент.
+        return;
+      }
+      if (!alreadySelected) onSelect(hit.id);
+
+      beginGesture('body', hit.id, hit.box, event, alreadySelected ? selectedIds : []);
     },
-    [scenePointOf, hitElementAt, onSelect, beginGesture],
+    [scenePointOf, hitElementAt, onSelect, beginGesture, selectedIds],
   );
 
   const handleGripDown = useCallback(
     (grip: Grip, event: ReactPointerEvent<HTMLElement>): void => {
       // Иначе то же нажатие уйдёт в сцену и начнёт перетаскивание элемента.
       event.stopPropagation();
-      if (selectedId === undefined) throw new Error('Ручка нажата без выделенного элемента');
-      const state = currentSlide.states[selectedId];
-      if (!state) throw new Error(`У выделенного элемента «${selectedId}» нет состояния на текущем слайде`);
-      beginGesture(grip, selectedId, boxOf(state), event);
+      // Ручки рисуются только при одном выделенном (см. Overlay), поэтому
+      // сюда нельзя попасть с пачкой — а если попали, это сломанная разметка.
+      const soleId = selectedIds.length === 1 ? selectedIds[0] : undefined;
+      if (soleId === undefined) throw new Error('Ручка нажата без единственного выделенного элемента');
+      const state = currentSlide.states[soleId];
+      if (!state) throw new Error(`У выделенного элемента «${soleId}» нет состояния на текущем слайде`);
+      beginGesture(grip, soleId, boxOf(state), event);
     },
-    [selectedId, currentSlide, beginGesture],
+    [selectedIds, currentSlide, beginGesture],
   );
 
   const handleMove = useCallback(
@@ -562,14 +631,32 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       if (!gesture || gesture.pointerId !== event.pointerId) return;
 
       const point = scenePointOf(event);
-      let next: Box;
+      gestureMovedRef.current = true;
+
       if (gesture.grip === 'body') {
-        next = moveBox(gesture.startBox, point.x - gesture.startPoint.x, point.y - gesture.startPoint.y);
-      } else if (gesture.grip === 'rotate') {
-        next = rotateBox(gesture.startBox, point, gesture.grabOffset);
-      } else {
-        next = resizeBox(gesture.startBox, gesture.grip, point);
+        /**
+         * Перетаскивание: КАЖДЫЙ взятый едет от СВОЕГО стартового бокса
+         * на одну и ту же дельту.
+         *
+         * Дельта берётся от точки захвата, а не от бокса взятого элемента:
+         * иначе пачка съезжалась бы к тому, за кого схватили. Взаимное
+         * расположение обязано сохраниться — это и есть смысл жеста.
+         */
+        const dx = point.x - gesture.startPoint.x;
+        const dy = point.y - gesture.startPoint.y;
+        for (const [id, startBox] of gesture.startBoxes) {
+          const moved = moveBox(startBox, dx, dy);
+          onElementStateChange(id, { x: round(moved.x), y: round(moved.y) });
+        }
+        return;
       }
+
+      // Ручки работают с одним элементом: множественное изменение размера
+      // потребовало бы масштабировать каждого относительно общей рамки,
+      // а её у пачки нет как сохраняемой величины (см. `unionBox`).
+      const next = gesture.grip === 'rotate'
+        ? rotateBox(gesture.startBox, point, gesture.grabOffset)
+        : resizeBox(gesture.startBox, gesture.grip, point);
 
       onElementStateChange(gesture.elementId, {
         x: round(next.x),
@@ -587,15 +674,29 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       const gesture = gestureRef.current;
       if (!gesture || gesture.pointerId !== event.pointerId) return;
       gestureRef.current = null;
+      const moved = gestureMovedRef.current;
       const host = hostRef.current;
       if (host?.hasPointerCapture(event.pointerId)) host.releasePointerCapture(event.pointerId);
+
+      /**
+       * Клик по элементу пачки БЕЗ перетаскивания схлопывает выделение до него.
+       *
+       * Решение откладывается до отпускания намеренно, и обе половины нужны:
+       * на нажатии пачку надо СОХРАНИТЬ, иначе её нельзя потянуть (поехал бы
+       * один элемент); на отпускании без движения её надо СНЯТЬ, иначе
+       * уменьшить выделение можно было бы только щелчком по пустому месту.
+       * Так же ведёт себя Canva.
+       */
+      if (!moved && gesture.grip === 'body' && gesture.startBoxes.size > 1) {
+        onSelect(gesture.elementId);
+      }
       // Коммит-точка жеста (срез 2): если движение и правда было,
       // `onElementStateChange` уже записал финальное значение — здесь только
       // закрываем шаг истории. Если жеста фактически не было (простой клик
       // без движения), это безопасный no-op на стороне историй.
       onCommitHistory();
     },
-    [onCommitHistory],
+    [onCommitHistory, onSelect],
   );
 
   /**
@@ -630,7 +731,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       onDrop={handleDrop}
     >
       <div ref={stageRef} />
-      <Overlay frame={frame} onGripDown={handleGripDown} />
+      <Overlay frame={frame} showHandles={selectedIds.length === 1} onGripDown={handleGripDown} />
     </div>
   );
 });

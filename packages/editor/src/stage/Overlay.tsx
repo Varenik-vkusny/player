@@ -30,6 +30,15 @@ export interface Frame {
 export interface OverlayProps {
   /** null — выделения нет, рисовать нечего. */
   frame: Frame | null;
+  /**
+   * Рисовать ли ручки. `false` при множественном выделении: тянуть общую
+   * рамку пока нечем — изменение размера пачки потребовало бы масштабировать
+   * каждого относительно этой рамки, а своей геометрии у неё нет.
+   *
+   * Ручки, нарисованные без действия за ними, хуже отсутствующих: автор
+   * потянет и решит, что редактор сломан.
+   */
+  showHandles: boolean;
   onGripDown: (grip: Grip, event: ReactPointerEvent<HTMLElement>) => void;
 }
 
@@ -45,7 +54,7 @@ const HANDLES: readonly { grip: ResizeHandle; x: number; y: number; cursor: stri
   { grip: 'w', x: 0, y: 0.5, cursor: 'ew-resize' },
 ];
 
-export function Overlay({ frame, onGripDown }: OverlayProps): ReactElement | null {
+export function Overlay({ frame, showHandles, onGripDown }: OverlayProps): ReactElement | null {
   if (!frame) return null;
 
   return (
@@ -63,12 +72,14 @@ export function Overlay({ frame, onGripDown }: OverlayProps): ReactElement | nul
         transform: frame.rotation ? `rotate(${frame.rotation}deg)` : undefined,
       }}
     >
-      <div
-        className="ed-grip ed-grip-rotate"
-        data-grip="rotate"
-        onPointerDown={(event) => onGripDown('rotate', event)}
-      />
-      {HANDLES.map(({ grip, x, y, cursor }) => (
+      {showHandles ? (
+        <div
+          className="ed-grip ed-grip-rotate"
+          data-grip="rotate"
+          onPointerDown={(event) => onGripDown('rotate', event)}
+        />
+      ) : null}
+      {(showHandles ? HANDLES : []).map(({ grip, x, y, cursor }) => (
         <div
           key={grip}
           className="ed-grip"

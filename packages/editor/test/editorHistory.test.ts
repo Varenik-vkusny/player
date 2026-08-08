@@ -22,11 +22,11 @@ import {
  */
 
 function element(id: string): Element {
-  return { id, type: 'shape', content: '' };
+  return { id, type: 'shape', content: '', locked: false };
 }
 
 function elementState(overrides: Partial<ElementState> = {}): ElementState {
-  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {}, ...overrides };
+  return { x: 0, y: 0, width: 100, height: 100, rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {}, ...overrides };
 }
 
 function baseProject(): Project {
@@ -77,7 +77,7 @@ describe('initialHistoryState', () => {
     const state = initialHistoryState(project);
 
     expect(state.history.present).toBe(project);
-    expect(state.selectedId).toBeUndefined();
+    expect(state.selectedIds).toEqual([]);
     expect(state.currentSegmentId).toBe('seg-1');
     expect(state.currentSlideId).toBe('slide-1');
     expect(state.gestureOpen).toBe(false);
@@ -87,11 +87,11 @@ describe('initialHistoryState', () => {
 });
 
 describe('правило 1: select/selectSegment/selectSlide в историю не пишутся', () => {
-  it('select меняет selectedId, history остаётся тем же объектом по ссылке', () => {
+  it('select меняет selectedIds, history остаётся тем же объектом по ссылке', () => {
     const state = baseState();
     const next = historyReducer(state, { type: 'select', id: 'title' });
 
-    expect(next.selectedId).toBe('title');
+    expect(next.selectedIds).toEqual(['title']);
     expect(next.history).toBe(state.history);
     expect(canUndoState(next)).toBe(false);
   });
@@ -133,7 +133,7 @@ describe('одиночные действия: по шагу на вызов', (
 
     expect(next.history.present).not.toBe(state.history.present);
     expect(next.history.past).toEqual([state.history.present]);
-    expect(next.selectedId).toBe('new-shape');
+    expect(next.selectedIds).toEqual(['new-shape']);
     expect(canUndoState(next)).toBe(true);
   });
 
@@ -357,12 +357,12 @@ describe('правило 3: отмена/повтор не берут на се�
       state: elementState({ x: 300 }),
       at: { kind: 'seconds', t: 0 },
     });
-    expect(withNew.selectedId).toBe('shape-1');
+    expect(withNew.selectedIds).toEqual(['shape-1']);
 
     const undone = historyReducer(withNew, { type: 'undo' });
     // shape-1 отменой убран из проекта — выделение обязано слететь.
     expect(undone.history.present.segments[0]!.elements.some((e) => e.id === 'shape-1')).toBe(false);
-    expect(undone.selectedId).toBeUndefined();
+    expect(undone.selectedIds).toEqual([]);
   });
 
   it('после undo выделение остаётся, если выделенный элемент в восстановленном проекте всё ещё есть', () => {
@@ -377,7 +377,7 @@ describe('правило 3: отмена/повтор не берут на се�
     });
 
     const undone = historyReducer(state, { type: 'undo' });
-    expect(undone.selectedId).toBe('subtitle');
+    expect(undone.selectedIds).toEqual(['subtitle']);
   });
 
   it('redo не восстанавливает выделение само по себе — оно снаружи истории', () => {
@@ -389,13 +389,13 @@ describe('правило 3: отмена/повтор не берут на се�
       at: { kind: 'seconds', t: 0 },
     });
     const undone = historyReducer(withNew, { type: 'undo' });
-    expect(undone.selectedId).toBeUndefined();
+    expect(undone.selectedIds).toEqual([]);
 
     const redone = historyReducer(undone, { type: 'redo' });
     expect(redone.history.present.segments[0]!.elements.some((e) => e.id === 'shape-1')).toBe(true);
     // Выделение НЕ подтягивается обратно автоматически — snapshot истории
-    // не хранит selectedId по определению (правило 1).
-    expect(redone.selectedId).toBeUndefined();
+    // не хранит selectedIds по определению (правило 1).
+    expect(redone.selectedIds).toEqual([]);
   });
 
   it('undo сбрасывает незакрытый жест (защитный случай)', () => {

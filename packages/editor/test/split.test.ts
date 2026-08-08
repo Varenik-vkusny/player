@@ -39,7 +39,7 @@ const wordRef = (index: number) => ({
 
 const box = (x: number) => ({
   x, y: 0, width: 100, height: 100,
-  rotation: 0, zIndex: 0, opacity: 1, visible: true, style: {},
+  rotation: 0, zIndex: 0, opacity: 1, visible: true, flipX: false, flipY: false, style: {},
 });
 
 /**
@@ -57,8 +57,8 @@ function project(): Project {
       description: '',
       audio: { src: '/track.mp3', offset: 0, duration: 10, words: WORDS },
       elements: [
-        { id: 'hero', type: 'text', content: 'Заголовок' },
-        { id: 'late', type: 'shape', content: '' },
+        { id: 'hero', type: 'text', content: 'Заголовок', locked: false },
+        { id: 'late', type: 'shape', content: '', locked: false },
       ],
       slides: [
         { id: 'sl-0', at: { kind: 'seconds', t: 0 }, transition: 'morph', transitionSeconds: 0.6, states: { hero: box(0) } },

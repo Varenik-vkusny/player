@@ -3285,9 +3285,12 @@ var to = .6, no = [
 		"text",
 		"image",
 		"shape",
-		"video"
+		"video",
+		"group"
 	]),
-	content: I().default("")
+	content: I().default(""),
+	parentId: I().optional(),
+	locked: fa().default(!1)
 }), fo = z({
 	x: R().finite(),
 	y: R().finite(),
@@ -3297,6 +3300,8 @@ var to = .6, no = [
 	zIndex: R().int().default(0),
 	opacity: R().min(0).max(1).default(1),
 	visible: fa().default(!0),
+	flipX: fa().default(!1),
+	flipY: fa().default(!1),
 	style: Da(I(), xa([I(), R()])).default({})
 }), po = z({
 	id: B,
@@ -3408,13 +3413,70 @@ var to = .6, no = [
 	slides: va(po).min(1),
 	gates: va(ho).default([]),
 	exit: go
+}).superRefine((e, t) => {
+	let n = new Map(e.elements.map((e) => [e.id, e]));
+	for (let [r, i] of e.elements.entries()) {
+		let { parentId: e } = i;
+		if (e === void 0) continue;
+		let a = n.get(e);
+		if (!a) {
+			t.addIssue({
+				code: "custom",
+				path: [
+					"elements",
+					r,
+					"parentId"
+				],
+				message: `Элемент «${i.id}» ссылается на группу «${e}», которой нет в этом сегменте.`
+			});
+			continue;
+		}
+		if (a.type !== "group") {
+			t.addIssue({
+				code: "custom",
+				path: [
+					"elements",
+					r,
+					"parentId"
+				],
+				message: `Элемент «${i.id}» вложен в «${e}», а тот имеет тип «${a.type}». Вкладывать можно только в group.`
+			});
+			continue;
+		}
+		let o = /* @__PURE__ */ new Set([i.id]), s = e;
+		for (; s !== void 0;) {
+			if (o.has(s)) {
+				t.addIssue({
+					code: "custom",
+					path: [
+						"elements",
+						r,
+						"parentId"
+					],
+					message: `Вложенность зациклена: «${i.id}» оказывается собственным предком.`
+				});
+				break;
+			}
+			o.add(s), s = n.get(s)?.parentId;
+		}
+	}
+	for (let [n, r] of e.slides.entries()) for (let i of e.elements) i.parentId !== void 0 && r.states[i.id] !== void 0 && r.states[i.parentId] === void 0 && t.addIssue({
+		code: "custom",
+		path: [
+			"slides",
+			n,
+			"states",
+			i.id
+		],
+		message: `Элемент «${i.id}» есть на слайде, а его группы «${i.parentId}» — нет. Координаты ребёнка отсчитываются от группы, поэтому позиции у него не было бы.`
+	});
 });
 z({
 	entry: B,
 	segments: va(_o).min(1)
 });
 var vo = z({
-	schemaVersion: ja(10),
+	schemaVersion: ja(11),
 	meta: z({
 		title: I(),
 		stageWidth: R().int().positive().default(1920),
@@ -3878,6 +3940,15 @@ var Do = Object.freeze({
 			entry: t.entry,
 			segments: t.segments
 		};
+	},
+	10: (e) => {
+		let t = e;
+		return {
+			schemaVersion: 11,
+			meta: t.meta,
+			entry: t.entry,
+			segments: t.segments
+		};
 	}
 }), ko = class extends Error {
 	found;
@@ -3893,9 +3964,9 @@ function Ao(e) {
 }
 function jo(e) {
 	let t = Ao(e);
-	if (t > 10) throw new ko(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 10. Обновите приложение.`, t);
+	if (t > 11) throw new ko(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 11. Обновите приложение.`, t);
 	let n = e;
-	for (; t < 10;) {
+	for (; t < 11;) {
 		let e = Oo[t];
 		if (!e) throw new ko(`Нет миграции с версии ${t} на ${t + 1}. Каждая версия схемы обязана иметь миграцию (инвариант №7).`, t);
 		n = e(n), t = Ao(n);
@@ -5653,7 +5724,7 @@ du("text", (e, t) => {
 	}
 	let r = n;
 	t.content === "" ? r.removeAttribute("src") : r.getAttribute("src") !== t.content && r.setAttribute("src", t.content);
-});
+}), du("group", () => {});
 //#endregion
 //#region packages/player/src/render.ts
 var pu = 1920, mu = 1080;

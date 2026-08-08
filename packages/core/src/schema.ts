@@ -25,7 +25,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 /**
  * Длительность перехода по умолчанию, секунды.
@@ -274,12 +274,37 @@ export const TimeRefSchema = z.discriminatedUnion('kind', [
  * Экспортированный перечень убирает возможность разъехаться: список
  * ровно один, остальные на него ссылаются.
  */
-export const ELEMENT_TYPES = ['text', 'image', 'shape', 'video'] as const;
+export const ELEMENT_TYPES = ['text', 'image', 'shape', 'video', 'group'] as const;
 
 export const ElementSchema = z.object({
   id: Id,
   type: z.enum(ELEMENT_TYPES),
   content: z.string().default(''),
+  /**
+   * Родительская группа. Появилось в v11.
+   *
+   * Дерево выражено ССЫЛКОЙ ВВЕРХ, а не списком детей у родителя, и это
+   * не вкусовщина. Список детей пришлось бы согласовывать с двумя концами
+   * сразу: родитель знает детей, ребёнок не знает родителя — и разъехаться
+   * они могли бы МОЛЧА. Ссылка одна, рассогласовать нечего.
+   *
+   * Отсутствие означает «элемент верхнего уровня». Куда `parentId` может
+   * указывать, ограничено проверкой у сегмента: только на элемент типа
+   * `'group'` того же сегмента и без циклов.
+   *
+   * Решение владельца 08.08.2026: координаты ребёнка отсчитываются
+   * ОТ ГРУППЫ, как у Canva. → docs/session-28-plan.md §3
+   */
+  parentId: z.string().optional(),
+  /**
+   * Запертый элемент не берётся выделением.
+   *
+   * У ЭЛЕМЕНТА, а не у состояния, и разница смысловая: запирание —
+   * свойство авторской работы, а не кадра. «Заперт на одном слайде
+   * и свободен на соседнем» — состояние, которому нельзя приписать смысл,
+   * поэтому оно и не выразимо.
+   */
+  locked: z.boolean().default(false),
 });
 
 /**
@@ -307,6 +332,25 @@ export const ElementStateSchema = z.object({
   zIndex: z.number().int().default(0),
   opacity: z.number().min(0).max(1).default(1),
   visible: z.boolean().default(true),
+  /**
+   * Отражение по горизонтали и вертикали. Появилось в v11.
+   *
+   * У СОСТОЯНИЯ, а не у элемента, в отличие от `locked` рядом: отражение
+   * видно зрителю, значит вправе меняться от слайда к слайду — как поворот
+   * и прозрачность, которые лежат здесь же.
+   *
+   * ОСТОРОЖНО, мина, найденная до кода. Выразить отражение «очевидным»
+   * `transform: scaleX(-1)` НЕЛЬЗЯ без правки движка: морфинг анимирует
+   * `scaleX` В ЕДИНИЦУ (`morph.ts`, ветка `morph`), поэтому переход молча
+   * снял бы отражение — элемент доехал бы до следующего слайда
+   * неотражённым. В модели при этом осталось бы `flipX: true`, то есть
+   * юнит-тест на состояние был бы зелёным.
+   *
+   * Поэтому поля пока ТОЛЬКО в схеме: рендер и морфинг их не применяют.
+   * → docs/session-28-plan.md §4а
+   */
+  flipX: z.boolean().default(false),
+  flipY: z.boolean().default(false),
   style: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
 });
 
@@ -687,7 +731,88 @@ export const SegmentSchema = z.object({
   slides: z.array(SlideSchema).min(1),
   gates: z.array(GateSchema).default([]),
   exit: ExitSchema,
-});
+})
+  /**
+   * Группы: что схема обязана делать НЕВЫРАЗИМЫМ (v11).
+   *
+   * Проверка стоит здесь, а не у элемента, по необходимости: `parentId`
+   * ссылается на соседа по массиву, а условие про состояния смотрит ещё
+   * и в слайды. Сегмент — единственное место, которое видит и то и другое.
+   *
+   * Договором «мы так не делаем» это закрывать нельзя: группа, ссылающаяся
+   * на себя, повесила бы обход дерева наглухо, а ребёнок без родителя
+   * не имеет позиции вовсе — его координаты отсчитываются от того, чего нет.
+   * Молчаливый запасной вариант («считать родителя в нуле») запрещён
+   * правилом «чини корень».
+   */
+  .superRefine((segment, ctx) => {
+    const byId = new Map(segment.elements.map((el) => [el.id, el]));
+
+    for (const [index, el] of segment.elements.entries()) {
+      const { parentId } = el;
+      if (parentId === undefined) continue;
+
+      const parent = byId.get(parentId);
+      if (!parent) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['elements', index, 'parentId'],
+          message: `Элемент «${el.id}» ссылается на группу «${parentId}», которой нет в этом сегменте.`,
+        });
+        continue;
+      }
+
+      if (parent.type !== 'group') {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['elements', index, 'parentId'],
+          message:
+            `Элемент «${el.id}» вложен в «${parentId}», а тот имеет тип «${parent.type}». `
+            + 'Вкладывать можно только в group.',
+        });
+        continue;
+      }
+
+      // Подъём до корня: цикл обнаруживается тем, что подъём не кончается.
+      const seen = new Set<string>([el.id]);
+      let current: string | undefined = parentId;
+      while (current !== undefined) {
+        if (seen.has(current)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['elements', index, 'parentId'],
+            message: `Вложенность зациклена: «${el.id}» оказывается собственным предком.`,
+          });
+          break;
+        }
+        seen.add(current);
+        current = byId.get(current)?.parentId;
+      }
+    }
+
+    /**
+     * Ребёнок не может быть на слайде, где нет его предка.
+     *
+     * ADR-015: элемент без состояния на слайде не рисуется вовсе. Значит
+     * состояние ребёнка при отсутствующем состоянии группы описывает
+     * положение относительно того, чего на этом слайде нет.
+     */
+    for (const [slideIndex, slide] of segment.slides.entries()) {
+      for (const el of segment.elements) {
+        if (el.parentId === undefined) continue;
+        if (slide.states[el.id] === undefined) continue;
+        if (slide.states[el.parentId] !== undefined) continue;
+
+        ctx.addIssue({
+          code: 'custom',
+          path: ['slides', slideIndex, 'states', el.id],
+          message:
+            `Элемент «${el.id}» есть на слайде, а его группы «${el.parentId}» — нет. `
+            + 'Координаты ребёнка отсчитываются от группы, поэтому позиции у него не было бы.',
+        });
+      }
+    }
+  });
 
 /** Объяснение — костяк из сегментов. В интерфейсе это оглавление, а не доска нодов. */
 export const __LESSON_REMOVED__ = z.object({

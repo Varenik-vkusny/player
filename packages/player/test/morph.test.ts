@@ -28,6 +28,7 @@ function state(patch: Partial<ElementState> = {}): ElementState {
   return {
     x: 0, y: 0, width: 100, height: 100,
     rotation: 0, zIndex: 0, opacity: 1, visible: true,
+    flipX: false, flipY: false,
     style: {},
     ...patch,
   };
