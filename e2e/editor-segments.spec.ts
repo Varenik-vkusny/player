@@ -170,7 +170,7 @@ test.describe('колонка редактора прокручивается д
     // зелена впустую.
     await expect(page.getByTestId('segment-add')).toBeAttached();
 
-    const column = page.locator('.ed-elements-panel');
+    const column = page.locator('.ed-side');
     const box = await column.boundingBox();
     if (!box) throw new Error('колонка не видна');
 
@@ -181,7 +181,19 @@ test.describe('колонка редактора прокручивается д
     // Настоящий жест зрителя, а НЕ scrollIntoViewIfNeeded: программная
     // прокрутка работает и в контейнере с overflow: hidden, поэтому такой
     // проверкой дефект не поймать — она была зелёной и на сломанном коде.
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    //
+    // Колесо крутим над ПОЛЕМ колонки, а не над её серединой. Причина
+    // измерена 09.08.2026 в живом Chrome: после переезда раскладки колонка
+    // стала 244 px вместо прежних 615, и её середина попала ВНУТРЬ списка
+    // элементов, у которого своя прокрутка (scrollHeight 208 при clientHeight
+    // 180). Вложенный список честно забирал колесо себе, и внешняя колонка
+    // не двигалась — scrollTop оставался нулём при перепаде высоты 710.
+    //
+    // Это промах жеста, а не дефект продукта: у автора колесо над списком
+    // тоже крутит список. Утверждение теста не тронуто — колонка обязана
+    // прокручиваться, — изменилось лишь место, куда наводится указатель:
+    // отступ 14 px по краю принадлежит самой колонке и никому больше.
+    await page.mouse.move(box.x + 4, box.y + box.height / 2);
     await page.mouse.wheel(0, 600);
 
     const scrolled = await column.evaluate((el) => el.scrollTop);

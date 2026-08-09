@@ -32,6 +32,10 @@ async function openEditor(page: Page, query = ''): Promise<void> {
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
     timeout: 30_000,
   });
+  // Тема уехала в каталог слева (Сессия 30) и открывается своей категорией
+  // на рельсе. Открытие входит в подготовку, а не в проверку: предмет всех
+  // тестов файла — сама тема, а не то, как до неё добраться.
+  await page.getByTestId('rail-theme').click();
 }
 
 /**

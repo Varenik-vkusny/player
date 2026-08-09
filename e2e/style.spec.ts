@@ -73,12 +73,22 @@ test.describe('секция «Вид»: правка стиля элемента
     await page.getByTestId('element-row-dot').click();
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
 
-    // Панель жива и показывает секцию — заголовок виден, приложение не упало.
-    await expect(page.getByText('Вид', { exact: true })).toBeVisible();
+    // Полный состав свойств живёт в панели «Объект» (Сессия 30): на полосе
+    // над холстом только частые поля, за остальным — одна дверь «Ещё…».
+    await page.getByTestId('propbar-more').click();
 
-    const amount = page.getByLabel('Скругление', { exact: true });
+    // Панель жива и показывает секцию — заголовок виден, приложение не упало.
+    const inspector = page.getByTestId('inspector');
+    await expect(inspector.getByText('Вид', { exact: true })).toBeVisible();
+
+    // Поиск СУЖЕН до инспектора намеренно. «Скругление» — частое поле фигуры,
+    // поэтому при открытой панели «Объект» оно есть на экране дважды: на полосе
+    // и в панели. Это не дефект, а решение (панель обязана показывать полный
+    // состав, иначе автор решит, что поля нет вовсе), но строгий режим
+    // Playwright на двух совпадениях падает. Здесь проверяется ПАНЕЛЬ.
+    const amount = inspector.getByLabel('Скругление', { exact: true });
     await expect(amount).toHaveValue('50');
-    const unit = page.getByLabel('Скругление: единица');
+    const unit = inspector.getByLabel('Скругление: единица');
     await expect(unit).toHaveValue('%');
 
     expect(errors, 'панель не имеет права падать на border-radius: 50%').toEqual([]);

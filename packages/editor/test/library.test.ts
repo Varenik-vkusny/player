@@ -108,6 +108,22 @@ describe('libraryItem: поиск по id', () => {
   });
 });
 
+describe('ELEMENT_LIBRARY: категория делит каталог между тремя панелями вставки', () => {
+  const VALID_CATEGORIES = ['shape', 'text', 'own'];
+
+  for (const item of ELEMENT_LIBRARY) {
+    it(`«${item.id}» имеет одну из трёх допустимых категорий`, () => {
+      expect(VALID_CATEGORIES).toContain(item.category);
+    });
+  }
+
+  for (const category of VALID_CATEGORIES) {
+    it(`в категории «${category}» есть хотя бы одна заготовка`, () => {
+      expect(ELEMENT_LIBRARY.some((item) => item.category === category)).toBe(true);
+    });
+  }
+});
+
 describe('ELEMENT_LIBRARY: уникальность', () => {
   it('id заготовок не повторяются', () => {
     const ids = ELEMENT_LIBRARY.map((item) => item.id);
