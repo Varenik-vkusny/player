@@ -250,9 +250,15 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
   };
   const after = editorReducer(before, action);
 
-  if (action.type === 'select') {
+  if (action.type === 'select' || action.type === 'selectMany') {
     // Правило №1: select истории не касается вовсе, даже когда меняет
     // выделение. history остаётся тем же объектом по ссылке.
+    //
+    // `selectMany` (резиновая рамка) — то же самое и по той же причине.
+    // Отдельной ветки он не требует: generic-путь ниже увидел бы, что
+    // project не изменился, и перенёс бы только `selectedIds`. Назван здесь
+    // явно, чтобы правило читалось целиком в одном месте, а не собиралось
+    // из «а этот, значит, попадает в общий случай».
     return sameIds(after.selectedIds, state.selectedIds) ? state : { ...state, selectedIds: after.selectedIds };
   }
 

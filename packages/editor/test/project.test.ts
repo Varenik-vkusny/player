@@ -128,6 +128,67 @@ describe('select', () => {
   });
 });
 
+describe('selectMany: улов резиновой рамки', () => {
+  it('выделяет весь список одним действием', () => {
+    const next = editorReducer(baseState(), {
+      type: 'selectMany',
+      ids: ['title', 'subtitle'],
+    });
+    expect(next.selectedIds).toEqual(['title', 'subtitle']);
+  });
+
+  it('замещает прежнее выделение, а не дополняет его', () => {
+    // Слом: забыть про mode и всегда объединять — обведение рамкой
+    // перестало бы СНИМАТЬ выделение с тех, кого рамка не накрыла.
+    const state = { ...baseState(), selectedIds: ['title'] };
+    const next = editorReducer(state, { type: 'selectMany', ids: ['subtitle'] });
+    expect(next.selectedIds).toEqual(['subtitle']);
+  });
+
+  it('mode add добавляет к прежнему выделению', () => {
+    const state = { ...baseState(), selectedIds: ['title'] };
+    const next = editorReducer(state, {
+      type: 'selectMany',
+      ids: ['subtitle'],
+      mode: 'add',
+    });
+    expect(next.selectedIds).toEqual(['title', 'subtitle']);
+  });
+
+  it('mode add не задваивает уже выделенного', () => {
+    // Рамка с Shift накрывает и тех, кто выделен Shift-кликом до неё.
+    // Слом: простая склейка массивов — элемент попал бы в список дважды,
+    // и перетаскивание пачки сдвинуло бы его на двойную дельту.
+    const state = { ...baseState(), selectedIds: ['title'] };
+    const next = editorReducer(state, {
+      type: 'selectMany',
+      ids: ['title', 'subtitle'],
+      mode: 'add',
+    });
+    expect(next.selectedIds).toEqual(['title', 'subtitle']);
+  });
+
+  it('пустой список снимает выделение', () => {
+    const state = { ...baseState(), selectedIds: ['title'] };
+    expect(editorReducer(state, { type: 'selectMany', ids: [] }).selectedIds).toEqual([]);
+  });
+
+  it('тот же улов возвращает ТО ЖЕ состояние по ссылке', () => {
+    // Обведение, ничего не изменившее, не должно пересобирать сцену.
+    // Слом: всегда возвращать спред — StageView перерисовывал бы сцену
+    // на каждое отпускание рамки.
+    const state = { ...baseState(), selectedIds: ['title', 'subtitle'] };
+    const next = editorReducer(state, { type: 'selectMany', ids: ['title', 'subtitle'] });
+    expect(next).toBe(state);
+  });
+
+  it('несуществующий элемент в списке бросает ошибку', () => {
+    expect(() =>
+      editorReducer(baseState(), { type: 'selectMany', ids: ['title', 'ghost'] }),
+    ).toThrow(/ghost/);
+  });
+});
+
 describe('replaceElement', () => {
   it('заменяет элемент; слайды и gates остаются теми же массивами по ссылке', () => {
     const state = baseState();

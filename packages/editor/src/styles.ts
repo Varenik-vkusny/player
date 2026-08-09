@@ -66,6 +66,18 @@ export const EDITOR_STYLES = `
   --ui-action-selected-bg: #e8f0ff;
   --ui-focus-ring: #4c8dff88;
 
+  /* Направляющая — НЕ синяя, в отличие от рамки выделения и рамки обведения.
+     Синяя линия рядом с синей рамкой читается как ещё одна граница элемента,
+     а не как подсказка о выравнивании. Тем же приёмом разводят их Canva
+     и Figma: у обеих направляющие в малиновом конце спектра. */
+  --ui-guide: #e0398f;
+
+  /* Заливка рамки обведения — ОТДЕЛЬНАЯ роль, а не --ui-focus-ring.
+     Кольцо фокуса задумано для теней и держит 53 % непрозрачности; заливкой
+     оно закрашивает холст так, что автор не видит, что именно обводит.
+     Проверено глазами 09.08.2026: на тёмном холсте разница решающая. */
+  --ui-marquee-fill: #4c8dff22;
+
   --ui-feedback-positive: #12a05f;
   --ui-feedback-warn: #a8720b;
   --ui-feedback-warn-fg: #6b4907;
@@ -175,6 +187,111 @@ export const EDITOR_STYLES = `
 
 /* Рамка выделения. Соседка сцены, а не её потомок: служебных узлов
    внутри сцены быть не должно. */
+/* Полоска расположения. Лежит ПОВЕРХ холста абсолютом, а не раздвигает его:
+   раздвигая, она меняла бы площадь сцены на каждое выделение, сцена
+   перемасштабировалась бы, и элементы дёргались бы под курсором автора
+   ровно в тот момент, когда он в них целится. */
+/* Колонка «полоска сверху, холст под ней». min-height: 0 обязателен, иначе
+   содержимое не даёт грид-ячейке сжаться и дорожка уезжает за край окна —
+   та же причина, что у .ed-main. */
+.ed-stage-cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.ed-stage-cell > .ed-stage-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Строка полоски. Высота ЗАДАНА и не зависит от того, есть ли выделение:
+   меняйся она, холст менял бы размер в момент выделения, сцена
+   пересчитывала бы масштаб, и элемент уезжал бы из-под курсора между двумя
+   кликами двойного щелчка. Пустая строка — цена постоянства, и она мала. */
+.ed-arrange-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 38px;
+  flex: none;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-surface-panel);
+}
+
+/* Подсказка в пустой строке. Без неё белая полоса над тёмным холстом
+   читается как поломка вёрстки, а не как «здесь пока нечего показывать»:
+   проверено глазами 09.08.2026. */
+.ed-arrange-hint {
+  font-size: 12px;
+  color: var(--ui-content-fg-tertiary);
+}
+
+.ed-arrange {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ed-arrange-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  cursor: pointer;
+}
+
+.ed-arrange-btn svg {
+  width: 16px;
+  height: 16px;
+  /* Значок рисуется прямоугольниками без собственной заливки: цвет берётся
+     от кнопки, поэтому гашение и наведение красят его сами собой. */
+  fill: currentColor;
+}
+
+.ed-arrange-btn:hover:not(:disabled) {
+  background: var(--ui-action-selected-bg);
+}
+
+.ed-arrange-btn:disabled {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+
+.ed-arrange-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 3px;
+  background: var(--ui-line);
+}
+
+/* Направляющая при перетаскивании. Толщина приходит из разметки в пикселях
+   контейнера, поэтому линия остаётся волосяной на любом масштабе сцены.
+   Цвет отдельной ролью: направляющая обязана отличаться от рамки выделения,
+   иначе автор читает её как ещё одну границу элемента. */
+.ed-guide {
+  position: absolute;
+  background: var(--ui-guide);
+  pointer-events: none;
+}
+
+/* Резиновая рамка обведения. Заливка полупрозрачная, чтобы было видно, что
+   попало внутрь: сплошная закрывала бы ровно те элементы, ради которых жест
+   и затевается. Указатель не ловит по той же причине, что и .ed-frame. */
+.ed-marquee {
+  position: absolute;
+  outline: 1px solid var(--ui-focus);
+  background: var(--ui-marquee-fill);
+  pointer-events: none;
+}
+
 .ed-frame {
   position: absolute;
   /* Контур, а не рамка. border участвует в раскладке: проценты в позиции

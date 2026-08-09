@@ -202,6 +202,90 @@ export function rotate(point: Point, center: Point, degrees: number): Point {
 }
 
 /**
+ * Четыре угла бокса в координатах сцены, с учётом поворота.
+ *
+ * Вынесено в общую функцию не ради краткости: формула угла повёрнутого бокса
+ * нужна и `unionBox`, и `intersectsRect`, а вторая её копия разошлась бы
+ * МОЛЧА — оба варианта выглядят одинаково правдоподобно, а расходятся только
+ * там, где автор что-то повернул. Тот же довод, по которому публична `rotate`.
+ *
+ * Порядок углов — по часовой стрелке от левого верхнего. Он важен только
+ * для читателя: обе вызывающие функции углы перебирают, а не индексируют.
+ */
+function corners(box: Box): readonly Point[] {
+  const points: readonly Point[] = [
+    { x: box.x, y: box.y },
+    { x: box.x + box.width, y: box.y },
+    { x: box.x + box.width, y: box.y + box.height },
+    { x: box.x, y: box.y + box.height },
+  ];
+  if (!box.rotation) return points;
+  const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+  return points.map((point) => rotate(point, center, box.rotation));
+}
+
+/** Отрезок, в который проецируется многоугольник на ось. */
+function project(points: readonly Point[], axis: Point): { min: number; max: number } {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    const value = point.x * axis.x + point.y * axis.y;
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+  return { min, max };
+}
+
+/**
+ * Пересекается ли бокс с прямоугольной областью — попал ли элемент
+ * в резиновую рамку выделения.
+ *
+ * Область приходит НЕПОВЁРНУТОЙ (`x`/`y`/`width`/`height` в координатах
+ * сцены): рамку автор тянет по осям экрана, своего наклона у неё нет.
+ * А вот бокс повёрнут быть может, и в этом вся сложность.
+ *
+ * Считается теоремой о разделяющей оси: два выпуклых многоугольника НЕ
+ * пересекаются тогда и только тогда, когда найдётся ось, на которую они
+ * проецируются без перекрытия. Для прямоугольников достаточно перебрать
+ * нормали их сторон — две у области (оси координат) и две у бокса
+ * (повёрнутые на его угол). Всего четыре оси.
+ *
+ * Соблазнительная замена — сравнить область с ОПИСАННЫМ прямоугольником
+ * бокса (`unionBox([box])`) — здесь была бы не приближением, а враньём,
+ * причём в сторону лишнего: у бокса 200×100 под 45° угол описанного
+ * прямоугольника отстоит от самого бокса на десятки пикселей, и рамка,
+ * прошедшая рядом, хватала бы элемент, которого не касалась. Дефект
+ * правдоподобный: на неповёрнутых элементах обе формулы дают одно и то же.
+ *
+ * Касание считается попаданием (сравнение нестрогое) — как и в `hitTest`.
+ * Автор, обводящий пачку, обычно промахивается ВНУТРЬ, и прощающее
+ * правило здесь честнее строгого.
+ */
+export function intersectsRect(
+  box: Box,
+  area: { x: number; y: number; width: number; height: number },
+): boolean {
+  const boxPoints = corners(box);
+  const areaPoints = corners({ ...area, rotation: 0 });
+
+  const radians = (box.rotation * Math.PI) / 180;
+  const axes: readonly Point[] = [
+    { x: 1, y: 0 },
+    { x: 0, y: 1 },
+    { x: Math.cos(radians), y: Math.sin(radians) },
+    { x: -Math.sin(radians), y: Math.cos(radians) },
+  ];
+
+  for (const axis of axes) {
+    const a = project(boxPoints, axis);
+    const b = project(areaPoints, axis);
+    // Зазор хотя бы по одной оси — пересечения нет, дальше можно не смотреть.
+    if (a.max < b.min || b.max < a.min) return false;
+  }
+  return true;
+}
+
+/**
  * Охватывающий прямоугольник нескольких боксов — рамка множественного
  * выделения.
  *
@@ -225,15 +309,7 @@ export function unionBox(boxes: readonly Box[]): Box | undefined {
   let bottom = Number.NEGATIVE_INFINITY;
 
   for (const box of boxes) {
-    const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const corners: readonly Point[] = [
-      { x: box.x, y: box.y },
-      { x: box.x + box.width, y: box.y },
-      { x: box.x + box.width, y: box.y + box.height },
-      { x: box.x, y: box.y + box.height },
-    ];
-    for (const corner of corners) {
-      const point = box.rotation ? rotate(corner, center, box.rotation) : corner;
+    for (const point of corners(box)) {
       left = Math.min(left, point.x);
       top = Math.min(top, point.y);
       right = Math.max(right, point.x);

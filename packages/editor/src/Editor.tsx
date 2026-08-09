@@ -44,6 +44,16 @@ import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js
 import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
+import { ArrangeBar } from './stage/ArrangeBar.js';
+import {
+  align,
+  distribute,
+  restack,
+  type AlignKind,
+  type DistributeAxis,
+  type LayerMove,
+  type Placed,
+} from './state/arrange.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
 import { answerVariables, variableRenameProblem } from './state/exits.js';
@@ -250,6 +260,12 @@ export function Editor({
     // Выделение элемента и метки взаимоисключающи (см. комментарий выше).
     setSelectedMark(undefined);
     dispatch({ type: 'select', id, mode: additive ? 'toggle' : 'replace' });
+  }, []);
+
+  /** Итог обведения резиновой рамкой — один шаг истории на весь улов. */
+  const handleSelectMany = useCallback((ids: readonly string[], additive: boolean) => {
+    setSelectedMark(undefined);
+    dispatch({ type: 'selectMany', ids, mode: additive ? 'add' : 'replace' });
   }, []);
 
   /**
@@ -600,6 +616,105 @@ export function Editor({
     gestureAtRef.current = null;
     dispatch({ type: 'commit' });
   }, []);
+
+  /**
+   * Пачка правок состояний ОДНИМ шагом истории — общая часть всех кнопок
+   * полоски расположения.
+   *
+   * `commit: false` у каждой правки плюс один `commit` в конце. Тот же приём,
+   * что у стрелок клавиатуры и у перетаскивания пачки: без него `Ctrl+Z`
+   * после выравнивания троих возвращал бы их по одному, и автор смотрел бы,
+   * как ряд разъезжается обратно.
+   */
+  const applyArrange = useCallback(
+    (patches: readonly { id: string; patch: Partial<ElementState> }[]) => {
+      if (patches.length === 0) return;
+      const at = headTimeRef();
+      for (const { id, patch } of patches) {
+        dispatch({ type: 'setElementState', elementId: id, patch, at, commit: false });
+      }
+      dispatch({ type: 'commit' });
+    },
+    [headTimeRef],
+  );
+
+  /** Выделенные, которые ЕСТЬ на текущем слайде: остальных двигать негде. */
+  const arrangeItems = useCallback(
+    (): Placed[] =>
+      state.selectedIds.flatMap((id) => {
+        const elementState = currentSlide.states[id];
+        return elementState
+          ? [{
+              id,
+              box: {
+                x: elementState.x,
+                y: elementState.y,
+                width: elementState.width,
+                height: elementState.height,
+                rotation: elementState.rotation,
+              },
+            }]
+          : [];
+      }),
+    [state.selectedIds, currentSlide],
+  );
+
+  /** Столько знаков уезжает в файл — как и при перетаскивании (StageView). */
+  const roundCoord = (value: number): number => Number(value.toFixed(2));
+
+  const handleAlign = useCallback(
+    (kind: AlignKind) => {
+      const moves = align(arrangeItems(), kind, segment.stage);
+      applyArrange(
+        moves.map((move) => ({
+          id: move.id,
+          patch: { x: roundCoord(move.x), y: roundCoord(move.y) },
+        })),
+      );
+    },
+    [arrangeItems, segment.stage, applyArrange],
+  );
+
+  const handleDistribute = useCallback(
+    (axis: DistributeAxis) => {
+      const moves = distribute(arrangeItems(), axis);
+      applyArrange(
+        moves.map((move) => ({
+          id: move.id,
+          patch: { x: roundCoord(move.x), y: roundCoord(move.y) },
+        })),
+      );
+    },
+    [arrangeItems, applyArrange],
+  );
+
+  const handleLayer = useCallback(
+    (move: LayerMove) => {
+      /**
+       * Стопка собирается в порядке `segment.elements`, а не по ключам
+       * `states`.
+       *
+       * При равных `zIndex` порядок решает именно он: `topmostAt` берёт
+       * того, кто позже в массиве, потому что `renderScene` вставляет узлы
+       * в порядке массива. Порядок ключей объекта — другая величина,
+       * и разойдясь с попаданием по клику, она дала бы автору стопку,
+       * не совпадающую с тем, что он видит.
+       */
+      const layers = segment.elements.flatMap((element) => {
+        const elementState = currentSlide.states[element.id];
+        return elementState ? [{ id: element.id, zIndex: elementState.zIndex }] : [];
+      });
+      const moving = state.selectedIds.filter((id) => currentSlide.states[id] !== undefined);
+      if (moving.length === 0) return;
+
+      applyArrange(
+        restack(layers, moving, move)
+          .filter((layer) => currentSlide.states[layer.id]!.zIndex !== layer.zIndex)
+          .map((layer) => ({ id: layer.id, patch: { zIndex: layer.zIndex } })),
+      );
+    },
+    [segment.elements, currentSlide, state.selectedIds, applyArrange],
+  );
 
   /**
    * Живое событие правки роли темы (`ThemePanel.tsx`) — тот же приём, что
@@ -1141,18 +1256,32 @@ export function Editor({
             выделение. Справа «смотрю»: полный сегмент в секунду головки —
             единственное место, где автор видит сам ПЕРЕХОД. */}
         <div className="ed-stages">
+        {/*
+          Полоска и холст — колонка. Полоска стоит НАД холстом в раскладке,
+          а не поверх него: лёжа поверх, она перехватывала бы нажатия
+          по элементам под собой (журнал Сессии 29, §8).
+        */}
+        <div className="ed-stage-cell">
+        <ArrangeBar
+          selectedCount={state.selectedIds.length}
+          onAlign={handleAlign}
+          onDistribute={handleDistribute}
+          onLayer={handleLayer}
+        />
         <StageView
           ref={stageRef}
           segment={segment}
           currentSlide={currentSlide}
           selectedIds={state.selectedIds}
           onSelect={handleSelect}
+          onSelectMany={handleSelectMany}
           onElementStateChange={handleElementStateChangeLive}
           onElementContentChange={handleElementContentChange}
           onCommitHistory={handleCommitHistory}
           onImageDrop={handleImageDrop}
           onReady={handleReady}
         />
+        </div>
         <div className="ed-watch" aria-label="Как это выглядит на дорожке">
           <span className="ed-watch-title">
             смотрю · {transport.positionSeconds.toFixed(2)} с
