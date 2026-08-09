@@ -44,11 +44,20 @@ test.describe('панель гейта: выбор варианта', () => {
 
     // Два текстовых элемента, разнесённые по сцене, чтобы клики в плеере
     // однозначно попадали каждый в свой узел.
+    // Каталог переехал на рельс (Сессия 30): заготовка видна, только когда
+    // открыта её категория. Клик по рельсу — часть жеста автора, а не обход.
+    // Координаты живут в панели «Объект» (Сессия 30): на полосе над холстом
+    // только частые поля стиля, остальное открывается кнопкой «Ещё…».
+    // Это тот же жест, что делает автор, а не обход интерфейса.
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click(); // text-1, авто-выделен
+    await page.getByTestId('propbar-more').click();
     await setNumberField(page, 'X, px', 100);
     await setNumberField(page, 'Y, px', 400);
 
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click(); // text-2, авто-выделен
+    await page.getByTestId('propbar-more').click();
     await setNumberField(page, 'X, px', 1000);
     await setNumberField(page, 'Y, px', 400);
 

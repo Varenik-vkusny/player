@@ -187,11 +187,11 @@ export const EDITOR_STYLES = `
 
 /* Рамка выделения. Соседка сцены, а не её потомок: служебных узлов
    внутри сцены быть не должно. */
-/* Полоска расположения. Лежит ПОВЕРХ холста абсолютом, а не раздвигает его:
+/* Полоса свойств. Лежит ПОВЕРХ холста абсолютом, а не раздвигает его:
    раздвигая, она меняла бы площадь сцены на каждое выделение, сцена
    перемасштабировалась бы, и элементы дёргались бы под курсором автора
    ровно в тот момент, когда он в них целится. */
-/* Колонка «полоска сверху, холст под ней». min-height: 0 обязателен, иначе
+/* Колонка «полоса сверху, холст под ней». min-height: 0 обязателен, иначе
    содержимое не даёт грид-ячейке сжаться и дорожка уезжает за край окна —
    та же причина, что у .ed-main. */
 .ed-stage-cell {
@@ -206,15 +206,20 @@ export const EDITOR_STYLES = `
   min-height: 0;
 }
 
-/* Строка полоски. Высота ЗАДАНА и не зависит от того, есть ли выделение:
-   меняйся она, холст менял бы размер в момент выделения, сцена
-   пересчитывала бы масштаб, и элемент уезжал бы из-под курсора между двумя
-   кликами двойного щелчка. Пустая строка — цена постоянства, и она мала. */
-.ed-arrange-row {
+/* Строка полосы свойств (бывшая полоска расположения, ArrangeBar → PropBar,
+   Сессия 30). Высота ЗАДАНА и не зависит от того, есть ли выделение: меняйся
+   она, холст менял бы размер в момент выделения, сцена пересчитывала бы
+   масштаб, и элемент уезжал бы из-под курсора между двумя кликами двойного
+   щелчка. Пустая строка — цена постоянства, и она мала.
+
+   56px, а не прежние 38 (замер каркаса, design/index.html): полю стиля
+   нужна подпись НАД значением (.ed-insp-field, переиспользован у виджетов
+   стиля), кнопкам расположения — нет, и оба ряда делят одну строку. */
+.ed-propbar-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 38px;
+  height: 56px;
   flex: none;
   border-bottom: 1px solid var(--ui-line);
   background: var(--ui-surface-panel);
@@ -222,19 +227,117 @@ export const EDITOR_STYLES = `
 
 /* Подсказка в пустой строке. Без неё белая полоса над тёмным холстом
    читается как поломка вёрстки, а не как «здесь пока нечего показывать»:
-   проверено глазами 09.08.2026. */
-.ed-arrange-hint {
+   проверено глазами 09.08.2026. Та же подпись — «Общих свойств нет» —
+   для непустого выделения без общих полей стиля (задание Сессии 30):
+   пустоты быть не должно, автор обязан понимать, почему ничего не предлагают. */
+.ed-propbar-hint {
   font-size: 12px;
   color: var(--ui-content-fg-tertiary);
 }
 
-.ed-arrange {
+.ed-propbar {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
+  width: 100%;
+  height: 100%;
+  padding: 0 10px;
+  /* Полей стиля и кнопок вместе может не хватить ширины на узком окне —
+     полоса скроллится сама, а не толкает соседей (тот же закон, что
+     у .ed-slide-strip). */
+  overflow-x: auto;
 }
 
-.ed-arrange-btn {
+/* Обёртка виджета поля стиля на полосе — тот же .ed-insp-field, что и
+   в панели «Объект» (переиспользован приём правки стиля, не заведён
+   второй), только с фиксированной шириной: без неё поле в гибкой строке
+   схлопывается до min-content, потому что его input внутри задан как
+   width: 100% от неопределённого родителя. */
+/* Виджет поля стиля родом из панели «Объект», где он стоит колонкой:
+   подпись НАД полем, пояснение под ним. На полосе такой виджет занимал
+   125 px по высоте при полосе в 56 — замерено глазами 09.08.2026: поля
+   торчали вверх и накрывали шапку редактора, а обрезанное пояснение
+   выглядело как поломка вёрстки. Ни один из 313 e2e этого не увидел:
+   поля НАХОДЯТСЯ и правятся, они просто нарисованы поверх чужой зоны.
+
+   Поэтому на полосе виджет разворачивается в строку и ужимается по высоте.
+   Подпись прячется не из экономии, а потому что на полосе роль поля видна
+   по самому контролу (образец цвета, число, список); в панели «Объект»,
+   где полей два десятка подряд, подпись остаётся. */
+.ed-propbar-field {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 168px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* Подпись и пояснение виджета на полосе не показываются: высоты нет.
+   Доступность при этом не страдает — подпись остаётся в разметке, связанной
+   с полем через htmlFor, и доступна чтению с экрана; скрыт только показ. */
+.ed-propbar-field .ed-insp-label,
+.ed-propbar-field .ed-insp-note {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Внутренняя колонка виджета (.ed-insp-field) распрямляется в строку —
+   иначе поле остаётся высотой 65 px при полосе 56 и торчит наружу. */
+.ed-propbar-field .ed-insp-field {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* «Отвязать от темы» на полосе остаётся ДЕЙСТВУЮЩЕЙ кнопкой, только
+   ужимается до значка. Первая попытка чинить высоту полосы прятала её
+   через display: none — и e2e справедливо покраснел: автор терял
+   единственный способ отвязать элемент от роли темы, а тихая пропажа
+   действия хуже кривой вёрстки, которую она чинила. Подпись остаётся
+   в разметке (кнопка находится по имени и читается с экрана), сжимается
+   только показ. */
+.ed-propbar-field .ed-insp-field > button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  /* Текст уводится за пределы кнопки, а на его месте рисуется значок
+     разрыва связи: ширины на слова здесь нет, а смысл нужен. */
+  text-indent: -999px;
+  position: relative;
+}
+
+.ed-propbar-field .ed-insp-field > button::after {
+  content: '⛓';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-indent: 0;
+  font-size: 13px;
+}
+
+.ed-propbar-field input,
+.ed-propbar-field select {
+  height: 28px;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.ed-propbar-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -248,7 +351,7 @@ export const EDITOR_STYLES = `
   cursor: pointer;
 }
 
-.ed-arrange-btn svg {
+.ed-propbar-btn svg {
   width: 16px;
   height: 16px;
   /* Значок рисуется прямоугольниками без собственной заливки: цвет берётся
@@ -256,21 +359,42 @@ export const EDITOR_STYLES = `
   fill: currentColor;
 }
 
-.ed-arrange-btn:hover:not(:disabled) {
+.ed-propbar-btn:hover:not(:disabled) {
   background: var(--ui-action-selected-bg);
 }
 
-.ed-arrange-btn:disabled {
+.ed-propbar-btn:disabled {
   color: var(--ui-content-fg-tertiary);
   cursor: default;
 }
 
-.ed-arrange-sep {
+.ed-propbar-sep {
+  flex: 0 0 auto;
   width: 1px;
   height: 18px;
   margin: 0 3px;
   background: var(--ui-line);
 }
+
+/* Распорка перед «Ещё…» — одна дверь в панель «Объект», прижатая к правому
+   краю полосы (задание Сессии 30: «справа, после распорки»). */
+.ed-propbar-spacer {
+  flex: 1 1 auto;
+}
+
+.ed-propbar-more {
+  flex: 0 0 auto;
+  padding: 4px 10px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: var(--ui-surface-raised);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ed-propbar-more:hover { border-color: var(--ui-action-selected-line); }
 
 /* Направляющая при перетаскивании. Толщина приходит из разметки в пикселях
    контейнера, поэтому линия остаётся волосяной на любом масштабе сцены.
@@ -412,63 +536,245 @@ export const EDITOR_STYLES = `
 /* Жест не должен превращаться в прокрутку или зум страницы. */
 .ed-stage-host { touch-action: none; }
 
-/* Середина: сцена, список элементов и панель свойств. Обе боковые колонки
-   фиксированной ширины, сцена забирает остальное. min-height: 0 обязателен —
-   без него содержимое не даёт грид-строке сжаться, и дорожка уезжает
-   за нижний край окна. */
+/* Середина: рельс каталога, панель каталога, сцена и правая колонка —
+   слева направо, как в design/index.html (замеры сняты на окне 1600×950).
+   Три боковые колонки фиксированной ширины, сцена забирает остальное.
+   Ширины — переменными, а не числами в самой сетке: следующая задача
+   (сворачивание панелей) обязана поменять ОДНУ запись, а не перекладывать
+   грид. min-height: 0 обязателен — без него содержимое не даёт грид-строке
+   сжаться, и дорожка уезжает за нижний край окна. */
 .ed-main {
+  --ed-rail-w: 72px;
+  --ed-catalog-w: 350px;
+  --ed-right-w: 260px;
+  /* Ширина колонок-разделителей (Splitter.tsx, Сессия 30 «сворачивание»).
+     Editor.tsx перебивает их инлайн-стилем в 0px, когда соседняя зона
+     свёрнута — тянуть тогда нечего, а фикс-ширина 6px оставляла бы пустую
+     полосу-призрак на месте убранной ручки. */
+  --ed-catalog-splitter-w: 6px;
+  --ed-side-splitter-w: 6px;
+  /* Непреодолимый минимум сцены. Замерено на окне 600×800 ДО этой правки:
+     72 (рельс) + 350 (каталог) + 260 (правая колонка) = 682 — больше окна,
+     а 1fr сцены отдаёт всё, что осталось, то есть НОЛЬ: холст исчезал
+     целиком. С minmax(0, …) у боковых колонок и этим минимумом у сцены —
+     на том же 600px сцена держит 320px (масштаб 320/1920 = 0.167), боковые
+     колонки сжимаются под него. Автосворачивание по ширине окна — другая
+     задача, здесь его нет: боковые колонки просто ужимаются числом. */
+  --ed-stage-min: 320px;
   display: grid;
-  grid-template-columns: 1fr 220px 260px;
+  /* Шесть колонок, а не четыре: между каталогом и сценой, и между сценой
+     и правой колонкой, встали Splitter (Сессия 30). Editor.tsx держит РОВНО
+     шесть прямых детей .ed-main всегда — свёрнутая зона отдаёт пустой узел
+     на своё место вместо того, чтобы пропасть из DOM: без этого auto-
+     placement грида сдвинул бы всех соседей влево, забрав себе чужую
+     колонку. */
+  grid-template-columns:
+    var(--ed-rail-w)
+    minmax(0, var(--ed-catalog-w))
+    var(--ed-catalog-splitter-w)
+    minmax(var(--ed-stage-min), 1fr)
+    var(--ed-side-splitter-w)
+    minmax(0, var(--ed-right-w));
   min-height: 0;
   min-width: 0;
   border-bottom: 1px solid var(--ui-line);
 }
 
-/* Две сцены рядом: «правлю» и «смотрю» (долг §12.5).
-
-   Колонки равные, а не 2fr/1fr: правая показывает ПЕРЕХОД, ради которого
-   всё и затевалось, и уменьшать её значило бы вернуть автора к разглядыванию
-   миниатюры. min-width: 0 обязателен обоим — без него сцена с фиксированным
-   отношением сторон распирает грид и выдавливает панели, а видно это только
-   глазами. */
-.ed-stages {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  min-width: 0;
+/* ================= РЕЛЬС КАТАЛОГА =================
+   Узкая колонка кнопок слева от панели каталога (CatalogRail.tsx) — приём
+   Canva, снят с натуры design/shell.css (.rail/.rail__item/.rail__glyph,
+   строки 91-120), а не сочинён по памяти. Ширину задаёт родитель (.ed-main,
+   var(--ed-rail-w) = 72px) — здесь кнопка обязана уместиться ВНУТРЬ этой
+   колонки сама, поэтому box-sizing: border-box, min-width: 0 и перенос
+   подписи, а не nowrap. До этой правки CSS для рельса не было вовсе,
+   и замер живого редактора показал кнопки, вылезающие за 72px и лежащие
+   поверх заголовка соседней панели каталога. */
+.ed-rail {
+  box-sizing: border-box;
+  background: var(--ui-surface-panel);
+  border-right: 1px solid var(--ui-line);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 4px;
   min-height: 0;
+  overflow-y: auto;
 }
 
-.ed-watch {
-  position: relative;
+.ed-rail-item {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ui-content-fg-tertiary);
+  font: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 2px;
+  cursor: pointer;
+  text-align: center;
+}
+.ed-rail-item:hover {
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg-secondary);
+}
+/* Выбранная категория отличается от наведения ДВУМЯ признаками — рамка и
+   полный (не приглушённый) цвет текста, — тот же приём, что отличает
+   .ed-slide-row[aria-pressed] от простого наведения соседей по этому файлу. */
+.ed-rail-item[aria-pressed='true'] {
+  background: var(--ui-action-selected-bg);
+  border-color: var(--ui-action-selected-line);
+  color: var(--ui-content-fg);
+}
+
+.ed-rail-glyph {
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* overflow-wrap: anywhere, а не nowrap — тот же приём, что у
+   .ed-graph-edge-text: без него длинная подпись раздвинула бы кнопку
+   шире отведённых 72px, а не перенеслась бы на вторую строку. */
+.ed-rail-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+/* ================= ПАНЕЛЬ КАТАЛОГА =================
+   350px (var(--ed-catalog-w), .ed-main) — снято с натуры design/shell.css
+   .catalog/.catalog__head/.catalog__title/.catalog__hint/.catalog__body,
+   строки 127-156: голова (заголовок и пояснение) фиксирована, тело —
+   ЕДИНСТВЕННАЯ прокрутка панели. min-height: 0 обязателен и на самой
+   панели, и на теле — без него содержимое не даёт грид-ячейке сжаться,
+   и прокрутка не появляется вовсе (тот же закон, что у .ed-track-column
+   и .ed-side, задокументирован там же). */
+.ed-catalog {
+  background: var(--ui-surface-panel);
+  border-right: 1px solid var(--ui-line);
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  border-left: 1px solid var(--ui-line);
 }
 
-.ed-watch-title {
-  padding: 2px 8px;
+.ed-catalog-head {
+  flex: 0 0 auto;
+  padding: 16px;
+  border-bottom: 1px solid var(--ui-line);
+}
+
+/* Заголовок и кнопка сворачивания в одну строку — кнопка выровнена по
+   правому краю головы, вне зависимости от длины заголовка. */
+.ed-catalog-head-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ed-catalog-title {
+  margin: 0;
+  color: var(--ui-content-fg);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* Кнопка сворачивания панели каталога и правой колонки (Сессия 30, задача
+   владельца «сворачивать/сжимать контролеры»). Видна ВСЕГДА, а не по
+   наведению — тот же закон, что у .ed-splitter выше: включается только
+   намеренным нажатием, курсор сюда не приводит её сама раскладка. */
+.ed-catalog-collapse,
+.ed-side-collapse,
+.ed-side-expand {
+  appearance: none;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.ed-catalog-collapse:hover,
+.ed-side-collapse:hover,
+.ed-side-expand:hover {
+  border-color: var(--ui-action-selected-line);
+  color: var(--ui-content-fg);
+}
+
+.ed-catalog-hint {
+  margin: 6px 0 0;
   color: var(--ui-content-fg-secondary);
   font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  line-height: 1.4;
 }
 
-.ed-watch-host {
-  position: relative;
+.ed-catalog-body {
   flex: 1 1 auto;
-  overflow: hidden;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Ручка между панелью каталога и сценой, и между сценой и правой колонкой
+   (Splitter.tsx, вставлена в раскладку Сессией 30). Видна ВСЕГДА, а не по
+   наведению: Splitter.tsx запрещает hover-видимость явно в своём комментарии
+   — она уже ломала двойной клик на дорожке (Сессия 29, журнал §8: орган,
+   появляющийся под курсором от действия автора, перехватывал второй клик).
+   У свёрнутой соседней зоны Splitter не рендерится вовсе (Editor.tsx),
+   а колонка-трек под него схлопывается через --ed-catalog-splitter-w /
+   --ed-side-splitter-w — тянуть нечего, значит и ручки нет. */
+.ed-splitter {
+  flex: 0 0 auto;
+  width: 6px;
+  min-width: 6px;
+  background: var(--ui-line);
+  cursor: col-resize;
+  touch-action: none;
+}
+.ed-splitter:hover { background: var(--ui-line-strong); }
+.ed-splitter:focus-visible {
+  background: var(--ui-action-selected-line);
+  outline: 2px solid var(--ui-focus);
+  outline-offset: -2px;
+}
+
+/* Сцена. Раньше рядом стояла вторая, смотровая сцена (долг §12.5, решение
+   владельца 31.07.2026) — решение владельца 09.08.2026 её убрало, долг
+   переоткрыт зряче. Обёртка осталась и держит тот же грид-приём (min-width:
+   0/min-height: 0 против распирания раскладки), теперь с одним ребёнком —
+   .ed-stage-cell, колонкой «полоска над холстом» (см. её собственный
+   комментарий ниже: высота полоски не смеет зависеть от выделения). */
+.ed-stages {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-width: 0;
   min-height: 0;
 }
 
 .ed-inspector { border-left: 1px solid var(--ui-line); }
 
-/* Панель элементов: вставка и удаление сверху, список — снизу и растягивается.
-   flex-column, а не grid с фиксированным числом строк: сообщение об ошибке
-   вставки картинки — условный ребёнок, и число строк грида «поехало» бы
-   в его отсутствие. Список получает flex: 1 1 auto и забирает весь остаток
-   высоты независимо от того, сколько соседей сейчас отрисовано. */
+/* Правая колонка: список элементов, слайды, части и (метка/свойства) —
+   снизу и растягивается. flex-column, а не grid с фиксированным числом
+   строк: сообщение об ошибке вставки картинки — условный ребёнок, и число
+   строк грида «поехало» бы в его отсутствие. Список получает flex: 1 1 auto
+   и забирает весь остаток высоты независимо от того, сколько соседей
+   сейчас отрисовано.
+
+   Вставка и шаблоны переехали отсюда в панель каталога (Сессия 30) —
+   класс переименован из .ed-elements-panel в .ed-side по тому же поводу:
+   старое имя описывало старый набор содержимого. */
 /* Прокрутка у самой колонки, а не только у списков внутри.
    Раньше здесь стояли ОБА правила — overflow-y: auto и ниже overflow:
    hidden, — и второе перебивало первое: всё, что не поместилось, просто
@@ -476,7 +782,7 @@ export const EDITOR_STYLES = `
    (элементы, слайды, части) плюс вставка и шаблоны, и в колонку 615 px
    они не помещаются — нижняя панель уезжала за край и становилась
    недоступной (known-bugs §8, замерено: 191×99 на отметке 528). */
-.ed-elements-panel {
+.ed-side {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -487,6 +793,27 @@ export const EDITOR_STYLES = `
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* Кнопка сворачивания живёт ПЕРВЫМ ребёнком колонки, когда та развёрнута —
+   тот же ряд, что .ed-catalog-head-row у каталога, но без отдельного
+   заголовка: у правой колонки его никогда не было. */
+.ed-side-collapse-row { flex: 0 0 auto; display: flex; justify-content: flex-end; }
+
+/* Полоска-корешок (Сессия 30, задача владельца «сворачивать/сжимать
+   контролеры»): показывается ВМЕСТО .ed-side, когда колонка свёрнута — то
+   самое видимое место, куда владелец просил положить обратный путь, раз
+   у правой колонки нет своего рельса (в отличие от каталога — там дорога
+   назад через CatalogRail). Кнопка внутри — ЕДИНСТВЕННЫЙ путь развернуть
+   колонку обратно, поэтому существует всегда, пока корешок на экране. */
+.ed-side-spine {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0;
+  background: var(--ui-surface-panel);
+  border-left: 1px solid var(--ui-line);
+  min-height: 0;
+  min-width: 0;
 }
 
 .ed-insert { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
@@ -934,7 +1261,8 @@ export const EDITOR_STYLES = `
    ScenePreview, вставляется внутрь на JS и получает собственный размер
    1920×1080 с transform-масштабом (см. render.ts, applyFit) — эта обёртка
    обязана резать его оверфлоу, иначе несмасштабированная сцена распирала бы
-   карточку (тот же приём, что и у .ed-watch-host). */
+   карточку (тот же приём, каким любой узел ScenePreview режется снаружи
+   контейнером с overflow: hidden). */
 .ed-slide-strip-scene {
   position: absolute;
   inset: 0;
@@ -1902,16 +2230,16 @@ export const EDITOR_STYLES = `
   margin: 0;
 }
 
-/* Панель графа сегментов (Задача 9). Живёт ВНУТРИ .ed-elements-panel, а не
-   отдельной колонкой грида: колонка со своей фиксированной шириной — 220px
-   и 260px соседей уже съедают бюджет узкого окна (e2e\editor.spec.ts:216
-   держит окно 600px и требует масштаб < 0.5 — четвёртая фиксированная
-   колонка эту проверку ломает, измерено при первой версии правки). Поэтому
-   ширина колонки не меняется вовсе — граф делит высоту с .ed-elements
-   (flex: 1 1 auto у обоих, каждый сам прокручивается), а не берёт себе
-   ширину. min-width: 0 обязателен на самой панели и на каждом текстовом
-   ребёнке — иначе длинный id узла или подпись варианта раздвигает колонку
-   шире отведённых 220px, тот же закон, что и у .ed-muted/.ed-delete-msg. */
+/* Панель графа сегментов (Задача 9). Живёт ВНУТРИ .ed-side, а не отдельной
+   колонкой грида: узкое окно уже тратит бюджет на остальные фиксированные
+   колонки грида .ed-main (e2e\editor.spec.ts:216 держит окно 600px и
+   требует масштаб < 0.5 — лишняя фиксированная колонка эту проверку ломает,
+   измерено при первой версии правки). Поэтому ширина колонки не меняется
+   вовсе — граф делит высоту с .ed-elements (flex: 1 1 auto у обоих, каждый
+   сам прокручивается), а не берёт себе ширину. min-width: 0 обязателен
+   на самой панели и на каждом текстовом ребёнке — иначе длинный id узла или
+   подпись варианта раздвигает колонку шире отведённой var(--ed-right-w),
+   тот же закон, что и у .ed-muted/.ed-delete-msg. */
 .ed-graph-panel {
   display: flex;
   flex-direction: column;

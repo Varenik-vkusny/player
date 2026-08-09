@@ -22,6 +22,7 @@ import {
   useReducer,
   useRef,
   useState,
+  type CSSProperties,
   type ReactElement,
 } from 'react';
 
@@ -34,6 +35,20 @@ import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext } from './keyboard.js';
 import { ELEMENTS, GATES, plural } from './plural.js';
+import { CATALOG_CATEGORIES, type PanelId } from './chrome/catalog.js';
+import { CatalogPanel } from './chrome/CatalogPanel.js';
+import { CatalogRail } from './chrome/CatalogRail.js';
+import {
+  CATALOG_WIDTH_MAX,
+  CATALOG_WIDTH_MIN,
+  readChromeLayout,
+  SIDE_SPINE_WIDTH_PX,
+  SIDE_WIDTH_MAX,
+  SIDE_WIDTH_MIN,
+  writeChromeLayout,
+  type ChromeLayout,
+} from './chrome/layoutStore.js';
+import { Splitter } from './chrome/Splitter.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
@@ -44,7 +59,7 @@ import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js
 import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
-import { ArrangeBar } from './stage/ArrangeBar.js';
+import { PropBar } from './stage/PropBar.js';
 import {
   align,
   distribute,
@@ -62,14 +77,20 @@ import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, type MarkKind } from './state/project.js';
+import { propbarStyleFields } from './state/propbar.js';
 import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
+import {
+  getStyleValue,
+  setStyleValue,
+  type LengthOrPercent,
+  type StyleFieldKey,
+} from './state/style.js';
 import { sceneTemplate } from './state/templates.js';
 import { TRANSITION_INFO } from './transitions.js';
 import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
 import { saveWork } from './state/workspace.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
-import { WatchStage } from './stage/WatchStage.js';
 import { AudioSourcePanel } from './track/AudioSourcePanel.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
@@ -132,6 +153,53 @@ export function Editor({
    */
   const [workError, setWorkError] = useState<string | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Какая панель каталога открыта на рельсе слева (chrome/catalog.ts). */
+  const [panelId, setPanelId] = useState<PanelId>('templates');
+  // `undefined` только для 'object' — единственного PanelId шире CategoryId,
+  // у которого на рельсе нет ни кнопки, ни записи в каталоге.
+  const currentCatalogCategory = CATALOG_CATEGORIES.find((category) => category.id === panelId);
+
+  /**
+   * Свёрнутость и ширины панели каталога и правой колонки (Сессия 30,
+   * задача владельца «сворачивать/сжимать контролеры»). Настройка вида,
+   * не данные проекта — читается один раз при монтировании из
+   * `localStorage` (`chrome/layoutStore.ts` сам проверяет форму значения
+   * и откатывает порченное на умолчание), пишется на КАЖДОЕ изменение
+   * эффектом ниже.
+   */
+  const [chromeLayout, setChromeLayout] = useState<ChromeLayout>(() => readChromeLayout());
+
+  useEffect(() => {
+    writeChromeLayout(chromeLayout);
+  }, [chromeLayout]);
+
+  /**
+   * Выбор категории на рельсе. Рельс — единственная дорога назад для
+   * свёрнутого каталога (задание Сессии 30): у самого каталога, в отличие
+   * от правой колонки, нет своего корешка, потому что рельс уже играет
+   * эту роль и никогда не сворачивается.
+   */
+  const handleSelectCategory = useCallback((id: PanelId) => {
+    setPanelId(id);
+    setChromeLayout((previous) => (previous.catalogCollapsed ? { ...previous, catalogCollapsed: false } : previous));
+  }, []);
+
+  const handleToggleCatalogCollapsed = useCallback(() => {
+    setChromeLayout((previous) => ({ ...previous, catalogCollapsed: !previous.catalogCollapsed }));
+  }, []);
+
+  const handleToggleSideCollapsed = useCallback(() => {
+    setChromeLayout((previous) => ({ ...previous, sideCollapsed: !previous.sideCollapsed }));
+  }, []);
+
+  const handleCatalogWidthChange = useCallback((width: number) => {
+    setChromeLayout((previous) => ({ ...previous, catalogWidth: width }));
+  }, []);
+
+  const handleSideWidthChange = useCallback((width: number) => {
+    setChromeLayout((previous) => ({ ...previous, sideWidth: width }));
+  }, []);
 
   // Мост к правке текста на холсте (см. StageView.beginTextEdit): Escape
   // в контексте editingText даёт намерение commitText (keyboard.ts), а
@@ -717,6 +785,83 @@ export function Editor({
   );
 
   /**
+   * Выделенные, у которых есть состояние на ТЕКУЩЕМ слайде, вместе с их
+   * типом и текущим style — общая опора полосы свойств (`stage/PropBar.tsx`).
+   * Тот же фильтр, что у `arrangeItems` выше, и по той же причине: писать
+   * style тоже некуда без состояния слайда (`ElementStateSchema.style`,
+   * ADR-012) — элемент, ещё не появившийся на этом слайде, полоса пропускает
+   * молча, как и раскладка.
+   */
+  const propbarSelection = useMemo(
+    () =>
+      state.selectedIds.flatMap((id) => {
+        const element = segment.elements.find((candidate) => candidate.id === id);
+        const elementState = currentSlide.states[id];
+        return element && elementState
+          ? [{ id, type: element.type, style: elementState.style }]
+          : [];
+      }),
+    [state.selectedIds, segment.elements, currentSlide],
+  );
+
+  /** Состав полосы — чистая функция от типов (`state/propbar.ts`, юнит-тест). */
+  const propbarFields = useMemo(
+    () => propbarStyleFields(propbarSelection.map((item) => item.type)),
+    [propbarSelection],
+  );
+
+  /**
+   * Значение поля на полосе при НЕСКОЛЬКИХ выделенных — представителя, а не
+   * усреднённого значения: у выделения может не быть общего значения, и
+   * усреднять здесь нечего (в отличие от геометрии, у которой всегда есть
+   * число). Первый выделенный — тот же произвольный, но детерминированный
+   * выбор, которым уже пользуется `selected`/`selectionReadout` для одиночного
+   * выделения. Пустой массив здесь не бывает: `propbarFields` пуст, пока
+   * `propbarSelection` пуст (`propbarStyleFields([])` = `[]`, см. её комментарий).
+   */
+  const propbarStyleValueOf = useCallback(
+    (key: StyleFieldKey) => getStyleValue(propbarSelection[0]!.style, key),
+    [propbarSelection],
+  );
+
+  /**
+   * Пачка правок style ОДНИМ шагом истории — тот же приём, что у `applyArrange`
+   * для геометрии: правка поля с полосы задевает СРАЗУ ВСЕХ выделенных,
+   * у кого есть состояние на этом слайде, и Ctrl+Z обязан вернуть их разом,
+   * а не по одному.
+   */
+  const handlePropbarStyleCommit = useCallback(
+    (key: StyleFieldKey, value: string | number | LengthOrPercent) => {
+      applyArrange(
+        propbarSelection.flatMap(({ id, style }) => {
+          const next = setStyleValue(style, key, value);
+          return next === style ? [] : [{ id, patch: { style: next } }];
+        }),
+      );
+    },
+    [propbarSelection, applyArrange],
+  );
+
+  /**
+   * Живое событие набора числа с полосы (`length`/`number`/`length-or-percent`
+   * — см. `styleFieldWidget.tsx`). `commit: false` на каждую распознанную
+   * цифру, коммит-точку жеста ставит `handleCommitHistory` на потере фокуса
+   * поля — тот же приём, что у `handleElementStateChangeLive`.
+   */
+  const handlePropbarStyleLive = useCallback(
+    (key: StyleFieldKey, value: string | number | LengthOrPercent) => {
+      const at = headTimeRef();
+      for (const { id, style } of propbarSelection) {
+        const next = setStyleValue(style, key, value);
+        if (next !== style) {
+          dispatch({ type: 'setElementState', elementId: id, patch: { style: next }, at, commit: false });
+        }
+      }
+    },
+    [propbarSelection, headTimeRef],
+  );
+
+  /**
    * Живое событие правки роли темы (`ThemePanel.tsx`) — тот же приём, что
    * у `handleElementStateChangeLive`: `commit: false` на каждое движение
    * пипетки/нажатие клавиши, коммит-точку ставит `handleCommitHistory`
@@ -1250,11 +1395,100 @@ export function Editor({
         </div>
       ) : null}
 
-      <div className="ed-main">
-        {/* Две сцены рядом — решение владельца 31.07.2026 и закрытие долга
-            §12.5, открытого с Сессии 7. Слева «правлю»: один слайд, жесты,
-            выделение. Справа «смотрю»: полный сегмент в секунду головки —
-            единственное место, где автор видит сам ПЕРЕХОД. */}
+      {/*
+        Шесть прямых детей .ed-main — ровно столько же колонок в её гриде
+        (styles.ts). Число ДЕТЕЙ держится постоянным вне зависимости от
+        свёрнутости: свёрнутая зона отдаёт пустой узел на своё место
+        (комментарий у каждого такого узла ниже), а не пропадает из DOM
+        совсем, — иначе auto-placement грида сдвинул бы всех соседей
+        в чужие колонки, потеряв рельс/сцену на месте. Ширины колонок
+        обнуляются через инлайн-переменные на самом .ed-main: так же,
+        как задизайнено в styles.ts (--ed-catalog-w, --ed-right-w и парные
+        им --ed-*-splitter-w для ручек, которых у свёрнутой зоны нет).
+      */}
+      <div
+        className="ed-main"
+        style={{
+          '--ed-catalog-w': chromeLayout.catalogCollapsed ? '0px' : `${chromeLayout.catalogWidth}px`,
+          '--ed-catalog-splitter-w': chromeLayout.catalogCollapsed ? '0px' : '6px',
+          '--ed-side-splitter-w': chromeLayout.sideCollapsed ? '0px' : '6px',
+          '--ed-right-w': chromeLayout.sideCollapsed
+            ? `${SIDE_SPINE_WIDTH_PX}px`
+            : `${chromeLayout.sideWidth}px`,
+        } as CSSProperties}
+      >
+        {/* Колонка 1: рельс категорий. Никогда не сворачивается — это
+            единственная дорога назад для свёрнутого каталога. */}
+        <CatalogRail current={panelId} onSelect={handleSelectCategory} />
+
+        {/* Колонка 2: панель каталога. Свёрнутая — не рендерится вовсе
+            (ширина колонки и так 0, а не отрисовывать содержимое дешевле
+            и безопаснее: без overflow: hidden на .ed-catalog контент шириной
+            350px в колонке 0px просто вылез бы поверх сцены). */}
+        {chromeLayout.catalogCollapsed ? (
+          <div aria-hidden="true" />
+        ) : (
+          <CatalogPanel
+            title={currentCatalogCategory?.label ?? 'Объект'}
+            hint={currentCatalogCategory?.hint
+              ?? 'Полный состав свойств выделенного. На полосе над холстом — только частое.'}
+            onCollapse={handleToggleCatalogCollapsed}
+          >
+            {panelId === 'templates' ? (
+              <TemplatesPanel onApply={handleApplyTemplate} />
+            ) : panelId === 'shapes' ? (
+              <InsertPanel onInsert={handleInsert} category="shape" />
+            ) : panelId === 'text' ? (
+              <InsertPanel onInsert={handleInsert} category="text" />
+            ) : panelId === 'own' ? (
+              <InsertPanel onInsert={handleInsert} category="own" />
+            ) : panelId === 'theme' ? (
+              <ThemePanel
+                theme={currentProject.meta.theme}
+                onChangeRole={handleSetThemeRoleLive}
+                onCommitHistory={handleCommitHistory}
+              />
+            ) : (
+              // panelId === 'object': панель свойств выделенного элемента —
+              // переехала сюда с правой колонки (Сессия 30, задача «полоса
+              // свойств»). Открывается кнопкой «Ещё» полосы над холстом, не
+              // с рельса (см. chrome/catalog.ts). Пропсы те же, что раньше
+              // стояли в <aside className="ed-side">.
+              <Inspector
+                element={selected}
+                state={selectedState}
+                onContentChange={(content) => {
+                  if (selected) handleElementContentChange({ ...selected, content });
+                }}
+                onStateChange={(patch) => {
+                  if (selected) handleElementStateChange(selected.id, patch);
+                }}
+                onStateChangeLive={(patch) => {
+                  if (selected) handleElementStateChangeLive(selected.id, patch);
+                }}
+                onCommitHistory={handleCommitHistory}
+              />
+            )}
+          </CatalogPanel>
+        )}
+
+        {/* Колонка 3: ручка между каталогом и сценой. Тянуть у свёрнутого
+            каталога нечего — ручка тогда не рендерится, трек колонки и так
+            обнулён (--ed-catalog-splitter-w выше). */}
+        {chromeLayout.catalogCollapsed ? (
+          <div aria-hidden="true" />
+        ) : (
+          <Splitter
+            width={chromeLayout.catalogWidth}
+            min={CATALOG_WIDTH_MIN}
+            max={CATALOG_WIDTH_MAX}
+            side="left"
+            onChange={handleCatalogWidthChange}
+          />
+        )}
+
+        {/* Колонка 4: сцена. Всегда одна и та же ширина 1fr — сворачивание
+            боковых зон её только увеличивает. */}
         <div className="ed-stages">
         {/*
           Полоска и холст — колонка. Полоска стоит НАД холстом в раскладке,
@@ -1262,11 +1496,17 @@ export function Editor({
           по элементам под собой (журнал Сессии 29, §8).
         */}
         <div className="ed-stage-cell">
-        <ArrangeBar
+        <PropBar
           selectedCount={state.selectedIds.length}
+          styleFields={propbarFields}
+          styleValueOf={propbarStyleValueOf}
+          onStyleCommit={handlePropbarStyleCommit}
+          onStyleLiveCommit={handlePropbarStyleLive}
+          onStyleCommitHistory={handleCommitHistory}
           onAlign={handleAlign}
           onDistribute={handleDistribute}
           onLayer={handleLayer}
+          onOpenObject={() => handleSelectCategory('object')}
         />
         <StageView
           ref={stageRef}
@@ -1282,119 +1522,145 @@ export function Editor({
           onReady={handleReady}
         />
         </div>
-        <div className="ed-watch" aria-label="Как это выглядит на дорожке">
-          <span className="ed-watch-title">
-            смотрю · {transport.positionSeconds.toFixed(2)} с
-          </span>
-          <WatchStage segment={segment} seconds={transport.positionSeconds} />
         </div>
-        </div>
-        <aside className="ed-elements-panel" aria-label="Элементы сцены">
-          <InsertPanel onInsert={handleInsert} />
-          <TemplatesPanel onApply={handleApplyTemplate} />
-          <div className="ed-delete-row">
+
+        {/* Колонка 5: ручка между сценой и правой колонкой. Та же логика,
+            что у колонки 3, только для правой стороны. */}
+        {chromeLayout.sideCollapsed ? (
+          <div aria-hidden="true" />
+        ) : (
+          <Splitter
+            width={chromeLayout.sideWidth}
+            min={SIDE_WIDTH_MIN}
+            max={SIDE_WIDTH_MAX}
+            side="right"
+            onChange={handleSideWidthChange}
+          />
+        )}
+
+        {/* Колонка 6: правая колонка. В отличие от каталога, свернуть её
+            в пустоту нельзя — своего рельса у неё нет, и без видимого следа
+            автор не нашёл бы дорогу назад (задание Сессии 30: «кнопка
+            развернуть обязана остаться доступной у свёрнутой зоны»).
+            Свёрнутая — это узкая полоска-корешок (.ed-side-spine) с ОДНОЙ
+            кнопкой развернуть, а не пустой узел, как у колонок 2/3/5. */}
+        {chromeLayout.sideCollapsed ? (
+          <div className="ed-side-spine" aria-label="Слайды, сегменты и метки (свёрнуто)">
             <button
               type="button"
-              className="ed-action"
-              onClick={handleDeleteSelected}
-              disabled={state.selectedIds.length === 0}
+              className="ed-side-expand"
+              data-testid="collapse-side"
+              aria-expanded="false"
+              aria-label="Развернуть правую колонку"
+              onClick={handleToggleSideCollapsed}
             >
-              Удалить
+              <span aria-hidden="true">‹</span>
             </button>
           </div>
-          {removalMessage ? (
-            <span className="ed-notice" role="status" data-testid="removal-message">
-              {removalMessage}
-            </span>
-          ) : null}
-          {imageDropError ? (
-            <span className="ed-failure" role="alert" data-testid="image-drop-error">
-              {imageDropError}
-            </span>
-          ) : null}
-          <ElementList
-            rows={elementRows}
-            selectedIds={state.selectedIds}
-            onSelect={handleSelect}
-            onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
-            onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
-          />
-          <SlidePanel
-            slides={segment.slides}
-            words={segment.words}
-            currentSlideId={state.currentSlideId}
-            onSelect={handleSelectSlide}
-            onAdd={handleAddSlide}
-            onRemove={handleRemoveSlide}
-            cutProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
-          />
-          {/* ADR-022: разрез без расшифровки потерял текст озвучки продолжения.
-              Рядом с панелью частей — тот же класс сообщения, что и «Пустые
-              части» внутри неё (state/exits.ts: emptySegments), только здесь
-              это разовое событие самого разреза, а не постоянно пересчитываемое
-              состояние проекта (см. handleSplitAtGate выше). */}
-          {speechSplitWarning ? (
-            <span className="ed-warning" role="status" data-testid="speech-split-warning">
-              {speechSplitWarning}
-            </span>
-          ) : null}
-          <SegmentPanel
-            project={currentProject}
-            currentSegmentId={state.currentSegmentId}
-            onSelectSegment={handleSelectSegment}
-            onAddSegment={handleAddSegment}
-            onRemoveSegment={handleRemoveSegment}
-            onDuplicateSegment={handleDuplicateSegment}
-            onConnect={handleConnect}
-            onDisconnect={handleDisconnect}
-            onAddCondition={handleAddCondition}
-            onRemoveCondition={handleRemoveCondition}
-          />
-          <ThemePanel
-            theme={currentProject.meta.theme}
-            onChangeRole={handleSetThemeRoleLive}
-            onCommitHistory={handleCommitHistory}
-          />
-        </aside>
-        {markData ? (
-          <MarkPanel
-            mark={markData}
-            elements={segment.elements}
-            words={segment.words}
-            onRetargetMark={handleRetargetMark}
-            gateInsideTransition={markData.kind === 'gate'
-              && gateInsideTransition(markData.gate, segment.slides, segment.words)}
-            onUpdateGate={handleUpdateGate}
-            onSetSlideTransition={handleSetSlideTransition}
-            onSetSlideTransitionDirection={handleSetSlideTransitionDirection}
-            onSetSlideTransitionSeconds={handleSetSlideTransitionSecondsLive}
-            onCommitHistory={handleCommitHistory}
-            slideTransitionGapSeconds={selectedSlideGapSeconds}
-            onRenameVariable={handleRenameVariable}
-            variableProblemOf={variableProblemOf}
-            onRemove={handleRemoveMark}
-            onSplitAtGate={markData.kind === 'gate'
-              ? () => handleSplitAtGate(markData.gate.id)
-              : undefined}
-            splitBlockedReason={markData.kind === 'gate'
-              ? splitBlockedReason(markData.gate, segment.words)
-              : undefined}
-          />
         ) : (
-          <Inspector
-            element={selected}
-            state={selectedState}
-            onContentChange={(content) => {
-              if (selected) handleElementContentChange({ ...selected, content });
-            }}
-            onStateChange={(patch) => {
-              if (selected) handleElementStateChange(selected.id, patch);
-            }}
-            onStateChangeLive={(patch) => {
-              if (selected) handleElementStateChangeLive(selected.id, patch);
-            }}
-            onCommitHistory={handleCommitHistory}
-          />
+          <aside className="ed-side" aria-label="Слайды, сегменты и метки">
+            <div className="ed-side-collapse-row">
+              <button
+                type="button"
+                className="ed-side-collapse"
+                data-testid="collapse-side"
+                aria-expanded="true"
+                aria-label="Свернуть правую колонку"
+                onClick={handleToggleSideCollapsed}
+              >
+                <span aria-hidden="true">›</span>
+              </button>
+            </div>
+            <div className="ed-delete-row">
+              <button
+                type="button"
+                className="ed-action"
+                onClick={handleDeleteSelected}
+                disabled={state.selectedIds.length === 0}
+              >
+                Удалить
+              </button>
+            </div>
+            {removalMessage ? (
+              <span className="ed-notice" role="status" data-testid="removal-message">
+                {removalMessage}
+              </span>
+            ) : null}
+            {imageDropError ? (
+              <span className="ed-failure" role="alert" data-testid="image-drop-error">
+                {imageDropError}
+              </span>
+            ) : null}
+            <ElementList
+              rows={elementRows}
+              selectedIds={state.selectedIds}
+              onSelect={handleSelect}
+              onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
+              onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
+            />
+            <SlidePanel
+              slides={segment.slides}
+              words={segment.words}
+              currentSlideId={state.currentSlideId}
+              onSelect={handleSelectSlide}
+              onAdd={handleAddSlide}
+              onRemove={handleRemoveSlide}
+              cutProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
+            />
+            {/* ADR-022: разрез без расшифровки потерял текст озвучки продолжения.
+                Рядом с панелью частей — тот же класс сообщения, что и «Пустые
+                части» внутри неё (state/exits.ts: emptySegments), только здесь
+                это разовое событие самого разреза, а не постоянно пересчитываемое
+                состояние проекта (см. handleSplitAtGate выше). */}
+            {speechSplitWarning ? (
+              <span className="ed-warning" role="status" data-testid="speech-split-warning">
+                {speechSplitWarning}
+              </span>
+            ) : null}
+            <SegmentPanel
+              project={currentProject}
+              currentSegmentId={state.currentSegmentId}
+              onSelectSegment={handleSelectSegment}
+              onAddSegment={handleAddSegment}
+              onRemoveSegment={handleRemoveSegment}
+              onDuplicateSegment={handleDuplicateSegment}
+              onConnect={handleConnect}
+              onDisconnect={handleDisconnect}
+              onAddCondition={handleAddCondition}
+              onRemoveCondition={handleRemoveCondition}
+            />
+            {markData ? (
+              <MarkPanel
+                mark={markData}
+                elements={segment.elements}
+                words={segment.words}
+                onRetargetMark={handleRetargetMark}
+                gateInsideTransition={markData.kind === 'gate'
+                  && gateInsideTransition(markData.gate, segment.slides, segment.words)}
+                onUpdateGate={handleUpdateGate}
+                onSetSlideTransition={handleSetSlideTransition}
+                onSetSlideTransitionDirection={handleSetSlideTransitionDirection}
+                onSetSlideTransitionSeconds={handleSetSlideTransitionSecondsLive}
+                onCommitHistory={handleCommitHistory}
+                slideTransitionGapSeconds={selectedSlideGapSeconds}
+                onRenameVariable={handleRenameVariable}
+                variableProblemOf={variableProblemOf}
+                onRemove={handleRemoveMark}
+                onSplitAtGate={markData.kind === 'gate'
+                  ? () => handleSplitAtGate(markData.gate.id)
+                  : undefined}
+                splitBlockedReason={markData.kind === 'gate'
+                  ? splitBlockedReason(markData.gate, segment.words)
+                  : undefined}
+              />
+            ) : (
+              // Ничего не выделено и метка не выбрана — свойств показывать
+              // нечего. Панель «Объект» (см. CatalogPanel выше) — единственное
+              // место, где теперь стоит Inspector; двух его копий на экране
+              // быть не должно (задание Сессии 30, «полоса свойств»).
+              null
+            )}
+          </aside>
         )}
       </div>
 

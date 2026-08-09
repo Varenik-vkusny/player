@@ -127,6 +127,9 @@ test.describe('слот работы: сохранил вечером — про
     await openEditor(page, '?fixture=demo');
     const before = elementCount(await readProject(page));
 
+    // Каталог переехал на рельс (Сессия 30): заготовка видна, только когда
+    // открыта её категория. Клик по рельсу — часть жеста автора, а не обход.
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click();
     expect(elementCount(await readProject(page))).toBe(before + 1);
 
@@ -147,6 +150,7 @@ test.describe('слот работы: сохранил вечером — про
     await openEditor(page, '?fixture=demo');
     const before = elementCount(await readProject(page));
 
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click();
     await expect
       .poll(async () => (await readSlot(page))?.text.includes('"text-'), { timeout: 10_000 })
@@ -188,6 +192,7 @@ test.describe('слот работы: сохранил вечером — про
 
     // Редактор жив: правка по-прежнему проходит. Иначе «внятная ошибка»
     // означала бы разбитый редактор с подписью.
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click();
     expect(elementCount(await readProject(page))).toBeGreaterThan(0);
   });
@@ -216,6 +221,7 @@ test.describe('слот работы: сохранил вечером — про
 
   test('вторая вкладка предупреждает и не пишет', async ({ page, context }) => {
     await openEditor(page, '?fixture=demo');
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click();
     await expect
       .poll(async () => (await readSlot(page))?.text.length ?? 0, { timeout: 10_000 })
@@ -232,7 +238,9 @@ test.describe('слот работы: сохранил вечером — про
     await expect(second.getByTestId('open-file')).toBeDisabled();
 
     // Правка во второй вкладке проходит на экране, но в слот не попадает.
+    await second.getByTestId('rail-text').click();
     await second.getByTestId('insert-text').click();
+    await second.getByTestId('rail-shapes').click();
     await second.getByTestId('insert-shape').click();
     await second.waitForTimeout(1500);
 

@@ -137,6 +137,9 @@ test.describe('отмена и повтор', () => {
 
     // Структурная правка — добавление элемента, тот же ход, что в
     // editor-authoring.spec.ts.
+    // Каталог переехал на рельс (Сессия 30): заготовка видна, только когда
+    // открыта её категория. Клик по рельсу — часть жеста автора, а не обход.
+    await page.getByTestId('rail-shapes').click();
     await page.getByTestId('insert-shape').click();
     await page.keyboard.press('Control+z');
 

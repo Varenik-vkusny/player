@@ -61,6 +61,9 @@ test.describe('панель вставки', () => {
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(0);
     await expect(page.getByTestId('selection-frame')).toHaveCount(0);
 
+    // Каталог переехал на рельс (Сессия 30): заготовка видна, только когда
+    // открыта её категория. Клик по рельсу — часть жеста автора, а не обход.
+    await page.getByTestId('rail-text').click();
     await page.getByTestId('insert-text').click();
 
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(1);
@@ -74,7 +77,9 @@ test.describe('панель вставки', () => {
   test('кнопки «Фигура» и «Картинка» создают элементы соответствующего вида', async ({ page }) => {
     await openEditor(page, 'empty');
 
+    await page.getByTestId('rail-shapes').click();
     await page.getByTestId('insert-shape').click();
+    await page.getByTestId('rail-own').click();
     await page.getByTestId('insert-image').click();
 
     const types = await page.evaluate(
@@ -91,6 +96,7 @@ test.describe('панель вставки', () => {
     await openEditor(page, 'empty');
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(0);
 
+    await page.getByTestId('rail-shapes').click();
     await page.getByTestId('insert-circle').click();
 
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(1);
@@ -107,6 +113,7 @@ test.describe('панель вставки', () => {
   }) => {
     await openEditor(page, 'empty');
 
+    await page.getByTestId('rail-shapes').click();
     await page.getByTestId('insert-arrow').click();
 
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(1);
@@ -235,6 +242,7 @@ test.describe('создание элемента и позиция сцены', 
     );
     expect(Number(before), 'на 24-й секунде заголовок обязан быть виден').toBeGreaterThan(0.9);
 
+    await page.getByTestId('rail-shapes').click();
     await page.getByTestId('insert-shape').click();
 
     const after = await page.evaluate(

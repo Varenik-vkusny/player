@@ -228,12 +228,12 @@ test.describe('направляющие и прилипание', () => {
  * зелёным у обеих реализаций.
  */
 test.describe('полоска расположения', () => {
-  test('полоски нет, пока ничего не выделено, и она появляется с выделением', async ({ page }) => {
+  test('на полосе свойств ничего нет, пока ничего не выделено, и она наполняется с выделением', async ({ page }) => {
     await openEditor(page, 'transitions');
 
-    await expect(page.getByTestId('arrange-bar')).toHaveCount(0);
+    await expect(page.getByTestId('propbar')).toHaveCount(0);
     await clickElement(page, 'stays');
-    await expect(page.getByTestId('arrange-bar')).toBeVisible();
+    await expect(page.getByTestId('propbar')).toBeVisible();
   });
 
   test('«разложить» погашено при двух выделенных и живо при трёх', async ({ page }) => {

@@ -26,6 +26,14 @@ import type { Element } from '@player/core';
 export type ElementType = Element['type'];
 
 /**
+ * Категория заготовки в каталоге — то, какая из трёх панелей вставки
+ * («Фигуры», «Текст», «Своё») её показывает. Разделение живёт в ДАННЫХ,
+ * а не в списке в разметке: `InsertPanel.tsx` фильтрует `ELEMENT_LIBRARY`
+ * по этому полю и не перечисляет заготовки поимённо (`library.test.ts`).
+ */
+export type LibraryCategory = 'shape' | 'text' | 'own';
+
+/**
  * Одна заготовка библиотеки: что именно кладётся на сцену.
  *
  * В отличие от v2, поля ниже разъезжаются по двум сущностям схемы при
@@ -46,6 +54,12 @@ export interface LibraryItem {
   readonly style: Readonly<Record<string, string | number>>;
   /** Начальное содержимое. Для фигур и картинки пусто. */
   readonly content: string;
+  /**
+   * Панель вставки, которая показывает заготовку. Обязательное поле:
+   * забытая категория обязана ломать типизацию, а не молча прятать
+   * заготовку из всех трёх панелей сразу.
+   */
+  readonly category: LibraryCategory;
 }
 
 const ACCENT = '#4c8dff';
@@ -78,6 +92,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     },
     // Заглушка текста — автор перепишет её двойным кликом сразу после создания.
     content: 'Новый текст',
+    category: 'text',
   },
   {
     id: 'shape',
@@ -87,6 +102,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     height: 300,
     style: { background: '#1b2430', 'border-radius': '28px' },
     content: '',
+    category: 'shape',
   },
   {
     id: 'image',
@@ -98,6 +114,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     // ему пока задавать нечем.
     style: {},
     content: '',
+    category: 'own',
   },
   {
     id: 'video',
@@ -111,6 +128,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     // Пусто по той же причине, что у картинки: ждёт источника.
     style: {},
     content: '',
+    category: 'own',
   },
   {
     id: 'circle',
@@ -120,6 +138,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     height: 240,
     style: { background: '#1b2430', 'border-radius': '50%' },
     content: '',
+    category: 'shape',
   },
   {
     id: 'arrow',
@@ -137,6 +156,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
       'clip-path': 'polygon(0% 35%, 60% 35%, 60% 15%, 100% 50%, 60% 85%, 60% 65%, 0% 65%)',
     },
     content: '',
+    category: 'shape',
   },
   {
     id: 'frame',
@@ -146,6 +166,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     height: 260,
     style: { background: 'transparent', border: `4px solid ${ACCENT}`, 'border-radius': '12px' },
     content: '',
+    category: 'shape',
   },
   {
     id: 'line',
@@ -155,6 +176,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     height: 6,
     style: { background: ACCENT, 'border-radius': '3px' },
     content: '',
+    category: 'shape',
   },
   {
     id: 'bracket',
@@ -172,6 +194,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
       'border-bottom': `4px solid ${ACCENT}`,
     },
     content: '',
+    category: 'shape',
   },
   {
     id: 'callout',
@@ -187,6 +210,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
       'border-radius': '24px 24px 24px 0',
     },
     content: '',
+    category: 'shape',
   },
 ];
 
