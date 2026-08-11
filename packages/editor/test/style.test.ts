@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { ANIMATABLE, loadProject, SCHEMA_VERSION, ThemeSchema, type Project } from '@player/core';
 
 import {
+  commonStyleValue,
   getStyleValue,
   readStyleEntry,
   setStyleValue,
@@ -482,5 +483,91 @@ describe('ссылка на роль темы разбирается в трет
       token: '--scene-accent',
       fallback: '#4c8dff',
     });
+  });
+});
+
+/**
+ * Общее значение у пачки выделенных (Сессия 32).
+ *
+ * До неё полоса свойств показывала значение ПЕРВОГО выделенного как будто оно
+ * общее. Дефект правдоподобный до невидимости: цвет настоящий, поле рабочее,
+ * ни ошибки, ни предупреждения — узнать правду можно было, только поправив
+ * цвет троих и получив не то, что видел на экране.
+ */
+describe('commonStyleValue: общее значение пачки или «разное»', () => {
+  /** Умолчание берётся из набора полей, а не выписывается сюда числом: числа в тестах гниют. */
+  function defaultOf(key: StyleFieldKey): string | number | LengthOrPercent {
+    const field = STYLE_FIELDS.find((candidate) => candidate.key === key);
+    if (!field) throw new Error(`Нет поля ${key}`);
+    return field.default;
+  }
+
+  it('одинаковые значения — общее значение, а не «разное»', () => {
+    expect(commonStyleValue([{ color: '#ff0000' }, { color: '#ff0000' }], 'color')).toEqual(
+      parsed('#ff0000'),
+    );
+  });
+
+  it('разные значения — «разное»', () => {
+    expect(commonStyleValue([{ color: '#ff0000' }, { color: '#00ff00' }], 'color')).toEqual({
+      kind: 'mixed',
+    });
+  });
+
+  it('«ключа нет» и «ключ равен умолчанию» — это ОДНО значение, а не «разное»', () => {
+    // Сырые строки здесь разные (у одного ключа нет вовсе), а автор видит
+    // одно и то же. Сравнение по сырым строкам дало бы «разное» на паре
+    // элементов, выглядящих одинаково, — враньё в другую сторону.
+    const value = defaultOf('color');
+    expect(commonStyleValue([{}, { color: String(value) }], 'color')).toEqual(parsed(value));
+  });
+
+  it('длина с единицей сравнивается по содержимому: два одинаковых объекта — не «разное»', () => {
+    // `===` на разобранных LengthOrPercent дал бы «разное» всегда: это разные
+    // объекты с одинаковыми полями.
+    expect(
+      commonStyleValue([{ 'border-radius': '12px' }, { 'border-radius': '12px' }], 'border-radius'),
+    ).toEqual(parsed({ amount: 12, unit: 'px' }));
+  });
+
+  it('12px против 12% — «разное»: единица часть смысла, а не оформление', () => {
+    expect(
+      commonStyleValue([{ 'border-radius': '12px' }, { 'border-radius': '12%' }], 'border-radius'),
+    ).toEqual({ kind: 'mixed' });
+  });
+
+  it('роль темы против обычного цвета — «разное»', () => {
+    expect(
+      commonStyleValue([{ color: 'var(--scene-accent, #4c8dff)' }, { color: '#4c8dff' }], 'color'),
+    ).toEqual({ kind: 'mixed' });
+  });
+
+  it('одна и та же роль темы у обоих — общее значение', () => {
+    expect(
+      commonStyleValue(
+        [{ color: 'var(--scene-accent, #4c8dff)' }, { color: 'var(--scene-accent, #4c8dff)' }],
+        'color',
+      ),
+    ).toEqual({ kind: 'token', token: '--scene-accent', fallback: '#4c8dff' });
+  });
+
+  it('одна роль, но разный запас — «разное»: без темы они нарисуются по-разному', () => {
+    expect(
+      commonStyleValue(
+        [{ color: 'var(--scene-accent, #4c8dff)' }, { color: 'var(--scene-accent, #000000)' }],
+        'color',
+      ),
+    ).toEqual({ kind: 'mixed' });
+  });
+
+  it('один элемент — ровно то же, что и getStyleValue', () => {
+    const style: ElementStyle = { color: '#ff00aa' };
+    expect(commonStyleValue([style], 'color')).toEqual(getStyleValue(style, 'color'));
+  });
+
+  it('пустой список бросает: спрашивать общее значение не у кого', () => {
+    // Молчаливый ответ здесь скрыл бы рассинхрон у вызывающего: полоса
+    // не имеет права рисовать поле, у которого нет ни одного владельца.
+    expect(() => commonStyleValue([], 'color')).toThrow(/пуст/);
   });
 });

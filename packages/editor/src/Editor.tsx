@@ -81,7 +81,7 @@ import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, type MarkKind } f
 import { propbarStyleFields } from './state/propbar.js';
 import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import {
-  getStyleValue,
+  commonStyleValue,
   setStyleValue,
   type LengthOrPercent,
   type StyleFieldKey,
@@ -828,16 +828,22 @@ export function Editor({
   );
 
   /**
-   * Значение поля на полосе при НЕСКОЛЬКИХ выделенных — представителя, а не
-   * усреднённого значения: у выделения может не быть общего значения, и
-   * усреднять здесь нечего (в отличие от геометрии, у которой всегда есть
-   * число). Первый выделенный — тот же произвольный, но детерминированный
-   * выбор, которым уже пользуется `selected`/`selectionReadout` для одиночного
-   * выделения. Пустой массив здесь не бывает: `propbarFields` пуст, пока
-   * `propbarSelection` пуст (`propbarStyleFields([])` = `[]`, см. её комментарий).
+   * Значение поля на полосе — ОБЩЕЕ у всех выделенных или «разное».
+   *
+   * До Сессии 32 здесь стоял `propbarSelection[0]`, то есть значение первого
+   * выделенного выдавалось за общее. Соврать так легко, а заметить трудно:
+   * цвет настоящий, поле рабочее, ни в консоли, ни в тестах ни следа —
+   * автор узнаёт правду, только поправив цвет троих и получив не то, что
+   * видел. Решение о том, есть ли общее значение, принимает чистая
+   * `commonStyleValue` (`state/style.ts`, юнит-тесты), а показывает его
+   * тот же `StyleFieldWidget`, что и для одиночного выделения.
+   *
+   * Пустой массив здесь не бывает: `propbarFields` пуст, пока пуст
+   * `propbarSelection` (`propbarStyleFields([])` = `[]`, см. её комментарий),
+   * а на пустом списке `commonStyleValue` бросает громко.
    */
   const propbarStyleValueOf = useCallback(
-    (key: StyleFieldKey) => getStyleValue(propbarSelection[0]!.style, key),
+    (key: StyleFieldKey) => commonStyleValue(propbarSelection.map(({ style }) => style), key),
     [propbarSelection],
   );
 

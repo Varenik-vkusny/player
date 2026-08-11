@@ -1968,6 +1968,37 @@ export const EDITOR_STYLES = `
    должна читаться как обычное состояние. */
 .ed-insp-input[aria-invalid='true'] { border-color: var(--ui-feedback-critical); }
 
+/* «Разное» — общего цвета у выделенной пачки нет.
+
+   Полоски рисуются на САМОМ образце, а не рядом с ним и не в подписи, и это
+   куплено снимком, а не рассуждением: подписи полей на полосе свойств
+   визуально скрыты (.ed-propbar-field .ed-insp-label выше — width: 1px и
+   clip-path), поэтому слово «разное» в подписи прекрасно находится тестом
+   и не доходит до автора вовсе. Каркас метит образец по той же причине
+   (design/shell.css, .ink--mixed) — оттуда и рисунок полосок.
+
+   Метится ВСЁ поле, а не только внутренний образец, и это тоже замер, а не
+   вкус: на полосе свойств поле выбора цвета шириной 22 px, внутренний
+   образец в нём — около четырёх пикселей, и полоска с шагом 3 px там
+   физически не читается. Фон самого поля даёт ~18x26 px видимой штриховки,
+   которую видно и на полосе, и в панели «Объект», где поле широкое.
+
+   Два правила для образца вместо одного намеренно: неизвестный псевдоэлемент
+   делает недействительным ВЕСЬ список селекторов, поэтому webkit и moz нельзя
+   писать через запятую — иначе правило отвалится молча в обоих браузерах. */
+.ed-insp-input--mixed {
+  background-image: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+.ed-insp-input--mixed::-webkit-color-swatch {
+  background-image: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+.ed-insp-input--mixed::-moz-color-swatch {
+  background-image: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+
 /* readonly, а не disabled: значение остаётся фокусируемым и копируемым. */
 .ed-insp-input[readonly] {
   background: transparent;

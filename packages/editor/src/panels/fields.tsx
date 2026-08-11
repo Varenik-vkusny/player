@@ -39,8 +39,18 @@ export function parseNumber(text: string): number | undefined {
 
 interface NumberFieldProps {
   label: string;
-  value: number;
+  /**
+   * `undefined` — значения нет и показывать нечего: так выглядит поле,
+   * у выделенной пачки которого общего значения не существует
+   * (`StyleReadResult` вариант `mixed`, Сессия 32). Поле при этом остаётся
+   * рабочим: набранное число уходит наружу и становится общим для всех.
+   * Ноль здесь был бы не «пусто», а вполне настоящее значение, которого
+   * автор не вводил, — тот же класс дефекта, ради которого заведён `draft`.
+   */
+  value: number | undefined;
   accepts: Accepts;
+  /** Что показать в пустом поле серым. Обычно `undefined`. */
+  placeholder?: string;
   onCommit: (value: number) => void;
   /**
    * Потеря фокуса поля — точка коммита истории для «живых» правок
@@ -80,11 +90,18 @@ interface NumberFieldProps {
  * строку на любой недобор («-», «1e»), то есть ровно те состояния, ради
  * которых черновик и заведён, до нас не доходят вовсе.
  */
-export function NumberField({ label, value, accepts, onCommit, onBlurCommit }: NumberFieldProps): ReactElement {
+export function NumberField({
+  label,
+  value,
+  accepts,
+  placeholder,
+  onCommit,
+  onBlurCommit,
+}: NumberFieldProps): ReactElement {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
 
-  const text = draft ?? String(value);
+  const text = draft ?? (value === undefined ? '' : String(value));
   const parsed = draft === null ? undefined : parseNumber(draft);
   const invalid = draft !== null && (parsed === undefined || !accepts(parsed));
 
@@ -101,6 +118,7 @@ export function NumberField({ label, value, accepts, onCommit, onBlurCommit }: N
         autoComplete="off"
         spellCheck={false}
         value={text}
+        placeholder={placeholder}
         aria-invalid={invalid}
         onChange={(event) => {
           const next = event.target.value;
@@ -323,11 +341,27 @@ export function ReadonlyField({ label, value }: { label: string; value: string }
 interface ColorFieldProps {
   label: string;
   value: string;
+  /**
+   * Общего цвета у выделенной пачки нет — образец обязан ПОКАЗАТЬ это
+   * полосками, а не рисовать какой-нибудь цвет (Сессия 32).
+   *
+   * Пометка живёт на самом образце, а не в подписи, и это куплено снимком:
+   * подписи полей на полосе свойств визуально скрыты (`.ed-propbar-field
+   * .ed-insp-label` в `styles.ts` — `width: 1px`, `clip-path`), поэтому слово
+   * в подписи до автора не доходит вовсе, хотя и остаётся в разметке, доступно
+   * чтению с экрана и прекрасно находится тестом. Каркас метит образец ровно
+   * по этой причине (`design/shell.css`, `.ink--mixed`).
+   *
+   * `<input type="color">` пустого состояния не имеет: он всегда рисует
+   * какой-нибудь цвет. Поэтому полоски рисуются поверх образца, а не вместо
+   * значения.
+   */
+  mixed?: boolean;
   onCommit: (value: string) => void;
 }
 
 /** Цвет — системный color picker браузера. См. Inspector.tsx для разбора формата. */
-export function ColorField({ label, value, onCommit }: ColorFieldProps): ReactElement {
+export function ColorField({ label, value, mixed = false, onCommit }: ColorFieldProps): ReactElement {
   const id = useId();
 
   return (
@@ -337,7 +371,7 @@ export function ColorField({ label, value, onCommit }: ColorFieldProps): ReactEl
       </label>
       <input
         id={id}
-        className="ed-insp-input"
+        className={mixed ? 'ed-insp-input ed-insp-input--mixed' : 'ed-insp-input'}
         type="color"
         value={value}
         onChange={(event) => onCommit(event.target.value)}
@@ -353,8 +387,16 @@ export interface Choice {
 
 interface ChoiceFieldProps {
   label: string;
+  /** Пустая строка — значения нет; тогда обязателен `placeholder`. */
   value: string;
   choices: readonly Choice[];
+  /**
+   * Подпись пункта-заглушки для пустого значения — «разное» у пачки, у которой
+   * общего значения нет (Сессия 32). Пункт выбирается сам и НЕДОСТУПЕН для
+   * выбора руками: «разное» — это состояние, а не вариант, который автор может
+   * кому-то назначить.
+   */
+  placeholder?: string;
   onCommit: (value: string) => void;
 }
 
@@ -365,7 +407,13 @@ interface ChoiceFieldProps {
  * вне своих `<option>`, поэтому всё, что приходит в `onChange`, уже входит
  * в список.
  */
-export function ChoiceField({ label, value, choices, onCommit }: ChoiceFieldProps): ReactElement {
+export function ChoiceField({
+  label,
+  value,
+  choices,
+  placeholder,
+  onCommit,
+}: ChoiceFieldProps): ReactElement {
   const id = useId();
 
   return (
@@ -379,6 +427,11 @@ export function ChoiceField({ label, value, choices, onCommit }: ChoiceFieldProp
         value={value}
         onChange={(event) => onCommit(event.target.value)}
       >
+        {placeholder === undefined ? null : (
+          <option value="" disabled>
+            {placeholder}
+          </option>
+        )}
         {choices.map((choice) => (
           <option key={choice.value} value={choice.value}>
             {choice.label}
