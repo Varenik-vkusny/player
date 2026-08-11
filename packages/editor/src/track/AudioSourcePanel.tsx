@@ -238,8 +238,37 @@ export function AudioSourcePanel({
     ? `файл автора: ${loadedName ?? source.fileId}`
     : `файл на сервере: ${source.url}`;
 
+  /**
+   * Панель свёрнута ПО УМОЛЧАНИЮ (Сессия 34).
+   *
+   * Замер: в окне 1280x800 холсту доставалось 84 px из 800, а этой панели —
+   * 135. Автор рисует сцену, а видит одну её десятую. Озвучку же он заводит
+   * один раз на кусок, дальше панель просто занимает место.
+   *
+   * Состояние локальное и перезагрузку НЕ переживает — как у складывания
+   * дорожки (`TrackView.tsx`, решение владельца 06.08.2026: чтение хранилища
+   * может бросить, а глушить ошибку запрещено). Здесь это ничего не стоит
+   * именно потому, что значение по умолчанию — «свёрнута»: после перезагрузки
+   * состояние ровно то, что и было бы. Хранить нечего.
+   */
+  const [collapsed, setCollapsed] = useState(true);
+
+  /**
+   * СВЕРНУТЬ МОЖНО ТОЛЬКО ТИШИНУ.
+   *
+   * Панель несёт не одни удобства: в ней живут подтверждение замены озвучки
+   * (`role="alertdialog"`), ошибка загрузки, ошибка расшифровки и отчёт
+   * о переносе меток. Спрятать их значило бы сделать неотличимыми от
+   * несуществующих — ровно тот способ провала, ради которого затеяна вся
+   * сессия. Поэтому пока панели есть что сказать, она открыта принудительно,
+   * а кнопка складывания ГАСНЕТ, оставаясь видимой.
+   */
+  const mustSpeak =
+    upload.status !== 'idle' || transcribe.status === 'error' || Boolean(lastRetarget);
+  const open = !collapsed || mustSpeak;
+
   return (
-    <div className="ed-audio-source">
+    <div className={open ? 'ed-audio-source' : 'ed-audio-source ed-audio-source--collapsed'}>
       <input
         ref={inputRef}
         type="file"
@@ -248,7 +277,26 @@ export function AudioSourcePanel({
         onChange={handleFileChange}
         data-testid="audio-file-input"
       />
+      <button
+        type="button"
+        className="ed-audio-source-toggle"
+        data-testid="audio-source-toggle"
+        aria-expanded={open}
+        disabled={mustSpeak}
+        title={
+          mustSpeak
+            ? 'Панели есть что сообщить — свернуть её сейчас нельзя'
+            : open
+              ? 'Свернуть озвучку'
+              : 'Развернуть озвучку'
+        }
+        onClick={() => setCollapsed(open)}
+      >
+        <span aria-hidden="true">{open ? '▾' : '▸'}</span> Озвучка
+      </button>
       <span className="ed-audio-current" data-testid="audio-current">{currentLabel}</span>
+      {open ? (
+        <>
       <button
         type="button"
         className="ed-action"
@@ -326,6 +374,8 @@ export function AudioSourcePanel({
       ) : null}
 
       <SpeechField value={speech} onCommit={onSpeechChange} onBlurCommit={onCommitHistory} />
+        </>
+      ) : null}
     </div>
   );
 }

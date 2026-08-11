@@ -117,6 +117,22 @@ test.describe('замена озвучки и расшифровка — одн�
     await expect(report).toBeVisible({ timeout: 15_000 });
     await expect(report).toContainText('Перенесено');
 
+    /**
+     * СВЕРНУТЬ МОЖНО ТОЛЬКО ТИШИНУ (Сессия 34).
+     *
+     * Панель озвучки свёрнута по умолчанию, но пока ей есть что сообщить —
+     * отчёт о переносе меток, ошибка, подтверждение замены, — она открыта
+     * принудительно, а кнопка складывания ГАСНЕТ, оставаясь видимой.
+     * Иначе отчёт можно было бы спрятать, а спрятанное неотличимо
+     * от несуществующего.
+     *
+     * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ: складывание перестало смотреть
+     * на состояние панели и стало прятать её вместе с сообщением.
+     */
+    const toggle = page.getByTestId('audio-source-toggle');
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toBeDisabled();
+
     const after = currentSegment(await currentProject(page));
     expect(after.audio.words.length, 'новая расшифровка обязана лечь в audio.words').toBe(before.audio.words.length);
 

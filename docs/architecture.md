@@ -1,14 +1,26 @@
 # Как это устроено
 
-Дата: 2026-07-27
+Дата: 2026-07-27. Статус и форма схемы выверены 2026-08-11 (Сессия 34).
 
 Документ объясняет, **как отдельные решения складываются в работающий механизм**.
 Почему выбрано именно так — в `adr/`, здесь только ссылки. Какие числа это
 подтверждают — в `research/spikes.md`.
 
-> **Статус.** Плеер написан и работает: `packages/player`, стенд
-> `apps/playground`, 34 юнита и 11 e2e. Редактора пока нет. Что именно готово —
-> в таблице в конце документа и в [status.md](status.md).
+> **Статус.** Плеер и редактор написаны и работают: `packages/player`,
+> `packages/editor`, стенд `apps/playground`. Редактор умеет сцену, слайды,
+> дорожку, гейты, части, темы, буфер обмена и масштаб холста; чего он ещё
+> НЕ умеет — групп, видео, показа остановки глазами зрителя и карты
+> ветвлений — перечислено в `../prompts/` (свежий `SESSION-N-PROMPT.md`).
+>
+> Счётчиков тестов здесь нет намеренно: они гнили трижды подряд, а
+> протухшее число выглядит достовернее отсутствующего. Сколько чего
+> зелено — единственным местом в [status.md](status.md), и сверять надо
+> прогоном `pnpm check`, а не чтением.
+>
+> ⚠️ **Осторожно с [status.md](status.md) и [planning.md](planning.md):**
+> оба отстали от жизни (Сессия 30 и Сессия 24 соответственно). Карта «где
+> что лежит» в §8 ниже и форма схемы в §6 выверены по коду 11.08.2026 —
+> им верить можно.
 
 ---
 
@@ -248,22 +260,38 @@ applyFit(host, w, h, scene) // вписывает сцену в контейне
 истины: типы TypeScript выводятся из неё через `z.infer` и никогда не пишутся
 руками. Два описания одной сущности неизбежно разъезжаются, причём тихо.
 
-```
-Project { schemaVersion: 3, meta, entry: SegmentId, segments: Segment[] }
+Форма ниже выверена по `packages/core/src/schema.ts` 11.08.2026. Версия —
+единственный источник истины, и она же в коде: `SCHEMA_VERSION`.
 
-Segment { id, title,
-          audio:    { src, duration, words[] },
+```
+Project { schemaVersion: 11,
+          meta:  { title, stageWidth, stageHeight, theme },
+          entry: SegmentId,
+          segments: Segment[] }
+
+Segment { id, title, description,
+          speech,                       // текст озвучки куска (ADR-022)
+          audio:    { src?, fileId?, offset, duration, words[] },
           elements: Element[],          // кто это, без геометрии и стиля
           slides:   Slide[],            // не меньше одного, первый на нуле
           gates:    Gate[],
           exit:     Exit }
 
-Element      { id, type, content }
-Slide        { id, at: TimeRef, transition, states: Record<id, ElementState> }
-ElementState { x, y, width, height, rotation, zIndex, opacity, visible, style }
+Element      { id, type, content, parentId?, locked }
+Slide        { id, at: TimeRef, transition, transitionSeconds,
+               transitionDirection, states: Record<id, ElementState> }
+ElementState { x, y, width, height, rotation, zIndex, opacity, visible,
+               flipX, flipY, style }
 Gate         { id, at: TimeRef, config, onWrong, maxAttempts, recordAs }
 Exit         { rules: { when: Condition, goto }[], default: SegmentId | null }
 ```
+
+Три поля объявлены, но редактором пока не используются: `Element.parentId`
+(дерево групп, ссылка ВВЕРХ), `Element.locked`, `ElementState.flipX/flipY`.
+Схема их держит, вида для них нет.
+
+`audio.src` и `audio.fileId` — два источника одной дорожки: файл на сервере
+и файл автора в браузере (ADR-021). `offset` — окно внутри дорожки (ADR-018).
 
 Два правила выражены **формой**, а не проверкой, и потому нарушить их нельзя:
 у `Gate` нет поля для рёбер (гейт не ветвит), а `Exit` есть поле сегмента
