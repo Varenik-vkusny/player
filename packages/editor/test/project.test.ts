@@ -1197,3 +1197,129 @@ describe('текст озвучки', () => {
     expect(currentSegmentOf(replaced).speech).toBe('Часы это позиция.');
   });
 });
+
+/**
+ * Буфер обмена ЭЛЕМЕНТОВ (Сессия 33). Правило вставки отличается от буфера
+ * слайдов выше, и отличие проверяется здесь; арифметика раскладки — в
+ * elementClipboard.test.ts, история — в editorHistory.test.ts.
+ */
+describe('буфер обмена элементов: copyElements / cutElements / pasteElements', () => {
+  /** Проект из ДВУХ частей: перенос между частями — весь смысл задачи. */
+  function twoSegmentState(): EditorState {
+    const project = baseProject();
+    const first = project.segments[0]!;
+    const second: Segment = {
+      ...first,
+      id: 'seg-2',
+      elements: [],
+      slides: [{ ...first.slides[0]!, states: {} }],
+    };
+    return initialState({ ...project, segments: [first, second] });
+  }
+
+  const AT_ZERO = { kind: 'seconds', t: 0 } as const;
+
+  it('copyElements наполняет буфер и НЕ меняет проект', () => {
+    const state = baseState();
+    const next = editorReducer(state, { type: 'copyElements', ids: ['title'] });
+
+    // Ссылочное равенство, а не глубокое: сцена решает сравнением ссылок,
+    // что перерисовывать, и лишний объект здесь стоил бы кадра.
+    expect(next.project).toBe(state.project);
+    expect(next.elementClipboard!.items).toHaveLength(1);
+    expect(next.elementClipboard!.sourceSegmentId).toBe('seg-1');
+  });
+
+  it('копировать нечего — буфер НЕ опустошается', () => {
+    /*
+     * Слом: писать в буфер результат безусловно. Автор скопировал заголовок,
+     * потом выделил элемент, которого на этом слайде нет, нажал Ctrl+C —
+     * и потерял то, что держал в руке, не получив взамен ничего.
+     */
+    let state = editorReducer(baseState(), { type: 'copyElements', ids: ['title'] });
+    const held = state.elementClipboard;
+
+    state = editorReducer(state, { type: 'copyElements', ids: [] });
+
+    expect(state.elementClipboard).toBe(held);
+  });
+
+  it('cutElements убирает элементы из части и наполняет буфер', () => {
+    let state: EditorState = { ...baseState(), selectedIds: ['title'] };
+    state = editorReducer(state, { type: 'cutElements', ids: ['title'] });
+
+    expect(segmentOf(state.project).elements.map((item) => item.id)).toEqual(['subtitle']);
+    expect(slideOf(state.project).states['title']).toBeUndefined();
+    expect(state.elementClipboard!.items[0]!.element.id).toBe('title');
+    // Вырезанное больше нельзя держать выделенным: его нет.
+    expect(state.selectedIds).toEqual([]);
+  });
+
+  it('pasteElements при пустом буфере возвращает ТОТ ЖЕ объект состояния', () => {
+    const state = baseState();
+    const next = editorReducer(state, { type: 'pasteElements', at: AT_ZERO });
+    expect(next).toBe(state);
+  });
+
+  it('перенос в другую часть: те же координаты, новый id, выделение на вставленном', () => {
+    /*
+     * Ради этого вся задача. Слом: не сравнивать `sourceSegmentId` при
+     * решении о сдвиге — координата уехала бы на 40, и автор двигал бы
+     * заголовок руками ровно как до появления буфера.
+     */
+    let state = twoSegmentState();
+    state = editorReducer(state, {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 300, y: 200 },
+      at: AT_ZERO,
+    });
+    state = editorReducer(state, { type: 'copyElements', ids: ['title'] });
+    state = editorReducer(state, { type: 'selectSegment', id: 'seg-2' });
+    state = editorReducer(state, { type: 'pasteElements', at: AT_ZERO });
+
+    const target = state.project.segments[1]!;
+    expect(target.elements).toHaveLength(1);
+    const pastedId = target.elements[0]!.id;
+    expect(pastedId).not.toBe('title');
+
+    const placed = target.slides[0]!.states[pastedId]!;
+    expect(placed.x).toBe(300);
+    expect(placed.y).toBe(200);
+    expect(state.selectedIds).toEqual([pastedId]);
+  });
+
+  it('вставка НЕ опустошает буфер: два Ctrl+V дают два объекта', () => {
+    let state = twoSegmentState();
+    state = editorReducer(state, { type: 'copyElements', ids: ['title'] });
+    state = editorReducer(state, { type: 'selectSegment', id: 'seg-2' });
+    state = editorReducer(state, { type: 'pasteElements', at: AT_ZERO });
+    state = editorReducer(state, { type: 'pasteElements', at: AT_ZERO });
+
+    expect(state.project.segments[1]!.elements).toHaveLength(2);
+  });
+
+  it('вырезать в одной части и вставить в другой — это ПЕРЕНОС', () => {
+    let state = twoSegmentState();
+    state = editorReducer(state, { type: 'cutElements', ids: ['title'] });
+    state = editorReducer(state, { type: 'selectSegment', id: 'seg-2' });
+    state = editorReducer(state, { type: 'pasteElements', at: AT_ZERO });
+
+    expect(state.project.segments[0]!.elements.map((item) => item.id)).toEqual(['subtitle']);
+    expect(state.project.segments[1]!.elements).toHaveLength(1);
+  });
+
+  it('вставка на СВОЙ же слайд сдвигает копию, иначе она невидима', () => {
+    let state = editorReducer(baseState(), {
+      type: 'setElementState',
+      elementId: 'title',
+      patch: { x: 300, y: 200 },
+      at: AT_ZERO,
+    });
+    state = editorReducer(state, { type: 'copyElements', ids: ['title'] });
+    state = editorReducer(state, { type: 'pasteElements', at: AT_ZERO });
+
+    const pastedId = state.selectedIds[0]!;
+    expect(slideOf(state.project).states[pastedId]!.x).toBe(340);
+  });
+});

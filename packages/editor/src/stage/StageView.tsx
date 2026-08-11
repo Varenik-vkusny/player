@@ -165,10 +165,11 @@ export interface StageViewProps {
    * Переводить их в единицы сцены и обратно значило бы смешать два
    * координатных пространства ради ничего.
    *
-   * По ПУСТОЙ сцене не зовётся вовсе: предложить там нечего, пока нет
-   * буфера обмена элементов, а пустое меню хуже отсутствующего.
+   * `elementId === undefined` — автор нажал по ПУСТОМУ месту холста.
+   * Раньше меню там не открывалось вовсе (предложить было нечего);
+   * с появлением буфера обмена элементов есть «Вставить».
    */
-  onContextMenu?: (elementId: string, at: { x: number; y: number }) => void;
+  onContextMenu?: (elementId: string | undefined, at: { x: number; y: number }) => void;
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
   onImageDrop?: (file: File) => void;
   onReady?: (preview: ScenePreview | null) => void;
@@ -1127,9 +1128,11 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     (event: ReactMouseEvent<HTMLDivElement>): void => {
       if (!onContextMenu) return;
       const hit = hitElementAt(scenePointOf(event));
-      if (!hit) return;
+      // Промах по пустому месту тоже открывает меню (Сессия 33): там есть
+      // что предложить — «Вставить». Событие гасится в обоих случаях,
+      // иначе поверх нашего меню встало бы браузерное.
       event.preventDefault();
-      onContextMenu(hit.id, { x: event.clientX, y: event.clientY });
+      onContextMenu(hit?.id, { x: event.clientX, y: event.clientY });
     },
     [onContextMenu, hitElementAt, scenePointOf],
   );

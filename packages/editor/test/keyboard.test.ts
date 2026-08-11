@@ -15,11 +15,18 @@ function press(key: string, mods: Mods = {}) {
   };
 }
 
-const NORMAL: KeyContext = { hasSelection: true, editingText: false, inTextField: false };
-const NO_SELECTION: KeyContext = { hasSelection: false, editingText: false, inTextField: false };
-const EDITING_TEXT: KeyContext = { hasSelection: true, editingText: true, inTextField: false };
-const NO_SELECTION_EDITING_TEXT: KeyContext = { hasSelection: false, editingText: true, inTextField: false };
-const IN_TEXT_FIELD: KeyContext = { hasSelection: true, editingText: false, inTextField: true };
+/*
+ * `hasClipboard: true` у контекстов правки текста — НЕ случайность.
+ * Так тест доказывает, что Ctrl+V там молчит из-за каретки в тексте,
+ * а не из-за пустого буфера: при `false` он был бы зелёным по неверной
+ * причине и остался бы зелёным, даже если убрать проверку контекста.
+ */
+const NORMAL: KeyContext = { hasSelection: true, editingText: false, inTextField: false, hasClipboard: true };
+const NO_SELECTION: KeyContext = { hasSelection: false, editingText: false, inTextField: false, hasClipboard: true };
+const EMPTY_CLIPBOARD: KeyContext = { hasSelection: true, editingText: false, inTextField: false, hasClipboard: false };
+const EDITING_TEXT: KeyContext = { hasSelection: true, editingText: true, inTextField: false, hasClipboard: true };
+const NO_SELECTION_EDITING_TEXT: KeyContext = { hasSelection: false, editingText: true, inTextField: false, hasClipboard: true };
+const IN_TEXT_FIELD: KeyContext = { hasSelection: true, editingText: false, inTextField: true, hasClipboard: true };
 
 describe('обычный режим, есть выделение: вся раскладка работает', () => {
   const cases: Array<[string, Mods, KeyIntent]> = [
@@ -316,5 +323,70 @@ describe('масштаб холста с клавиатуры', () => {
 
   it('Alt снимает намерение, как и у всех остальных сочетаний', () => {
     expect(keyToIntent(press('=', { ctrl: true, alt: true }), NORMAL)).toBeUndefined();
+  });
+});
+
+describe('Ctrl+C / Ctrl+X / Ctrl+V — буфер обмена элементов', () => {
+  it('Ctrl+C с выделением даёт намерение копии в буфер', () => {
+    expect(keyToIntent(press('c', { ctrl: true }), NORMAL)).toEqual({ kind: 'copy' });
+  });
+
+  it('Ctrl+X с выделением даёт намерение вырезания', () => {
+    expect(keyToIntent(press('x', { ctrl: true }), NORMAL)).toEqual({ kind: 'cut' });
+  });
+
+  it('Ctrl+V при непустом буфере даёт намерение вставки', () => {
+    expect(keyToIntent(press('v', { ctrl: true }), NORMAL)).toEqual({ kind: 'paste' });
+  });
+
+  it('Cmd на macOS — то же самое для всех трёх', () => {
+    expect(keyToIntent(press('c', { meta: true }), NORMAL)).toEqual({ kind: 'copy' });
+    expect(keyToIntent(press('x', { meta: true }), NORMAL)).toEqual({ kind: 'cut' });
+    expect(keyToIntent(press('v', { meta: true }), NORMAL)).toEqual({ kind: 'paste' });
+  });
+
+  it('без выделения Ctrl+C и Ctrl+X — НЕ наши', () => {
+    /*
+     * Слом: вернуть намерение независимо от выделения. Вызывающий гасит
+     * событие на любое намерение, и автор, нажавший Ctrl+C ни на чём,
+     * потерял бы обычное копирование выделенного текста страницы.
+     */
+    expect(keyToIntent(press('c', { ctrl: true }), NO_SELECTION)).toBeUndefined();
+    expect(keyToIntent(press('x', { ctrl: true }), NO_SELECTION)).toBeUndefined();
+  });
+
+  it('при ПУСТОМ буфере Ctrl+V — НЕ наш', () => {
+    // Та же физика, только про буфер: вставлять нечего, значит и отбирать
+    // у браузера сочетание не за что.
+    expect(keyToIntent(press('v', { ctrl: true }), EMPTY_CLIPBOARD)).toBeUndefined();
+  });
+
+  it('в текстовом поле панели все три молчат, хотя буфер полон', () => {
+    expect(keyToIntent(press('c', { ctrl: true }), IN_TEXT_FIELD)).toBeUndefined();
+    expect(keyToIntent(press('x', { ctrl: true }), IN_TEXT_FIELD)).toBeUndefined();
+    expect(keyToIntent(press('v', { ctrl: true }), IN_TEXT_FIELD)).toBeUndefined();
+  });
+
+  it('при правке текста на холсте все три молчат, хотя буфер полон', () => {
+    // Автор правит буквы в элементе: Ctrl+C там копирует БУКВЫ средствами
+    // браузера, а не объект сцены. Перехват отобрал бы у него набор текста.
+    expect(keyToIntent(press('c', { ctrl: true }), EDITING_TEXT)).toBeUndefined();
+    expect(keyToIntent(press('x', { ctrl: true }), EDITING_TEXT)).toBeUndefined();
+    expect(keyToIntent(press('v', { ctrl: true }), EDITING_TEXT)).toBeUndefined();
+  });
+
+  it('Ctrl+Shift+C — НЕ наше: это выбор элемента в инструментах разработчика', () => {
+    expect(keyToIntent(press('c', { ctrl: true, shift: true }), NORMAL)).toBeUndefined();
+    expect(keyToIntent(press('v', { ctrl: true, shift: true }), NORMAL)).toBeUndefined();
+  });
+
+  it('с Alt — не наше, как и всё остальное', () => {
+    expect(keyToIntent(press('c', { ctrl: true, alt: true }), NORMAL)).toBeUndefined();
+  });
+
+  it('голые c/x/v без модификаторов — не наши', () => {
+    expect(keyToIntent(press('c'), NORMAL)).toBeUndefined();
+    expect(keyToIntent(press('x'), NORMAL)).toBeUndefined();
+    expect(keyToIntent(press('v'), NORMAL)).toBeUndefined();
   });
 });
