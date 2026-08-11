@@ -5499,13 +5499,14 @@ function Xl(e, t) {
 }
 function Zl(e, t, n) {
 	let r = [];
-	for (let i of e) {
-		let e = t[i], a = n[i], o;
-		o = e && a ? "moves" : a ? "enters" : e ? "leaves" : "absent", r.push({
+	for (let { id: i, type: a } of e) {
+		let e = t[i], o = n[i], s;
+		s = e && o ? "moves" : o ? "enters" : e ? "leaves" : "absent", r.push({
 			id: i,
-			role: o,
+			type: a,
+			role: s,
 			from: e,
-			to: a
+			to: o
 		});
 	}
 	return r;
@@ -5543,11 +5544,19 @@ function nu(e, t) {
 function ru(e, t, n, r) {
 	return e + t / 2 - (n + r / 2);
 }
-var iu = !1;
-function au() {
-	iu ||= (Z.useDefaultMainLoop = !1, !0);
+function iu(e, t) {
+	return {
+		x: [e.x - t.x, 0],
+		y: [e.y - t.y, 0],
+		rotate: [e.rotation, t.rotation],
+		opacity: [tu(e), tu(t)]
+	};
 }
+var au = !1;
 function ou() {
+	au ||= (Z.useDefaultMainLoop = !1, !0);
+}
+function su() {
 	return {
 		seekSeconds() {},
 		finish() {},
@@ -5557,7 +5566,7 @@ function ou() {
 		}
 	};
 }
-function su(e, t, n, r, i, a, o) {
+function cu(e, t, n, r, i, a, o) {
 	for (let s of e) {
 		if (s.role === "absent") continue;
 		let e = t(s.id);
@@ -5572,7 +5581,7 @@ function su(e, t, n, r, i, a, o) {
 		}, r);
 	}
 }
-function cu(e, t, n, r, i, a, o) {
+function lu(e, t, n, r, i, a, o) {
 	let s = document.createElement("div");
 	if (s.style.position = "absolute", s.style.top = "0", s.style.left = "0", s.style.zIndex = "1000", s.style.pointerEvents = "none", s.style.background = "var(--scene-bg, #0f1620)", n === "wipe") {
 		s.style.width = `${t.width}px`, s.style.height = `${t.height}px`, e.appendChild(s);
@@ -5600,9 +5609,9 @@ function cu(e, t, n, r, i, a, o) {
 	}
 	return () => s.remove();
 }
-function lu(e, t, n, r, i, a, o) {
-	if (r === "cut" || n <= 0) return ou();
-	au();
+function uu(e, t, n, r, i, a, o) {
+	if (r === "cut" || n <= 0) return su();
+	ou();
 	let s = n * 1e3, c = s * ql, l = Ul({ autoplay: !1 }), u = (e) => {
 		let n = t.get(e);
 		if (!n) throw Error(`Переход ссылается на элемент «${e}», которого нет на сцене`);
@@ -5617,14 +5626,16 @@ function lu(e, t, n, r, i, a, o) {
 				let e = u(t.id);
 				switch (t.role) {
 					case "moves": {
-						let n = t.from, r = t.to;
-						l.add(e, {
+						let n = t.from, r = t.to, i = t.type === "group" ? iu(n, r) : {
 							x: [ru(n.x, n.width, r.x, r.width), 0],
 							y: [ru(n.y, n.height, r.y, r.height), 0],
 							scaleX: [nu(n.width, r.width), 1],
 							scaleY: [nu(n.height, r.height), 1],
 							rotate: [n.rotation, r.rotation],
-							opacity: [tu(n), tu(r)],
+							opacity: [tu(n), tu(r)]
+						};
+						l.add(e, {
+							...i,
 							duration: s,
 							ease: "inOutQuad"
 						}, 0);
@@ -5652,15 +5663,15 @@ function lu(e, t, n, r, i, a, o) {
 			}
 			break;
 		case "dissolve":
-			su(e, u, l, c, s, (e) => ({ opacity: [tu(e), 0] }), (e) => ({ opacity: [0, tu(e)] }));
+			cu(e, u, l, c, s, (e) => ({ opacity: [tu(e), 0] }), (e) => ({ opacity: [0, tu(e)] }));
 			break;
 		case "slide": {
 			let { axis: t, sign: n, span: r } = Kl(i ?? Gl.slide, o);
-			su(e, u, l, c, s, () => ({ [t]: [0, n * r] }), () => ({ [t]: [-n * r, 0] }));
+			cu(e, u, l, c, s, () => ({ [t]: [0, n * r] }), () => ({ [t]: [-n * r, 0] }));
 			break;
 		}
 		case "scale":
-			su(e, u, l, c, s, (e) => ({
+			cu(e, u, l, c, s, (e) => ({
 				scale: [1, .92],
 				opacity: [tu(e), 0]
 			}), (e) => ({
@@ -5669,7 +5680,7 @@ function lu(e, t, n, r, i, a, o) {
 			}));
 			break;
 		case "blur":
-			su(e, u, l, c, s, (e) => ({
+			cu(e, u, l, c, s, (e) => ({
 				filter: ["blur(0px)", "blur(8px)"],
 				opacity: [tu(e), 0]
 			}), (e) => ({
@@ -5679,7 +5690,7 @@ function lu(e, t, n, r, i, a, o) {
 			break;
 		case "wipe":
 		case "circle":
-			d = cu(a, o, r, i, l, c, s);
+			d = lu(a, o, r, i, l, c, s);
 			break;
 	}
 	l.duration < s && l.add({ duration: s }, 0);
@@ -5702,20 +5713,20 @@ function lu(e, t, n, r, i, a, o) {
 }
 //#endregion
 //#region packages/player/src/renderers/registry.ts
-var uu = /* @__PURE__ */ new Map();
-function du(e, t) {
-	uu.set(e, t);
+var du = /* @__PURE__ */ new Map();
+function fu(e, t) {
+	du.set(e, t);
 }
-function fu(e) {
-	return uu.get(e);
+function pu(e) {
+	return du.get(e);
 }
-du("text", (e, t) => {
+fu("text", (e, t) => {
 	e.textContent = t.content;
-}), du("image", (e, t) => {
+}), fu("image", (e, t) => {
 	e.textContent = "", e.style.backgroundImage = t.content ? `url(${t.content})` : "", e.style.backgroundSize = "cover";
-}), du("shape", (e) => {
+}), fu("shape", (e) => {
 	e.textContent = "";
-}), du("video", (e, t) => {
+}), fu("video", (e, t) => {
 	let n = e.firstElementChild;
 	if (!(n instanceof HTMLVideoElement)) {
 		e.textContent = "", n = e.appendChild(document.createElement("video"));
@@ -5724,11 +5735,11 @@ du("text", (e, t) => {
 	}
 	let r = n;
 	t.content === "" ? r.removeAttribute("src") : r.getAttribute("src") !== t.content && r.setAttribute("src", t.content);
-}), du("group", () => {});
+}), fu("group", () => {});
 //#endregion
 //#region packages/player/src/render.ts
-var pu = 1920, mu = 1080;
-function hu(e, t, n, r = "fit") {
+var mu = 1920, hu = 1080;
+function gu(e, t, n, r = "fit") {
 	if (!(e > 0) || !(t > 0)) throw RangeError(`Некорректный размер контейнера: ${e}x${t}`);
 	if (r !== "fit" && !(Number.isFinite(r) && r > 0)) throw RangeError(`Некорректный масштаб сцены: ${r}`);
 	let i = r === "fit" ? Math.min(e / n.width, t / n.height) : r;
@@ -5738,19 +5749,19 @@ function hu(e, t, n, r = "fit") {
 		offsetY: Math.round((t - n.height * i) / 2)
 	};
 }
-function gu(e, t) {
+function _u(e, t) {
 	for (let [n, r] of Object.entries(t)) e.style.setProperty(n, r);
 }
-function _u(e, t, n) {
+function vu(e, t, n) {
 	e.className = `scene-el scene-${t.type}`, e.dataset.id = t.id;
 	let r = e.style;
 	r.position = "absolute", r.left = `${n.x}px`, r.top = `${n.y}px`, r.width = `${n.width}px`, r.height = `${n.height}px`, r.zIndex = String(n.zIndex), r.opacity = String(n.opacity), r.transform = n.rotation ? `rotate(${n.rotation}deg)` : "", r.margin = "0", r.boxSizing = "border-box", r.visibility = n.visible ? "" : "hidden";
 	for (let [e, t] of Object.entries(n.style)) r.setProperty(e, String(t));
-	let i = fu(t.type);
+	let i = pu(t.type);
 	if (!i) throw Error(`Для типа элемента «${t.type}» не зарегистрирован DOM-рендерер`);
 	i(e, t, n);
 }
-function vu(e, t) {
+function yu(e, t) {
 	let n = /* @__PURE__ */ new Map(), r = [], i = 0;
 	for (let a of e) {
 		if (t[a.id] === void 0) continue;
@@ -5781,79 +5792,78 @@ function vu(e, t) {
 	}
 	return a;
 }
-function yu(e, t, n, r = {
-	width: pu,
-	height: mu
+function bu(e, t, n, r = {
+	width: mu,
+	height: hu
 }) {
 	e.textContent = "", e.style.position = "relative", e.style.width = `${r.width}px`, e.style.height = `${r.height}px`, e.style.transformOrigin = "0 0", e.style.overflow = "hidden";
 	let i = /* @__PURE__ */ new Map();
-	for (let { element: r, state: a, parentId: o } of vu(t, n)) {
+	for (let { element: r, state: a, parentId: o } of yu(t, n)) {
 		let t = document.createElement("div");
-		_u(t, r, a);
+		vu(t, r, a);
 		let n = o === void 0 ? e : i.get(o);
 		if (n === void 0) throw Error(`Узел группы «${o}» не создан раньше своего ребёнка «${r.id}»`);
 		n.appendChild(t), i.set(r.id, t);
 	}
 	return i;
 }
-function bu(e, t, n, r = {
-	width: pu,
-	height: mu
+function xu(e, t, n, r = {
+	width: mu,
+	height: hu
 }, i = "fit") {
-	let a = hu(t, n, r, i);
+	let a = gu(t, n, r, i);
 	return e.style.transform = `translate(${a.offsetX}px, ${a.offsetY}px) scale(${a.scale})`, a;
 }
 //#endregion
 //#region packages/player/src/slides.ts
-function xu(e, t) {
+function Su(e, t) {
 	return e !== null && e.kind === t.kind && e.index === t.index;
 }
-var Su = class {
+var Cu = class {
 	#e;
 	#t;
 	#n;
 	#r;
 	#i;
-	#a;
+	#a = null;
 	#o = null;
-	#s = null;
 	constructor(e) {
-		this.#e = e.host, gu(e.host, e.theme), this.#t = e.elements, this.#n = e.elements.map((e) => e.id), this.#r = e.stage;
+		this.#e = e.host, _u(e.host, e.theme), this.#t = e.elements, this.#n = e.stage;
 		let t = e.slides.map((t) => Po(t.at, e.words));
-		this.#i = e.slides.map((e, n) => ({
+		this.#r = e.slides.map((e, n) => ({
 			seconds: t[n],
 			slide: e,
 			morphSeconds: Jl(e.transition, e.transitionSeconds, n, t)
-		})), this.#a = /* @__PURE__ */ new Map(), this.renderAt(0);
+		})), this.#i = /* @__PURE__ */ new Map(), this.renderAt(0);
 	}
 	get nodes() {
-		return this.#a;
+		return this.#i;
 	}
 	get isTransitioning() {
-		return this.#s !== null;
+		return this.#o !== null;
 	}
 	indexAt(e) {
-		return Yl(this.#i, e);
+		return Yl(this.#r, e);
 	}
 	slideAt(e) {
-		return this.#i[this.indexAt(e)].slide;
+		return this.#r[this.indexAt(e)].slide;
 	}
 	transitionAt(e) {
-		return Xl(this.#i, e).kind === "morph";
+		return Xl(this.#r, e).kind === "morph";
 	}
 	seekSeconds(e) {
-		let t = Xl(this.#i, e);
-		xu(this.#o, t) || this.#l(t), this.#c(e);
+		let t = Xl(this.#r, e);
+		Su(this.#a, t) || this.#c(t), this.#s(e);
 	}
 	renderAt(e) {
-		this.#s?.timeline.dispose(), this.#s = null, this.#o = null, this.#l(Xl(this.#i, e)), this.#c(e);
+		this.#o?.timeline.dispose(), this.#o = null, this.#a = null, this.#c(Xl(this.#r, e)), this.#s(e);
 	}
 	settle() {
-		let e = this.#s;
-		e && (e.timeline.finish(), this.#s = null, this.#f(this.#i[e.index].slide.states));
+		let e = this.#o;
+		e && (e.timeline.finish(), this.#o = null, this.#d(this.#r[e.index].slide.states));
 	}
-	#c(e) {
-		let t = this.#s;
+	#s(e) {
+		let t = this.#o;
 		if (!t) return;
 		let n = e - t.startSeconds;
 		if (n >= t.timeline.durationSeconds) {
@@ -5862,60 +5872,60 @@ var Su = class {
 		}
 		if (t.wholeScene) {
 			let e = n >= t.timeline.durationSeconds * .5 ? "after" : "before";
-			e !== t.half && (this.#f(eu(t.plan, e)), this.#u(t.plan, e), t.half = e);
+			e !== t.half && (this.#d(eu(t.plan, e)), this.#l(t.plan, e), t.half = e);
 		}
 		t.timeline.seekSeconds(n);
 	}
-	#l(e) {
-		if (this.#o = e, e.kind === "still") {
-			this.#s?.timeline.dispose(), this.#s = null, this.#f(this.#i[e.index].slide.states);
+	#c(e) {
+		if (this.#a = e, e.kind === "still") {
+			this.#o?.timeline.dispose(), this.#o = null, this.#d(this.#r[e.index].slide.states);
 			return;
 		}
-		let t = this.#i[e.index], n = this.#i[e.index - 1].slide.states;
-		this.#s?.timeline.dispose();
-		let r = Zl(this.#n, n, t.slide.states), i = $l.has(t.slide.transition);
-		this.#f(i ? eu(r, "before") : Ql(r)), i ? this.#u(r, "before") : this.#d(r), this.#s = {
+		let t = this.#r[e.index], n = this.#r[e.index - 1].slide.states;
+		this.#o?.timeline.dispose();
+		let r = Zl(this.#t, n, t.slide.states), i = $l.has(t.slide.transition);
+		this.#d(i ? eu(r, "before") : Ql(r)), i ? this.#l(r, "before") : this.#u(r), this.#o = {
 			index: e.index,
 			plan: r,
 			wholeScene: i,
 			half: "before",
 			startSeconds: t.seconds - t.morphSeconds,
-			timeline: lu(r, this.#a, t.morphSeconds, t.slide.transition, t.slide.transitionDirection, this.#e, this.#r)
+			timeline: uu(r, this.#i, t.morphSeconds, t.slide.transition, t.slide.transitionDirection, this.#e, this.#n)
 		};
 	}
-	#u(e, t) {
+	#l(e, t) {
 		let n = t === "before" ? "enters" : "leaves";
 		for (let t of e) {
 			if (t.role !== n) continue;
-			let e = this.#a.get(t.id);
+			let e = this.#i.get(t.id);
+			e && (e.style.opacity = "0");
+		}
+	}
+	#u(e) {
+		for (let t of e) {
+			if (t.role !== "enters") continue;
+			let e = this.#i.get(t.id);
 			e && (e.style.opacity = "0");
 		}
 	}
 	#d(e) {
-		for (let t of e) {
-			if (t.role !== "enters") continue;
-			let e = this.#a.get(t.id);
-			e && (e.style.opacity = "0");
-		}
-	}
-	#f(e) {
 		let t = new Set(Object.keys(e));
-		if (this.#a.size === t.size && [...this.#a.keys()].every((e) => t.has(e))) {
+		if (this.#i.size === t.size && [...this.#i.keys()].every((e) => t.has(e))) {
 			for (let t of this.#t) {
-				let n = this.#a.get(t.id), r = e[t.id];
-				n && r && _u(n, t, r);
+				let n = this.#i.get(t.id), r = e[t.id];
+				n && r && vu(n, t, r);
 			}
 			return;
 		}
-		this.#a = yu(this.#e, this.#t, e, this.#r);
+		this.#i = bu(this.#e, this.#t, e, this.#n);
 	}
 	destroy() {
-		this.#e.textContent = "", this.#a = /* @__PURE__ */ new Map(), this.#o = null, this.#s = null;
+		this.#e.textContent = "", this.#i = /* @__PURE__ */ new Map(), this.#a = null, this.#o = null;
 	}
 };
 //#endregion
 //#region packages/player/src/preview.ts
-function Cu(e, t) {
+function wu(e, t) {
 	let n = Fo(e, t), { src: r, fileId: i } = n.audio;
 	return {
 		source: r === void 0 ? {
@@ -5938,13 +5948,13 @@ function Cu(e, t) {
 		theme: e.meta.theme
 	};
 }
-function wu(e) {
+function Tu(e) {
 	return e.entry;
 }
-function Tu(e) {
-	return e.segments.map((t) => Cu(e, t.id));
+function Eu(e) {
+	return e.segments.map((t) => wu(e, t.id));
 }
-var Eu = class {
+var Du = class {
 	#e;
 	#t;
 	#n;
@@ -5973,19 +5983,19 @@ var Eu = class {
 		this.#o();
 		let n = this.#n.nodes.get(e.id);
 		if (!n) throw Error(`Элемента «${e.id}» нет на сцене: обновлять нечего`);
-		_u(n, e, t);
+		vu(n, e, t);
 	}
 	rebuild(e) {
 		this.#o(), this.#t = e, this.#n.destroy(), this.#n = this.#a(e), this.#n.renderAt(this.#r);
 	}
 	fit(e, t, n = "fit") {
-		return this.#o(), bu(this.#e, e, t, this.#t.stage, n);
+		return this.#o(), xu(this.#e, e, t, this.#t.stage, n);
 	}
 	destroy() {
 		this.#i ||= (this.#n.destroy(), !0);
 	}
 	#a(e) {
-		return new Su({
+		return new Cu({
 			host: this.#e,
 			theme: e.theme,
 			elements: e.elements,
@@ -6000,10 +6010,10 @@ var Eu = class {
 };
 //#endregion
 //#region packages/player/src/repeat.ts
-function Du(e, t) {
+function Ou(e, t) {
 	return e.filter((e) => !t.has(e.id));
 }
-function Ou(e, t) {
+function ku(e, t) {
 	let n = /* @__PURE__ */ new Set();
 	if (t === null) return n;
 	let r = new Set(t.when.map((e) => e.variable).filter((e) => e !== void 0));
@@ -6012,7 +6022,7 @@ function Ou(e, t) {
 }
 //#endregion
 //#region packages/player/src/player.ts
-var ku = 2, Au = .4, ju = class {
+var Au = 2, ju = .4, Mu = class {
 	#e;
 	#t;
 	#n;
@@ -6038,7 +6048,7 @@ var ku = 2, Au = .4, ju = class {
 	#S = /* @__PURE__ */ new Set();
 	#C = !1;
 	constructor(e, t, n = {}, r = new as(), i = {}) {
-		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? wu(t), this.#a = Cu(t, this.#i), this.#x.add(this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#A), e.appendChild(this.#t);
+		this.#c = { ...i.answers }, this.#e = e, this.#o = r, this.#n = t, this.#i = i.startSegmentId ?? Tu(t), this.#a = wu(t, this.#i), this.#x.add(this.#i), this.#r = n, this.#t = document.createElement("div"), this.#t.className = "player-stage", this.#t.style.pointerEvents = "none", this.#t.addEventListener("click", this.#A), e.appendChild(this.#t);
 	}
 	get state() {
 		return this.#m;
@@ -6082,20 +6092,20 @@ var ku = 2, Au = .4, ju = class {
 		this.#D("loading"), this.#g = new ResizeObserver(() => this.#k()), this.#g.observe(this.#e), this.#l = await this.#o.clockFor(this.#a.source), this.#O(), this.#D("ready");
 	}
 	#O() {
-		this.#Y(), this.#u?.destroy(), this.#u = new Su({
+		this.#Y(), this.#u?.destroy(), this.#u = new Cu({
 			host: this.#t,
 			theme: this.#a.theme,
 			elements: this.#a.elements,
 			slides: this.#a.slides,
 			words: this.#a.words,
 			stage: this.#a.stage
-		}), this.#_ = [], this.#v = [], this.#k(), this.#W(), this.#d = Du(this.#a.gates, this.#S).map((e) => ({
+		}), this.#_ = [], this.#v = [], this.#k(), this.#W(), this.#d = Ou(this.#a.gates, this.#S).map((e) => ({
 			gate: e,
 			at: Po(e.at, this.#a.words)
 		})).sort((e, t) => e.at - t.at), this.#f = 0, this.#p.clear(), this.#u.renderAt(0);
 	}
 	#k() {
-		bu(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
+		xu(this.#t, this.#e.clientWidth, this.#e.clientHeight, this.#a.stage);
 	}
 	#A = (e) => {
 		if (this.#m !== "at-gate") return;
@@ -6183,9 +6193,9 @@ var ku = 2, Au = .4, ju = class {
 		let n = zo(Fo(this.#n, this.#i), this.#c);
 		if (n === null) return;
 		let r = n.goto, i = this.#a.duration - e;
-		if (i > ku) return;
-		let a = Cu(this.#n, r), o = a.source;
-		if (i > Au) {
+		if (i > Au) return;
+		let a = wu(this.#n, r), o = a.source;
+		if (i > ju) {
 			this.#o.warm(o);
 			return;
 		}
@@ -6205,7 +6215,7 @@ var ku = 2, Au = .4, ju = class {
 	}
 	#L() {
 		let e = this.#s, t = this.#l;
-		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = Cu(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#V(e.nodeId, e.choice), this.#O(), !0);
+		return !e || !t || t.scheduleNow < e.startsAt ? !1 : (this.#l?.stop(), this.#l = e.clock, this.#i = e.nodeId, this.#a = wu(this.#n, e.nodeId), this.#s = null, this.#b += 1, this.#V(e.nodeId, e.choice), this.#O(), !0);
 	}
 	#R() {
 		let e = this.#s;
@@ -6220,10 +6230,10 @@ var ku = 2, Au = .4, ju = class {
 		await this.#B(e.goto, e);
 	}
 	async #B(e, t) {
-		this.#J(), this.#R(), this.#l?.stop(), this.#i = e, this.#a = Cu(this.#n, e), this.#b += 1, this.#V(e, t), this.#l = await this.#o.clockFor(this.#a.source), await this.#l.wake(), this.#O(), this.#l.start(this.#T(0)), this.#D("playing"), this.#F();
+		this.#J(), this.#R(), this.#l?.stop(), this.#i = e, this.#a = wu(this.#n, e), this.#b += 1, this.#V(e, t), this.#l = await this.#o.clockFor(this.#a.source), await this.#l.wake(), this.#O(), this.#l.start(this.#T(0)), this.#D("playing"), this.#F();
 	}
 	#V(e, t) {
-		if (this.#C = this.#x.has(e), this.#x.add(e), this.#C) for (let e of Ou(Tu(this.#n), t.rule)) this.#S.delete(e);
+		if (this.#C = this.#x.has(e), this.#x.add(e), this.#C) for (let e of ku(Eu(this.#n), t.rule)) this.#S.delete(e);
 	}
 	async #H() {
 		let e = this.#Y(), t = this.#X(), n = this.#d[this.#f];
@@ -6239,7 +6249,7 @@ var ku = 2, Au = .4, ju = class {
 	}
 	#W() {
 		let e = Fo(this.#n, this.#i);
-		for (let t of Vo(e)) this.#o.warm(Cu(this.#n, t).source);
+		for (let t of Vo(e)) this.#o.warm(wu(this.#n, t).source);
 	}
 	async answer(e) {
 		if (this.#m !== "at-gate") throw Error(`Ответ вне гейта: состояние ${this.#m}`);
@@ -6252,7 +6262,7 @@ var ku = 2, Au = .4, ju = class {
 		}
 		let r = (this.#p.get(n.id) ?? 0) + 1;
 		this.#p.set(n.id, r);
-		let i = Mu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
+		let i = Nu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
 		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
 		let s = {
 			gate: n,
@@ -6303,7 +6313,7 @@ var ku = 2, Au = .4, ju = class {
 		return this.#u;
 	}
 };
-function Mu(e, t) {
+function Nu(e, t) {
 	let n = e.config;
 	switch (n.kind) {
 		case "continue": return !0;
@@ -6316,4 +6326,4 @@ function Mu(e, t) {
 	}
 }
 //#endregion
-export { is as AudioClock, as as AudioClocks, mu as DEFAULT_STAGE_HEIGHT, pu as DEFAULT_STAGE_WIDTH, Gl as FROZEN_DIRECTION, ju as Player, Ho as ProjectLoadError, Eu as ScenePreview, Su as SlideEngine, Wl as TECHNIQUE_PROPS, ql as UNMATCHED_FRACTION, $l as WHOLE_SCENE, Tu as allSegments, Ou as answersToClear, _u as applyElement, bu as applyFit, gu as applyTheme, lu as buildMorph, wu as entrySegmentOf, hu as fitStage, Xo as getAudio, fu as getElementRenderer, eu as halfStates, Yl as indexAt, Mu as isCorrect, Ql as layoutStatesFor, Uo as loadProject, ns as loadTrack, Jl as morphSecondsFor, Kl as motionOf, Du as openableGates, Xl as phaseAt, Zl as planMorph, vu as planPlacement, Yo as putAudio, du as registerElementRenderer, Qo as releaseAudioUrl, yu as renderScene, Zo as resolveAudioUrl, Cu as segmentOf };
+export { is as AudioClock, as as AudioClocks, hu as DEFAULT_STAGE_HEIGHT, mu as DEFAULT_STAGE_WIDTH, Gl as FROZEN_DIRECTION, Mu as Player, Ho as ProjectLoadError, Du as ScenePreview, Cu as SlideEngine, Wl as TECHNIQUE_PROPS, ql as UNMATCHED_FRACTION, $l as WHOLE_SCENE, Eu as allSegments, ku as answersToClear, vu as applyElement, xu as applyFit, _u as applyTheme, uu as buildMorph, Tu as entrySegmentOf, gu as fitStage, Xo as getAudio, pu as getElementRenderer, eu as halfStates, Yl as indexAt, Nu as isCorrect, Ql as layoutStatesFor, Uo as loadProject, ns as loadTrack, Jl as morphSecondsFor, Kl as motionOf, Ou as openableGates, Xl as phaseAt, Zl as planMorph, yu as planPlacement, Yo as putAudio, fu as registerElementRenderer, Qo as releaseAudioUrl, bu as renderScene, Zo as resolveAudioUrl, wu as segmentOf };

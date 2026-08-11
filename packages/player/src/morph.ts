@@ -9,7 +9,7 @@
  * Разделение не косметическое: правило сопоставления — это модель (ADR-015),
  * а таймлайн — способ её показать. Их ошибки лечатся в разных местах.
  */
-import { type ElementState, TRANSITIONS, type TransitionDirection } from '@player/core';
+import { type Element, type ElementState, TRANSITIONS, type TransitionDirection } from '@player/core';
 // Импорт «бочкой», а не по подпутям `animejs/timeline` и `animejs/engine`:
 // замерено — сборка выходит побайтово одинаковой (178.28 КБ), потому что
 // таймлайн и так тянет почти всё ядро движка. При равном размере выигрывает
@@ -173,6 +173,13 @@ export type MorphRole = 'moves' | 'enters' | 'leaves' | 'absent';
  */
 export interface MorphPart {
   readonly id: string;
+  /**
+   * Тип элемента. Нужен ровно одному потребителю — `buildMorph`, — и ровно
+   * ради одного различия: узел ГРУППЫ не имеет права анимировать `scale`.
+   * CSS-масштаб предка пересчитывает всё поддерево, включая `left` детей,
+   * а каждый ребёнок уже везёт собственный `scaleX`. → `groupMotion`
+   */
+  readonly type: Element['type'];
   readonly role: MorphRole;
   readonly from: ElementState | undefined;
   readonly to: ElementState | undefined;
@@ -186,12 +193,12 @@ export interface MorphPart {
  * зависит от того, как его собрали.
  */
 export function planMorph(
-  elementIds: readonly string[],
+  elements: readonly Element[],
   prev: SlideStates,
   next: SlideStates,
 ): MorphPart[] {
   const parts: MorphPart[] = [];
-  for (const id of elementIds) {
+  for (const { id, type } of elements) {
     const from = prev[id];
     const to = next[id];
 
@@ -201,7 +208,7 @@ export function planMorph(
     else if (from) role = 'leaves';
     else role = 'absent';
 
-    parts.push({ id, role, from, to });
+    parts.push({ id, type, role, from, to });
   }
   return parts;
 }
@@ -288,6 +295,38 @@ function scaleFactor(fromSize: number, toSize: number): number {
 /** Смещение центра бокса относительно центра конечного бокса. */
 function centerShift(fromStart: number, fromSize: number, toStart: number, toSize: number): number {
   return (fromStart + fromSize / 2) - (toStart + toSize / 2);
+}
+
+/**
+ * Движение узла ГРУППЫ: по левому верхнему углу и БЕЗ масштаба.
+ *
+ * Оба отличия от обычного элемента — следствия одного: узел группы
+ * не рисует себя, он держит поддерево.
+ *
+ * **Почему без масштаба.** CSS-масштаб предка пересчитывает всё поддерево,
+ * включая `left`/`top` детей, а каждый ребёнок уже везёт собственный
+ * `scaleX` из своего FLIP. Масштаб учёлся бы дважды, и в начале перехода
+ * ребёнок оказывался бы вдвое уже, чем стоял. Измерено на фикстуре
+ * `groups.json`: 66.59 экранных px расхождения по ширине при пороге 3.
+ * Размер группы — служебное число (охват детей), вида у неё нет,
+ * и анимировать в нём нечего.
+ *
+ * **Почему по углу, а не по центру.** Локальные координаты детей
+ * отсчитываются от левого верхнего угла — `applyElement` пишет `left`/`top`.
+ * Совпасть обязан именно угол; `centerShift` при изменившемся размере
+ * увёл бы поддерево вбок.
+ *
+ * Инвариант №8 не задет: движение по-прежнему только через `transform`.
+ */
+function groupMotion(from: ElementState, to: ElementState) {
+  return {
+    x: [from.x - to.x, 0],
+    y: [from.y - to.y, 0],
+    // Поворот, наоборот, ОБЯЗАН доезжать до детей: повернул группу —
+    // повернулось всё внутри. Композицию поворота CSS делает верно.
+    rotate: [from.rotation, to.rotation],
+    opacity: [visibleOpacity(from), visibleOpacity(to)],
+  };
 }
 
 export interface MorphTimeline {
@@ -546,13 +585,18 @@ export function buildMorph(
           case 'moves': {
             const from = part.from!;
             const to = part.to!;
+            const motion = part.type === 'group'
+              ? groupMotion(from, to)
+              : {
+                x: [centerShift(from.x, from.width, to.x, to.width), 0],
+                y: [centerShift(from.y, from.height, to.y, to.height), 0],
+                scaleX: [scaleFactor(from.width, to.width), 1],
+                scaleY: [scaleFactor(from.height, to.height), 1],
+                rotate: [from.rotation, to.rotation],
+                opacity: [visibleOpacity(from), visibleOpacity(to)],
+              };
             timeline.add(node, {
-              x: [centerShift(from.x, from.width, to.x, to.width), 0],
-              y: [centerShift(from.y, from.height, to.y, to.height), 0],
-              scaleX: [scaleFactor(from.width, to.width), 1],
-              scaleY: [scaleFactor(from.height, to.height), 1],
-              rotate: [from.rotation, to.rotation],
-              opacity: [visibleOpacity(from), visibleOpacity(to)],
+              ...motion,
               duration: durationMs,
               ease: 'inOutQuad',
             }, 0);

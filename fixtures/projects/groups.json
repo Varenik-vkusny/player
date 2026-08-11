@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 11,
+  "meta": {
+    "title": "Группы: рамка вокруг содержимого",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-groups",
+  "segments": [
+    {
+      "id": "s-groups",
+      "title": "Группа растёт, потом едет целиком",
+      "audio": {
+        "src": "/audio/branch-yes.mp3",
+        "duration": 2.736,
+        "words": []
+      },
+      "elements": [
+        { "id": "box", "type": "group", "content": "" },
+        { "id": "kid", "type": "shape", "content": "", "parentId": "box" },
+        { "id": "tag", "type": "text", "content": "Внутри группы", "parentId": "box" },
+        { "id": "solo", "type": "shape", "content": "" }
+      ],
+      "slides": [
+        {
+          "id": "g-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "box": {
+              "x": 200, "y": 200, "width": 400, "height": 300,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "rgba(245, 247, 250, 0.08)", "border-radius": "12px" }
+            },
+            "kid": {
+              "x": 40, "y": 40, "width": 200, "height": 120,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "background": "#3b82f6", "border-radius": "10px" }
+            },
+            "tag": {
+              "x": 40, "y": 190, "width": 320, "height": 60,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "36px", "font-family": "system-ui, sans-serif" }
+            },
+            "solo": {
+              "x": 1400, "y": 200, "width": 240, "height": 240,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e", "border-radius": "10px" }
+            }
+          }
+        },
+        {
+          "id": "g-2",
+          "at": { "kind": "seconds", "t": 1 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "box": {
+              "x": 200, "y": 200, "width": 800, "height": 600,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "rgba(245, 247, 250, 0.08)", "border-radius": "12px" }
+            },
+            "kid": {
+              "x": 80, "y": 80, "width": 400, "height": 240,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "background": "#3b82f6", "border-radius": "10px" }
+            },
+            "tag": {
+              "x": 80, "y": 380, "width": 640, "height": 120,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "36px", "font-family": "system-ui, sans-serif" }
+            },
+            "solo": {
+              "x": 1400, "y": 200, "width": 240, "height": 240,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e", "border-radius": "10px" }
+            }
+          }
+        },
+        {
+          "id": "g-3",
+          "at": { "kind": "seconds", "t": 2 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "box": {
+              "x": 900, "y": 400, "width": 800, "height": 600,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "rgba(245, 247, 250, 0.08)", "border-radius": "12px" }
+            },
+            "kid": {
+              "x": 80, "y": 80, "width": 400, "height": 240,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "background": "#3b82f6", "border-radius": "10px" }
+            },
+            "tag": {
+              "x": 80, "y": 380, "width": 640, "height": 120,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "36px", "font-family": "system-ui, sans-serif" }
+            },
+            "solo": {
+              "x": 1400, "y": 200, "width": 240, "height": 240,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#e4572e", "border-radius": "10px" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}
