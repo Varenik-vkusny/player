@@ -96,6 +96,12 @@ export const EDITOR_STYLES = `
   --ui-mark-tail: #93b4f0;
 
   --ui-shadow-selected: 0 0 0 1px var(--ui-focus-ring), 0 10px 22px #0e131826;
+  /* Тень всплывающего слоя: меню правой кнопки и всё, что ложится поверх.
+     ОТДЕЛЬНАЯ роль, а не --ui-shadow-selected: тот начинается с кольца
+     0 0 0 1px var(--ui-focus-ring) и обвёл бы меню цветной каймой поверх
+     его собственной границы. Кольцо означает выделение, а всплывшее меню
+     ничего не выделяет. */
+  --ui-shadow-overlay: 0 6px 20px #0e131826;
   --ui-motion-fast: 0.18s;
   --ui-motion-base: 0.22s;
 }
@@ -422,6 +428,33 @@ export const EDITOR_STYLES = `
   box-sizing: border-box;
 }
 
+/* Образец цвета обязан быть ВИДЕН, а не только присутствовать (Сессия 34).
+   Замер до правки: поле 22x28, padding 5px 7px, border 1px — то есть на сам
+   образец оставалось 6x16, и выбранный цвет разглядеть было нельзя. Значение
+   при этом верное: у выделенной mover в поле стоял ровно её цвет. Ни один
+   тест этого не видел — поле НАХОДИТСЯ, читается и правится.
+
+   Правятся обе величины, и это не перестраховка: из 22 px ширины отступы
+   забирали 14. Одна ширина без отступов дала бы образец 28 при поле 44,
+   то есть починила бы наполовину и незаметно.
+
+   Только на полосе: в панели «Объект» поле широкое, там правило не нужно.
+
+   Ширина подобрана замером, а не на глаз. При 36 px полоса на фикстуре morph
+   в окне 1280 переставала помещаться (scrollWidth 598 против clientWidth 586)
+   и за край уезжала кнопка «Ещё…» — то есть выход ко ВСЕМ остальным свойствам.
+   Разменивать невидимый образец на невидимую кнопку смысла нет. При 32 px
+   образец 26x22 вместо 6x16 (площадь вчетверо с лишним), и полоса помещается.
+
+   Полоса всё равно скроллится сама, когда содержимого больше ширины, —
+   это её закон, а не поломка. Здесь лишь не создаётся новой обрезки там,
+   где её не было. */
+.ed-propbar-field input[type='color'] {
+  flex: 0 0 auto;
+  width: 32px;
+  padding: 2px;
+}
+
 .ed-propbar-btn {
   display: flex;
   align-items: center;
@@ -534,6 +567,21 @@ export const EDITOR_STYLES = `
   top: -26px;
   border-radius: 50%;
   cursor: grab;
+}
+
+/* Запасные места для ручки поворота, когда сверху его нет (Сессия 34).
+   Какое из них выбрать, решает Overlay.tsx — там же разобрано почему.
+   Числа обязаны совпадать с ROTATE_GAP в Overlay.tsx.
+
+   --inside достаётся только рамке почти во всё полотно (элемент во весь
+   экран): у неё нет места ни сверху, ни снизу. Такая рамка заведомо выше
+   26 px, поэтому ручка внутри не сталкивается с ручками краёв. */
+.ed-grip-rotate--below {
+  top: calc(100% + 26px);
+}
+
+.ed-grip-rotate--inside {
+  top: 26px;
 }
 
 .ed-actions { display: flex; gap: 8px; flex: 0 0 auto; margin-left: auto; }
@@ -1119,6 +1167,44 @@ export const EDITOR_STYLES = `
   min-width: 0;
 }
 
+/* Свёрнутая панель озвучки — одна строка (Сессия 34). Отступ меньше, чем
+   у развёрнутой: при единственной строке 8px сверху и снизу дают лишние
+   восемь пикселей, а холсту важен каждый десяток. Панель не исчезает
+   и не прячется — она остаётся видимой строкой со своим именем. */
+.ed-audio-source--collapsed {
+  padding: 4px 16px;
+}
+
+/* Кнопка складывания. Текстовая, а не один значок: слово «Озвучка» заодно
+   называет панель, у которой своего заголовка не было вовсе — до Сессии 34
+   строка просто начиналась с имени файла. */
+.ed-audio-source-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ed-audio-source-toggle:hover:not(:disabled) {
+  border-color: var(--ui-line-strong);
+}
+
+/* Погашенная кнопка обязана ВЫГЛЯДЕТЬ погашенной — тот же закон, что
+   у .ed-action:disabled выше. Гаснет она, когда панели есть что сообщить:
+   свернуть ошибку или подтверждение замены нельзя. */
+.ed-audio-source-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .ed-audio-current {
   color: var(--ui-content-fg-secondary);
   font-size: 12px;
@@ -1247,7 +1333,7 @@ export const EDITOR_STYLES = `
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 6px 16px 4px;
+  padding: 4px 16px 4px;
   background: var(--ui-surface-panel);
   border-bottom: 1px solid var(--ui-line);
   min-width: 0;
@@ -1298,11 +1384,17 @@ export const EDITOR_STYLES = `
 
 /* Ровная лента: все карточки одного размера, порядок — позиция в ряду,
    а не секунда (product.md §2д [Р]). Прокрутка своя, дорожку не трогает. */
+/* Отступы сверху и снизу — не воздух, а место под ВЫДЕЛЕННУЮ карточку:
+   она приподнимается на translateY и растёт на scale(1.1), а оба приёма
+   рисуют за пределами своего бокса. Считаются от размера карточки, а не
+   подбираются: при высоте 72 рост даёт 79.2, то есть по 3.6 сверху и снизу,
+   плюс подъём 7 — сверху нужно 10.6, снизу базового хватает.
+   Ужаты вместе с карточкой в Сессии 34 (было 14/10 при высоте 90). */
 .ed-slide-strip {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 14px 4px 10px;
+  padding: 11px 4px 5px;
   overflow-x: auto;
   overflow-y: hidden;
   min-width: 0;
@@ -1316,8 +1408,12 @@ export const EDITOR_STYLES = `
 .ed-slide-strip-card {
   position: relative;
   flex: 0 0 auto;
-  width: 160px;
-  height: 90px;
+  /* 128x72 — те же 16:9, что и сцена, ужато с 160x90 в Сессии 34 ради
+     высоты холста. Сцена 1920x1080 показана здесь и так в масштабе 7 %:
+     карточка даёт впечатление о раскладке и цвете, а не читаемые детали,
+     и на 20 % мельче она даёт ровно то же впечатление. */
+  width: 128px;
+  height: 72px;
   padding: 0;
   margin: 0;
   box-sizing: border-box;
@@ -1337,7 +1433,8 @@ export const EDITOR_STYLES = `
 .ed-slide-strip-card-current {
   opacity: 1;
   border-color: var(--ui-action-selected-line);
-  transform: translateY(-9px) scale(1.1);
+  /* Подъём считается от карточки: 9 при высоте 90, значит 7 при 72. */
+  transform: translateY(-7px) scale(1.1);
   box-shadow: var(--ui-shadow-selected);
   z-index: 4;
 }
@@ -2515,7 +2612,14 @@ export const EDITOR_STYLES = `
   border: 1px solid var(--ui-line);
   border-radius: 6px;
   background: var(--ui-surface-overlay);
-  box-shadow: 0 6px 20px var(--ui-shadow-selected);
+  /* Роль подставляется ЦЕЛИКОМ, без своих чисел перед ней.
+     Было: box-shadow: 0 6px 20px var(--ui-shadow-selected) — а эта роль
+     сама является списком из двух теней. Подстановка давала
+     0 6px 20px 0 0 0 1px ..., то есть синтаксический мусор, и браузер
+     отбрасывал объявление ЦЕЛИКОМ: меню оставалось без тени и сливалось
+     с холстом. Ни ошибки, ни предупреждения — тот же способ провала,
+     что у неизвестного токена темы (замер С23). */
+  box-shadow: var(--ui-shadow-overlay);
 }
 
 .ed-ctxmenu-sep {

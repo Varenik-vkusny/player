@@ -25,6 +25,14 @@ export interface Frame {
   width: number;
   height: number;
   rotation: number;
+  /**
+   * Высота ПОЛОТНА, в котором живёт рамка, в тех же пикселях контейнера.
+   *
+   * Лежит рядом с рамкой, а не отдельным состоянием, намеренно: обе величины
+   * снимаются одним замером в `syncFrame`, и разъехаться им нельзя. Нужна
+   * ровно затем, чтобы решить, помещается ли ручка поворота под рамкой.
+   */
+  canvasHeight: number;
 }
 
 export interface OverlayProps {
@@ -42,6 +50,53 @@ export interface OverlayProps {
   onGripDown: (grip: Grip, event: ReactPointerEvent<HTMLElement>) => void;
 }
 
+/**
+ * Насколько ручка поворота отстоит от рамки — то же число, что в `styles.ts`
+ * у `.ed-grip-rotate` (`top: -26px`). Дублируется намеренно: CSS не умеет
+ * спросить «а помещаюсь ли я», и решение о переносе принимается здесь.
+ */
+const ROTATE_GAP = 26;
+
+/** Где рисовать ручку поворота относительно рамки. */
+type RotateSide = 'above' | 'below' | 'inside';
+
+/**
+ * Ручка поворота ищет себе место (Сессия 34).
+ *
+ * До этого она стояла на `top: -26px` безусловно, и нажать её было нельзя
+ * вовсе. Замер в живом Chromium (окно 1280x800, фикстура two-gates): область
+ * холста высотой 84 px, рамка на 127.8, ручка на 96.8 — то есть ВЫШЕ верха
+ * области, и `elementFromPoint` в её центре отдавал `div.ed-propbar`.
+ * Ни ошибки, ни предупреждения: поворот через числовое поле работал,
+ * недостижима была именно ручка.
+ *
+ * Порядок мест не произволен, у каждого своя причина.
+ *
+ * СВЕРХУ — как было и как привычно по другим редакторам. Годится, когда над
+ * рамкой есть `ROTATE_GAP` пикселей ПОЛОТНА. Именно полотна, а не окна:
+ * при вписывании они совпадают, а при увеличении `frame.top` только растёт,
+ * и ручка остаётся внутри прокручиваемой области — доехать до неё можно.
+ *
+ * СНИЗУ — когда сверху места нет. Прокрутка несимметрична: к отрицательным
+ * координатам браузер не прокручивает вовсе, а вниз — прокручивает.
+ * Но и снизу место надо проверять: у элемента во весь экран рамка равна
+ * полотну, и ручка под ней уезжает за пределы области. Замерено на
+ * `demo/bg`: ручка на y=346 при нижнем крае области 320, `elementFromPoint`
+ * отдаёт `div.ed-zoom-strip`. То есть один только перенос вниз этот случай
+ * НЕ лечит — что и нашлось прогоном, а не рассуждением.
+ *
+ * ВНУТРИ — последнее средство, и оно безопасно по построению. Сюда попадают
+ * только те рамки, у которых нет места ни сверху, ни снизу, а это значит
+ * `frame.height > canvasHeight - 2 * ROTATE_GAP`, то есть рамка почти во всё
+ * полотно. Такая рамка заведомо выше `ROTATE_GAP`, и ручка внутри неё
+ * не сталкивается ни с `n`, ни с `s`.
+ */
+function rotateSide(frame: Frame): RotateSide {
+  if (frame.top >= ROTATE_GAP) return 'above';
+  if (frame.top + frame.height + ROTATE_GAP <= frame.canvasHeight) return 'below';
+  return 'inside';
+}
+
 /** Ручки по краям. Порядок задаёт порядок в DOM и ни на что больше не влияет. */
 const HANDLES: readonly { grip: ResizeHandle; x: number; y: number; cursor: string }[] = [
   { grip: 'nw', x: 0, y: 0, cursor: 'nwse-resize' },
@@ -56,6 +111,8 @@ const HANDLES: readonly { grip: ResizeHandle; x: number; y: number; cursor: stri
 
 export function Overlay({ frame, showHandles, onGripDown }: OverlayProps): ReactElement | null {
   if (!frame) return null;
+
+  const side = rotateSide(frame);
 
   return (
     <div
@@ -74,8 +131,11 @@ export function Overlay({ frame, showHandles, onGripDown }: OverlayProps): React
     >
       {showHandles ? (
         <div
-          className="ed-grip ed-grip-rotate"
+          className={
+            side === 'above' ? 'ed-grip ed-grip-rotate' : `ed-grip ed-grip-rotate ed-grip-rotate--${side}`
+          }
           data-grip="rotate"
+          data-rotate-side={side}
           onPointerDown={(event) => onGripDown('rotate', event)}
         />
       ) : null}

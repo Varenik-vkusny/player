@@ -64,6 +64,30 @@ test.describe('меню правой кнопки', () => {
     await expect(page.getByTestId('context-menu')).toHaveCount(0);
   });
 
+  /**
+   * Тень у меню ЕСТЬ (Сессия 34).
+   *
+   * Было `box-shadow: 0 6px 20px var(--ui-shadow-selected)`, где роль сама
+   * является списком из двух теней. Подстановка давала синтаксический мусор,
+   * браузер отбрасывал объявление ЦЕЛИКОМ и молча, и меню сливалось с фоном.
+   *
+   * Проверяется вычисленный стиль, а не текст правила: разбор CSS — это
+   * ровно то место, где объявление пропадало. Сравнение с исходной строкой
+   * было бы зелёным и при мусоре.
+   */
+  test('у меню есть тень: объявление не отброшено разбором CSS', async ({ page }) => {
+    await openEditor(page);
+    await rightClickElement(page, 'mover');
+    await expect(page.getByTestId('context-menu')).toBeVisible();
+
+    const shadow = await page
+      .getByTestId('context-menu')
+      .evaluate((node) => getComputedStyle(node).boxShadow);
+
+    expect(shadow).not.toBe('none');
+    expect(shadow).not.toBe('');
+  });
+
   test('правая кнопка по НЕВЫДЕЛЕННОМУ выделяет его — меню действует на него', async ({ page }) => {
     await openEditor(page);
 

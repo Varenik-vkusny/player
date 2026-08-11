@@ -160,6 +160,52 @@ test.describe('масштаб холста', () => {
     expect(Math.abs(movedScene - dxScreen / scale)).toBeLessThan(12);
   });
 
+  /**
+   * Складывание панели озвучки меняет ВЫСОТУ холста, а при вписывании высота
+   * холста и есть масштаб сцены (Сессия 34).
+   *
+   * Мина здесь та же, что и у зума: масштаб — это то, через что пересчитываются
+   * все жесты мыши, и сохранённое где-нибудь число сломало бы их ТИХО. Разница
+   * в том, что тут его меняет не автор ползунком, а соседняя панель, которая
+   * про сцену ничего не знает.
+   *
+   * Проверяется не «изменился ли масштаб», а СОВПАДАЕТ ЛИ он с нынешним
+   * размером холста. Первое было бы зелёным и при пересчёте по устаревшему
+   * размеру; второе — нет.
+   */
+  test('складывание озвучки пересчитывает вписывание по НОВОЙ высоте холста', async ({ page }) => {
+    await openEditor(page, 'morph');
+
+    /** Каким вписывание ОБЯЗАНО быть при нынешнем размере холста. */
+    const fitFromHost = async (): Promise<number> =>
+      page.evaluate(() => {
+        const host = document.querySelector('.ed-stage-host');
+        if (!host) throw new Error('нет .ed-stage-host');
+        return Math.min(host.clientWidth / 1920, host.clientHeight / 1080);
+      });
+
+    const hostHeight = async (): Promise<number> =>
+      page.evaluate(() => document.querySelector('.ed-stage-host')!.clientHeight);
+
+    // Панель свёрнута по умолчанию — холсту досталась высота.
+    const tallHost = await hostHeight();
+    expect(await sceneScale(page)).toBeCloseTo(await fitFromHost(), 3);
+
+    // Автор разворачивает озвучку: холст обязан отдать ей высоту...
+    await page.getByTestId('audio-source-toggle').click();
+    const shortHost = await hostHeight();
+    expect(shortHost).toBeLessThan(tallHost);
+
+    // ...а сцена — пересчитаться по тому, что осталось. Без пересчёта здесь
+    // остался бы прежний масштаб, и он разошёлся бы с холстом вдвое.
+    expect(await sceneScale(page)).toBeCloseTo(await fitFromHost(), 3);
+
+    // И обратно: свернули — холст вернул себе высоту, масштаб снова сошёлся.
+    await page.getByTestId('audio-source-toggle').click();
+    expect(await hostHeight()).toBe(tallHost);
+    expect(await sceneScale(page)).toBeCloseTo(await fitFromHost(), 3);
+  });
+
   test('Ctrl+0 возвращает вписывание, каким оно и было', async ({ page }) => {
     await openEditor(page, 'morph');
     const fitScale = await sceneScale(page);

@@ -426,6 +426,9 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       width: screen.width,
       height: screen.height,
       rotation: selectedState.rotation,
+      // Тем же замером, что и сама рамка: Overlay выбирает по этому числу,
+      // помещается ли ручка поворота под рамкой (см. rotateSide).
+      canvasHeight: hostRect.height,
     });
   }, [requireNodes, selectedIds, currentSlide, segment.stage.width]);
 

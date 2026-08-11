@@ -24,6 +24,18 @@ async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
     timeout: 30_000,
   });
+
+  /**
+   * Панель озвучки свёрнута по умолчанию с Сессии 34 (холсту доставалось
+   * 84 px из 800, а этой панели — 135). Тест делает то же, что автор:
+   * разворачивает её, прежде чем печатать.
+   *
+   * Раскрытие проверяется, а не подразумевается: сломайся кнопка — и все
+   * тесты файла падали бы на «поле не найдено», то есть на следствии,
+   * а причину пришлось бы искать. Здесь причина названа сразу.
+   */
+  await page.getByTestId('audio-source-toggle').click();
+  await expect(page.getByTestId('speech-input')).toBeVisible();
 }
 
 test.describe('текст озвучки: ввод и сохранение', () => {
