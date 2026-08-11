@@ -33,7 +33,7 @@ import type {
 import { findSegment } from '@player/core';
 import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
-import { keyToIntent, type KeyContext } from './keyboard.js';
+import { keyToIntent, type KeyContext, type KeyIntent } from './keyboard.js';
 import { ELEMENTS, GATES, plural } from './plural.js';
 import { CATALOG_CATEGORIES, type PanelId } from './chrome/catalog.js';
 import { CatalogPanel } from './chrome/CatalogPanel.js';
@@ -1322,6 +1322,28 @@ export function Editor({
   );
 
   /**
+   * Что из выделенного можно собрать в группу, а что разобрать.
+   *
+   * Считается ЗДЕСЬ, а не в `keyboard.ts`: та таблица отвечает на вопрос
+   * о клавише и знания об элементах не имеет — и не должна (ADR-010).
+   *
+   * `canGroup` требует не меньше ДВУХ и всех — верхнего уровня. Второе
+   * условие сегодня выполняется само (выделить ребёнка группы нельзя,
+   * пока нет захода внутрь), но написано сразу: с появлением захода
+   * в Сессии 36 недостающая проверка дала бы группу внутри чужой группы
+   * молча, а схема упала бы уже при сохранении.
+   */
+  const groupability = useMemo(() => {
+    const selected = state.selectedIds
+      .map((id) => segment.elements.find((element) => element.id === id))
+      .filter((element): element is Element => element !== undefined);
+    return {
+      canGroup: selected.length >= 2 && selected.every((element) => element.parentId === undefined),
+      canUngroup: selected.some((element) => element.type === 'group'),
+    };
+  }, [state.selectedIds, segment.elements]);
+
+  /**
    * Клавиатура (срез 6). `keyToIntent` — чистая таблица без React и DOM
    * (`keyboard.ts`); этот эффект только собирает контекст из фактического
    * состояния и вызывает её, как и требует ADR-010.
@@ -1349,6 +1371,7 @@ export function Editor({
         inTextField: isTextFieldNode(active),
         // Пустой буфер обязан оставить Ctrl+V браузеру — см. `KeyContext`.
         hasClipboard: state.elementClipboard !== undefined,
+        ...groupability,
       };
       const intent = keyToIntent(event, context);
       if (!intent) return; // не наша клавиша — Tab и всё остальное продолжает жить своей жизнью
@@ -1436,6 +1459,48 @@ export function Editor({
           // (содержимое могло не измениться) — здесь только мост к нему.
           stageRef.current?.commitTextEdit();
           return;
+        case 'group':
+          dispatch({ type: 'groupElements', ids: state.selectedIds });
+          return;
+        case 'ungroup': {
+          /**
+           * Разбирается ПЕРВАЯ группа среди выделенных, а не все сразу.
+           *
+           * Выделить две группы одновременно сегодня можно (рамкой), и
+           * разобрать обе одним нажатием выглядело бы логично. Но `canUngroup`
+           * отвечает «есть ли что разбирать», а не «сколько», и разборка
+           * пачки — отдельное действие с отдельным вопросом про историю.
+           * Берём одну и не притворяемся, что умеем больше.
+           */
+          const group = state.selectedIds
+            .map((id) => segment.elements.find((element) => element.id === id))
+            .find((element) => element?.type === 'group');
+          // `canUngroup` уже проверил, что группа есть; молчаливый выход
+          // здесь означал бы расхождение двух проверок одного факта.
+          if (group === undefined) {
+            throw new Error('Ctrl+Shift+G дошёл до обработчика, но группы среди выделенного нет');
+          }
+          dispatch({ type: 'ungroupElements', groupId: group.id });
+          return;
+        }
+        default: {
+          /**
+           * Забытое намерение — МОЛЧАЛИВЫЙ дефект, а не безобидный пропуск.
+           *
+           * `preventDefault` выше уже отобрал сочетание у браузера. Ветка,
+           * которой здесь нет, означает: родное действие браузера подавлено,
+           * своё не выполнено, автор нажал и не получил ничего — ни реакции,
+           * ни ошибки. Ровно тот класс, что «нарисовано, но не нажимается».
+           *
+           * `never` превращает это в ошибку ТИПИЗАЦИИ: новое намерение
+           * в `KeyIntent` перестаёт собираться, пока ему не написан
+           * обработчик. Дефект ловится до запуска, а не жалобой автора.
+           */
+          const unhandled: never = intent;
+          throw new Error(
+            `Намерение «${(unhandled as KeyIntent).kind}» описано в таблице клавиш, но не обработано`,
+          );
+        }
       }
     };
 

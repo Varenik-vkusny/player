@@ -179,6 +179,84 @@ export function applyElement(
   renderer(node, element, state);
 }
 
+/** Куда и в каком порядке ставить один узел сцены. */
+export interface Placement {
+  readonly element: Element;
+  readonly state: ElementState;
+  /** Внутрь кого класть: id элемента-группы либо `undefined` — прямо в хост. */
+  readonly parentId: string | undefined;
+}
+
+/**
+ * Решает, кто чей потомок и в каком порядке вставляется. DOM не трогает.
+ *
+ * Вынесено из `renderScene` не ради красоты: юниты идут в `node` без DOM
+ * (`vitest.config.ts`), поэтому всё, что зовёт `document.createElement`,
+ * проверяется только браузером. Здесь же живёт единственное во всём рендере
+ * НЕОЧЕВИДНОЕ решение — дерево, порядок и обнаружение сироты, — и оно обязано
+ * быть проверяемым без браузера.
+ *
+ * **Родитель всегда раньше своих детей.** На это опирается `renderScene`:
+ * узел родителя он берёт из карты уже вставленных.
+ *
+ * **Обход не может зациклиться по построению.** Начинают его только элементы
+ * с пустым `parentId`, а спуск идёт по `parentId` вниз; участник цикла пустого
+ * `parentId` не имеет, корнем не становится и рекурсию не начинает. Цикл
+ * поэтому не вешает обход, а обнаруживается счётом непоставленных.
+ */
+export function planPlacement(
+  elements: readonly Element[],
+  states: SlideStates,
+): Placement[] {
+  const childrenOf = new Map<string, Element[]>();
+  const roots: Element[] = [];
+  let expected = 0;
+
+  for (const element of elements) {
+    // ADR-015: элемента без состояния на слайде нет вовсе.
+    if (states[element.id] === undefined) continue;
+    expected += 1;
+
+    const { parentId } = element;
+    if (parentId === undefined) {
+      roots.push(element);
+      continue;
+    }
+    const siblings = childrenOf.get(parentId);
+    if (siblings === undefined) childrenOf.set(parentId, [element]);
+    else siblings.push(element);
+  }
+
+  const order: Placement[] = [];
+  const walk = (element: Element, parentId: string | undefined): void => {
+    const state = states[element.id];
+    if (state === undefined) return;
+    order.push({ element, state, parentId });
+    for (const child of childrenOf.get(element.id) ?? []) walk(child, element.id);
+  };
+  for (const root of roots) walk(root, undefined);
+
+  /**
+   * Непоставленный элемент — это либо сирота (родителя на слайде нет), либо
+   * участник цикла. Схема запрещает и то и другое, но `renderScene` получает
+   * данные и из редактора, который держит сегмент в памяти и не гоняет его
+   * через разбор на каждое нажатие. Тихо пропустить нельзя: автор увидел бы,
+   * что объект исчез со сцены, без единого слова о причине.
+   */
+  if (order.length !== expected) {
+    const placed = new Set(order.map((p) => p.element.id));
+    const lost = elements
+      .filter((el) => states[el.id] !== undefined && !placed.has(el.id))
+      .map((el) => `«${el.id}» → «${el.parentId ?? ''}»`);
+    throw new Error(
+      `Элементы есть на слайде, но их некуда положить: ${lost.join(', ')}. `
+      + 'Либо группы нет на этом слайде, либо вложенность зациклена.',
+    );
+  }
+
+  return order;
+}
+
 /**
  * Строит сцену внутри контейнера. Возвращает карту id → узел, чтобы переход
  * мог адресовать элементы, не разыскивая их по DOM.
@@ -203,15 +281,26 @@ export function renderScene(
   host.style.transformOrigin = '0 0';
   host.style.overflow = 'hidden';
 
+  /**
+   * Карта ПЛОСКАЯ, хотя DOM теперь дерево, и это несущее требование.
+   * По ней адресуют узлы `ScenePreview.updateElement` (перетаскивание
+   * в редакторе) и `buildMorph` (участники перехода). Вложенная карта
+   * сломала бы обоих молча.
+   */
   const nodes = new Map<string, HTMLElement>();
+
   // Порядок вставки задан порядком в массиве: рендер детерминирован,
   // и одинаковый слайд всегда даёт одинаковый DOM.
-  for (const element of elements) {
-    const state = states[element.id];
-    if (!state) continue;
+  for (const { element, state, parentId } of planPlacement(elements, states)) {
     const node = document.createElement('div');
     applyElement(node, element, state);
-    host.appendChild(node);
+
+    // Родитель уже в карте: `planPlacement` ставит его раньше детей.
+    const parent = parentId === undefined ? host : nodes.get(parentId);
+    if (parent === undefined) {
+      throw new Error(`Узел группы «${parentId}» не создан раньше своего ребёнка «${element.id}»`);
+    }
+    parent.appendChild(node);
     nodes.set(element.id, node);
   }
   return nodes;

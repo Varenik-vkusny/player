@@ -39,8 +39,7 @@ export function slideChangeSummary(
 ): string {
   if (prev === undefined) return 'начало сцены';
 
-  const elementIds = elements.map((element) => element.id);
-  const plan = planMorph(elementIds, prev.states, next.states);
+  const plan = planMorph(elements, prev.states, next.states);
 
   const parts: string[] = [];
   const entered = idsWithRole(plan, 'enters');

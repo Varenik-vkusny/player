@@ -189,6 +189,20 @@ interface Gesture {
    * бы за одно долгое перетаскивание, и тем сильнее, чем дольше тянут.
    */
   readonly startBoxes: ReadonlyMap<string, Box>;
+  /**
+   * Стартовые ЛОКАЛЬНЫЕ боксы содержимого, если взялись за группу.
+   *
+   * Отдельным полем, а не через `startBoxes`: там лежат те, кого жест
+   * ДВИГАЕТ на общую дельту, а содержимое группы при перетаскивании тела
+   * не двигают вовсе — оно едет само, потому что его координаты
+   * отсчитываются от группы. Слей эти два списка — и перетаскивание группы
+   * сдвинуло бы детей вторым разом поверх родителя.
+   *
+   * Стартовые по той же причине, что и у `startBoxes`: множитель, взятый
+   * от текущего размера, возводился бы в степень на каждом `pointermove`,
+   * и содержимое схлопнулось бы или улетело за одно долгое движение.
+   */
+  readonly startChildren: ReadonlyMap<string, Box>;
   readonly startPoint: Point;
   /** Для вращения: угол, зафиксированный в момент захвата. */
   readonly grabOffset: number;
@@ -611,6 +625,24 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const visibleLayers = useCallback(
     (): readonly (Box & { zIndex: number; id: string })[] =>
       elements
+        /**
+         * Содержимое групп в список кандидатов НЕ ПОПАДАЕТ, и это не про
+         * выделение, а про координаты.
+         *
+         * Боксы здесь строятся из состояний напрямую и считаются СЦЕНHЫМИ.
+         * У ребёнка группы координаты ЛОКАЛЬНЫЕ — `state.x: 40` означает
+         * «40 от левого края группы». Оставь его в списке, и он будет
+         * числиться стоящим у начала координат сцены, там, где на экране
+         * пусто: автор щёлкает по пустому холсту, а выделяется объект,
+         * которого он там не видит. Проверено e2e, а не рассуждением —
+         * первая попытка проверить дала ложную зелень.
+         *
+         * Отсеивание заодно и есть то, что делает группу неделимой для
+         * указателя: попасть можно только в неё, её бокс — охват содержимого.
+         * Заход внутрь двойным щелчком (Сессия 36) снимет это ограничение,
+         * и тогда координаты придётся приводить к сцене, а не отсеивать.
+         */
+        .filter((element) => element.parentId === undefined)
         .filter((element) => isVisible(element.id))
         .map((element) => {
           const state = currentSlide.states[element.id]!; // isVisible гарантирует отрисованный узел ⇒ состояние есть
@@ -619,10 +651,18 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     [elements, currentSlide, isVisible],
   );
 
+  /**
+   * Верхний по стопке под точкой. Содержимое групп сюда не приходит вовсе:
+   * `visibleLayers` его отсеивает, и попасть указателем можно только
+   * в элемент верхнего уровня. Группа поэтому неделима для мыши,
+   * а её бокс — охват содержимого.
+   */
   const hitElementAt = useCallback(
     (point: Point): { id: string; box: Box } | undefined => {
       const hit = topmostAt(visibleLayers(), point);
-      return hit ? { id: hit.id, box: { x: hit.x, y: hit.y, width: hit.width, height: hit.height, rotation: hit.rotation } } : undefined;
+      return hit
+        ? { id: hit.id, box: { x: hit.x, y: hit.y, width: hit.width, height: hit.height, rotation: hit.rotation } }
+        : undefined;
     },
     [visibleLayers],
   );
@@ -646,6 +686,17 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         // нечего. Это не ошибка — элемент просто не появляется в этом кадре.
         if (state) startBoxes.set(id, boxOf(state));
       }
+
+      // Содержимое группы снимается ВСЕГДА, а не только под ручку: узнать
+      // здесь дешевле, чем на каждом кадре движения, а пустая карта
+      // у обычного элемента ничего не стоит.
+      const startChildren = new Map<string, Box>();
+      for (const element of elements) {
+        if (element.parentId !== elementId) continue;
+        const state = currentSlide.states[element.id];
+        if (state) startChildren.set(element.id, boxOf(state));
+      }
+
       gestureMovedRef.current = false;
       gestureRef.current = {
         pointerId: event.pointerId,
@@ -653,6 +704,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         elementId,
         startBox: box,
         startBoxes,
+        startChildren,
         startPoint: point,
         // Разница между текущим поворотом и углом захвата. Без неё элемент
         // прыгнул бы в момент, когда его схватили за ручку вращения.
@@ -667,7 +719,12 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       };
       host.setPointerCapture(event.pointerId);
     },
-    [requireNodes, scenePointOf],
+    // `elements` и `currentSlide` в списке обязательны: без них замыкание
+    // держит состав сцены с первого отрисованного кадра. Сразу после Ctrl+G
+    // список элементов только что изменился, и устаревшее замыкание не нашло
+    // бы у новой группы ни одного ребёнка — ручка масштабировала бы пустую
+    // рамку, молча.
+    [requireNodes, scenePointOf, elements, currentSlide],
   );
 
   /**
@@ -1030,6 +1087,36 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         height: round(next.height),
         rotation: round(next.rotation),
       });
+
+      /**
+       * Ручка размера у группы масштабирует СОДЕРЖИМОЕ, а не только рамку.
+       *
+       * Без этого автор тянет угол, рамка растёт, а внутри не меняется
+       * ничего — орган управления работает наполовину и молча.
+       *
+       * Множители берутся от СТАРТОВОГО бокса, а не от предыдущего кадра:
+       * иначе на каждом `pointermove` они перемножались бы, и содержимое
+       * улетело бы степенью за одно движение.
+       *
+       * Умножение локальных координат на множитель — и есть весь пересчёт:
+       * они отсчитываются от левого верхнего угла группы, значит масштаб
+       * относительно этого угла применяется к ним напрямую, каким бы боком
+       * ни тянули. Поворот сюда не попадает: `rotateBox` размера не меняет,
+       * множители вышли бы единичными, а содержимое поворачивается само —
+       * узел группы его предок.
+       */
+      if (gesture.grip !== 'rotate' && gesture.startChildren.size > 0) {
+        const sx = gesture.startBox.width === 0 ? 1 : next.width / gesture.startBox.width;
+        const sy = gesture.startBox.height === 0 ? 1 : next.height / gesture.startBox.height;
+        for (const [id, child] of gesture.startChildren) {
+          onElementStateChange(id, {
+            x: round(child.x * sx),
+            y: round(child.y * sy),
+            width: round(child.width * sx),
+            height: round(child.height * sy),
+          });
+        }
+      }
     },
     [scenePointOf, onElementStateChange, requireNodes, segment.stage.width],
   );

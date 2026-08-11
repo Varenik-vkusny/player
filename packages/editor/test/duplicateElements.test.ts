@@ -180,4 +180,73 @@ describe('duplicateElements', () => {
     expect(copyOfB.zIndex).toBeLessThan(copyOfA.zIndex);
     expect(copyOfB.zIndex).toBeGreaterThan(5);
   });
+
+  /**
+   * Краевой случай, найденный ПРИЁМКОЙ, а не заданием.
+   *
+   * Автор копирует ОДИНОКОГО ребёнка, группу которого не выделял. Копия
+   * остаётся в той же группе — значит её координаты по-прежнему локальны
+   * и зажимать их по размеру сцены нельзя. Но рамка при этом никуда
+   * не уехала: группу-то не копировали. Значит сдвиг ОБЯЗАТЕЛЕН, иначе
+   * копия ляжет ровно на оригинал внутри группы и будет неотличима
+   * от «Ctrl+D не сработал» — ровно та физика, которой куплено число
+   * DUPLICATE_OFFSET.
+   *
+   * Сегодня случай недостижим из интерфейса: выделить одинокого ребёнка
+   * нельзя, щелчок по нему выделяет группу. Заход внутрь группы (Сессия 36)
+   * его оживит, и без этого теста ветка ожила бы уже сломанной.
+   *
+   * Слом: вернуть единый флаг «есть родитель → сдвига нет» — копия ребёнка
+   * получит x 40 вместо 80.
+   */
+  it('Ctrl+D по ребёнку без его группы: копия сдвинута, но не зажата по сцене', () => {
+    const result = duplicateElements(
+      segment([element('group-1', { type: 'group' }), element('rect-1', { parentId: 'group-1' })]),
+      ['rect-1'],
+      { 'group-1': state({ x: 300, y: 200 }), 'rect-1': state({ x: 40, y: 20 }) },
+      STAGE,
+    );
+
+    expect(result.elements).toHaveLength(1);
+    const copy = result.elements[0]!;
+    // Осталась в той же группе: её родителя не копировали, перевешивать не на что.
+    expect(copy.parentId).toBe('group-1');
+    // Сдвинута — рамка не двигалась, двигаться должна сама копия.
+    expect(result.states[copy.id]!.x).toBe(80);
+    expect(result.states[copy.id]!.y).toBe(60);
+  });
+
+  it('Ctrl+D на группе тащит детей, и они указывают на КОПИЮ группы', () => {
+    // Долг Сессии 33, симметричный Ctrl+V: без сбора поддерева Ctrl+D
+    // на группе давал бы пустую коробку — у группы своего вида нет, значит
+    // на экране не появилось бы ничего.
+    //
+    // «Указывают на копию, а не на оригинал» — не самоочевидно: parentId
+    // копия НАСЛЕДУЕТ как есть (комментарий модуля), и наивная реализация
+    // оставила бы у копии ребёнка старое значение «group-1» — оно всё ещё
+    // валидно (группа никуда не делась), но тогда сдвиг группы не сдвинул
+    // бы её вставленных детей, и Ctrl+D на группе визуально ничего не делал
+    // бы для содержимого.
+    //
+    // Слом: вернуть сбор ровно по `ids` (убрать `collectWithDescendants`) —
+    // `result.elements` будет содержать только копию группы, длиной 1
+    // вместо 2.
+    const result = duplicateElements(
+      segment([element('group-1', { type: 'group' }), element('rect-1', { parentId: 'group-1' })]),
+      ['group-1'],
+      { 'group-1': state({ x: 300, y: 200 }), 'rect-1': state({ x: 40, y: 20 }) },
+      STAGE,
+    );
+
+    expect(result.elements).toHaveLength(2);
+    const newGroup = result.elements.find((item) => item.type === 'group')!;
+    const newChild = result.elements.find((item) => item.type !== 'group')!;
+
+    expect(newChild.parentId).toBe(newGroup.id);
+    expect(newChild.parentId).not.toBe('group-1');
+    // Та же физика двойного сдвига, что у Ctrl+V: группа сдвинута офсетом,
+    // ребёнок — нет, координаты ребёнка локальны.
+    expect(result.states[newGroup.id]!.x).toBe(340);
+    expect(result.states[newChild.id]!.x).toBe(40);
+  });
 });

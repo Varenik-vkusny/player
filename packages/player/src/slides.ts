@@ -78,7 +78,6 @@ function samePhase(a: Phase | null, b: Phase): boolean {
 export class SlideEngine {
   readonly #host: HTMLElement;
   readonly #elements: readonly Element[];
-  readonly #elementIds: readonly string[];
   readonly #stage: StageSize;
   readonly #scheduled: readonly Scheduled[];
 
@@ -94,7 +93,6 @@ export class SlideEngine {
     // целиком и МОЛЧА (S11).
     applyTheme(options.host, options.theme);
     this.#elements = options.elements;
-    this.#elementIds = options.elements.map((element) => element.id);
     this.#stage = options.stage;
 
     // Секунды считаются один раз на построении. Разрешать `TimeRef` каждый
@@ -256,7 +254,7 @@ export class SlideEngine {
     // здесь, иначе накладки копятся одна поверх другой.
     this.#running?.timeline.dispose();
 
-    const plan = planMorph(this.#elementIds, previous, scheduled.slide.states as SlideStates);
+    const plan = planMorph(this.#elements, previous, scheduled.slide.states as SlideStates);
     const wholeScene = WHOLE_SCENE.has(scheduled.slide.transition);
 
     // Приём, двигающий сцену целиком, начинает со СТАРОЙ картинки: ей ещё

@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { ANIMATABLE, TRANSITIONS } from '@player/core';
-import type { ElementState } from '@player/core';
+import type { Element, ElementState } from '@player/core';
 
 import {
   layoutStatesFor,
@@ -34,9 +34,22 @@ function state(patch: Partial<ElementState> = {}): ElementState {
   };
 }
 
+/**
+ * Элементы по именам.
+ *
+ * Со схемы v11 `planMorph` берёт ЭЛЕМЕНТЫ, а не их id: `buildMorph` обязан
+ * отличать узел группы — у него другое движение (без масштаба, по углу),
+ * потому что CSS-масштаб предка пересчитал бы всё поддерево вторым разом.
+ * Тип здесь всюду `shape`: этим тестам важно сопоставление слайдов,
+ * а не движение.
+ */
+function els(...ids: readonly string[]): Element[] {
+  return ids.map((id) => ({ id, type: 'shape' as const, content: '', locked: false }));
+}
+
 describe('planMorph: кто едет, кто приходит, кто уходит', () => {
   it('элемент есть в обоих слайдах — едет', () => {
-    const plan = planMorph(['a'], { a: state({ x: 0 }) }, { a: state({ x: 500 }) });
+    const plan = planMorph(els('a'), { a: state({ x: 0 }) }, { a: state({ x: 500 }) });
     expect(plan).toHaveLength(1);
     expect(plan[0]!.role).toBe('moves');
     expect(plan[0]!.from!.x).toBe(0);
@@ -44,19 +57,19 @@ describe('planMorph: кто едет, кто приходит, кто уходи
   });
 
   it('элемент только в следующем — приходит, ехать неоткуда', () => {
-    const plan = planMorph(['a'], {}, { a: state() });
+    const plan = planMorph(els('a'), {}, { a: state() });
     expect(plan[0]!.role).toBe('enters');
     expect(plan[0]!.from).toBeUndefined();
   });
 
   it('элемент только в предыдущем — уходит', () => {
-    const plan = planMorph(['a'], { a: state() }, {});
+    const plan = planMorph(els('a'), { a: state() }, {});
     expect(plan[0]!.role).toBe('leaves');
     expect(plan[0]!.to).toBeUndefined();
   });
 
   it('элемента нет ни там, ни там — он в переходе не участвует', () => {
-    const plan = planMorph(['a'], {}, {});
+    const plan = planMorph(els('a'), {}, {});
     expect(plan[0]!.role).toBe('absent');
   });
 
@@ -71,7 +84,7 @@ describe('planMorph: кто едет, кто приходит, кто уходи
    */
   it('скрытый на предыдущем слайде — едет, а не приходит', () => {
     const plan = planMorph(
-      ['a'],
+      els('a'),
       { a: state({ x: 0, visible: false }) },
       { a: state({ x: 500, visible: true }) },
     );
@@ -83,20 +96,20 @@ describe('planMorph: кто едет, кто приходит, кто уходи
     // Ключи объекта намеренно в обратном порядке: рендер обязан быть
     // детерминированным, а порядок ключей зависит от того, как их положили.
     const next = { b: state(), a: state() };
-    const plan = planMorph(['a', 'b'], {}, next);
+    const plan = planMorph(els('a', 'b'), {}, next);
     expect(plan.map((part) => part.id)).toEqual(['a', 'b']);
   });
 });
 
 describe('layoutStatesFor: раскладка на время перехода', () => {
   it('уходящий остаётся на своём прежнем месте, пока гаснет', () => {
-    const plan = planMorph(['gone'], { gone: state({ x: 42 }) }, {});
+    const plan = planMorph(els('gone'), { gone: state({ x: 42 }) }, {});
     expect(layoutStatesFor(plan)['gone']!.x).toBe(42);
   });
 
   it('едущий и приходящий встают сразу в конечный бокс — FLIP двигает трансформацию', () => {
     const plan = planMorph(
-      ['mover', 'comer'],
+      els('mover', 'comer'),
       { mover: state({ x: 0 }) },
       { mover: state({ x: 900 }), comer: state({ x: 300 }) },
     );
@@ -106,7 +119,7 @@ describe('layoutStatesFor: раскладка на время перехода',
   });
 
   it('элемента, которого нет ни на одном из слайдов, в раскладке нет вовсе', () => {
-    const plan = planMorph(['ghost'], {}, {});
+    const plan = planMorph(els('ghost'), {}, {});
     expect(Object.keys(layoutStatesFor(plan))).toEqual([]);
   });
 });
@@ -285,7 +298,7 @@ describe('направление перехода: ось, знак и замо�
 
 describe('halfStates: две половины перехода, двигающего сцену целиком', () => {
   const plan = planMorph(
-    ['stays', 'goes', 'comes'],
+    els('stays', 'goes', 'comes'),
     { stays: state({ x: 10 }), goes: state({ x: 20 }) },
     { stays: state({ x: 99 }), comes: state({ x: 30 }) },
   );
@@ -317,7 +330,7 @@ describe('halfStates: две половины перехода, двигающе
   });
 
   it('участник без обоих состояний не попадает никуда', () => {
-    const ghost = planMorph(['ghost'], {}, {});
+    const ghost = planMorph(els('ghost'), {}, {});
     expect(Object.keys(halfStates(ghost, 'before'))).toEqual([]);
     expect(Object.keys(halfStates(ghost, 'after'))).toEqual([]);
   });

@@ -20,13 +20,20 @@ function press(key: string, mods: Mods = {}) {
  * Так тест доказывает, что Ctrl+V там молчит из-за каретки в тексте,
  * а не из-за пустого буфера: при `false` он был бы зелёным по неверной
  * причине и остался бы зелёным, даже если убрать проверку контекста.
+ *
+ * `canGroup` и `canUngroup` (Сессия 35) стоят в `true` ВЕЗДЕ по тому же
+ * правилу: молчание Ctrl+G при правке текста обязано доказывать проверку
+ * каретки, а не отсутствие того, что группировать.
  */
-const NORMAL: KeyContext = { hasSelection: true, editingText: false, inTextField: false, hasClipboard: true };
-const NO_SELECTION: KeyContext = { hasSelection: false, editingText: false, inTextField: false, hasClipboard: true };
-const EMPTY_CLIPBOARD: KeyContext = { hasSelection: true, editingText: false, inTextField: false, hasClipboard: false };
-const EDITING_TEXT: KeyContext = { hasSelection: true, editingText: true, inTextField: false, hasClipboard: true };
-const NO_SELECTION_EDITING_TEXT: KeyContext = { hasSelection: false, editingText: true, inTextField: false, hasClipboard: true };
-const IN_TEXT_FIELD: KeyContext = { hasSelection: true, editingText: false, inTextField: true, hasClipboard: true };
+const NORMAL: KeyContext = { hasSelection: true, editingText: false, inTextField: false, hasClipboard: true, canGroup: true, canUngroup: true };
+const NO_SELECTION: KeyContext = { hasSelection: false, editingText: false, inTextField: false, hasClipboard: true, canGroup: true, canUngroup: true };
+const EMPTY_CLIPBOARD: KeyContext = { hasSelection: true, editingText: false, inTextField: false, hasClipboard: false, canGroup: true, canUngroup: true };
+const EDITING_TEXT: KeyContext = { hasSelection: true, editingText: true, inTextField: false, hasClipboard: true, canGroup: true, canUngroup: true };
+const NO_SELECTION_EDITING_TEXT: KeyContext = { hasSelection: false, editingText: true, inTextField: false, hasClipboard: true, canGroup: true, canUngroup: true };
+const IN_TEXT_FIELD: KeyContext = { hasSelection: true, editingText: false, inTextField: true, hasClipboard: true, canGroup: true, canUngroup: true };
+
+/** Выделен один элемент: связывать нечего, разбирать нечего. */
+const NOTHING_TO_GROUP: KeyContext = { ...NORMAL, canGroup: false, canUngroup: false };
 
 describe('обычный режим, есть выделение: вся раскладка работает', () => {
   const cases: Array<[string, Mods, KeyIntent]> = [
@@ -388,5 +395,63 @@ describe('Ctrl+C / Ctrl+X / Ctrl+V — буфер обмена элементо�
     expect(keyToIntent(press('c'), NORMAL)).toBeUndefined();
     expect(keyToIntent(press('x'), NORMAL)).toBeUndefined();
     expect(keyToIntent(press('v'), NORMAL)).toBeUndefined();
+  });
+});
+
+/**
+ * Ctrl+G и Ctrl+Shift+G — группировка (Сессия 35).
+ *
+ * Оба сочетания ЧУЖИЕ: у Chrome это «найти далее» и «найти назад». Значит
+ * молчание таблицы там, где группировать нечего, — не мелочь: оно возвращает
+ * автору поиск браузера вместо действия, которого он не просил.
+ */
+describe('Ctrl+G — сборка и разборка группы', () => {
+  it('Ctrl+G собирает, когда есть что связывать', () => {
+    expect(keyToIntent(press('g', { ctrl: true }), NORMAL)).toEqual({ kind: 'group' });
+    expect(keyToIntent(press('g', { meta: true }), NORMAL)).toEqual({ kind: 'group' });
+  });
+
+  it('Ctrl+Shift+G разбирает, когда среди выделенного есть группа', () => {
+    expect(keyToIntent(press('g', { ctrl: true, shift: true }), NORMAL)).toEqual({ kind: 'ungroup' });
+    expect(keyToIntent(press('g', { meta: true, shift: true }), NORMAL)).toEqual({ kind: 'ungroup' });
+  });
+
+  /**
+   * Асимметрия проверок: Shift решает, какое из двух намерений спрашивают,
+   * и спрашивают РАЗНОЕ. Один выделенный элемент собрать нельзя, но он же
+   * может быть группой — и тогда разобрать его можно.
+   */
+  it('нечего связывать — Ctrl+G не наш, сочетание остаётся браузеру', () => {
+    expect(keyToIntent(press('g', { ctrl: true }), NOTHING_TO_GROUP)).toBeUndefined();
+  });
+
+  it('группы среди выделенного нет — Ctrl+Shift+G не наш', () => {
+    expect(keyToIntent(press('g', { ctrl: true, shift: true }), NOTHING_TO_GROUP)).toBeUndefined();
+  });
+
+  it('выделена одна группа: собрать нельзя, разобрать можно', () => {
+    const soleGroup: KeyContext = { ...NORMAL, canGroup: false, canUngroup: true };
+    expect(keyToIntent(press('g', { ctrl: true }), soleGroup)).toBeUndefined();
+    expect(keyToIntent(press('g', { ctrl: true, shift: true }), soleGroup)).toEqual({ kind: 'ungroup' });
+  });
+
+  it('при правке текста на холсте молчат оба — и это из-за каретки', () => {
+    // Оба флага в EDITING_TEXT стоят в `true`, поэтому молчание доказывает
+    // именно проверку контекста правки, а не отсутствие того, что группировать.
+    expect(keyToIntent(press('g', { ctrl: true }), EDITING_TEXT)).toBeUndefined();
+    expect(keyToIntent(press('g', { ctrl: true, shift: true }), EDITING_TEXT)).toBeUndefined();
+  });
+
+  it('в текстовом поле панели молчат оба', () => {
+    expect(keyToIntent(press('g', { ctrl: true }), IN_TEXT_FIELD)).toBeUndefined();
+    expect(keyToIntent(press('g', { ctrl: true, shift: true }), IN_TEXT_FIELD)).toBeUndefined();
+  });
+
+  it('голая g без модификаторов — обычный ввод, не наше', () => {
+    expect(keyToIntent(press('g'), NORMAL)).toBeUndefined();
+  });
+
+  it('с Alt — системное сочетание, не наше', () => {
+    expect(keyToIntent(press('g', { ctrl: true, alt: true }), NORMAL)).toBeUndefined();
   });
 });

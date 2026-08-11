@@ -30,6 +30,8 @@ export type KeyIntent =
   | { readonly kind: 'copy' }
   | { readonly kind: 'cut' }
   | { readonly kind: 'paste' }
+  | { readonly kind: 'group' }
+  | { readonly kind: 'ungroup' }
   | { readonly kind: 'deselect' }
   | { readonly kind: 'commitText' }
   | { readonly kind: 'zoom'; readonly to: 'in' | 'out' | 'fit' };
@@ -49,6 +51,21 @@ export interface KeyContext {
    * у автора нативную вставку там, где нам делать нечего.
    */
   readonly hasClipboard: boolean;
+  /**
+   * Выделенного хватает, чтобы собрать группу: не меньше ДВУХ элементов
+   * верхнего уровня.
+   *
+   * Не выводится из `hasSelection`, и это не дублирование. `hasSelection`
+   * отвечает «есть ли над чем работать», а группировка спрашивает другое —
+   * «есть ли что СВЯЗЫВАТЬ». Группа из одного элемента схемой законна,
+   * а смысла не имеет: она добавляет уровень, ничего не соединяя.
+   *
+   * Считает вызывающий, потому что здесь нет и не должно быть знания
+   * об элементах: модуль отвечает на вопрос о клавише, а не о сцене.
+   */
+  readonly canGroup: boolean;
+  /** Среди выделенного есть группа, которую можно разобрать. */
+  readonly canUngroup: boolean;
 }
 
 /** Шаг сдвига стрелками: 1 px обычно, 10 px с зажатым Shift. */
@@ -168,6 +185,26 @@ export function keyToIntent(event: KeyboardLikeEvent, context: KeyContext): KeyI
     if (key === 'c') return context.hasSelection ? { kind: 'copy' } : undefined;
     if (key === 'x') return context.hasSelection ? { kind: 'cut' } : undefined;
     if (key === 'v') return context.hasClipboard ? { kind: 'paste' } : undefined;
+  }
+
+  /**
+   * Группировка (Сессия 35).
+   *
+   * ОСТОРОЖНО, оба сочетания НЕ НАШИ: у Chrome Ctrl+G — «найти далее»,
+   * Ctrl+Shift+G — «найти назад». Вернув отсюда намерение, вызывающий
+   * ОБЯЗАН погасить событие, иначе автор получит поверх редактора чужую
+   * панель поиска. Здесь этого сделать нельзя — модуль не трогает событие.
+   * Та же оговорка и по той же причине стоит у Ctrl+D выше.
+   *
+   * Проверки асимметричны намеренно: собирать нечего при одном выделенном,
+   * разбирать нечего, если группы среди выделенного нет. В обоих случаях
+   * возвращается `undefined` — по закону модуля это «клавиша не наша»,
+   * и автор получит поиск браузера. Осознанная цена: перехватывать чужое
+   * сочетание там, где нам нечего делать, закон запрещает.
+   */
+  if (withCtrlOrCmd && key === 'g') {
+    if (event.shiftKey) return context.canUngroup ? { kind: 'ungroup' } : undefined;
+    return context.canGroup ? { kind: 'group' } : undefined;
   }
 
   if (event.key === 'Delete' || event.key === 'Backspace') {

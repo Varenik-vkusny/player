@@ -27,6 +27,10 @@ import {
   type ElementClipboard,
 } from './elementClipboard.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
+import {
+  groupElements as groupElementsInSegment,
+  ungroupElements as ungroupElementsInSegment,
+} from './groupElements.js';
 import * as exits from './exits.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
@@ -191,6 +195,22 @@ export type EditorAction =
       readonly ids: readonly string[];
       readonly at: TimeRef;
     }
+  /**
+   * Сборка и разборка группы (Сессия 35).
+   *
+   * **Поля `at` здесь НЕТ, и это не упущение, а разница по существу.**
+   * Ctrl+D и Ctrl+V кладут своё на слайд под головкой — они правят КАДР.
+   * Группировка правит СТРОЕНИЕ сегмента: она обязана пройти каждый слайд,
+   * где есть хоть один из детей, потому что `SegmentSchema` запрещает
+   * ребёнка на слайде без состояния его группы. Появись здесь `at`,
+   * группа завелась бы на одном слайде, а проект перестал бы проходить
+   * собственную проверку при следующей загрузке — молча до перезагрузки.
+   *
+   * По той же причине группировка не рождает слайд на голом месте
+   * дорожки: рождать нечего, правка не привязана к моменту.
+   */
+  | { readonly type: 'groupElements'; readonly ids: readonly string[] }
+  | { readonly type: 'ungroupElements'; readonly groupId: string }
   /**
    * Буфер обмена элементов (Сессия 33).
    *
@@ -561,6 +581,43 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const selectedIds = state.selectedIds.filter((id) => !action.ids.includes(id));
       // Удалили выделенное — снимаем именно его, остальное выделение живёт.
       return selectedIds.length === state.selectedIds.length ? next : { ...next, selectedIds };
+    }
+
+    case 'groupElements': {
+      const segment = currentSegment(state);
+      const made = groupElementsInSegment(segment, action.ids);
+      const next = replaceSegment(state, {
+        ...segment,
+        elements: [...made.elements],
+        slides: [...made.slides],
+      });
+      /**
+       * Выделение переходит на группу, а не остаётся на детях.
+       *
+       * Иначе автор, только что собравший пачку, продолжал бы таскать
+       * её поэлементно — то есть увидел бы, что кнопка сработала,
+       * а поведение не изменилось. Выделенная группа — ещё и единственное
+       * состояние, в котором рисуются ручки (`StageView`, `showHandles`).
+       */
+      return { ...next, selectedIds: [made.groupId] };
+    }
+
+    case 'ungroupElements': {
+      const segment = currentSegment(state);
+      // Дети собираются ДО разборки: после неё `parentId` у них уже нет,
+      // и найти бывших членов группы будет не по чему.
+      const childIds = segment.elements
+        .filter((element) => element.parentId === action.groupId)
+        .map((element) => element.id);
+      const made = ungroupElementsInSegment(segment, action.groupId);
+      const next = replaceSegment(state, {
+        ...segment,
+        elements: [...made.elements],
+        slides: [...made.slides],
+      });
+      // Выделенной остаётся та же пачка, только уже без общей рамки:
+      // разборка — не отмена выбора, а снятие связи.
+      return { ...next, selectedIds: childIds };
     }
 
     case 'duplicateElements': {

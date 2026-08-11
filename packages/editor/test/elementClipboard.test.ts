@@ -202,17 +202,25 @@ describe('pasteElements: вставка в ТОТ ЖЕ слайд', () => {
 });
 
 describe('pasteElements: группы и слои', () => {
-  it('parentId СБРАСЫВАЕТСЯ: ссылка на группу чужой части не переносится', () => {
-    /*
-     * Мина, найденная грепом схемы (журнал §2). `SegmentSchema` требует,
-     * чтобы `parentId` указывал на элемент типа `group` ТОГО ЖЕ сегмента.
-     * Перенеся ссылку, мы собрали бы проект, не проходящий собственную
-     * проверку при следующей загрузке, — а редактор всё это время
-     * показывал бы исправную картинку.
-     *
-     * Слом: копировать элемент целиком (`{ ...item.element, id }`) —
-     * `parentId` останется, и тест покраснеет.
-     */
+  /*
+   * До Сессии 35 здесь стоял тест «parentId СБРАСЫВАЕТСЯ: ссылка на группу
+   * чужой части не переносится», написанный ДО того, как копия группы
+   * научилась нести детей. Он копировал ОДНОГО ребёнка без его группы —
+   * и это по-прежнему единственный случай, где сброс `parentId` верен.
+   * Его утверждение живо и переехало без изменений в тест ниже
+   * («родитель не скопирован — верхний уровень»); то, что стало неверным
+   * (parentId ВСЕГДА сбрасывается, даже когда группу скопировали вместе
+   * с содержимым), проверяют два теста после него.
+   */
+  it('родитель не скопирован — ребёнок становится верхнего уровня', () => {
+    // Мина, найденная грепом схемы (журнал §2). `SegmentSchema` требует,
+    // чтобы `parentId` указывал на элемент типа `group` ТОГО ЖЕ сегмента.
+    // Перенеся ссылку на группу, которой в целевом сегменте нет, мы
+    // собрали бы проект, не проходящий собственную проверку при следующей
+    // загрузке, — а редактор всё это время показывал бы исправную картинку.
+    //
+    // Слом: не стирать `parentId`, когда его родителя нет в буфере, —
+    // `parentId` останется «group-1», и тест покраснеет.
     const source = segment('seg-1', [
       element('group-1', { type: 'group' }),
       element('rect-1', { parentId: 'group-1' }),
@@ -226,6 +234,130 @@ describe('pasteElements: группы и слои', () => {
 
     expect(made.elements[0]!.parentId).toBeUndefined();
     expect('parentId' in made.elements[0]!).toBe(false);
+  });
+
+  it('копия группы несёт детей: поддерево, а не ровно перечисленные ids', () => {
+    // Долг Сессии 33: копия группы без сбора поддерева — пустая коробка,
+    // МОЛЧА. У группы нет собственного вида, значит на экране не появилось
+    // бы вообще ничего, и ни ошибки, ни предупреждения при этом бы не было.
+    //
+    // Слом: вернуть сбор буфера ровно по `ids` (убрать
+    // `collectWithDescendants`) — в буфере останется только сама группа,
+    // без rect-1, и длина станет 1 вместо 2.
+    const source = segment('seg-1', [
+      element('group-1', { type: 'group' }),
+      element('rect-1', { parentId: 'group-1' }),
+    ]);
+    const states = { 'group-1': state({ x: 300, y: 200 }), 'rect-1': state({ x: 40, y: 20 }) };
+    const clipboard = copyElementsToClipboard(source, 'slide-1', ['group-1'], states);
+
+    expect(clipboard.items).toHaveLength(2);
+    expect(clipboard.items.map((item) => item.element.id)).toEqual(['group-1', 'rect-1']);
+  });
+
+  it('у вставленного ребёнка parentId указывает на НОВУЮ группу, а не на исходную', () => {
+    // Слом: не перевешивать ссылку (вернуть безусловный `delete parentId`
+    // у ВСЕХ элементов буфера) — у вставленного rect parentId станет
+    // `undefined` вместо id новой группы, и тест покраснеет.
+    const source = segment('seg-1', [
+      element('group-1', { type: 'group' }),
+      element('rect-1', { parentId: 'group-1' }),
+    ]);
+    const states = { 'group-1': state(), 'rect-1': state() };
+    const clipboard = copyElementsToClipboard(source, 'slide-1', ['group-1'], states);
+
+    // Целевой сегмент уже занимает имя «group-1» — иначе `freeId` выдал бы
+    // копии то же самое имя по чистому совпадению (свободных имён с этим
+    // префиксом ещё не было), и тест не отличил бы «id перевешен на новый»
+    // от «id случайно совпал со старым».
+    const target = segment('seg-2', [element('group-1', { type: 'group' })]);
+    const made = pasteElements(target, 'slide-1', clipboard, {}, STAGE);
+
+    const newGroup = made.elements.find((item) => item.type === 'group' && item.id !== 'group-1')!;
+    const newChild = made.elements.find((item) => item.type !== 'group')!;
+
+    expect(newGroup.id).not.toBe('group-1');
+    expect(newChild.parentId).toBe(newGroup.id);
+    expect(newChild.parentId).not.toBe('group-1');
+  });
+
+  it('дети не сдвигаются: сдвинута только группа, а не она и её дети вдвойне', () => {
+    /*
+     * Несущий тест задачи. Координаты ребёнка отсчитываются ОТ ГРУППЫ
+     * (решение владельца): группа уже сдвинута офсетом, ребёнок едет вместе
+     * с ней, потому что x/y относительны. Прибавить офсет и ребёнку —
+     * сдвинуть его дважды.
+     *
+     * Проверяется КОНЕЧНОЕ положение обоих, не промежуточное значение —
+     * ровно то, что видно на итоговой сцене.
+     *
+     * Слом: убрать различение «есть ли итоговый parentId» у офсета
+     * в `placeCopies` (прибавлять offset безусловно) — x ребёнка станет
+     * 80 вместо 40, y станет 60 вместо 20, и тест покраснеет.
+     */
+    const source = segment('seg-1', [
+      element('group-1', { type: 'group' }),
+      element('rect-1', { parentId: 'group-1' }),
+    ]);
+    const states = {
+      'group-1': state({ x: 300, y: 200 }),
+      'rect-1': state({ x: 40, y: 20 }),
+    };
+    const clipboard = copyElementsToClipboard(source, 'slide-1', ['group-1'], states);
+
+    // Вставка в ТОТ ЖЕ слайд — офсет применяется (см. `DUPLICATE_OFFSET`).
+    const made = pasteElements(source, 'slide-1', clipboard, states, STAGE);
+
+    const newGroup = made.elements.find((item) => item.type === 'group')!;
+    const newChild = made.elements.find((item) => item.type !== 'group')!;
+
+    // Группа сдвинута.
+    expect(made.states[newGroup.id]!.x).toBe(340);
+    expect(made.states[newGroup.id]!.y).toBe(240);
+    // Ребёнок — нет: локальные координаты остаются теми же, что у оригинала.
+    expect(made.states[newChild.id]!.x).toBe(40);
+    expect(made.states[newChild.id]!.y).toBe(20);
+  });
+
+  it('элемент, попавший в ids ЯВНО и как потомок группы, копируется РОВНО один раз', () => {
+    // Слом: убрать защиту от повтора в `collectWithDescendants` (не
+    // проверять `seen` перед добавлением) — rect-1 попадёт в буфер дважды:
+    // один раз явно, второй раз как потомок group-1.
+    const source = segment('seg-1', [
+      element('group-1', { type: 'group' }),
+      element('rect-1', { parentId: 'group-1' }),
+    ]);
+    const states = { 'group-1': state(), 'rect-1': state() };
+    const clipboard = copyElementsToClipboard(source, 'slide-1', ['group-1', 'rect-1'], states);
+
+    expect(clipboard.items).toHaveLength(2);
+    expect(clipboard.items.filter((item) => item.element.id === 'rect-1')).toHaveLength(1);
+  });
+
+  it('группа внутри группы копируется целиком, а не на один уровень вложенности', () => {
+    // Группа в группе схемой законна (schema.ts: подъём до корня при
+    // проверке цикла не запрещает глубину). Слом: заменить рекурсию
+    // в `collectWithDescendants` на однократный обход прямых детей — rect-1
+    // (ребёнок inner-1, а не outer-1 напрямую) в буфер не попадёт.
+    const source = segment('seg-1', [
+      element('outer-1', { type: 'group' }),
+      element('inner-1', { type: 'group', parentId: 'outer-1' }),
+      element('rect-1', { parentId: 'inner-1' }),
+    ]);
+    const states = { 'outer-1': state(), 'inner-1': state(), 'rect-1': state() };
+    const clipboard = copyElementsToClipboard(source, 'slide-1', ['outer-1'], states);
+
+    expect(clipboard.items).toHaveLength(3);
+
+    const target = segment('seg-2', []);
+    const made = pasteElements(target, 'slide-1', clipboard, {}, STAGE);
+
+    const newOuter = made.elements.find((item) => item.id.startsWith('outer-'))!;
+    const newInner = made.elements.find((item) => item.id.startsWith('inner-'))!;
+    const newRect = made.elements.find((item) => item.id.startsWith('rect-'))!;
+
+    expect(newInner.parentId).toBe(newOuter.id);
+    expect(newRect.parentId).toBe(newInner.id);
   });
 
   it('пачка ложится ПОВЕРХ того, что уже лежит на слайде-получателе', () => {

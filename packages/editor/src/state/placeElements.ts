@@ -56,6 +56,50 @@ export interface Placed {
 }
 
 /**
+ * Расширяет `ids` до поддерева: элемент типа `'group'` тянет за собой ВСЕХ
+ * своих потомков, рекурсивно — группа внутри группы схемой законна
+ * (`schema.ts`, подъём до корня при проверке цикла). Копия группы без детей
+ * была бы пустой коробкой: у группы нет собственного вида, значит на экране
+ * не появилось бы вообще ничего, и ни ошибки, ни предупреждения при этом
+ * не было бы.
+ *
+ * Общая для Ctrl+D (`duplicateElements.ts`) и Ctrl+V (`elementClipboard.ts`)
+ * ровно по той же причине, что и `placeCopies`: два разных обхода одного
+ * дерева расходятся молча.
+ *
+ * Порядок результата — родитель раньше своих детей (обход в глубину). Ни
+ * один из текущих потребителей от этого порядка не зависит (`placeCopies`
+ * строит карту id за один проход ДО раздачи, см. ниже), но контракт
+ * фиксируется явно, а не полагается на случайное совпадение с DFS.
+ *
+ * Id, явно перечисленный в `ids` И встреченный повторно как потомок другой
+ * группы из того же списка, в результат попадает ОДИН раз — иначе тот же
+ * элемент получил бы две копии в одном жесте.
+ */
+export function collectWithDescendants(segment: Segment, ids: readonly string[]): string[] {
+  const childrenOf = new Map<string, string[]>();
+  for (const element of segment.elements) {
+    if (element.parentId === undefined) continue;
+    const siblings = childrenOf.get(element.parentId) ?? [];
+    siblings.push(element.id);
+    childrenOf.set(element.parentId, siblings);
+  }
+  const elementById = new Map(segment.elements.map((element) => [element.id, element]));
+
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const visit = (id: string): void => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    ordered.push(id);
+    if (elementById.get(id)?.type !== 'group') return;
+    for (const childId of childrenOf.get(id) ?? []) visit(childId);
+  };
+  ids.forEach(visit);
+  return ordered;
+}
+
+/**
  * Кладёт копии `sources` на слайд, состояния которого переданы в
  * `targetStates`, со сдвигом `offset` от исходных координат.
  *
@@ -63,6 +107,29 @@ export interface Placed {
  * зависит верхний слой, поверх которого ложится пачка. При Ctrl+D слайд
  * один и тот же, при вставке в чужую часть — разные, и подстановка сюда
  * состояний источника положила бы копии под уже лежащее там.
+ *
+ * **`parentId`: одно правило на обоих потребителей.** Если родитель
+ * элемента из `sources` САМ есть среди `sources` (та же пачка), копия
+ * ребёнка получает НОВЫЙ id этого родителя — иначе копия ребёнка следовала
+ * бы за оригиналом группы, а не за её копией. Если родителя в пачке нет,
+ * `parentId` остаётся ровно тем, что передал вызывающий: Ctrl+D
+ * (`duplicateElements.ts`) передаёт его как есть, потому что группа никуда
+ * не делась — она в том же сегменте; Ctrl+V (`elementClipboard.ts`) стирает
+ * его ДО вызова, потому что группа могла остаться в другом сегменте вовсе.
+ * Это и есть то самое единое правило: `placeCopies` не выбирает между
+ * «оставить» и «стереть» сам — он только перевешивает то, что действительно
+ * скопировано, а решение по остальному целиком у вызывающего.
+ *
+ * **Сдвиг и `withinStage` — только у элементов ВЕРХНЕГО уровня.** Координаты
+ * ребёнка отсчитываются ОТ ГРУППЫ (решение владельца, не от сцены): группа
+ * уже получает `offset`, а ребёнок с ней едет как есть, потому что его x/y
+ * относительны. Прибавить `offset` и ребёнку значило бы сдвинуть его
+ * дважды. `withinStage` зажимает по размеру СЦЕНЫ — ребёнку с локальным
+ * `x: 40` эта граница тоже не подходит: у него нет отношения к сцене вовсе.
+ * Решает ИТОГОВЫЙ `parentId` элемента (после решения абзацем выше), а не то,
+ * был ли он перевешен: ребёнок, ставший верхним уровнем из-за нескопированного
+ * родителя (Ctrl+V), обязан получить сдвиг как любой другой верхнеуровневый
+ * элемент, а ребёнок, оставшийся в живой группе (Ctrl+D), — нет.
  */
 export function placeCopies(
   segment: Segment,
@@ -83,6 +150,18 @@ export function placeCopies(
   // рамочного выделения вообще произволен.
   const ordered = [...sources].sort((left, right) => left.state.zIndex - right.state.zIndex);
 
+  // Карта «старый id → новый» строится ЗА ОДИН ПРОХОД, до того как собраны
+  // сами элементы. Без этого перевешивание `parentId` зависело бы от
+  // порядка `ordered` (по zIndex, а не по вложенности): ребёнок мог бы
+  // получить очередь раньше своей группы, и на момент его обработки новый
+  // id родителя ещё не существовал бы.
+  const idMap = new Map<string, string>();
+  ordered.forEach((source) => {
+    const id = freeId(prefixOf(source.element.id), taken);
+    taken.push({ id });
+    idMap.set(source.element.id, id);
+  });
+
   // Вся пачка кладётся ПОВЕРХ всего, что есть на слайде, сохраняя между
   // собой относительный порядок. Так же поступает вставка из каталога
   // (`nextZIndex` в `elements.ts`): только что созданное автор ожидает
@@ -94,15 +173,56 @@ export function placeCopies(
   const made: Record<string, ElementState> = {};
 
   ordered.forEach((source, index) => {
-    const id = freeId(prefixOf(source.element.id), taken);
-    taken.push({ id });
+    const id = idMap.get(source.element.id)!;
 
-    elements.push({ ...source.element, id });
+    // Родитель ЭТОЙ ЖЕ пачки → новый id. Родитель вне пачки → без изменений
+    // (см. комментарий функции про единое правило).
+    const copiedParentId =
+      source.element.parentId !== undefined ? idMap.get(source.element.parentId) : undefined;
+    const element: Element = { ...source.element, id };
+    if (copiedParentId !== undefined) element.parentId = copiedParentId;
+
+    elements.push(element);
+
+    /**
+     * Сдвиг и зажим по сцене — ДВА РАЗНЫХ вопроса, и сливать их в один
+     * флаг нельзя: у ребёнка, чей родитель не копировался, ответы разные.
+     *
+     * **Сдвигать?** Нет ровно тогда, когда рамка уже уехала сама:
+     * родитель скопирован вместе с ребёнком, копия группы встала со сдвигом,
+     * и ребёнок приедет с ней. Прибавь offset ещё и ему — получишь двойной
+     * сдвиг. Во всех прочих случаях сдвиг обязателен: копия, легшая ровно
+     * на оригинал, неотличима от «ничего не произошло» — та самая физика,
+     * которой куплено число `DUPLICATE_OFFSET`.
+     *
+     * **Зажимать по сцене?** Только если координаты сценные, то есть
+     * элемент в итоге верхнего уровня. `withinStage` меряет по размеру
+     * СЦЕНЫ, а локальный `x` ребёнка отсчитывается от группы и к границам
+     * сцены отношения не имеет вовсе.
+     *
+     * Случай, где ответы расходятся: Ctrl+D по одинокому ребёнку, группа
+     * которого не выделена. Он остаётся в своей группе (зажимать нельзя),
+     * но рамка не двигалась (сдвинуть надо) — иначе копия ляжет ровно
+     * на оригинал внутри группы.
+     */
+    const parentMovedAlong =
+      source.element.parentId !== undefined && idMap.has(source.element.parentId);
+    const inSceneCoords = element.parentId === undefined;
+
+    const shift = (
+      start: number,
+      size: number,
+      stageSize: number,
+    ): number => {
+      if (parentMovedAlong) return start;
+      const moved = start + offset;
+      return inSceneCoords ? withinStage(moved, size, stageSize) : moved;
+    };
 
     made[id] = {
       ...source.state,
-      x: withinStage(source.state.x + offset, source.state.width, stage.width),
-      y: withinStage(source.state.y + offset, source.state.height, stage.height),
+      x: shift(source.state.x, source.state.width, stage.width),
+      y: shift(source.state.y, source.state.height, stage.height),
       zIndex: topZIndex + 1 + index,
       // Стиль копируется СВОИМ объектом, а не ссылкой. Общая ссылка сделала
       // бы копию и оригинал одним цветом навсегда: правка одного молча
