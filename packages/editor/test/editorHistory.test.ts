@@ -582,3 +582,55 @@ describe('рождение слайда — один шаг отмены вме�
     expect(canUndoState(undone)).toBe(false);
   });
 });
+
+describe('duplicateElements: пачка — ОДИН шаг истории', () => {
+  it('копия двух элементов даёт один шаг, и одна отмена убирает обе копии', () => {
+    /**
+     * Несущий тест среза. Краснеет, если копию пачкой собрать циклом
+     * из `addElement`: `past` вырос бы на два, и автору пришлось бы жать
+     * Ctrl+Z дважды, чтобы отменить ОДИН свой жест.
+     *
+     * Проверяется именно длина `past`, а не только итоговый проект:
+     * по конечному состоянию сцены цикл и одно действие неотличимы.
+     */
+    const state = baseState();
+
+    const next = historyReducer(state, {
+      type: 'duplicateElements',
+      ids: ['title', 'subtitle'],
+      at: { kind: 'seconds', t: 0 },
+    });
+
+    expect(next.history.past).toEqual([state.history.present]);
+    expect(next.history.present.segments[0]!.elements).toHaveLength(4);
+    // Выделение переходит на копии — их две, и это не оригиналы.
+    expect(next.selectedIds).toHaveLength(2);
+    expect(next.selectedIds).not.toContain('title');
+
+    const undone = historyReducer(next, { type: 'undo' });
+    expect(undone.history.present.segments[0]!.elements).toHaveLength(2);
+    expect(canUndoState(undone)).toBe(false);
+  });
+
+  it('копировать нечего — состояние ТО ЖЕ по ссылке, пустого шага в истории нет', () => {
+    /**
+     * Краснеет, если пересобирать сегмент до проверки «что-нибудь вышло»:
+     * в историю лёг бы шаг, ничего не изменивший, и первый Ctrl+Z автора
+     * не отменил бы ничего видимого — выглядит как «отмена сломалась».
+     *
+     * Выделить элемент не с текущего слайда автор может: ElementList
+     * показывает все элементы сегмента, а не только лежащие на слайде.
+     */
+    let state = baseState();
+    state = historyReducer(state, { type: 'removeElementFromSlide', elementId: 'subtitle' });
+    const before = state;
+
+    const next = historyReducer(state, {
+      type: 'duplicateElements',
+      ids: ['subtitle'],
+      at: { kind: 'seconds', t: 0 },
+    });
+
+    expect(next).toBe(before);
+  });
+});

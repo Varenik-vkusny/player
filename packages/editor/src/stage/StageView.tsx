@@ -134,6 +134,18 @@ export interface StageViewProps {
   onElementContentChange: (element: Element) => void;
   /** Жест завершён (`pointerup`/`pointercancel`) — точка коммита истории. */
   onCommitHistory: () => void;
+  /**
+   * Правая кнопка по элементу сцены: кто под курсором и где нажали.
+   *
+   * Точка отдаётся в координатах ОКНА (`clientX`/`clientY`), а не сцены:
+   * меню — узел страницы с `position: fixed`, ему нужны экранные числа.
+   * Переводить их в единицы сцены и обратно значило бы смешать два
+   * координатных пространства ради ничего.
+   *
+   * По ПУСТОЙ сцене не зовётся вовсе: предложить там нечего, пока нет
+   * буфера обмена элементов, а пустое меню хуже отсутствующего.
+   */
+  onContextMenu?: (elementId: string, at: { x: number; y: number }) => void;
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
   onImageDrop?: (file: File) => void;
   onReady?: (preview: ScenePreview | null) => void;
@@ -224,6 +236,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     onElementStateChange,
     onElementContentChange,
     onCommitHistory,
+    onContextMenu,
     onImageDrop,
     onReady,
   }: StageViewProps,
@@ -685,6 +698,24 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
   const handleStageDown = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>): void => {
+      /**
+       * Жесты сцены — только основная кнопка.
+       *
+       * `pointerdown` приходит и от правой, и от средней кнопки, а `button`
+       * здесь не проверялся вовсе. Пока меню браузера открывалось само, оно
+       * жест обрывало, и дефект не проявлялся. С появлением своего меню
+       * (мы гасим браузерное) жест доживает до движения мыши: ЗАМЕРЕНО —
+       * нажатие правой и протяжка увезли элемент с x=160 на x=1120, почти
+       * через всю сцену. Автор, промахнувшийся мимо пункта меню, зашвырнул
+       * бы объект и не понял бы, отчего тот сдвинулся.
+       *
+       * Выделение по правой кнопке от этого не теряется: его переносит
+       * `onContextMenu` (см. `handleContextMenu` ниже и `Editor.tsx`), и это
+       * теперь ЕДИНСТВЕННЫЙ путь — то есть проверяемый тестом, а не
+       * случайно работающий побочно.
+       */
+      if (event.button !== 0) return;
+
       const editing = editingRef.current;
       if (editing) {
         const editingNode = previewRef.current?.nodes.get(editing.id);
@@ -940,10 +971,33 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     [onImageDrop],
   );
 
+  /**
+   * Правая кнопка по сцене.
+   *
+   * Кто под курсором, решает тот же `hitElementAt`, что и обычный клик,
+   * а не отдельный разбор: две трактовки одного попадания разошлись бы
+   * молча, и меню открывалось бы над одним элементом, а действовало
+   * на другой.
+   *
+   * Промах по пустому месту НЕ гасится: мы там ничего не предлагаем,
+   * значит и отбирать у браузера событие не за что.
+   */
+  const handleContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>): void => {
+      if (!onContextMenu) return;
+      const hit = hitElementAt(scenePointOf(event));
+      if (!hit) return;
+      event.preventDefault();
+      onContextMenu(hit.id, { x: event.clientX, y: event.clientY });
+    },
+    [onContextMenu, hitElementAt, scenePointOf],
+  );
+
   return (
     <div
       className="ed-stage-host"
       ref={hostRef}
+      onContextMenu={handleContextMenu}
       onPointerDown={handleStageDown}
       onPointerMove={handleMove}
       onPointerUp={endGesture}

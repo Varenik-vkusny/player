@@ -2385,4 +2385,74 @@ export const EDITOR_STYLES = `
   font: inherit;
   font-size: 12px;
 }
+
+/* Меню правой кнопки над сценой (stage/ContextMenu.tsx).
+
+   position: fixed, а не absolute: точка берётся из clientX/clientY, то есть
+   в координатах ОКНА. При absolute меню уехало бы на смещение ближайшего
+   позиционированного предка, и промах был бы тем больше, чем ниже сцена. */
+.ed-ctxmenu {
+  position: fixed;
+  z-index: 60;
+  min-width: 208px;
+  padding: 4px;
+  border: 1px solid var(--ui-line);
+  border-radius: 6px;
+  background: var(--ui-surface-overlay);
+  box-shadow: 0 6px 20px var(--ui-shadow-selected);
+}
+
+.ed-ctxmenu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--ui-line);
+}
+
+.ed-ctxmenu-item {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ed-ctxmenu-item:hover:not([aria-disabled='true']),
+.ed-ctxmenu-item:focus-visible {
+  background: var(--ui-action-selected-bg);
+  outline: none;
+}
+
+/* Погашенный пункт ОСТАЁТСЯ ВИДИМЫМ. Не display: none и не visibility —
+   автор обязан видеть, что действие существует, просто сейчас неприменимо.
+   Спрятанный пункт неотличим от несуществующего (грабли С30 §20б). */
+.ed-ctxmenu-item[aria-disabled='true'] {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+
+.ed-ctxmenu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Сочетание клавиш справа — приём, снятый с натуры у Canva: меню заодно
+   учит клавиатуре. flex: 0 0 auto, чтобы длинная подпись ужимала себя,
+   а не сочетание: обрезанное «CTRL+D» не читается вовсе. */
+.ed-ctxmenu-key {
+  flex: 0 0 auto;
+  color: var(--ui-content-fg-tertiary);
+  font-size: 11px;
+}
 `;

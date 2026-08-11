@@ -59,7 +59,8 @@ import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js
 import { SlidePanel } from './panels/SlidePanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
-import { PropBar } from './stage/PropBar.js';
+import { ContextMenu, type MenuItem } from './stage/ContextMenu.js';
+import { LAYER_BUTTONS, PropBar } from './stage/PropBar.js';
 import {
   align,
   distribute,
@@ -756,32 +757,48 @@ export function Editor({
     [arrangeItems, applyArrange],
   );
 
+  /**
+   * Стопка слоёв текущего слайда и те из выделенных, кто на ней есть.
+   *
+   * Стопка собирается в порядке `segment.elements`, а не по ключам `states`.
+   * При равных `zIndex` порядок решает именно он: `topmostAt` берёт того,
+   * кто позже в массиве, потому что `renderScene` вставляет узлы в порядке
+   * массива. Порядок ключей объекта — другая величина, и разойдясь
+   * с попаданием по клику, она дала бы автору стопку, не совпадающую
+   * с тем, что он видит.
+   */
+  const layerStack = useMemo(() => {
+    const layers = segment.elements.flatMap((element) => {
+      const elementState = currentSlide.states[element.id];
+      return elementState ? [{ id: element.id, zIndex: elementState.zIndex }] : [];
+    });
+    const moving = state.selectedIds.filter((id) => currentSlide.states[id] !== undefined);
+    return { layers, moving };
+  }, [segment.elements, currentSlide, state.selectedIds]);
+
+  /**
+   * Что изменится в стопке от такого хода. ПУСТО — значит ход ничего
+   * не меняет: элемент уже наверху, уже внизу или двигать некого.
+   *
+   * Отдельно от самого хода затем, чтобы меню правой кнопки гасило
+   * невозможный пункт ТЕМ ЖЕ вычислением, каким ход совершается. Спроси
+   * меню «возможно ли» своим способом — и оно рано или поздно разошлось бы
+   * с действием: показывало бы живой пункт, который ничего не делает.
+   */
+  const layerPatches = useCallback(
+    (move: LayerMove) =>
+      restack(layerStack.layers, layerStack.moving, move)
+        .filter((layer) => currentSlide.states[layer.id]!.zIndex !== layer.zIndex)
+        .map((layer) => ({ id: layer.id, patch: { zIndex: layer.zIndex } })),
+    [layerStack, currentSlide],
+  );
+
   const handleLayer = useCallback(
     (move: LayerMove) => {
-      /**
-       * Стопка собирается в порядке `segment.elements`, а не по ключам
-       * `states`.
-       *
-       * При равных `zIndex` порядок решает именно он: `topmostAt` берёт
-       * того, кто позже в массиве, потому что `renderScene` вставляет узлы
-       * в порядке массива. Порядок ключей объекта — другая величина,
-       * и разойдясь с попаданием по клику, она дала бы автору стопку,
-       * не совпадающую с тем, что он видит.
-       */
-      const layers = segment.elements.flatMap((element) => {
-        const elementState = currentSlide.states[element.id];
-        return elementState ? [{ id: element.id, zIndex: elementState.zIndex }] : [];
-      });
-      const moving = state.selectedIds.filter((id) => currentSlide.states[id] !== undefined);
-      if (moving.length === 0) return;
-
-      applyArrange(
-        restack(layers, moving, move)
-          .filter((layer) => currentSlide.states[layer.id]!.zIndex !== layer.zIndex)
-          .map((layer) => ({ id: layer.id, patch: { zIndex: layer.zIndex } })),
-      );
+      if (layerStack.moving.length === 0) return;
+      applyArrange(layerPatches(move));
     },
-    [segment.elements, currentSlide, state.selectedIds, applyArrange],
+    [layerStack.moving.length, layerPatches, applyArrange],
   );
 
   /**
@@ -916,6 +933,69 @@ export function Editor({
     );
     dispatch({ type: 'removeElement', ids });
   }, [state.selectedIds, segment.slides]);
+
+  /**
+   * Меню правой кнопки: где оно открыто, либо `undefined` — закрыто.
+   *
+   * Точка в координатах ОКНА, потому что меню — узел с `position: fixed`.
+   * Состояние ВИДА, не проекта: в историю отмены не пишется и в файл
+   * не уезжает.
+   */
+  const [contextMenuAt, setContextMenuAt] = useState<{ x: number; y: number } | undefined>(
+    undefined,
+  );
+
+  /**
+   * Правая кнопка по элементу сцены.
+   *
+   * Нажатие по НЕВЫДЕЛЕННОМУ сначала выделяет его — так делает Canva
+   * (снято с натуры 11.08.2026), и иначе меню действовало бы на прежнее
+   * выделение, а показано было бы над другим объектом. Нажатие по уже
+   * выделенному выделения НЕ трогает: иначе правая кнопка по одному
+   * из трёх выделенных схлопывала бы пачку до одного.
+   */
+  const handleStageContextMenu = useCallback(
+    (elementId: string, at: { x: number; y: number }) => {
+      if (!state.selectedIds.includes(elementId)) handleSelect(elementId);
+      setContextMenuAt(at);
+    },
+    [state.selectedIds, handleSelect],
+  );
+
+  /**
+   * Состав меню. Ходы по слоям берутся из `LAYER_BUTTONS` полосы свойств —
+   * подписи обязаны быть одни, иначе один и тот же ход назывался бы
+   * в двух местах по-разному.
+   *
+   * Невозможный ход ГАСНЕТ, но остаётся: у объекта, уже лежащего внизу,
+   * «На задний план» показан серым. Спрятать значило бы отобрать действие
+   * молча — автор решит, что его не существует (грабли С30 §20б).
+   */
+  const contextMenuItems = useMemo(
+    (): readonly MenuItem[] => [
+      {
+        id: 'duplicate',
+        label: 'Дублировать',
+        shortcut: 'Ctrl+D',
+        onSelect: () =>
+          dispatch({ type: 'duplicateElements', ids: state.selectedIds, at: headTimeRef() }),
+      },
+      {
+        id: 'delete',
+        label: 'Удалить',
+        shortcut: 'Delete',
+        onSelect: handleDeleteSelected,
+      },
+      ...LAYER_BUTTONS.map((button, index) => ({
+        id: button.testId,
+        label: button.label,
+        separatorBefore: index === 0,
+        disabled: layerPatches(button.move).length === 0,
+        onSelect: () => handleLayer(button.move),
+      })),
+    ],
+    [state.selectedIds, headTimeRef, handleDeleteSelected, layerPatches, handleLayer],
+  );
 
   // Ошибка вставки картинки: файл не картинка, либо кодирование не удалось.
   // Падает громко (CLAUDE.md), но громко — это видимое сообщение автору,
@@ -1252,6 +1332,18 @@ export function Editor({
           if (moved) dispatch({ type: 'commit' });
           return;
         }
+        case 'duplicate':
+          /**
+           * Вся пачка одним действием, а не циклом: копия трёх выделенных —
+           * один жест автора и обязана быть одним шагом отмены (та же
+           * причина, по которой сдвиг стрелками выше склеивается в один
+           * шаг через `commit: false` + `commit`).
+           *
+           * `preventDefault` уже вызван выше на любое намерение — без него
+           * Chrome открыл бы окно «добавить в закладки» поверх редактора.
+           */
+          dispatch({ type: 'duplicateElements', ids: state.selectedIds, at: headTimeRef() });
+          return;
         case 'undo':
           dispatch({ type: 'undo' });
           return;
@@ -1518,6 +1610,7 @@ export function Editor({
           onElementStateChange={handleElementStateChangeLive}
           onElementContentChange={handleElementContentChange}
           onCommitHistory={handleCommitHistory}
+          onContextMenu={handleStageContextMenu}
           onImageDrop={handleImageDrop}
           onReady={handleReady}
         />
@@ -1712,6 +1805,20 @@ export function Editor({
           onTransitionSecondsCommit={handleCommitHistory}
         />
       </div>
+      {/*
+        Меню правой кнопки — соседка всей раскладки, а не потомок сцены.
+        У сцены свой `transform` масштаба, а `position: fixed` внутри
+        трансформированного предка перестаёт быть оконным и начинает
+        считаться от него: меню промахивалось бы мимо курсора тем сильнее,
+        чем мельче масштаб.
+      */}
+      {contextMenuAt === undefined ? null : (
+        <ContextMenu
+          at={contextMenuAt}
+          items={contextMenuItems}
+          onClose={() => setContextMenuAt(undefined)}
+        />
+      )}
     </div>
   );
 }

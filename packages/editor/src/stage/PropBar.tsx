@@ -156,7 +156,14 @@ const DISTRIBUTE_BUTTONS: readonly {
   },
 ];
 
-const LAYER_BUTTONS: readonly {
+/**
+ * Экспортирована ради меню правой кнопки (`stage/ContextMenu.tsx`): подписи
+ * ходов по слоям обязаны быть ОДНИ. Свой список в меню разошёлся бы с этим
+ * молча, и один и тот же ход назывался бы в двух местах по-разному —
+ * ровно та болезнь, из-за которой в Сессии 30 на одном экране оказались
+ * две подписи «Фон».
+ */
+export const LAYER_BUTTONS: readonly {
   move: LayerMove;
   label: string;
   testId: string;

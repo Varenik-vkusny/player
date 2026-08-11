@@ -20,6 +20,7 @@ import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
 
 import { retargetMark } from '../track/marks.js';
 import { copySegment } from './duplicate.js';
+import { duplicateElements as duplicateElementsOnSlide } from './duplicateElements.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
@@ -160,6 +161,16 @@ export type EditorAction =
     }
   /** Удаляет элементы целиком из сегмента. Список, а не один: см. редьюсер. */
   | { readonly type: 'removeElement'; readonly ids: readonly string[] }
+  | {
+      /**
+       * Копия выделенных элементов на слайде под головкой. `ids` — пачкой,
+       * а не по одному, ровно как у `removeElement`: это один жест автора
+       * и обязан быть одним шагом истории.
+       */
+      readonly type: 'duplicateElements';
+      readonly ids: readonly string[];
+      readonly at: TimeRef;
+    }
   | {
       readonly type: 'setElementState';
       readonly elementId: string;
@@ -515,6 +526,54 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const selectedIds = state.selectedIds.filter((id) => !action.ids.includes(id));
       // Удалили выделенное — снимаем именно его, остальное выделение живёт.
       return selectedIds.length === state.selectedIds.length ? next : { ...next, selectedIds };
+    }
+
+    case 'duplicateElements': {
+      /**
+       * Копия пачкой — ОДИН шаг истории, по той же причине, что у удаления
+       * пачкой выше: автор выделил три и нажал Ctrl+D одним жестом, значит
+       * одна отмена обязана убрать все три копии разом.
+       *
+       * Собрать это циклом из `addElement` НЕЛЬЗЯ, хотя соблазн прямой:
+       * каждый `dispatch` лёг бы в историю отдельным шагом, и автору
+       * пришлось бы жать Ctrl+Z по разу на копию.
+       */
+      const { segment, slideId } = slideForEdit(currentSegment(state), action.at);
+      const slide = segment.slides.find((item) => item.id === slideId);
+      if (slide === undefined) {
+        // slideForEdit обязан был вернуть существующий или только что
+        // рождённый слайд. Молчание здесь означало бы копию, ушедшую в никуда.
+        throw new Error(`Слайд «${slideId}» не найден после slideForEdit`);
+      }
+
+      // Размеры сцены — из `meta`, как уже читает их выравнивание ниже
+      // в этом же редьюсере: у схемного `Segment` поля `stage` нет, оно
+      // есть только у видового представления плеера (`segmentOf`).
+      const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
+      const made = duplicateElementsOnSlide(segment, action.ids, slide.states, stage);
+
+      // Копировать было нечего: выделены только элементы, которых на этом
+      // слайде нет. Возвращаем ТО ЖЕ состояние по ссылке, а не пересобранное
+      // с рождённым слайдом, — иначе в историю лёг бы пустой шаг, и первый
+      // Ctrl+Z автора не отменил бы ничего видимого.
+      if (made.elements.length === 0) return state;
+
+      const slides = segment.slides.map((item) =>
+        item.id === slideId ? { ...item, states: { ...item.states, ...made.states } } : item,
+      );
+      const next = replaceSegment(state, {
+        ...segment,
+        elements: [...segment.elements, ...made.elements],
+        slides,
+      });
+
+      // Выделение переходит на копии — так же поступает `addElement`: автор
+      // только что их создал и, скорее всего, сейчас же потащит в сторону.
+      return {
+        ...next,
+        selectedIds: made.elements.map((element) => element.id),
+        currentSlideId: slideId,
+      };
     }
 
     case 'setElementState': {
