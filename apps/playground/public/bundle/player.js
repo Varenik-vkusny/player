@@ -5728,13 +5728,14 @@ du("text", (e, t) => {
 //#endregion
 //#region packages/player/src/render.ts
 var pu = 1920, mu = 1080;
-function hu(e, t, n) {
+function hu(e, t, n, r = "fit") {
 	if (!(e > 0) || !(t > 0)) throw RangeError(`Некорректный размер контейнера: ${e}x${t}`);
-	let r = Math.min(e / n.width, t / n.height);
+	if (r !== "fit" && !(Number.isFinite(r) && r > 0)) throw RangeError(`Некорректный масштаб сцены: ${r}`);
+	let i = r === "fit" ? Math.min(e / n.width, t / n.height) : r;
 	return {
-		scale: r,
-		offsetX: Math.round((e - n.width * r) / 2),
-		offsetY: Math.round((t - n.height * r) / 2)
+		scale: i,
+		offsetX: Math.round((e - n.width * i) / 2),
+		offsetY: Math.round((t - n.height * i) / 2)
 	};
 }
 function gu(e, t) {
@@ -5766,9 +5767,9 @@ function vu(e, t, n, r = {
 function yu(e, t, n, r = {
 	width: pu,
 	height: mu
-}) {
-	let i = hu(t, n, r);
-	return e.style.transform = `translate(${i.offsetX}px, ${i.offsetY}px) scale(${i.scale})`, i;
+}, i = "fit") {
+	let a = hu(t, n, r, i);
+	return e.style.transform = `translate(${a.offsetX}px, ${a.offsetY}px) scale(${a.scale})`, a;
 }
 //#endregion
 //#region packages/player/src/slides.ts
@@ -5945,8 +5946,8 @@ var Tu = class {
 	rebuild(e) {
 		this.#o(), this.#t = e, this.#n.destroy(), this.#n = this.#a(e), this.#n.renderAt(this.#r);
 	}
-	fit(e, t) {
-		return this.#o(), yu(this.#e, e, t, this.#t.stage);
+	fit(e, t, n = "fit") {
+		return this.#o(), yu(this.#e, e, t, this.#t.stage, n);
 	}
 	destroy() {
 		this.#i ||= (this.#n.destroy(), !0);

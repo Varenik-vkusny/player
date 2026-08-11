@@ -42,7 +42,7 @@ import {
 } from 'react';
 
 import type { Element, ElementState, Slide } from '@player/core';
-import { applyTheme, ScenePreview, type Segment } from '@player/player';
+import { applyTheme, fitStage, ScenePreview, type Segment, type Zoom } from '@player/player';
 
 import {
   boxToScreen,
@@ -55,6 +55,15 @@ import {
   type Point,
 } from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
+import { ZoomBar } from './ZoomBar.js';
+import {
+  canZoomIn,
+  canZoomOut,
+  canvasSize,
+  effectiveScale,
+  zoomIn as stepIn,
+  zoomOut as stepOut,
+} from './zoom.js';
 import { snap, type Guide } from './snapping.js';
 import { angleTo, centerOf, moveBox, resizeBox, rotateBox } from './transform.js';
 
@@ -89,7 +98,7 @@ function placeCaretAt(node: HTMLElement, clientX: number, clientY: number): void
   selection.addRange(fallback);
 }
 
-/** Императивная ручка StageView — сегодня ровно одна операция. */
+/** Императивная ручка StageView — операции, которым нужен мост наружу. */
 export interface StageViewHandle {
   /**
    * Закрывает текущую правку текста на холсте, если она идёт. Вызывается из
@@ -98,6 +107,17 @@ export interface StageViewHandle {
    * из StageView; клик мимо и потеря фокуса узел обрабатывает сам.
    */
   commitTextEdit: () => void;
+  /**
+   * Масштаб холста с клавиатуры (Ctrl+=, Ctrl+−, Ctrl+0).
+   *
+   * Мост нужен по той же причине, что и у правки текста: клавиатура слушается
+   * окном в `Editor.tsx`, а масштаб — состояние ВИДА сцены и живёт здесь.
+   * Поднять его в `Editor` значило бы отдать наружу число, которое обязано
+   * иметь ровно одного потребителя (`fit`), — см. шапку `stage/zoom.ts`.
+   */
+  zoomIn: () => void;
+  zoomOut: () => void;
+  zoomFit: () => void;
 }
 
 export interface StageViewProps {
@@ -243,6 +263,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   ref,
 ): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
+  /**
+   * Полотно — прослойка между окном холста и сценой, размером «сцена ×
+   * масштаб». Существует ради прокрутки: сцена масштабируется трансформацией,
+   * а трансформация раскладку не занимает (спецификация CSS Transforms
+   * прямо это гарантирует, см. `fitStage`), поэтому прокручивать в окне было
+   * бы НЕЧЕГО — узел сцены остаётся 1920×1080 при любом масштабе.
+   *
+   * Здесь же живут направляющие, рамка обведения и оверлей. Их координаты
+   * считаются от полотна, а полотно едет вместе с содержимым при прокрутке —
+   * поэтому прокрутка не требует никакой отдельной арифметики. Считай мы их
+   * от окна, пришлось бы вручную прибавлять `scrollLeft`/`scrollTop`
+   * в трёх местах, и забытое четвёртое разошлось бы молча.
+   */
+  const canvasRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
   const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
@@ -276,37 +310,72 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const elements = segment.elements;
 
   /** Требует контейнеры: их отсутствие означает сломанную разметку, а не штатный случай. */
-  const requireNodes = useCallback((): { host: HTMLDivElement; stage: HTMLDivElement } => {
+  const requireNodes = useCallback((): {
+    host: HTMLDivElement;
+    canvas: HTMLDivElement;
+    stage: HTMLDivElement;
+  } => {
     const host = hostRef.current;
+    const canvas = canvasRef.current;
     const stage = stageRef.current;
-    if (!host || !stage) throw new Error('StageView: контейнеры сцены не смонтированы');
-    return { host, stage };
+    if (!host || !canvas || !stage) throw new Error('StageView: контейнеры сцены не смонтированы');
+    return { host, canvas, stage };
   }, []);
 
+  /**
+   * Масштаб холста: вписывание или число, выбранное автором (Сессия 32).
+   *
+   * Держится в состоянии ради перерисовки панели масштаба и ДУБЛИРУЕТСЯ
+   * в ref: `fit` зовут из ResizeObserver, созданного один раз при сборке
+   * сцены, и замкнись он на значение состояния — растянутое окно возвращало
+   * бы масштаб к тому, что был на момент сборки. Молча.
+   */
+  const [zoom, setZoom] = useState<Zoom>('fit');
+  const zoomRef = useRef<Zoom>(zoom);
+  zoomRef.current = zoom;
+  /** Фактический масштаб — только чтобы показать его числом на панели. */
+  const [shownScale, setShownScale] = useState(1);
+
   const fit = useCallback((): void => {
-    const { host } = requireNodes();
+    const { host, canvas } = requireNodes();
     const preview = previewRef.current;
     if (!preview) return;
     // Размер берётся у контейнера заново каждый раз. Сохранённому масштабу
     // доверять нельзя — прямое требование ADR-007.
-    if (host.clientWidth > 0 && host.clientHeight > 0) {
-      preview.fit(host.clientWidth, host.clientHeight);
-    }
-  }, [requireNodes]);
+    if (!(host.clientWidth > 0 && host.clientHeight > 0)) return;
+
+    // Вписывание считает ПЛЕЕР. Своя формула летербокса здесь была бы второй
+    // реализацией вписывания (инвариант №5) и разошлась бы молча: на масштабе
+    // 1 обе дают одно и то же.
+    const fitScale = fitStage(host.clientWidth, host.clientHeight, segment.stage).scale;
+    const scale = effectiveScale(zoomRef.current, fitScale);
+    const size = canvasSize(segment.stage, scale, host.clientWidth, host.clientHeight);
+    canvas.style.width = `${size.width}px`;
+    canvas.style.height = `${size.height}px`;
+    // Плееру отдаётся размер ПОЛОТНА, а не окна: тогда сцена центрируется
+    // внутри полотна той же округляющей формулой, а при увеличении отступы
+    // выходят нулевыми и сцена занимает полотно целиком.
+    preview.fit(size.width, size.height, scale);
+    setShownScale(scale);
+  }, [requireNodes, segment.stage]);
 
   /** Пересчитывает рамку выделения в пикселях контейнера. */
   /**
-   * Направляющие из координат сцены в пиксели контейнера.
+   * Направляющие из координат сцены в пиксели ПОЛОТНА.
    *
-   * Толщина задаётся в пикселях контейнера, а не сцены: линия обязана
+   * Толщина задаётся в пикселях полотна, а не сцены: линия обязана
    * остаться волосяной на любом масштабе. Заданная в сцене, она на мелком
    * масштабе исчезла бы, а на крупном превратилась бы в полосу.
+   *
+   * Начало координат — полотно, а не окно холста: полотно прокручивается
+   * вместе с содержимым, поэтому поправка на прокрутку не нужна вовсе
+   * (см. комментарий у `canvasRef`).
    */
   const guidesToHost = useCallback(
     (list: readonly Guide[]): readonly { left: number; top: number; width: number; height: number }[] => {
-      const { host, stage } = requireNodes();
+      const { canvas, stage } = requireNodes();
       const stageRect = stage.getBoundingClientRect();
-      const hostRect = host.getBoundingClientRect();
+      const hostRect = canvas.getBoundingClientRect();
       const scale = stageScale(stageRect, segment.stage.width);
       const offsetX = stageRect.left - hostRect.left;
       const offsetY = stageRect.top - hostRect.top;
@@ -330,7 +399,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   );
 
   const syncFrame = useCallback((): void => {
-    const { host, stage } = requireNodes();
+    const { canvas, stage } = requireNodes();
     // Рамка строится по тем выделенным, кто ЕСТЬ на этом слайде: элемент
     // может быть выделен и при этом не появляться в текущем кадре.
     const boxes = selectedIds
@@ -345,7 +414,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // Прямоугольник берётся у ВНУТРЕННЕГО узла: у внешнего при летербоксе
     // ширина другая, и масштаб вышел бы завышенным — тихо и правдоподобно.
     const stageRect = stage.getBoundingClientRect();
-    const hostRect = host.getBoundingClientRect();
+    const hostRect = canvas.getBoundingClientRect();
     const screen = boxToScreen(stageRect, segment.stage.width, selectedState);
     setFrame({
       left: screen.left - hostRect.left,
@@ -402,9 +471,10 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // здесь сцена не должна перехватывать жесты у слоя взаимодействия.
     stage.style.pointerEvents = 'none';
 
-    if (host.clientWidth > 0 && host.clientHeight > 0) {
-      preview.fit(host.clientWidth, host.clientHeight);
-    }
+    // Через `fit`, а не прямым вызовом `preview.fit`: масштаб холста задаёт
+    // ещё и размер полотна, и второй путь вписывания разошёлся бы с первым
+    // на первом же кадре после пересборки сцены.
+    fit();
 
     const observer = new ResizeObserver(() => {
       fit();
@@ -682,7 +752,51 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     [commitTextEdit],
   );
 
-  useImperativeHandle(ref, () => ({ commitTextEdit }), [commitTextEdit]);
+  /**
+   * Ступень считается от ФАКТИЧЕСКОГО масштаба, а не от начала лестницы:
+   * при вписывании 38 % «+» обязан дать 50 %, а не 10 % (иначе кнопка
+   * «приблизить» отдаляла бы). Число берётся из `shownScale` — того же,
+   * что показано автору, — а не замером DOM: замер в обработчике кнопки
+   * и замер в `fit` разошлись бы на кадре пересчёта раскладки.
+   */
+  const shownScaleRef = useRef(shownScale);
+  shownScaleRef.current = shownScale;
+
+  const handleZoomIn = useCallback((): void => {
+    setZoom((current) => stepIn(current, shownScaleRef.current));
+  }, []);
+  const handleZoomOut = useCallback((): void => {
+    setZoom((current) => stepOut(current, shownScaleRef.current));
+  }, []);
+  const handleZoomFit = useCallback((): void => setZoom('fit'), []);
+
+  /**
+   * Смена масштаба пересчитывает полотно и рамку выделения.
+   *
+   * Отдельным эффектом, а не внутри обработчиков: масштаб меняют три разных
+   * пути (кнопки, список, клавиатура через ручку), и все три обязаны
+   * приводить к одному и тому же. Довесок в одном из обработчиков разошёлся
+   * бы с остальными молча.
+   */
+  useLayoutEffect(() => {
+    fit();
+    syncFrame();
+    // Зависимость ровно одна — сам масштаб. `fit` и `syncFrame` меняют
+    // тождество вместе с выделением, и попади они сюда, эффект гонялся бы
+    // на каждый клик по элементу без единой причины.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      commitTextEdit,
+      zoomIn: handleZoomIn,
+      zoomOut: handleZoomOut,
+      zoomFit: handleZoomFit,
+    }),
+    [commitTextEdit, handleZoomIn, handleZoomOut, handleZoomFit],
+  );
 
   const handleStageDoubleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>): void => {
@@ -802,9 +916,9 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         // одним способом — тем же, каким переводится рамка выделения.
         // Считать её сразу в пикселях контейнера значило бы завести второй
         // перевод между пространствами, а он обязан быть один (ADR-007).
-        const { host, stage } = requireNodes();
+        const { canvas, stage } = requireNodes();
         const area = areaBetween(dragging.startPoint, scenePointOf(event));
-        const hostRect = host.getBoundingClientRect();
+        const hostRect = canvas.getBoundingClientRect();
         const screen = boxToScreen(stage.getBoundingClientRect(), segment.stage.width, {
           ...area,
           rotation: 0,
@@ -994,6 +1108,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   );
 
   return (
+    <>
     <div
       className="ed-stage-host"
       ref={hostRef}
@@ -1006,40 +1121,89 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       onDragOver={handleDragOver}
       onDrop={handleDrop}
     >
-      <div ref={stageRef} />
       {/*
-        Рамка обведения — соседка сцены, а не её потомок: служебных узлов
-        внутри сцены быть не должно, иначе они попадут в скриншотный паритет
-        рендера (инвариант №5) и в сохранённый проект.
+        Слой прокрутки — отдельный узел ВНУТРИ холста, а не сам холст.
+        Так `host.clientWidth`, от которого считается вписывание, перестаёт
+        зависеть от появления полос прокрутки — то есть пересчёт масштаба
+        не может гоняться сам за собой.
       */}
-      {guides.map((guide, index) => (
-        <div
-          // Ключом может быть только положение в списке: линии — величина
-          // без имени, и своего устойчивого признака у них нет.
-          key={index}
-          className="ed-guide"
-          data-testid="guide"
-          style={{
-            left: `${guide.left}px`,
-            top: `${guide.top}px`,
-            width: `${guide.width}px`,
-            height: `${guide.height}px`,
-          }}
-        />
-      ))}
-      {marquee ? (
-        <div
-          className="ed-marquee"
-          data-testid="marquee"
-          style={{
-            left: `${marquee.left}px`,
-            top: `${marquee.top}px`,
-            width: `${marquee.width}px`,
-            height: `${marquee.height}px`,
-          }}
-        />
-      ) : null}
-      <Overlay frame={frame} showHandles={selectedIds.length === 1} onGripDown={handleGripDown} />
+      <div className="ed-stage-scroll" data-testid="stage-scroll">
+        <div className="ed-stage-canvas" ref={canvasRef}>
+          {/*
+            Узел сцены. Опознаётся тестами по этой метке, а НЕ по положению
+            в дереве: прежде они брали его как `.ed-stage-host > div`, и
+            появление слоя прокрутки увело сцену на уровень глубже — три
+            проверки разом стали мерить не тот узел. Позиционный селектор
+            ломается от любой правки разметки и врёт правдоподобно: узел
+            находится, числа приходят, только чужие.
+          */}
+          <div ref={stageRef} data-testid="stage-scene" />
+          {/*
+            Рамка обведения — соседка сцены, а не её потомок: служебных узлов
+            внутри сцены быть не должно, иначе они попадут в скриншотный паритет
+            рендера (инвариант №5) и в сохранённый проект.
+          */}
+          {guides.map((guide, index) => (
+            <div
+              // Ключом может быть только положение в списке: линии — величина
+              // без имени, и своего устойчивого признака у них нет.
+              key={index}
+              className="ed-guide"
+              data-testid="guide"
+              style={{
+                left: `${guide.left}px`,
+                top: `${guide.top}px`,
+                width: `${guide.width}px`,
+                height: `${guide.height}px`,
+              }}
+            />
+          ))}
+          {marquee ? (
+            <div
+              className="ed-marquee"
+              data-testid="marquee"
+              style={{
+                left: `${marquee.left}px`,
+                top: `${marquee.top}px`,
+                width: `${marquee.width}px`,
+                height: `${marquee.height}px`,
+              }}
+            />
+          ) : null}
+          <Overlay
+            frame={frame}
+            showHandles={selectedIds.length === 1}
+            onGripDown={handleGripDown}
+          />
+        </div>
+      </div>
     </div>
+
+    {/*
+      Панель масштаба — СТРОКОЙ ПОД холстом, а не плавающей поверх него.
+
+      Сначала она плавала в правом нижнем углу холста, и это было неверно
+      скопированной натурой: у Canva управление масштабом стоит в нижней
+      строке ОКНА, ниже холста, и дизайн собой не накрывает. Плавающая
+      панель отнимала у автора угол его же сцены, а поймал это тест паритета
+      рендера (инвариант №5): снимок узла сцены захватывает всё, что
+      нарисовано поверх её области, и панель попала в кадр.
+
+      Строка постоянна — она не появляется и не исчезает вместе с чем-либо,
+      поэтому площадь холста при работе не меняется и сцена не уезжает
+      из-под курсора (та же физика, что у полосы свойств, см. `PropBar.tsx`).
+    */}
+    <div className="ed-zoom-strip">
+      <ZoomBar
+        zoom={zoom}
+        scale={shownScale}
+        canZoomIn={canZoomIn(zoom, shownScale)}
+        canZoomOut={canZoomOut(zoom, shownScale)}
+        onZoomIn={handleZoomIn}
+        onZoomOut={handleZoomOut}
+        onPick={setZoom}
+      />
+    </div>
+    </>
   );
 });

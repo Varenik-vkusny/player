@@ -46,7 +46,7 @@ async function openEditor(page: Page, fixture: string): Promise<string[]> {
 /** Масштаб сцены, измеренный из DOM ровно так, как это делает редактор. */
 async function stageScale(page: Page): Promise<number> {
   return page.evaluate((logicalWidth) => {
-    const stage = document.querySelector<HTMLElement>('.ed-stage-host > div');
+    const stage = document.querySelector<HTMLElement>('[data-testid="stage-scene"]');
     if (!stage) throw new Error('нет контейнера сцены');
     return stage.getBoundingClientRect().width / logicalWidth;
   }, STAGE_WIDTH);
@@ -132,7 +132,7 @@ test.describe('редактор: выделение и перетаскиван�
 
     // Верхний левый угол контейнера сцены — там элементов нет.
     const empty = await page.evaluate(() => {
-      const stage = document.querySelector<HTMLElement>('.ed-stage-host > div');
+      const stage = document.querySelector<HTMLElement>('[data-testid="stage-scene"]');
       if (!stage) throw new Error('нет контейнера сцены');
       const rect = stage.getBoundingClientRect();
       return { x: rect.left + 4, y: rect.top + 4 };

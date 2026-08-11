@@ -174,6 +174,91 @@ export const EDITOR_STYLES = `
   background-color: var(--ui-surface-canvas);
 }
 
+/* Слой прокрутки (Сессия 32). Отдельный узел внутри холста, а не сам холст:
+   панель масштаба обязана остаться в углу окна, а лежи она внутри
+   прокручиваемого узла — уезжала бы вместе со сценой. Второе следствие важнее
+   первого: clientWidth самого холста перестаёт зависеть от появления полос
+   прокрутки, поэтому пересчёт масштаба физически не может гоняться сам
+   за собой. */
+.ed-stage-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+/* Полотно — «сцена × масштаб». Размер ставит StageView инлайном: он считается
+   от свежего замера холста, а CSS такого не умеет. При вписывании полотно
+   равно холсту, полос прокрутки не появляется, и картинка остаётся ровно
+   прежней. position: relative — начало координат для направляющих, рамки
+   обведения и оверлея (они внутри и едут вместе с прокруткой). */
+.ed-stage-canvas {
+  position: relative;
+}
+
+/* Строка под холстом, в которой живёт панель масштаба. Так же, как в Canva:
+   там управление масштабом стоит в нижней строке ОКНА, а не поверх холста.
+   Плавающая панель накрывала бы собой угол сцены — а сцена принадлежит
+   автору целиком.
+
+   Строка ПОСТОЯННА: она не появляется и не исчезает вместе с выделением или
+   чем-либо ещё, поэтому площадь холста при работе не меняется. Меняйся она,
+   сцена пересчитывала бы масштаб и элемент уезжал бы из-под курсора между
+   двумя кликами двойного щелчка (дефект Сессии 29, разобран в PropBar.tsx). */
+.ed-zoom-strip {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  border-top: 1px solid var(--ui-line);
+  background: var(--ui-surface-panel);
+}
+
+/* Имя с приставкой stage — не педантизм: .ed-zoom уже занят масштабом
+   ДОРОЖКИ (TrackView), и одноимённый класс молча перекрасил бы его. */
+.ed-stage-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  background: var(--ui-surface-raised);
+  box-shadow: var(--ui-shadow-selected);
+}
+
+.ed-stage-zoom-btn {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ed-stage-zoom-btn:hover:not(:disabled) { background: var(--ui-action-selected-bg); }
+
+/* Крайняя ступень ГАСИТ кнопку, а не убирает её: ступень остаётся законным
+   понятием, просто дальше идти некуда. Спрятанная кнопка меняла бы ширину
+   панели на каждом краю лестницы. */
+.ed-stage-zoom-btn:disabled {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+
+.ed-stage-zoom-value {
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
 /* Правка текста на холсте (двойной клик, StageView.beginTextEdit). Пока
    идёт набор, автору нужно выделять текст и переносить каретку мышью, как
    и в .ed-words-body/.ed-insp-input выше — иначе жест перетаскивания сцены

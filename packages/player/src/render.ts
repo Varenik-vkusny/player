@@ -31,6 +31,16 @@ export interface Fit {
   offsetY: number;
 }
 
+/**
+ * Во сколько раз рисовать сцену: `'fit'` — вписать в контейнер целиком,
+ * число — масштаб как есть (`1` — единица сцены в один CSS-пиксель).
+ *
+ * Отдельный тип, а не `number | 'fit'` по месту: вписывание и заданное число —
+ * два РАЗНЫХ состояния, а не число со значением по умолчанию. Растянутое окно
+ * меняет первое и не имеет права трогать второе.
+ */
+export type Zoom = number | 'fit';
+
 /** Состояния элементов на слайде: id элемента → где он и как выглядит. */
 export type SlideStates = Readonly<Record<string, ElementState | undefined>>;
 
@@ -54,12 +64,35 @@ export type SlideStates = Readonly<Record<string, ElementState | undefined>>;
  *
  * Побочная польза: сцена перестаёт стоять на дробном пикселе, то есть
  * текст на ней больше не мылится.
+ *
+ * **`zoom` — масштаб, заданный автором вместо вписывания (Сессия 32).**
+ * `'fit'` (по умолчанию, и это то, что зовёт плеер) считает масштаб от размера
+ * контейнера, как раньше. Число — это масштаб как есть: `1` значит «единица
+ * сцены рисуется одним CSS-пикселем», ровно тот смысл, который показывает
+ * процентом Canva (померено на её документе 11.08.2026: при вписывании
+ * там 60 %, и это 1149 CSS-px на сцену 1920).
+ *
+ * Аргумент живёт ЗДЕСЬ, а не в редакторе, намеренно, и это усиление
+ * инварианта №5, а не послабление: своя формула летербокса в редакторе была
+ * бы второй реализацией вписывания, и разошлись бы они молча — на масштабе 1
+ * (обычный десктоп) обе дают одно и то же. Отступы при увеличенной сцене
+ * уходят в минус, и это правильный ответ для того, кто рисует сцену В окне;
+ * вызывающему, который хочет прокрутку, полагается передать сюда размер
+ * ПОЛОТНА, а не окна, — тогда отступы получатся нулевыми (см. `StageView`).
  */
-export function fitStage(hostWidth: number, hostHeight: number, stage: StageSize): Fit {
+export function fitStage(
+  hostWidth: number,
+  hostHeight: number,
+  stage: StageSize,
+  zoom: Zoom = 'fit',
+): Fit {
   if (!(hostWidth > 0) || !(hostHeight > 0)) {
     throw new RangeError(`Некорректный размер контейнера: ${hostWidth}x${hostHeight}`);
   }
-  const scale = Math.min(hostWidth / stage.width, hostHeight / stage.height);
+  if (zoom !== 'fit' && !(Number.isFinite(zoom) && zoom > 0)) {
+    throw new RangeError(`Некорректный масштаб сцены: ${zoom}`);
+  }
+  const scale = zoom === 'fit' ? Math.min(hostWidth / stage.width, hostHeight / stage.height) : zoom;
   return {
     scale,
     offsetX: Math.round((hostWidth - stage.width * scale) / 2),
@@ -195,8 +228,9 @@ export function applyFit(
   hostWidth: number,
   hostHeight: number,
   stage: StageSize = { width: DEFAULT_STAGE_WIDTH, height: DEFAULT_STAGE_HEIGHT },
+  zoom: Zoom = 'fit',
 ): Fit {
-  const fit = fitStage(hostWidth, hostHeight, stage);
+  const fit = fitStage(hostWidth, hostHeight, stage, zoom);
   host.style.transform = `translate(${fit.offsetX}px, ${fit.offsetY}px) scale(${fit.scale})`;
   return fit;
 }

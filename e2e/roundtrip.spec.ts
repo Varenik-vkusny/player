@@ -321,7 +321,7 @@ test.describe('круг: правка в редакторе — просмотр
       return { width: host.clientWidth, height: host.clientHeight };
     });
 
-    const fromEditor = await page.locator('.ed-stage-host > div').screenshot();
+    const fromEditor = await page.locator('[data-testid="stage-scene"]').screenshot();
 
     const vanilla = await page.context().newPage();
     await vanilla.setViewportSize(size);

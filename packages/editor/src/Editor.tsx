@@ -1359,6 +1359,14 @@ export function Editor({
         case 'deselect':
           handleSelect(undefined);
           return;
+        case 'zoom':
+          // Масштаб — состояние ВИДА сцены, и живёт он в StageView (см. шапку
+          // `stage/zoom.ts`: у числа обязан быть ровно один потребитель).
+          // Здесь только мост, как и у commitText ниже.
+          if (intent.to === 'in') stageRef.current?.zoomIn();
+          else if (intent.to === 'out') stageRef.current?.zoomOut();
+          else stageRef.current?.zoomFit();
+          return;
         case 'commitText':
           // Escape во время правки текста на холсте. StageView сам знает,
           // какой узел сейчас редактируется, и сам решает, коммитить ли

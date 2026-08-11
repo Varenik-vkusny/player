@@ -63,6 +63,7 @@ export {
   type Fit,
   type SlideStates,
   type StageSize,
+  type Zoom,
 } from './render.js';
 export { allSegments, entrySegmentOf, ScenePreview, segmentOf, type Segment } from './preview.js';
 export { answersToClear, openableGates } from './repeat.js';
