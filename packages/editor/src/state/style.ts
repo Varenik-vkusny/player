@@ -128,11 +128,19 @@ export interface StyleFieldDef {
  * файла): `text` хранит исходное значение как строку, чтобы панель могла
  * показать его текстом и не потерять при записи соседнего поля — ни чтение,
  * ни `setStyleValue` не трогают ключи, которые их не просили менять.
+ *
+ * `mixed` — значения нет, потому что выделено несколько элементов и общего
+ * значения у них не существует. Отдельный вариант, а не «значение первого»:
+ * значение первого выглядит как общее, и автор, поправив его, получает не то,
+ * что видел. Из `getStyleValue` этот вариант не приходит НИКОГДА — его
+ * возвращает только `commonStyleValue`, которой и дано право сказать
+ * «общего нет».
  */
 export type StyleReadResult =
   | { readonly kind: 'parsed'; readonly value: string | number | LengthOrPercent }
   | { readonly kind: 'token'; readonly token: string; readonly fallback: string }
-  | { readonly kind: 'raw'; readonly text: string };
+  | { readonly kind: 'raw'; readonly text: string }
+  | { readonly kind: 'mixed' };
 
 const TEXT_ONLY: readonly Element['type'][] = ['text'];
 // Ссылка на перечень схемы, а не своя копия. Копия здесь уже была и уже
@@ -486,6 +494,73 @@ export function getStyleValue(style: ElementStyle, key: StyleFieldKey): StyleRea
   if (token) return { kind: 'token', token: token.token, fallback: token.fallback };
   const parsed = tryParseKnown(raw, field);
   return parsed === undefined ? { kind: 'raw', text: String(raw) } : { kind: 'parsed', value: parsed };
+}
+
+/**
+ * Общее значение поля у НЕСКОЛЬКИХ выделенных — или `mixed`, если общего нет.
+ *
+ * Существует потому, что полоса свойств до Сессии 32 показывала значение
+ * ПЕРВОГО выделенного как будто оно общее. Выглядело это безупречно: цвет
+ * настоящий, поле рабочее, ни одного признака беды. Автор, выделивший три
+ * разноцветные фигуры, видел цвет одной из них и, поправив его, получал
+ * не то, что видел.
+ *
+ * Сравниваются РАЗОБРАННЫЕ значения (`getStyleValue`), а не сырые строки
+ * из карты style, и это не педантизм: у одного элемента ключа может не быть
+ * вовсе (тогда действует `field.default`), у другого тот же самый умолчальный
+ * цвет выписан явно. Сырые строки при этом разные, а видит автор одно и то же
+ * — и «разное» здесь было бы враньём в другую сторону.
+ *
+ * Пустой список бросает: «общее значение ни у кого» — это не «разное»,
+ * а вызов, которому нечего было спрашивать. Молчаливый ответ здесь скрыл бы
+ * рассинхрон у вызывающего (`propbarFields` пуст, пока пуст `propbarSelection`).
+ */
+export function commonStyleValue(
+  styles: readonly ElementStyle[],
+  key: StyleFieldKey,
+): StyleReadResult {
+  const first = styles[0];
+  if (first === undefined) {
+    throw new Error(`Общее значение поля «${key}» спрашивать не у кого: список стилей пуст`);
+  }
+  const value = getStyleValue(first, key);
+  for (const style of styles) {
+    if (!sameReadResult(value, getStyleValue(style, key))) return { kind: 'mixed' };
+  }
+  return value;
+}
+
+/** Одинаковы ли два прочитанных значения с точки зрения автора. */
+function sameReadResult(a: StyleReadResult, b: StyleReadResult): boolean {
+  if (a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case 'parsed':
+      return sameParsedValue(a.value, (b as { value: string | number | LengthOrPercent }).value);
+    case 'token': {
+      const other = b as { token: string; fallback: string };
+      // Запасное значение — часть смысла, а не оформление: две ссылки на одну
+      // роль с разным запасом нарисуются по-разному там, где роли нет (S11).
+      return a.token === other.token && a.fallback === other.fallback;
+    }
+    case 'raw':
+      return a.text === (b as { text: string }).text;
+    case 'mixed':
+      // Сюда не попадают: сравниваются только ответы `getStyleValue`,
+      // а она `mixed` не возвращает. Ветка есть, чтобы разбор оставался
+      // исчерпывающим и новый вариант нельзя было добавить молча.
+      return true;
+  }
+}
+
+/** `LengthOrPercent` — объект, поэтому `===` здесь дало бы «разное» на равных значениях. */
+function sameParsedValue(
+  a: string | number | LengthOrPercent,
+  b: string | number | LengthOrPercent,
+): boolean {
+  if (typeof a === 'object' || typeof b === 'object') {
+    return typeof a === 'object' && typeof b === 'object' && a.amount === b.amount && a.unit === b.unit;
+  }
+  return a === b;
 }
 
 /**

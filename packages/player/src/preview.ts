@@ -16,7 +16,7 @@ import { findSegment as findSegment } from '@player/core';
 import type { Element, ElementState, Gate, Project, Slide, Theme, Word } from '@player/core';
 
 import type { AudioSource } from './assets.js';
-import { applyElement, applyFit, type Fit, type StageSize } from './render.js';
+import { applyElement, applyFit, type Fit, type StageSize, type Zoom } from './render.js';
 import { SlideEngine } from './slides.js';
 
 /**
@@ -197,10 +197,15 @@ export class ScenePreview {
     this.#engine.renderAt(this.#position);
   }
 
-  /** Вписывает сцену в размеры контейнера. Масштаб возвращается вызывающему. */
-  fit(hostWidth: number, hostHeight: number): Fit {
+  /**
+   * Вписывает сцену в размеры контейнера. Масштаб возвращается вызывающему.
+   *
+   * `zoom` — масштаб, заданный автором вместо вписывания (Сессия 32); разбор
+   * смысла и довод, почему формула живёт в `render.ts`, — там же, у `fitStage`.
+   */
+  fit(hostWidth: number, hostHeight: number, zoom: Zoom = 'fit'): Fit {
     this.#assertAlive();
-    return applyFit(this.#host, hostWidth, hostHeight, this.#segment.stage);
+    return applyFit(this.#host, hostWidth, hostHeight, this.#segment.stage, zoom);
   }
 
   destroy(): void {

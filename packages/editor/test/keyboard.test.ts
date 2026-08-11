@@ -270,3 +270,51 @@ describe('Ctrl+D — копия выделенного', () => {
     expect(keyToIntent(press('d'), NORMAL)).toBeUndefined();
   });
 });
+
+/**
+ * Масштаб холста (Сессия 32). Все три сочетания — ЧУЖИЕ по умолчанию:
+ * у браузера Ctrl+= и Ctrl+− масштабируют страницу, Ctrl+0 возвращает 100 %.
+ * Раскладка обязана отвечать на них намерением, а вызывающий — гасить событие,
+ * иначе автор получит два масштаба сразу.
+ */
+describe('масштаб холста с клавиатуры', () => {
+  const cases: Array<[string, Mods, KeyIntent]> = [
+    ['=', { ctrl: true }, { kind: 'zoom', to: 'in' }],
+    // Клавиша «плюс» на цифровой раскладке отдаёт именно «+», а не «=».
+    // Проверяй мы только «=», сочетание не работало бы у части авторов, молча.
+    ['+', { ctrl: true }, { kind: 'zoom', to: 'in' }],
+    ['-', { ctrl: true }, { kind: 'zoom', to: 'out' }],
+    ['0', { ctrl: true }, { kind: 'zoom', to: 'fit' }],
+    ['=', { meta: true }, { kind: 'zoom', to: 'in' }],
+    ['0', { meta: true }, { kind: 'zoom', to: 'fit' }],
+  ];
+
+  it.each(cases)('%s %o → %o', (key, mods, intent) => {
+    expect(keyToIntent(press(key, mods), NORMAL)).toEqual(intent);
+  });
+
+  it('масштаб не зависит от выделения: это про то, КАК автор смотрит', () => {
+    // Краснеет, если масштаб привяжут к выделению по образцу Ctrl+D: автор,
+    // ничего не выделивший, потерял бы возможность приблизиться.
+    expect(keyToIntent(press('=', { ctrl: true }), NO_SELECTION)).toEqual({
+      kind: 'zoom',
+      to: 'in',
+    });
+  });
+
+  it('в текстовом поле и при правке текста на холсте — не наша клавиша', () => {
+    expect(keyToIntent(press('=', { ctrl: true }), IN_TEXT_FIELD)).toBeUndefined();
+    expect(keyToIntent(press('0', { ctrl: true }), EDITING_TEXT)).toBeUndefined();
+  });
+
+  it('без модификатора цифра и знаки остаются обычным набором', () => {
+    // Краснеет, если забыть про модификатор: раскладка украла бы у автора
+    // ввод нуля и минуса.
+    expect(keyToIntent(press('0'), NORMAL)).toBeUndefined();
+    expect(keyToIntent(press('-'), NORMAL)).toBeUndefined();
+  });
+
+  it('Alt снимает намерение, как и у всех остальных сочетаний', () => {
+    expect(keyToIntent(press('=', { ctrl: true, alt: true }), NORMAL)).toBeUndefined();
+  });
+});

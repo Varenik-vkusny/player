@@ -28,7 +28,8 @@ export type KeyIntent =
   | { readonly kind: 'redo' }
   | { readonly kind: 'duplicate' }
   | { readonly kind: 'deselect' }
-  | { readonly kind: 'commitText' };
+  | { readonly kind: 'commitText' }
+  | { readonly kind: 'zoom'; readonly to: 'in' | 'out' | 'fit' };
 
 export interface KeyContext {
   readonly hasSelection: boolean;
@@ -98,6 +99,26 @@ export function keyToIntent(event: KeyboardLikeEvent, context: KeyContext): KeyI
   // под повтор — значит отбирать чужое сочетание там, где своего аналога
   // не существует.
   if (event.ctrlKey && !event.shiftKey && key === 'y') return { kind: 'redo' };
+
+  /**
+   * Масштаб холста (Сессия 32). От выделения не зависит вовсе: это про то,
+   * КАК автор смотрит, а не над чем работает.
+   *
+   * ОСТОРОЖНО, сочетания НЕ НАШИ по умолчанию: у браузера Ctrl+= и Ctrl+−
+   * масштабируют всю страницу, Ctrl+0 возвращает 100 %. Вернув отсюда
+   * намерение, вызывающий ОБЯЗАН погасить событие, иначе автор получит два
+   * масштаба сразу: наш холст и чужую страницу. Это ровно та же оговорка,
+   * что у Ctrl+D ниже, и по той же причине сделать это здесь нельзя.
+   *
+   * Знаков у «приблизить» два: на основной раскладке клавиша отдаёт `=`,
+   * на цифровой — `+`. Проверять только `+` значило бы, что сочетание
+   * не работает у большинства, и молча.
+   */
+  if (withCtrlOrCmd && !event.shiftKey) {
+    if (key === '=' || key === '+') return { kind: 'zoom', to: 'in' };
+    if (key === '-' || key === '_') return { kind: 'zoom', to: 'out' };
+    if (key === '0') return { kind: 'zoom', to: 'fit' };
+  }
 
   // Копия выделенного. В отличие от отмены выше, зависит от выделения:
   // копировать «ничего» — не операция.

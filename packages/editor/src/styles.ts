@@ -174,6 +174,91 @@ export const EDITOR_STYLES = `
   background-color: var(--ui-surface-canvas);
 }
 
+/* Слой прокрутки (Сессия 32). Отдельный узел внутри холста, а не сам холст:
+   панель масштаба обязана остаться в углу окна, а лежи она внутри
+   прокручиваемого узла — уезжала бы вместе со сценой. Второе следствие важнее
+   первого: clientWidth самого холста перестаёт зависеть от появления полос
+   прокрутки, поэтому пересчёт масштаба физически не может гоняться сам
+   за собой. */
+.ed-stage-scroll {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+/* Полотно — «сцена × масштаб». Размер ставит StageView инлайном: он считается
+   от свежего замера холста, а CSS такого не умеет. При вписывании полотно
+   равно холсту, полос прокрутки не появляется, и картинка остаётся ровно
+   прежней. position: relative — начало координат для направляющих, рамки
+   обведения и оверлея (они внутри и едут вместе с прокруткой). */
+.ed-stage-canvas {
+  position: relative;
+}
+
+/* Строка под холстом, в которой живёт панель масштаба. Так же, как в Canva:
+   там управление масштабом стоит в нижней строке ОКНА, а не поверх холста.
+   Плавающая панель накрывала бы собой угол сцены — а сцена принадлежит
+   автору целиком.
+
+   Строка ПОСТОЯННА: она не появляется и не исчезает вместе с выделением или
+   чем-либо ещё, поэтому площадь холста при работе не меняется. Меняйся она,
+   сцена пересчитывала бы масштаб и элемент уезжал бы из-под курсора между
+   двумя кликами двойного щелчка (дефект Сессии 29, разобран в PropBar.tsx). */
+.ed-zoom-strip {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px;
+  border-top: 1px solid var(--ui-line);
+  background: var(--ui-surface-panel);
+}
+
+/* Имя с приставкой stage — не педантизм: .ed-zoom уже занят масштабом
+   ДОРОЖКИ (TrackView), и одноимённый класс молча перекрасил бы его. */
+.ed-stage-zoom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ui-line);
+  border-radius: 8px;
+  background: var(--ui-surface-raised);
+  box-shadow: var(--ui-shadow-selected);
+}
+
+.ed-stage-zoom-btn {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ed-stage-zoom-btn:hover:not(:disabled) { background: var(--ui-action-selected-bg); }
+
+/* Крайняя ступень ГАСИТ кнопку, а не убирает её: ступень остаётся законным
+   понятием, просто дальше идти некуда. Спрятанная кнопка меняла бы ширину
+   панели на каждом краю лестницы. */
+.ed-stage-zoom-btn:disabled {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+
+.ed-stage-zoom-value {
+  height: 24px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
 /* Правка текста на холсте (двойной клик, StageView.beginTextEdit). Пока
    идёт набор, автору нужно выделять текст и переносить каретку мышью, как
    и в .ed-words-body/.ed-insp-input выше — иначе жест перетаскивания сцены
@@ -1967,6 +2052,37 @@ export const EDITOR_STYLES = `
    Единственный цвет вне палитры редактора, и ровно потому, что ошибка не
    должна читаться как обычное состояние. */
 .ed-insp-input[aria-invalid='true'] { border-color: var(--ui-feedback-critical); }
+
+/* «Разное» — общего цвета у выделенной пачки нет.
+
+   Полоски рисуются на САМОМ образце, а не рядом с ним и не в подписи, и это
+   куплено снимком, а не рассуждением: подписи полей на полосе свойств
+   визуально скрыты (.ed-propbar-field .ed-insp-label выше — width: 1px и
+   clip-path), поэтому слово «разное» в подписи прекрасно находится тестом
+   и не доходит до автора вовсе. Каркас метит образец по той же причине
+   (design/shell.css, .ink--mixed) — оттуда и рисунок полосок.
+
+   Метится ВСЁ поле, а не только внутренний образец, и это тоже замер, а не
+   вкус: на полосе свойств поле выбора цвета шириной 22 px, внутренний
+   образец в нём — около четырёх пикселей, и полоска с шагом 3 px там
+   физически не читается. Фон самого поля даёт ~18x26 px видимой штриховки,
+   которую видно и на полосе, и в панели «Объект», где поле широкое.
+
+   Два правила для образца вместо одного намеренно: неизвестный псевдоэлемент
+   делает недействительным ВЕСЬ список селекторов, поэтому webkit и moz нельзя
+   писать через запятую — иначе правило отвалится молча в обоих браузерах. */
+.ed-insp-input--mixed {
+  background-image: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+.ed-insp-input--mixed::-webkit-color-swatch {
+  background-image: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
+.ed-insp-input--mixed::-moz-color-swatch {
+  background-image: repeating-linear-gradient(
+    45deg, var(--ui-surface-raised) 0 3px, var(--ui-line-strong) 3px 6px);
+}
 
 /* readonly, а не disabled: значение остаётся фокусируемым и копируемым. */
 .ed-insp-input[readonly] {
