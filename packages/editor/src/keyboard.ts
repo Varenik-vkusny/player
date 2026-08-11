@@ -26,6 +26,7 @@ export type KeyIntent =
   | { readonly kind: 'nudge'; readonly dx: number; readonly dy: number }
   | { readonly kind: 'undo' }
   | { readonly kind: 'redo' }
+  | { readonly kind: 'duplicate' }
   | { readonly kind: 'deselect' }
   | { readonly kind: 'commitText' };
 
@@ -97,6 +98,23 @@ export function keyToIntent(event: KeyboardLikeEvent, context: KeyContext): KeyI
   // под повтор — значит отбирать чужое сочетание там, где своего аналога
   // не существует.
   if (event.ctrlKey && !event.shiftKey && key === 'y') return { kind: 'redo' };
+
+  // Копия выделенного. В отличие от отмены выше, зависит от выделения:
+  // копировать «ничего» — не операция.
+  //
+  // ОСТОРОЖНО, это сочетание НЕ НАШЕ по умолчанию: у Chrome Ctrl+D —
+  // «добавить в закладки». Вернув отсюда намерение, мы обязаны в вызывающем
+  // погасить событие (`preventDefault`), иначе автор получит окно закладки
+  // поверх редактора. Здесь этого сделать нельзя: модуль не трогает событие,
+  // он только отвечает, чего хотел автор.
+  //
+  // Без выделения возвращается `undefined` — по закону модуля это значит
+  // «клавиша не наша, пусть браузер делает своё». Автор, нажавший Ctrl+D
+  // ни на чём, получит закладку, и это осознанная цена: перехватывать чужое
+  // сочетание там, где нам нечего делать, — как раз то, что закон запрещает.
+  if (withCtrlOrCmd && key === 'd') {
+    return context.hasSelection ? { kind: 'duplicate' } : undefined;
+  }
 
   if (event.key === 'Delete' || event.key === 'Backspace') {
     // Без выделения удалять нечего — намерение бессмысленно и должно

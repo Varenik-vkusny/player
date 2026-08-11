@@ -1252,6 +1252,18 @@ export function Editor({
           if (moved) dispatch({ type: 'commit' });
           return;
         }
+        case 'duplicate':
+          /**
+           * Вся пачка одним действием, а не циклом: копия трёх выделенных —
+           * один жест автора и обязана быть одним шагом отмены (та же
+           * причина, по которой сдвиг стрелками выше склеивается в один
+           * шаг через `commit: false` + `commit`).
+           *
+           * `preventDefault` уже вызван выше на любое намерение — без него
+           * Chrome открыл бы окно «добавить в закладки» поверх редактора.
+           */
+          dispatch({ type: 'duplicateElements', ids: state.selectedIds, at: headTimeRef() });
+          return;
         case 'undo':
           dispatch({ type: 'undo' });
           return;

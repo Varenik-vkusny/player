@@ -52,8 +52,12 @@ function nextZIndex(states: Readonly<Record<string, ElementState>>): number {
 const CASCADE_STEP = 56;
 const CASCADE_WRAP = 6;
 
-/** Держит элемент в пределах сцены: за краем его не выделить мышью. */
-function withinStage(value: number, size: number, limit: number): number {
+/** Держит элемент в пределах сцены: за краем его не выделить мышью.
+ *
+ *  Экспортирована ради копии элементов (`duplicateElements.ts`): причина
+ *  «за краем не выделить мышью» относится к копии ровно так же, как
+ *  к новому элементу, а два одинаковых правила в двух местах разъезжаются. */
+export function withinStage(value: number, size: number, limit: number): number {
   return Math.max(0, Math.min(value, limit - size));
 }
 
