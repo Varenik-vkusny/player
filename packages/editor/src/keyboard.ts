@@ -27,6 +27,9 @@ export type KeyIntent =
   | { readonly kind: 'undo' }
   | { readonly kind: 'redo' }
   | { readonly kind: 'duplicate' }
+  | { readonly kind: 'copy' }
+  | { readonly kind: 'cut' }
+  | { readonly kind: 'paste' }
   | { readonly kind: 'deselect' }
   | { readonly kind: 'commitText' }
   | { readonly kind: 'zoom'; readonly to: 'in' | 'out' | 'fit' };
@@ -37,6 +40,15 @@ export interface KeyContext {
   readonly editingText: boolean;
   /** Фокус в поле ввода панели свойств или в другом текстовом поле. */
   readonly inTextField: boolean;
+  /**
+   * В буфере обмена элементов что-то лежит.
+   *
+   * Существует ради Ctrl+V, и по той же причине, по которой у Ctrl+D
+   * есть `hasSelection`: сочетание НЕ НАШЕ. Вернув намерение при пустом
+   * буфере, мы заставили бы вызывающего погасить событие — и отобрали бы
+   * у автора нативную вставку там, где нам делать нечего.
+   */
+  readonly hasClipboard: boolean;
 }
 
 /** Шаг сдвига стрелками: 1 px обычно, 10 px с зажатым Shift. */
@@ -135,6 +147,27 @@ export function keyToIntent(event: KeyboardLikeEvent, context: KeyContext): KeyI
   // сочетание там, где нам нечего делать, — как раз то, что закон запрещает.
   if (withCtrlOrCmd && key === 'd') {
     return context.hasSelection ? { kind: 'duplicate' } : undefined;
+  }
+
+  /**
+   * Буфер обмена элементов (Сессия 33).
+   *
+   * `!event.shiftKey` обязателен у всех трёх: Ctrl+Shift+C у Chrome —
+   * выбор элемента в инструментах разработчика, и перехватывать его нельзя.
+   *
+   * Копирование и вырезание зависят от выделения, вставка — от буфера.
+   * Проверки ассиметричны не по недосмотру: «скопировать ничего» и
+   * «вставить ничего» — разные пустоты, и обе обязаны оставить сочетание
+   * браузеру, как это делает Ctrl+D выше.
+   *
+   * Системный буфер обмена НЕ используется вовсе — только свой, как
+   * у слайдов. Картинка, скопированная в браузере, через Ctrl+V сюда
+   * не вставится: это отдельная работа со своими разрешениями.
+   */
+  if (withCtrlOrCmd && !event.shiftKey) {
+    if (key === 'c') return context.hasSelection ? { kind: 'copy' } : undefined;
+    if (key === 'x') return context.hasSelection ? { kind: 'cut' } : undefined;
+    if (key === 'v') return context.hasClipboard ? { kind: 'paste' } : undefined;
   }
 
   if (event.key === 'Delete' || event.key === 'Backspace') {

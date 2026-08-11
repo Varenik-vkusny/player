@@ -52,6 +52,7 @@ import type { Project, Segment } from '@player/core';
 import { canRedo, canUndo, createHistory, push, redo, undo, type History } from './history.js';
 import { editorReducer, hasElement, type EditorAction, type EditorState } from './project.js';
 import type { RetargetReport } from './retarget.js';
+import type { ElementClipboard } from './elementClipboard.js';
 import type { SlideClipboard } from './slides.js';
 
 export type { History } from './history.js';
@@ -101,6 +102,11 @@ export interface HistoryState {
    * о правке, от которой автор отошёл.
    */
   readonly slideClipboard: SlideClipboard | undefined;
+  /**
+   * Буфер обмена ЭЛЕМЕНТОВ (Сессия 33). Правило ровно то же, что у буфера
+   * слайдов строкой выше, и по той же причине: отмену он обязан пережить.
+   */
+  readonly elementClipboard: ElementClipboard | undefined;
 }
 
 function firstSlideId(segment: Segment): string {
@@ -141,6 +147,7 @@ export function initialHistoryState(project: Project): HistoryState {
     gestureOpen: false,
     lastRetarget: undefined,
     slideClipboard: undefined,
+    elementClipboard: undefined,
   };
 }
 
@@ -223,6 +230,7 @@ function afterNav(state: HistoryState, history: History<Project>): HistoryState 
     gestureOpen: false,
     lastRetarget: undefined,
     slideClipboard: state.slideClipboard,
+    elementClipboard: state.elementClipboard,
   };
 }
 
@@ -247,6 +255,7 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     currentSlideId: state.currentSlideId,
     lastRetarget: state.lastRetarget,
     slideClipboard: state.slideClipboard,
+    elementClipboard: state.elementClipboard,
   };
   const after = editorReducer(before, action);
 
@@ -295,6 +304,17 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
       : { ...state, slideClipboard: after.slideClipboard };
   }
 
+  if (action.type === 'copyElements') {
+    // Та же ветка, что у `copySlide` выше, и по той же причине: проект
+    // не менялся, значит generic-путь ниже перенёс бы только `selectedIds`,
+    // а наполненный буфер остался бы лежать в `after` и потерялся МОЛЧА —
+    // автор нажал бы «Копировать», ошибки бы не было нигде, и «Вставить»
+    // осталось бы недоступным.
+    return after.elementClipboard === state.elementClipboard
+      ? state
+      : { ...state, elementClipboard: after.elementClipboard };
+  }
+
   if (after.project === before.project) {
     // editorReducer сам решил, что правки не было (например, replaceElement
     // тем же объектом). Выделение он всё равно мог поменять
@@ -321,6 +341,9 @@ export function historyReducer(state: HistoryState, action: HistoryEditorAction)
     // именно тут, на общем возврате (та же ловушка, что и в ветке copySlide
     // выше, только для действия, которое ушло дальше generic-пути).
     slideClipboard: after.slideClipboard,
+    // `cutElements` И меняет проект, И наполняет буфер за один вызов
+    // editorReducer — та же ловушка, что у `cutSlide` строкой выше.
+    elementClipboard: after.elementClipboard,
   };
 }
 

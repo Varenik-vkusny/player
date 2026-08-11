@@ -961,8 +961,18 @@ export function Editor({
    * из трёх выделенных схлопывала бы пачку до одного.
    */
   const handleStageContextMenu = useCallback(
-    (elementId: string, at: { x: number; y: number }) => {
-      if (!state.selectedIds.includes(elementId)) handleSelect(elementId);
+    (elementId: string | undefined, at: { x: number; y: number }) => {
+      /*
+       * Промах по пустому месту (Сессия 33) снимает выделение — ровно так же,
+       * как это делает ОБЫЧНЫЙ щелчок по пустому месту. Иначе меню, открытое
+       * над голым холстом, предлагало бы «Дублировать» и «Удалить» над теми
+       * объектами, на которые автор не показывал.
+       *
+       * Раньше меню по пустому месту не открывалось вовсе: предложить там
+       * было нечего. Теперь есть — «Вставить».
+       */
+      if (elementId === undefined) handleSelect(undefined);
+      else if (!state.selectedIds.includes(elementId)) handleSelect(elementId);
       setContextMenuAt(at);
     },
     [state.selectedIds, handleSelect],
@@ -977,12 +987,42 @@ export function Editor({
    * «На задний план» показан серым. Спрятать значило бы отобрать действие
    * молча — автор решит, что его не существует (грабли С30 §20б).
    */
+  // Меню открывается и по пустому месту холста (Сессия 33), где выделения
+  // нет вовсе. Ходы над объектом там ГАСНУТ, но остаются: спрятать их
+  // значило бы отобрать действие молча (грабли С30 §20б).
+  const hasSelection = state.selectedIds.length > 0;
+
   const contextMenuItems = useMemo(
     (): readonly MenuItem[] => [
+      {
+        id: 'copy',
+        label: 'Копировать',
+        shortcut: 'Ctrl+C',
+        disabled: !hasSelection,
+        onSelect: () => dispatch({ type: 'copyElements', ids: state.selectedIds }),
+      },
+      {
+        id: 'cut',
+        label: 'Вырезать',
+        shortcut: 'Ctrl+X',
+        disabled: !hasSelection,
+        onSelect: () => dispatch({ type: 'cutElements', ids: state.selectedIds }),
+      },
+      {
+        id: 'paste',
+        label: 'Вставить',
+        shortcut: 'Ctrl+V',
+        // Единственный пункт, живой при пустом выделении: правая кнопка
+        // по голому холсту существует ради него одного.
+        disabled: state.elementClipboard === undefined,
+        onSelect: () => dispatch({ type: 'pasteElements', at: headTimeRef() }),
+      },
       {
         id: 'duplicate',
         label: 'Дублировать',
         shortcut: 'Ctrl+D',
+        separatorBefore: true,
+        disabled: !hasSelection,
         onSelect: () =>
           dispatch({ type: 'duplicateElements', ids: state.selectedIds, at: headTimeRef() }),
       },
@@ -990,17 +1030,26 @@ export function Editor({
         id: 'delete',
         label: 'Удалить',
         shortcut: 'Delete',
+        disabled: !hasSelection,
         onSelect: handleDeleteSelected,
       },
       ...LAYER_BUTTONS.map((button, index) => ({
         id: button.testId,
         label: button.label,
         separatorBefore: index === 0,
-        disabled: layerPatches(button.move).length === 0,
+        disabled: !hasSelection || layerPatches(button.move).length === 0,
         onSelect: () => handleLayer(button.move),
       })),
     ],
-    [state.selectedIds, headTimeRef, handleDeleteSelected, layerPatches, handleLayer],
+    [
+      state.selectedIds,
+      state.elementClipboard,
+      hasSelection,
+      headTimeRef,
+      handleDeleteSelected,
+      layerPatches,
+      handleLayer,
+    ],
   );
 
   // Ошибка вставки картинки: файл не картинка, либо кодирование не удалось.
@@ -1298,6 +1347,8 @@ export function Editor({
         // а не флаг, который можно забыть сбросить.
         editingText: active instanceof HTMLElement && active.isContentEditable,
         inTextField: isTextFieldNode(active),
+        // Пустой буфер обязан оставить Ctrl+V браузеру — см. `KeyContext`.
+        hasClipboard: state.elementClipboard !== undefined,
       };
       const intent = keyToIntent(event, context);
       if (!intent) return; // не наша клавиша — Tab и всё остальное продолжает жить своей жизнью
@@ -1349,6 +1400,18 @@ export function Editor({
            * Chrome открыл бы окно «добавить в закладки» поверх редактора.
            */
           dispatch({ type: 'duplicateElements', ids: state.selectedIds, at: headTimeRef() });
+          return;
+        case 'copy':
+          dispatch({ type: 'copyElements', ids: state.selectedIds });
+          return;
+        case 'cut':
+          dispatch({ type: 'cutElements', ids: state.selectedIds });
+          return;
+        case 'paste':
+          // Вставка идёт в слайд ПОД ГОЛОВКОЙ, как и копия по Ctrl+D:
+          // на голом месте дорожки она рождает слайд, и это та же правка
+          // сцены, а не особый случай.
+          dispatch({ type: 'pasteElements', at: headTimeRef() });
           return;
         case 'undo':
           dispatch({ type: 'undo' });

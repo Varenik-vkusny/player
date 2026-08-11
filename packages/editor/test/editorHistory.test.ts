@@ -634,3 +634,60 @@ describe('duplicateElements: пачка — ОДИН шаг истории', () 
     expect(next).toBe(before);
   });
 });
+
+/**
+ * Буфер обмена ЭЛЕМЕНТОВ (Сессия 33) — те же три ловушки, что у буфера
+ * слайдов выше, и каждая теряет буфер МОЛЧА: автор нажимает «Копировать»,
+ * ошибки нет нигде, а «Вставить» остаётся недоступным.
+ */
+describe('буфер обмена элементов', () => {
+  it('copyElements наполняет буфер, пройдя через historyReducer', () => {
+    // Ловушка (а): без отдельной ветки сработал бы generic-путь
+    // `after.project === before.project`, который переносит только selectedIds.
+    const state = baseState();
+    const next = historyReducer(state, { type: 'copyElements', ids: ['title'] });
+    expect(next.elementClipboard).toBeDefined();
+  });
+
+  it('copyElements не создаёт шаг истории', () => {
+    const state = baseState();
+    const next = historyReducer(state, { type: 'copyElements', ids: ['title'] });
+    expect(next.history).toBe(state.history);
+    expect(canUndoState(next)).toBe(canUndoState(state));
+  });
+
+  it('cutElements = ОДИН шаг истории: один Ctrl+Z возвращает объект целиком', () => {
+    /*
+     * Ловушка (б): `cutElements` И меняет проект, И наполняет буфер за один
+     * вызов, поэтому уходит на общий возврат — и без поля там буфер потерялся
+     * бы именно на нём.
+     *
+     * Разложить вырезание на copy + remove нельзя: Ctrl+Z отдал бы автору
+     * полуразрезанное состояние — буфер уже полон, объект ещё жив.
+     */
+    const state = baseState();
+    const pastBefore = state.history.past.length;
+
+    const cut = historyReducer(state, { type: 'cutElements', ids: ['title'] });
+
+    expect(cut.elementClipboard!.items[0]!.element.id).toBe('title');
+    expect(cut.history.present.segments[0]!.elements.map((item) => item.id)).toEqual(['subtitle']);
+    expect(cut.history.past.length).toBe(pastBefore + 1);
+
+    const undone = historyReducer(cut, { type: 'undo' });
+    expect(undone.history.present).toBe(state.history.present);
+  });
+
+  it('буфер ПЕРЕЖИВАЕТ отмену: вырезал, отменил, вставить всё ещё можно', () => {
+    /*
+     * Ловушка (в): `afterNav` собирает состояние заново и сбрасывает
+     * `lastRetarget`. Буфер сбрасывать нельзя — это предмет в руке автора,
+     * а не отчёт о правке, от которой он отошёл. Потерять его при Ctrl+Z
+     * значило бы наказывать автора за отмену.
+     */
+    const cut = historyReducer(baseState(), { type: 'cutElements', ids: ['title'] });
+    const undone = historyReducer(cut, { type: 'undo' });
+
+    expect(undone.elementClipboard).toBe(cut.elementClipboard);
+  });
+});

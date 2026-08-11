@@ -1,9 +1,15 @@
 /**
- * Направляющие и прилипание при перетаскивании.
+ * Направляющие и прилипание: при перетаскивании (`snap`) и при изменении
+ * размера (`snapResize`).
  *
  * Чистый модуль: ни DOM, ни React, ни состояния. На входе — где сейчас
  * тащат и что ещё лежит на слайде, на выходе — поправка к смещению и линии,
  * которые надо нарисовать. Проверяется в node без jsdom, как и `geometry.ts`.
+ *
+ * Цели прилипания у обоих жестов ОДНИ (`targetsOf`), а вот опорные точки
+ * разные, и поиск ближайшей линии поэтому вынесен в `nearestDelta` — общий
+ * на двоих. Второй такой поиск означал бы, что порог однажды начнёт
+ * считаться в двух местах по-разному, и заметить это было бы нечем.
  *
  * **Направляющие нигде не сохраняются.** Их нет ни в схеме, ни в проекте,
  * ни в состоянии редактора между жестами: линия живёт ровно столько,
@@ -18,7 +24,8 @@
  * (`unionBox`), а поправка возвращается одна на всех — тем же доводом,
  * по которому дельта в `StageView` считается один раз от точки захвата.
  */
-import { unionBox, type Box } from './geometry.js';
+import { unionBox, type Box, type Point } from './geometry.js';
+import { resizeBox, type ResizeHandle } from './transform.js';
 
 /** Ось, ВДОЛЬ которой линия не тянется: 'x' — вертикальная линия. */
 export type Axis = 'x' | 'y';
@@ -97,17 +104,24 @@ function targetsOf(
   return result;
 }
 
-/** Поправка по одной оси: ближайшая линия в пределах порога. */
-function snapAxis(
-  moving: Box,
+/**
+ * Поправка для набора опорных точек: ближайшая линия в пределах порога.
+ *
+ * Точки приходят списком, а не боксом, потому что потребителей два и опорные
+ * точки у них РАЗНЫЕ. Перетаскивание берёт все три (начало, середина, конец),
+ * растягивание — ровно одну, тот край, за который тянут. Свести их к одному
+ * боксу нельзя, а завести второй поиск ближайшего значило бы, что порог
+ * однажды начнёт считаться в двух местах по-разному.
+ */
+function nearestDelta(
+  anchorValues: readonly number[],
   targets: readonly Target[],
   threshold: number,
-  axis: Axis,
 ): number {
   let best = 0;
   let bestDistance = Number.POSITIVE_INFINITY;
 
-  for (const anchor of anchors(moving, axis)) {
+  for (const anchor of anchorValues) {
     for (const target of targets) {
       const delta = target.at - anchor;
       const distance = Math.abs(delta);
@@ -125,20 +139,25 @@ function snapAxis(
   return best;
 }
 
-/** Все линии, с которыми бокс совпал ПОСЛЕ прилипания. */
-function guidesFor(
-  moved: Box,
+/** Поправка по одной оси при перетаскивании: в игре все три опорные точки. */
+function snapAxis(
+  moving: Box,
+  targets: readonly Target[],
+  threshold: number,
+  axis: Axis,
+): number {
+  return nearestDelta(anchors(moving, axis), targets, threshold);
+}
+
+/** Линии, с которыми совпала хоть одна из переданных опорных точек. */
+function guidesAt(
+  anchorValues: readonly number[],
+  across: { min: number; max: number },
   targets: readonly Target[],
   axis: Axis,
 ): readonly Guide[] {
-  const bounds = unionBox([moved])!;
-  const across =
-    axis === 'x'
-      ? { min: bounds.y, max: bounds.y + bounds.height }
-      : { min: bounds.x, max: bounds.x + bounds.width };
-
   const result: Guide[] = [];
-  for (const anchor of anchors(bounds, axis)) {
+  for (const anchor of anchorValues) {
     for (const target of targets) {
       if (Math.abs(target.at - anchor) > EPSILON) continue;
       // Линия тянется от дальнего края источника до дальнего края того,
@@ -159,6 +178,21 @@ function guidesFor(
     }
   }
   return result;
+}
+
+/** Все линии, с которыми бокс совпал ПОСЛЕ прилипания при перетаскивании. */
+function guidesFor(
+  moved: Box,
+  targets: readonly Target[],
+  axis: Axis,
+): readonly Guide[] {
+  const bounds = unionBox([moved])!;
+  const across =
+    axis === 'x'
+      ? { min: bounds.y, max: bounds.y + bounds.height }
+      : { min: bounds.x, max: bounds.x + bounds.width };
+
+  return guidesAt(anchors(bounds, axis), across, targets, axis);
 }
 
 /**
@@ -202,4 +236,101 @@ export function snap(
       ...guidesFor(moved, horizontalTargets, 'y'),
     ],
   };
+}
+
+export interface ResizeSnapResult {
+  /** Готовый бокс: прилипание уже учтено, `resizeBox` уже применён. */
+  readonly box: Box;
+  readonly guides: readonly Guide[];
+}
+
+/**
+ * Куда довести растягиваемый бокс и что при этом показать.
+ *
+ * **Прилипает УКАЗАТЕЛЬ, а не бокс, и в этом всё устройство функции.**
+ * Соблазн взять поправку `snap`, посчитанную для перемещения, и прибавить её
+ * к боксу — ошибка, которую не видно в модели: такая поправка двигает бокс
+ * целиком, то есть уводит и противоположный ручке край. Автор тянул бы за
+ * правый край, а элемент ехал бы вправо неизменной ширины — «изменение
+ * размера», которое размер не меняет.
+ *
+ * `resizeBox` уже устроен так, что противоположный ручке угол неподвижен
+ * ПО ПОСТРОЕНИЮ (шаги 2–5 в `transform.ts`). Значит достаточно подвинуть
+ * точку указателя до вызова — и неподвижность дальнего края остаётся
+ * свойством самой функции, а не ещё одной проверкой, которую можно забыть.
+ *
+ * **Опорная точка ровно одна на ось — тот край, который тянут.** Ручка `e`
+ * двигает правый край, `nw` — левый и верхний. Середину бокса в кандидаты
+ * не берём намеренно: при тяге за край она едет вполовину, и её прилипание
+ * автор увидел бы как промах мимо линии.
+ *
+ * **Готовый бокс возвращается отсюда, а не считается вызывающим заново.**
+ * `resizeBox` упирает бокс в `minSize`: протащив ручку за противоположный
+ * край, автор получает край НЕ там, где указатель. Линии рисуются по
+ * фактическому результату — иначе они висели бы там, куда край не доехал.
+ * Второй вызов `resizeBox` на стороне вызывающего однажды разошёлся бы
+ * с этим по `minSize`, и разошёлся бы молча.
+ *
+ * @param threshold порог в единицах СЦЕНЫ — как и у `snap`, вызывающий
+ *                  получает его делением экранного порога на масштаб
+ */
+export function snapResize(
+  box: Box,
+  handle: ResizeHandle,
+  pointer: Point,
+  others: readonly Box[],
+  stage: { width: number; height: number },
+  threshold: number,
+): ResizeSnapResult {
+  if (!Number.isFinite(threshold) || threshold < 0) {
+    throw new RangeError(`Порог прилипания должен быть неотрицательным числом, получено ${threshold}`);
+  }
+
+  /**
+   * У ПОВЁРНУТОГО элемента прилипания нет, и это физика, а не упрощение.
+   *
+   * Направляющая вертикальна, а край повёрнутого элемента — нет. Подвинув
+   * `pointer.x` к вертикальной линии, мы подвинули бы край, который с этой
+   * линией не параллелен: край упёрся бы в неё одним концом и разошёлся
+   * другим. Автор увидел бы «прилипло мимо» — хуже, чем не прилипло вовсе.
+   * (Внутри `resizeBox` точка ещё и поворачивается в собственную систему
+   * бокса, так что поправка, посчитанная в координатах сцены, там означала
+   * бы уже не то расстояние, которое мы мерили.)
+   */
+  if (box.rotation !== 0) {
+    return { box: resizeBox(box, handle, pointer), guides: [] };
+  }
+
+  const movesLeft = handle.includes('w');
+  const movesRight = handle.includes('e');
+  const movesTop = handle.includes('n');
+  const movesBottom = handle.includes('s');
+
+  const verticalTargets = targetsOf(others, stage, 'x');
+  const horizontalTargets = targetsOf(others, stage, 'y');
+
+  // Оси независимы ровно так же, как при перетаскивании: ручка `se` вправе
+  // прилипнуть правым краем и остаться свободной по низу.
+  const snapped: Point = {
+    x: movesLeft || movesRight ? pointer.x + nearestDelta([pointer.x], verticalTargets, threshold) : pointer.x,
+    y: movesTop || movesBottom ? pointer.y + nearestDelta([pointer.y], horizontalTargets, threshold) : pointer.y,
+  };
+
+  const moved = resizeBox(box, handle, snapped);
+
+  // Линии — по КРАЯМ РЕЗУЛЬТАТА, а не по прилипшей точке (см. шапку про minSize).
+  const acrossX = { min: moved.y, max: moved.y + moved.height };
+  const acrossY = { min: moved.x, max: moved.x + moved.width };
+
+  const guides: Guide[] = [];
+  if (movesLeft || movesRight) {
+    const edge = movesLeft ? moved.x : moved.x + moved.width;
+    guides.push(...guidesAt([edge], acrossX, verticalTargets, 'x'));
+  }
+  if (movesTop || movesBottom) {
+    const edge = movesTop ? moved.y : moved.y + moved.height;
+    guides.push(...guidesAt([edge], acrossY, horizontalTargets, 'y'));
+  }
+
+  return { box: moved, guides };
 }

@@ -21,6 +21,11 @@ import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
 import { retargetMark } from '../track/marks.js';
 import { copySegment } from './duplicate.js';
 import { duplicateElements as duplicateElementsOnSlide } from './duplicateElements.js';
+import {
+  copyElementsToClipboard,
+  pasteElements as pasteElementsOnSlide,
+  type ElementClipboard,
+} from './elementClipboard.js';
 import { removeElement as removeElementFromSegment } from './elements.js';
 import * as exits from './exits.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
@@ -85,6 +90,21 @@ export interface EditorState {
    * он отошёл. `undefined` — буфер пуст, ничего не скопировано и не вырезано.
    */
   readonly slideClipboard: SlideClipboard | undefined;
+  /**
+   * Буфер обмена ЭЛЕМЕНТОВ (Сессия 33). Второй механизм рядом с буфером
+   * слайдов не заводится: устройство то же — снимок в состоянии вида,
+   * переживающий отмену, — а различие только в правиле вставки, и оно
+   * целиком внутри `elementClipboard.ts`.
+   *
+   * Отдельным полем, а не общим с `slideClipboard`: у автора в руках
+   * может лежать и слайд, и пачка элементов одновременно, а Ctrl+V
+   * на ленте слайдов и Ctrl+V на холсте — разные намерения. Один общий
+   * буфер заставил бы каждое из них спрашивать «а что там лежит?»
+   * и молча ничего не делать, если лежит чужое.
+   *
+   * `undefined` — буфер пуст, ничего не копировали и не вырезали.
+   */
+  readonly elementClipboard: ElementClipboard | undefined;
 }
 
 /**
@@ -171,6 +191,20 @@ export type EditorAction =
       readonly ids: readonly string[];
       readonly at: TimeRef;
     }
+  /**
+   * Буфер обмена элементов (Сессия 33).
+   *
+   * `copyElements` проект НЕ трогает — это состояние вида, как и `copySlide`.
+   * `cutElements` трогает, и наполнение буфера с удалением идут ОДНИМ
+   * вызовом редьюсера: разложи их на два, и Ctrl+Z отдал бы автору
+   * полуразрезанное состояние — буфер уже полон, объекты ещё живы.
+   *
+   * У `pasteElements` есть `at` по той же причине, что у `duplicateElements`:
+   * вставка — правка сцены, и на голом месте дорожки она рождает слайд.
+   */
+  | { readonly type: 'copyElements'; readonly ids: readonly string[] }
+  | { readonly type: 'cutElements'; readonly ids: readonly string[] }
+  | { readonly type: 'pasteElements'; readonly at: TimeRef }
   | {
       readonly type: 'setElementState';
       readonly elementId: string;
@@ -324,6 +358,7 @@ export function initialState(project: Project): EditorState {
     currentSlideId: requireFirstSlide(segment).id,
     lastRetarget: undefined,
     slideClipboard: undefined,
+    elementClipboard: undefined,
   };
 }
 
@@ -569,6 +604,76 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       // Выделение переходит на копии — так же поступает `addElement`: автор
       // только что их создал и, скорее всего, сейчас же потащит в сторону.
+      return {
+        ...next,
+        selectedIds: made.elements.map((element) => element.id),
+        currentSlideId: slideId,
+      };
+    }
+
+    case 'copyElements': {
+      // Только буфер вида — проект НЕ меняется, как и у `copySlide`.
+      const segment = currentSegment(state);
+      const slide = segmentSlide(state.project, state.currentSegmentId, state.currentSlideId);
+      const clipboard = copyElementsToClipboard(segment, slide.id, action.ids, slide.states);
+      // Копировать было нечего (выделены элементы, которых на этом слайде нет).
+      // Буфер при этом НЕ опустошается: «нечего взять» — не повод выронить
+      // то, что автор уже держит в руке.
+      if (clipboard.items.length === 0) return state;
+      return { ...state, elementClipboard: clipboard };
+    }
+
+    case 'cutElements': {
+      const segment = currentSegment(state);
+      const slide = segmentSlide(state.project, state.currentSegmentId, state.currentSlideId);
+      const clipboard = copyElementsToClipboard(segment, slide.id, action.ids, slide.states);
+      if (clipboard.items.length === 0) return state;
+
+      /*
+       * Удаление — из ВСЕГО сегмента, а не только с этого слайда, ровно как
+       * у Delete (`removeElement` ниже). «Вырезать» значит забрать объект,
+       * а не спрятать его на одном кадре: оставив элемент в сегменте, мы
+       * дали бы автору вставку, которая заводит второй такой же, пока
+       * первый невидимо лежит в остальных слайдах.
+       */
+      const nextSegment = clipboard.items.reduce(
+        (accumulated, item) => removeElementFromSegment(accumulated, item.element.id),
+        segment,
+      );
+      const next = replaceSegment(state, nextSegment);
+      const cut = new Set(clipboard.items.map((item) => item.element.id));
+      const selectedIds = state.selectedIds.filter((id) => !cut.has(id));
+      return { ...next, selectedIds, elementClipboard: clipboard };
+    }
+
+    case 'pasteElements': {
+      // Буфера нет — вставлять нечего. ТОТ ЖЕ объект по ссылке: пустой шаг
+      // истории заставил бы автора нажать Ctrl+Z впустую.
+      if (!state.elementClipboard || state.elementClipboard.items.length === 0) return state;
+
+      const { segment, slideId } = slideForEdit(currentSegment(state), action.at);
+      const slide = segment.slides.find((item) => item.id === slideId);
+      if (slide === undefined) {
+        // slideForEdit обязан был вернуть существующий или только что
+        // рождённый слайд. Молчание здесь означало бы вставку, ушедшую в никуда.
+        throw new Error(`Слайд «${slideId}» не найден после slideForEdit`);
+      }
+
+      const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
+      const made = pasteElementsOnSlide(segment, slideId, state.elementClipboard, slide.states, stage);
+
+      const slides = segment.slides.map((item) =>
+        item.id === slideId ? { ...item, states: { ...item.states, ...made.states } } : item,
+      );
+      const next = replaceSegment(state, {
+        ...segment,
+        elements: [...segment.elements, ...made.elements],
+        slides,
+      });
+
+      // Буфер НЕ опустошается: вставить дважды — законное намерение автора,
+      // то же правило, что у `pasteSlide`. Выделение переходит на вставленное,
+      // как у `addElement` и `duplicateElements`.
       return {
         ...next,
         selectedIds: made.elements.map((element) => element.id),

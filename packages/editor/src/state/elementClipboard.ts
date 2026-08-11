@@ -1,0 +1,128 @@
+/**
+ * Буфер обмена ЭЛЕМЕНТОВ (Ctrl+C / Ctrl+X / Ctrl+V).
+ *
+ * Рядом уже есть буфер СЛАЙДОВ (`slides.ts`, ADR-025). Устройство у них
+ * одно — снимок, лежащий в состоянии вида, — а правило вставки РАЗНОЕ,
+ * и это главное, что надо понять про этот модуль.
+ *
+ * **Вставка элемента ВСЕГДА заводит новый элемент.** Таблица ADR-025
+ * переиспользует чужой id, если совпали `type` и `content`. Для слайда это
+ * осмысленно: слайд — снимок, он ССЫЛАЕТСЯ на элементы части, и «тот же
+ * заголовок» действительно тот же. Для элемента переиспользование означало
+ * бы, что вставка поверх такого же объекта не добавляет второй, а молча
+ * двигает первый: автор нажал «Вставить» и не увидел ничего нового, зато
+ * потерял позицию того, что уже стояло. Поэтому имя копии берётся так же,
+ * как у Ctrl+D, — от префикса через `freeId`.
+ *
+ * Показать существующий элемент на новом слайде — отдельная операция
+ * (`putOnSlide` в `slides.ts`), и смешивать её со вставкой нельзя.
+ *
+ * **`parentId` при вставке сбрасывается.** `SegmentSchema` требует, чтобы он
+ * указывал на элемент типа `group` ТОГО ЖЕ сегмента. Перенеся ссылку в чужую
+ * часть, мы собрали бы проект, который не проходит собственную проверку при
+ * следующей загрузке, — причём в редакторе всё это время выглядело бы
+ * исправным (групп он пока не рисует вовсе). Вставленный элемент — верхнего
+ * уровня.
+ *
+ * **Буфер — снимок, а не ссылка на проект.** Состояние копируется вглубь
+ * (включая `style`), иначе правка оригинала после Ctrl+C меняла бы то,
+ * что лежит в буфере, и автор вставил бы не то, что копировал.
+ *
+ * Чистый модуль — ни React, ни DOM, ни `project.segments`.
+ */
+import type { Element, ElementState, Segment } from '@player/core';
+
+import { DUPLICATE_OFFSET, placeCopies, type Placed, type Source } from './placeElements.js';
+
+export interface ElementClipboard {
+  /** Только для подписи автору («из части N»). В логике НЕ участвует. */
+  readonly sourceSegmentId: string;
+  /**
+   * Слайд, с которого копировали. В логике участвует, и ровно в одном
+   * месте: он решает, нужен ли сдвиг при вставке (см. `pasteElements`).
+   */
+  readonly sourceSlideId: string;
+  /** Снимок: сами элементы и их состояния. Ровно те, что копировали. */
+  readonly items: readonly Source[];
+}
+
+/** Отвязанная копия состояния: `style` своим объектом, а не ссылкой. */
+function snapshot(state: ElementState): ElementState {
+  return { ...state, style: { ...state.style } };
+}
+
+/** Элемент без родителя. `delete`, а не `parentId: undefined`: ключ со
+ *  значением `undefined` пережил бы спред и попал бы в `JSON.stringify`
+ *  по-разному в зависимости от места — лучше, чтобы его не было вовсе. */
+function topLevel(element: Element): Element {
+  if (element.parentId === undefined) return { ...element };
+  const copy = { ...element };
+  delete copy.parentId;
+  return copy;
+}
+
+/**
+ * Снимает элементы `ids` в буфер.
+ *
+ * Пропуск и падение — по тем же двум правилам, что у Ctrl+D
+ * (`duplicateElements.ts`): элемент без состояния на слайде пропускается
+ * (его здесь просто нет), элемент, которого нет в сегменте вовсе, роняет
+ * громко (это испорченные данные).
+ *
+ * Пустой список на входе даёт пустой буфер, а не бросок: «скопировать
+ * ничего» — не ошибка, а отсутствие операции, и решать, показывать ли
+ * кнопку, — забота интерфейса.
+ */
+export function copyElementsToClipboard(
+  segment: Segment,
+  slideId: string,
+  ids: readonly string[],
+  states: Readonly<Record<string, ElementState>>,
+): ElementClipboard {
+  const items: Source[] = ids
+    .map((id) => {
+      const element = segment.elements.find((candidate) => candidate.id === id);
+      if (element === undefined) {
+        throw new Error(`Нельзя скопировать элемент «${id}»: его нет в сегменте «${segment.id}»`);
+      }
+      return { element, state: states[id] };
+    })
+    .filter((item): item is { element: Element; state: ElementState } => item.state !== undefined)
+    .map((item) => ({ element: { ...item.element }, state: snapshot(item.state) }));
+
+  return { sourceSegmentId: segment.id, sourceSlideId: slideId, items };
+}
+
+/**
+ * Вставляет содержимое буфера на слайд `slideId` сегмента `segment`.
+ *
+ * **Сдвиг — только на своём же слайде.** Правило собрано из двух очевидных
+ * половин, и обе про то, что увидит автор:
+ *
+ *   вставка в ДРУГУЮ часть или на другой слайд — на то же место. Ради этого
+ *   всё и затевалось: заголовок, перенесённый из части в часть, обязан
+ *   оказаться там же, где был, а не «примерно там»;
+ *
+ *   вставка в ТОТ ЖЕ слайд — со сдвигом. Иначе копия ложится ровно на
+ *   оригинал и неотличима от «Ctrl+V не сработал» — та самая физика,
+ *   которой куплено число `DUPLICATE_OFFSET`.
+ *
+ * Сравниваются ОБА идентификатора, сегмента и слайда. Только слайда было бы
+ * недостаточно, и ошибка вышла бы тихой: `freeId('slide', ...)` раздаёт имена
+ * внутри своего сегмента, поэтому `slide-1` есть в каждой части, и вставка
+ * из первой части во вторую сдвигала бы копию без всякой причины.
+ */
+export function pasteElements(
+  segment: Segment,
+  slideId: string,
+  clipboard: ElementClipboard,
+  targetStates: Readonly<Record<string, ElementState>>,
+  stage: { width: number; height: number },
+): Placed {
+  const ontoItself = clipboard.sourceSegmentId === segment.id && clipboard.sourceSlideId === slideId;
+  const sources: Source[] = clipboard.items.map((item) => ({
+    element: topLevel(item.element),
+    state: snapshot(item.state),
+  }));
+  return placeCopies(segment, sources, targetStates, stage, ontoItself ? DUPLICATE_OFFSET : 0);
+}
