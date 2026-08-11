@@ -64,8 +64,11 @@ import {
   zoomIn as stepIn,
   zoomOut as stepOut,
 } from './zoom.js';
-import { snap, type Guide } from './snapping.js';
-import { angleTo, centerOf, moveBox, resizeBox, rotateBox } from './transform.js';
+import { snap, snapResize, type Guide } from './snapping.js';
+// `resizeBox` отсюда больше не зовётся напрямую: его зовёт `snapResize`,
+// и звать вторым вызовом здесь значило бы получить бокс, посчитанный
+// с другим `minSize`, чем тот, по которому нарисованы направляющие.
+import { angleTo, centerOf, moveBox, rotateBox } from './transform.js';
 
 /** Округление координат: столько знаков попадёт в сохранённый проект. */
 const PRECISION = 2;
@@ -988,9 +991,33 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // Ручки работают с одним элементом: множественное изменение размера
       // потребовало бы масштабировать каждого относительно общей рамки,
       // а её у пачки нет как сохраняемой величины (см. `unionBox`).
-      const next = gesture.grip === 'rotate'
-        ? rotateBox(gesture.startBox, point, gesture.grabOffset)
-        : resizeBox(gesture.startBox, gesture.grip, point);
+      let next: Box;
+      if (gesture.grip === 'rotate') {
+        // Поворот к направляющим не липнет: прилипание поворота к 15° —
+        // отдельная работа, и она вне черты готовности.
+        next = rotateBox(gesture.startBox, point, gesture.grabOffset);
+      } else {
+        /**
+         * Изменение размера прилипает так же, как перетаскивание, но правит
+         * ТОЧКУ УКАЗАТЕЛЯ, а не бокс: поправка, приложенная к боксу, увела бы
+         * и противоположный ручке край, то есть потащила бы элемент вместо
+         * того, чтобы менять его размер. Разбор — в шапке `snapResize`.
+         */
+        const stageRect = requireNodes().stage.getBoundingClientRect();
+        const result = snapResize(
+          gesture.startBox,
+          gesture.grip,
+          point,
+          // Свой бокс из целей исключается: элемент не прилипает сам к себе.
+          visibleLayers().filter((layer) => layer.id !== gesture.elementId),
+          segment.stage,
+          // Порог — тот же и по свежему замеру масштаба, что и у перетаскивания
+          // выше: сохранённому значению доверять нельзя (ADR-007).
+          SNAP_PX / stageScale(stageRect, segment.stage.width),
+        );
+        next = result.box;
+        setGuides(guidesToHost(result.guides));
+      }
 
       onElementStateChange(gesture.elementId, {
         x: round(next.x),

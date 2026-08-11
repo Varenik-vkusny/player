@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { unionBox, type Box } from '../src/stage/geometry.js';
-import { snap } from '../src/stage/snapping.js';
+import { snap, snapResize } from '../src/stage/snapping.js';
+import { MIN_SIZE, resizeBox } from '../src/stage/transform.js';
 
 const STAGE = { width: 1920, height: 1080 };
 
@@ -171,5 +172,134 @@ describe('snap: направляющие', () => {
     // сверка идёт по всей тройке at/from/to — но одинаковых быть не должно.
     const unique = new Set(at105.map((guide) => `${guide.at}:${guide.from}:${guide.to}`));
     expect(unique.size).toBe(at105.length);
+  });
+});
+
+describe('snapResize: прилипание при изменении размера', () => {
+  it('прилипает ТЯНУТЫЙ край, а противоположный не двигается ни на единицу', () => {
+    /*
+     * Несущее свойство всей задачи. Слом: приложить поправку к боксу
+     * (`{...moved, x: moved.x + dx}`) вместо точки указателя — правый край
+     * встанет на 305 так же, ЛЕВЫЙ уедет со 100 на 105, и элемент поедет
+     * вместо того, чтобы растянуться. Ширина при этом останется 200,
+     * то есть «изменение размера» размер не изменит.
+     */
+    const other = box(305, 400, 200);
+    const result = snapResize(box(100, 400), 'e', { x: 300, y: 425 }, [other], STAGE, 8);
+
+    expect(result.box.x).toBe(100);
+    expect(result.box.width).toBe(205);
+  });
+
+  it('ручка `w` не двигает правый край', () => {
+    // Зеркало предыдущего: у `w` неподвижен дальний край справа.
+    const other = box(95, 400, 200);
+    const result = snapResize(box(100, 400), 'w', { x: 97, y: 425 }, [other], STAGE, 8);
+
+    expect(result.box.x).toBe(95);
+    expect(result.box.x + result.box.width).toBe(150);
+  });
+
+  it('дальше порога не прилипает вовсе', () => {
+    // Слом: забыть сравнение с порогом — край притягивался бы через полсцены.
+    const other = box(350, 400, 200);
+    const result = snapResize(box(100, 400), 'e', { x: 300, y: 425 }, [other], STAGE, 8);
+
+    expect(result.box.width).toBe(200);
+    expect(result.guides).toHaveLength(0);
+  });
+
+  it('ось, которой ручка не касается, не трогается вовсе', () => {
+    /*
+     * Слом: считать поправку по обеим осям независимо от ручки — у `e`
+     * поехал бы низ элемента, хотя автор тянул вбок. Сосед стоит так,
+     * что по вертикали прилипание было бы, если бы его считали.
+     */
+    const other = box(305, 452, 200, 200);
+    const result = snapResize(box(100, 400), 'e', { x: 300, y: 448 }, [other], STAGE, 8);
+
+    expect(result.box.y).toBe(400);
+    expect(result.box.height).toBe(50);
+  });
+
+  it('СЕРЕДИНА растягиваемого бокса к линиям НЕ липнет — только тянутый край', () => {
+    /*
+     * Отличие от перетаскивания, где все три опорные точки равноправны.
+     * Здесь сосед стоит в двух единицах от того места, где окажется центр
+     * (200), и в сотне от тянутого края (300).
+     *
+     * Слом: передать в `nearestDelta` три опорные точки вместо одной —
+     * бокс дёрнулся бы на 2, автор увидел бы прилипание к линии, которой
+     * на месте края нет.
+     */
+    const other = box(202, 400, 20);
+    const result = snapResize(box(100, 400), 'e', { x: 300, y: 425 }, [other], STAGE, 8);
+
+    expect(result.box.width).toBe(200);
+    expect(result.guides).toHaveLength(0);
+  });
+
+  it('у ПОВЁРНУТОГО элемента прилипания нет, и результат равен голому resizeBox', () => {
+    /*
+     * Слом: убрать проверку `rotation !== 0` — поправка, посчитанная
+     * в координатах сцены, ушла бы внутрь `resizeBox`, который поворачивает
+     * точку в собственную систему бокса. Край встал бы не на линию, а рядом,
+     * причём тем дальше, чем больше угол.
+     */
+    const rotated = box(100, 400, 50, 50, 30);
+    const other = box(305, 400, 200);
+    const pointer = { x: 300, y: 425 };
+
+    const result = snapResize(rotated, 'e', pointer, [other], STAGE, 8);
+
+    expect(result.box).toEqual(resizeBox(rotated, 'e', pointer));
+    expect(result.guides).toHaveLength(0);
+  });
+
+  it('упор в minSize: линия НЕ рисуется там, куда край не доехал', () => {
+    /*
+     * Ручку протащили за противоположный край: указатель прилипает к 97,
+     * но `resizeBox` упирает бокс в minSize и ставит край на 101.
+     *
+     * Слом: считать линии по прилипшей ТОЧКЕ, а не по результату, — автор
+     * увидел бы линию на 97, где края нет и уже не будет.
+     */
+    const other = box(97, 400, 200);
+    const result = snapResize(box(100, 400), 'e', { x: 95, y: 425 }, [other], STAGE, 8);
+
+    expect(result.box.x).toBe(100);
+    expect(result.box.width).toBe(MIN_SIZE);
+    expect(result.guides).toHaveLength(0);
+  });
+
+  it('линия появляется ровно там, где совпал край', () => {
+    const other = box(305, 400, 200);
+    const result = snapResize(box(100, 400), 'e', { x: 300, y: 425 }, [other], STAGE, 8);
+
+    expect(result.guides).toHaveLength(1);
+    expect(result.guides[0]!.axis).toBe('x');
+    expect(result.guides[0]!.at).toBeCloseTo(305, 9);
+  });
+
+  it('угловая ручка прилипает по двум осям независимо', () => {
+    // Справа сосед даёт линию по X, снизу — по Y. Обе обязаны сработать
+    // за один жест: слом (считать только первую сработавшую ось) оставил бы
+    // угол выровненным лишь наполовину.
+    const right = box(305, 0, 200, 50);
+    const below = box(0, 605, 50, 200);
+    const result = snapResize(box(100, 400), 'se', { x: 300, y: 600 }, [right, below], STAGE, 8);
+
+    expect(result.box.x + result.box.width).toBeCloseTo(305, 9);
+    expect(result.box.y + result.box.height).toBeCloseTo(605, 9);
+  });
+
+  it('край прилипает к СЕРЕДИНЕ холста, а не только к соседям', () => {
+    const result = snapResize(box(100, 400), 'e', { x: 955, y: 425 }, [], STAGE, 8);
+
+    expect(result.box.x + result.box.width).toBeCloseTo(960, 9);
+  });
+
+  it('отрицательный порог бросает, а не молча ничего не делает', () => {
+    expect(() => snapResize(box(100, 400), 'e', { x: 300, y: 425 }, [], STAGE, -1)).toThrow(RangeError);
   });
 });
