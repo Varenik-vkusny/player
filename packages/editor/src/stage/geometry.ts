@@ -201,6 +201,70 @@ export function rotate(point: Point, center: Point, degrees: number): Point {
   };
 }
 
+/** Центр бокса. Он же — точка, вокруг которой бокс поворачивается. */
+function centerOf(box: Box): Point {
+  return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+}
+
+/**
+ * Ребёнок группы из ЛОКАЛЬНЫХ координат в координаты сцены.
+ *
+ * `x`/`y` ребёнка отсчитываются от левого верхнего угла группы, `rotation`
+ * у него собственный (решение владельца 08.08.2026). Всё остальное в
+ * редакторе — попадание указателя, прилипание, рамка выделения, обе
+ * арифметики жеста — считает в координатах сцены. Эта функция и обратная
+ * к ней `childBoxInGroup` — единственный переход между двумя системами.
+ *
+ * **Поворот применяется к ЦЕНТРУ, а не к левому верхнему углу.** Поворот
+ * группы гонит содержимое по окружности вокруг центра группы, а не сдвигает
+ * его бокс параллельно. Взять угол — значит получить правдоподобно неверный
+ * ответ, расходящийся тем сильнее, чем дальше ребёнок от центра.
+ *
+ * **Углы складываются.** То, что зритель видит под наклоном группы плюс
+ * собственный наклон ребёнка, — это один угол, и он обязан выйти суммой.
+ *
+ * Пара функций заменяет собой «поворот сдвига мыши на минус угол группы»:
+ * тот поворот из неё ВЫВОДИТСЯ (`childBoxInGroup` от сдвинутого бокса даёт
+ * ровно повёрнутый сдвиг) и заодно достаётся ресайзу и повороту, которым
+ * одного сдвига было бы мало.
+ */
+export function childBoxInScene(group: Box, child: Box): Box {
+  const center = rotate(
+    {
+      x: group.x + child.x + child.width / 2,
+      y: group.y + child.y + child.height / 2,
+    },
+    centerOf(group),
+    group.rotation,
+  );
+  return {
+    x: center.x - child.width / 2,
+    y: center.y - child.height / 2,
+    width: child.width,
+    height: child.height,
+    rotation: group.rotation + child.rotation,
+  };
+}
+
+/**
+ * Обратно: бокс на сцене → локальные координаты ребёнка группы.
+ *
+ * Разбор — у `childBoxInScene`. Здесь важно только то, что это её точная
+ * обратная, а не «похожая формула в другую сторону»: круговой тест
+ * (`groupCoords.test.ts`) охраняет именно это, и в Сессии 35 круговой тест
+ * оказался единственным, кто поймал потерю углового слагаемого.
+ */
+export function childBoxInGroup(group: Box, scene: Box): Box {
+  const center = rotate(centerOf(scene), centerOf(group), -group.rotation);
+  return {
+    x: center.x - group.x - scene.width / 2,
+    y: center.y - group.y - scene.height / 2,
+    width: scene.width,
+    height: scene.height,
+    rotation: scene.rotation - group.rotation,
+  };
+}
+
 /**
  * Четыре угла бокса в координатах сцены, с учётом поворота.
  *

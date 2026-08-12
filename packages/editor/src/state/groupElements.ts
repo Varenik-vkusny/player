@@ -18,7 +18,7 @@
  */
 import type { Element, ElementState, Segment, Slide } from '@player/core';
 
-import { type Box, rotate, unionBox } from '../stage/geometry.js';
+import { type Box, childBoxInGroup, childBoxInScene, unionBox } from '../stage/geometry.js';
 import { freeId } from './elements.js';
 
 /** Результат сборки или разборки: полные новые массивы взамен прежних. */
@@ -129,7 +129,12 @@ export function groupElements(segment: Segment, ids: readonly string[]): Grouped
     };
 
     for (const { id, state } of present) {
-      states[id] = { ...state, x: state.x - box.x, y: state.y - box.y };
+      // Обратная сторона той же пары. Охват `box` всегда невращённый
+      // (`rotation: 0` строкой выше), поэтому здесь она вырождается в простое
+      // вычитание угла — и написана всё-таки через общую функцию, чтобы
+      // сборка и разборка остались ОДНОЙ формулой, а не двумя похожими.
+      const local = childBoxInGroup(states[groupId]!, { ...state });
+      states[id] = { ...state, x: local.x, y: local.y, rotation: local.rotation };
     }
 
     return { ...slide, states };
@@ -197,31 +202,14 @@ export function ungroupElements(segment: Segment, groupId: string): Grouped {
     const states = { ...slide.states };
     delete states[groupId];
 
-    const groupCenter = {
-      x: groupState.x + groupState.width / 2,
-      y: groupState.y + groupState.height / 2,
-    };
-
     for (const { id, state } of presentOn(slide, childIds)) {
-      // Центр ребёнка в координатах сцены ДО учёта поворота группы: угол
-      // охвата плюс локальный центр. Поворот группы применяется к этой
-      // точке, а не к левому верхнему углу, — поворот двигает центр по
-      // окружности, а не смещает бокс параллельно.
-      const sceneCenter = {
-        x: groupState.x + state.x + state.width / 2,
-        y: groupState.y + state.y + state.height / 2,
-      };
-      const rotatedCenter = rotate(sceneCenter, groupCenter, groupState.rotation);
-
-      states[id] = {
-        ...state,
-        x: rotatedCenter.x - state.width / 2,
-        y: rotatedCenter.y - state.height / 2,
-        // Повороты складываются: то, что зритель видел под углом группы
-        // плюс собственный наклон ребёнка, обязано остаться тем же углом
-        // и после того, как группы не станет.
-        rotation: groupState.rotation + state.rotation,
-      };
+      // Разбор поворота вокруг центра и сложения углов — у `childBoxInScene`.
+      // Здесь она зовётся, а не повторяется: с появлением захода внутрь
+      // группы (Сессия 36) ту же формулу спрашивает холст на каждый жест,
+      // и два её описания разошлись бы МОЛЧА — на неповёрнутых группах,
+      // то есть на всех эталонных фикстурах, они дают одно и то же.
+      const scene = childBoxInScene(groupState, state);
+      states[id] = { ...state, x: scene.x, y: scene.y, rotation: scene.rotation };
     }
 
     return { ...slide, states };
