@@ -81,6 +81,12 @@ async function dragFrom(page: Page, from: { x: number; y: number }, dx: number, 
   await page.mouse.up();
 }
 
+/** Двойной щелчок в точку ЭКРАНА: `clickCount: 2` — настоящая пара кликов,
+ *  не синтетический `dblclick`-эквивалент по селектору. */
+async function doubleClickAt(page: Page, point: { x: number; y: number }): Promise<void> {
+  await page.mouse.click(point.x, point.y, { clickCount: 2 });
+}
+
 /** Собирает `mover` и `leaver` в группу и возвращает её id. */
 async function groupTwo(page: Page): Promise<string> {
   await clickElement(page, 'mover');
@@ -283,5 +289,133 @@ test.describe('группы в редакторе', () => {
     expect(moverAfter.x, 'содержимое вернулось на своё место в сцене').toBeCloseTo(moverBefore.x, 3);
     expect(moverAfter.y).toBeCloseTo(moverBefore.y, 3);
     expect(leaverAfter.x).toBeCloseTo(leaverBefore.x, 3);
+  });
+
+  /**
+   * ЗАХОД ВНУТРЬ ГРУППЫ (Сессия 36, решение владельца).
+   *
+   * Двойной щелчок по содержимому обязан выделить РЕБЁНКА, а не группу,
+   * которую уже умеет выделять одиночный щелчок (тест выше). Проверяется
+   * через `ElementList`: `aria-pressed` строки читает `selectedIds` напрямую,
+   * а не геометрию — здесь важен именно ID выделенного, а не то, где он
+   * нарисован (геометрию проверяет следующий тест).
+   *
+   * Краснеет, если `visibleLayers`/`handleStageDoubleClick` продолжают
+   * отсеивать содержимое группы фильтром `parentId === undefined`: тогда
+   * попадание разрешится в саму группу, и выделенным останется её id.
+   */
+  test('двойной щелчок по содержимому группы выделяет ребёнка, а не группу', async ({ page }) => {
+    await openEditor(page);
+    const groupId = await groupTwo(page);
+
+    // Снять выделение клавишей, а не кликом по (10, 10): та точка попадает
+    // в панель списка элементов, а не в холст, и клика по холсту не будет —
+    // предыдущее выделение группы пережило бы этот клик молча.
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('selection-frame')).toHaveCount(0);
+
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId(`element-row-${groupId}`)).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  /**
+   * МИНА ИЗ §14 ЖУРНАЛА С35, ТЕПЕРЬ В ОВЕРЛЕЕ: `syncFrame` берёт
+   * `currentSlide.states[id]` и подставляет в `boxToScreen`. Для выделенного
+   * РЕБЁНКА группы координаты в состоянии ЛОКАЛЬНЫЕ, и без приведения через
+   * `childBoxInScene` рамка нарисовалась бы у начала координат сцены — не
+   * там, где ребёнка видно.
+   *
+   * Проверяется ГЕОМЕТРИЕЙ (`getBoundingClientRect`), а не наличием класса
+   * или текста — ровно то требование, которого не хватало предыдущим двум
+   * ложным зеленям сессии (журнал С35, §14, шаг 3).
+   *
+   * Краснеет, если `syncFrame` продолжает строить бокс напрямую из
+   * `currentSlide.states[id]` без пересчёта через `childBoxInScene`.
+   */
+  test('выделенный ребёнок обведён рамкой там, где он виден', async ({ page }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const frameBox = await page.getByTestId('selection-frame').boundingBox();
+    if (!frameBox) throw new Error('рамка выделения не нарисована у выделенного ребёнка');
+    const moverScreen = await screenBox(page, 'mover');
+
+    expect(frameBox.x, 'рамка обязана стоять там же, где виден ребёнок').toBeCloseTo(moverScreen.x, 0);
+    expect(frameBox.y).toBeCloseTo(moverScreen.y, 0);
+    expect(frameBox.width).toBeCloseTo(moverScreen.width, 0);
+    expect(frameBox.height).toBeCloseTo(moverScreen.height, 0);
+  });
+
+  /**
+   * Выход — снятием выделения (Escape), без отдельного пути «наружу»:
+   * `activeGroupOf` выводит «внутри» из выделения, значит после Escape
+   * автор снаружи по построению. Следующий одиночный щелчок по тому же
+   * месту обязан снова брать ГРУППУ, как до входа.
+   *
+   * Промежуточная проверка после Escape (рамки нет) обязательна — урок
+   * Сессии 33: тест на откат должен убедиться, что предыдущий шаг
+   * («заход внутрь и выделение ребёнка») СОСТОЯЛСЯ, иначе финальная
+   * проверка была бы зелёной и при полностью нерабочем заходе.
+   *
+   * Краснеет, если «внутри» не выводится заново из ПУСТОГО выделения —
+   * например, если что-то держит id прежней группы отдельным полем
+   * и после Escape продолжает считать автора внутри.
+   */
+  test('Escape выходит: следующий щелчок по тому же месту снова берёт группу', async ({ page }) => {
+    await openEditor(page);
+    const groupId = await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    const moverCenter = await centerOnScreen(page, 'mover');
+    await doubleClickAt(page, moverCenter);
+    await expect(
+      page.getByTestId('element-row-mover'),
+      'заход внутрь обязан состояться до проверки выхода',
+    ).toHaveAttribute('aria-pressed', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('selection-frame')).toHaveCount(0);
+
+    await page.mouse.click(moverCenter.x, moverCenter.y);
+
+    await expect(page.getByTestId(`element-row-${groupId}`)).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  /**
+   * Бледная рамка группы — решение владельца: пока автор внутри, видно, где
+   * кончается группа, а не только где стоит выделенный ребёнок. Проверяется
+   * ГЕОМЕТРИЕЙ по той же причине, что и рамка выделения выше.
+   *
+   * Краснеет, если рамка рисуется по наличию group-элемента в сегменте
+   * (есть всегда после Ctrl+G), а не по тому, что автор СЕЙЧАС внутри неё.
+   */
+  test('пока автор внутри группы — на холсте бледная рамка группы, после выхода её нет', async ({ page }) => {
+    await openEditor(page);
+    const groupId = await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('group-frame')).toHaveCount(0);
+
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const groupFrameBox = await page.getByTestId('group-frame').boundingBox();
+    if (!groupFrameBox) throw new Error('бледной рамки группы нет, пока автор внутри');
+    const groupScreen = await screenBox(page, groupId);
+
+    expect(groupFrameBox.x).toBeCloseTo(groupScreen.x, 0);
+    expect(groupFrameBox.y).toBeCloseTo(groupScreen.y, 0);
+    expect(groupFrameBox.width).toBeCloseTo(groupScreen.width, 0);
+    expect(groupFrameBox.height).toBeCloseTo(groupScreen.height, 0);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('group-frame')).toHaveCount(0);
   });
 });

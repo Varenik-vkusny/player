@@ -46,6 +46,7 @@ import { applyTheme, fitStage, ScenePreview, type Segment, type Zoom } from '@pl
 
 import {
   boxToScreen,
+  childBoxInScene,
   intersectsRect,
   stageScale,
   toScene,
@@ -56,6 +57,7 @@ import {
 } from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
 import { ZoomBar } from './ZoomBar.js';
+import { activeGroupOf } from '../state/groupElements.js';
 import {
   canZoomIn,
   canZoomOut,
@@ -310,6 +312,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const marqueeRef = useRef<Marquee | null>(null);
 
   const [frame, setFrame] = useState<Frame | null>(null);
+  /**
+   * Бледная рамка группы, пока автор внутри неё (Сессия 36). `null` — автор
+   * снаружи. Отдельным состоянием, а не производной от `frame`: `frame` —
+   * рамка ВЫДЕЛЕННОГО (обычно ребёнка), эта — рамка самой группы, размер
+   * почти всегда другой.
+   */
+  const [groupFrame, setGroupFrame] = useState<Frame | null>(null);
   /** Рамка в пикселях контейнера — то, что рисуется. `null` — жеста нет. */
   const [marquee, setMarquee] = useState<{
     left: number;
@@ -326,6 +335,18 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   >([]);
 
   const elements = segment.elements;
+
+  /**
+   * Группа, внутри которой сейчас автор, — ВЫВЕДЕНА из выделения
+   * (`activeGroupOf`, Сессия 36), а не отдельное состояние: см. её шапку
+   * в `groupElements.ts` за разбором, почему хранить отдельно было бы хуже.
+   *
+   * `activeGroupState` — состояние этой группы на ТЕКУЩЕМ слайде. Если его
+   * нет, приводить содержимое не к чему, и ниже это везде трактуется как
+   * «автор снаружи» — приводить не к чему в буквальном смысле.
+   */
+  const activeGroupId = activeGroupOf(elements, selectedIds);
+  const activeGroupState = activeGroupId !== undefined ? currentSlide.states[activeGroupId] : undefined;
 
   /** Требует контейнеры: их отсутствие означает сломанную разметку, а не штатный случай. */
   const requireNodes = useCallback((): {
@@ -418,33 +439,74 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
   const syncFrame = useCallback((): void => {
     const { canvas, stage } = requireNodes();
+    const stageRect = stage.getBoundingClientRect();
+    const hostRect = canvas.getBoundingClientRect();
+
+    /**
+     * Состояние выделенного → бокс СЦЕНЫ.
+     *
+     * Не подставляет `currentSlide.states[id]` в геометрию напрямую: у ребёнка
+     * группы координаты ЛОКАЛЬНЫЕ (§14 журнала Сессии 35), и наивная
+     * подстановка дала бы рамку у начала координат сцены — тот же призрак,
+     * что был в списке попаданий, только в оверлее. Родитель берётся из
+     * `elements`, а не из `activeGroupId`: рамка обязана быть верной для
+     * ЛЮБОГО выделенного ребёнка, а не только пока автор «официально внутри»
+     * (`activeGroupOf` требует, чтобы ВСЕ выделенные были детьми одной
+     * группы, — здесь такое допущение делать не для чего).
+     */
+    const sceneBoxOf = (id: string): Box | undefined => {
+      const state = currentSlide.states[id];
+      if (!state) return undefined;
+      const owner = elements.find((candidate) => candidate.id === id);
+      if (owner?.parentId !== undefined) {
+        const groupState = currentSlide.states[owner.parentId];
+        if (groupState) return childBoxInScene(boxOf(groupState), boxOf(state));
+      }
+      return boxOf(state);
+    };
+
     // Рамка строится по тем выделенным, кто ЕСТЬ на этом слайде: элемент
     // может быть выделен и при этом не появляться в текущем кадре.
     const boxes = selectedIds
-      .map((id) => currentSlide.states[id])
-      .filter((state): state is ElementState => state !== undefined)
-      .map(boxOf);
+      .map((id) => sceneBoxOf(id))
+      .filter((box): box is Box => box !== undefined);
     const selectedState = boxes.length === 1 ? boxes[0]! : unionBox(boxes);
     if (!selectedState) {
       setFrame(null);
-      return;
+    } else {
+      // Прямоугольник берётся у ВНУТРЕННЕГО узла: у внешнего при летербоксе
+      // ширина другая, и масштаб вышел бы завышенным — тихо и правдоподобно.
+      const screen = boxToScreen(stageRect, segment.stage.width, selectedState);
+      setFrame({
+        left: screen.left - hostRect.left,
+        top: screen.top - hostRect.top,
+        width: screen.width,
+        height: screen.height,
+        rotation: selectedState.rotation,
+        // Тем же замером, что и сама рамка: Overlay выбирает по этому числу,
+        // помещается ли ручка поворота под рамкой (см. rotateSide).
+        canvasHeight: hostRect.height,
+      });
     }
-    // Прямоугольник берётся у ВНУТРЕННЕГО узла: у внешнего при летербоксе
-    // ширина другая, и масштаб вышел бы завышенным — тихо и правдоподобно.
-    const stageRect = stage.getBoundingClientRect();
-    const hostRect = canvas.getBoundingClientRect();
-    const screen = boxToScreen(stageRect, segment.stage.width, selectedState);
-    setFrame({
-      left: screen.left - hostRect.left,
-      top: screen.top - hostRect.top,
-      width: screen.width,
-      height: screen.height,
-      rotation: selectedState.rotation,
-      // Тем же замером, что и сама рамка: Overlay выбирает по этому числу,
-      // помещается ли ручка поворота под рамкой (см. rotateSide).
-      canvasHeight: hostRect.height,
-    });
-  }, [requireNodes, selectedIds, currentSlide, segment.stage.width]);
+
+    // Бледная рамка группы, пока автор внутри неё. ТЕМ ЖЕ замером
+    // (stageRect/hostRect выше), что и основная рамка: второй
+    // getBoundingClientRect здесь развёл бы два числа, которые обязаны
+    // совпасть в одном кадре.
+    if (activeGroupState) {
+      const screen = boxToScreen(stageRect, segment.stage.width, boxOf(activeGroupState));
+      setGroupFrame({
+        left: screen.left - hostRect.left,
+        top: screen.top - hostRect.top,
+        width: screen.width,
+        height: screen.height,
+        rotation: activeGroupState.rotation,
+        canvasHeight: hostRect.height,
+      });
+    } else {
+      setGroupFrame(null);
+    }
+  }, [requireNodes, selectedIds, currentSlide, segment.stage.width, elements, activeGroupState]);
 
   /**
    * Сегмент из ОДНОГО слайда — то, что реально показывает и правит сцена.
@@ -622,40 +684,61 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
    * это ответ самого рендера на вопрос «что сейчас на экране», а не вторая
    * реализация той же логики.
    */
+  /**
+   * Кандидаты на попадание указателя. У ЧЕТЫРЁХ вызывающих (попадание,
+   * прилипание при перетаскивании, прилипание при ресайзе, обведение рамкой)
+   * список один и тот же намеренно: отдельное правило для любого из них было
+   * бы вторым описанием одного факта, а такие расходятся молча.
+   *
+   * Снаружи группы (`activeGroupId === undefined`, или у группы нет состояния
+   * на этом слайде — приводить не к чему) поведение прежнее: кандидаты —
+   * элементы верхнего уровня, группа неделима для указателя, её бокс — охват
+   * содержимого.
+   *
+   * Внутри группы G (автор вошёл двойным щелчком, Сессия 36) кандидаты — дети
+   * G, ПРИВЕДЁННЫЕ К СЦЕНЕ через `childBoxInScene`, плюс элементы верхнего
+   * уровня, кроме самой G. Приведение обязательно, а не просто снятый фильтр:
+   * боксы, взятые из состояний напрямую, — ЛОКАЛЬНЫЕ координаты ребёнка,
+   * и без пересчёта содержимое стало бы призраком у начала координат сцены —
+   * тем самым дефектом, из-за которого содержимое групп раньше отсеивалось
+   * целиком (§14 журнала Сессии 35, разбор — там же).
+   */
   const visibleLayers = useCallback(
-    (): readonly (Box & { zIndex: number; id: string })[] =>
-      elements
-        /**
-         * Содержимое групп в список кандидатов НЕ ПОПАДАЕТ, и это не про
-         * выделение, а про координаты.
-         *
-         * Боксы здесь строятся из состояний напрямую и считаются СЦЕНHЫМИ.
-         * У ребёнка группы координаты ЛОКАЛЬНЫЕ — `state.x: 40` означает
-         * «40 от левого края группы». Оставь его в списке, и он будет
-         * числиться стоящим у начала координат сцены, там, где на экране
-         * пусто: автор щёлкает по пустому холсту, а выделяется объект,
-         * которого он там не видит. Проверено e2e, а не рассуждением —
-         * первая попытка проверить дала ложную зелень.
-         *
-         * Отсеивание заодно и есть то, что делает группу неделимой для
-         * указателя: попасть можно только в неё, её бокс — охват содержимого.
-         * Заход внутрь двойным щелчком (Сессия 36) снимет это ограничение,
-         * и тогда координаты придётся приводить к сцене, а не отсеивать.
-         */
-        .filter((element) => element.parentId === undefined)
-        .filter((element) => isVisible(element.id))
-        .map((element) => {
-          const state = currentSlide.states[element.id]!; // isVisible гарантирует отрисованный узел ⇒ состояние есть
-          return { ...boxOf(state), zIndex: state.zIndex, id: element.id };
-        }),
-    [elements, currentSlide, isVisible],
+    (): readonly (Box & { zIndex: number; id: string })[] => {
+      const groupBox = activeGroupState ? boxOf(activeGroupState) : undefined;
+      const layers: (Box & { zIndex: number; id: string })[] = [];
+
+      for (const element of elements) {
+        if (!isVisible(element.id)) continue;
+        const state = currentSlide.states[element.id];
+        if (!state) continue; // isVisible гарантирует отрисованный узел ⇒ обычно есть, но защититься дёшево
+
+        if (groupBox !== undefined) {
+          if (element.id === activeGroupId) continue; // сама группа недоступна, пока автор внутри
+          if (element.parentId === activeGroupId) {
+            const scene = childBoxInScene(groupBox, boxOf(state));
+            layers.push({ ...scene, zIndex: state.zIndex, id: element.id });
+            continue;
+          }
+          if (element.parentId !== undefined) continue; // содержимое ЧУЖОЙ группы недоступно
+          layers.push({ ...boxOf(state), zIndex: state.zIndex, id: element.id });
+          continue;
+        }
+
+        if (element.parentId !== undefined) continue; // снаружи — содержимое любой группы недоступно
+        layers.push({ ...boxOf(state), zIndex: state.zIndex, id: element.id });
+      }
+
+      return layers;
+    },
+    [elements, currentSlide, isVisible, activeGroupId, activeGroupState],
   );
 
   /**
-   * Верхний по стопке под точкой. Содержимое групп сюда не приходит вовсе:
-   * `visibleLayers` его отсеивает, и попасть указателем можно только
-   * в элемент верхнего уровня. Группа поэтому неделима для мыши,
-   * а её бокс — охват содержимого.
+   * Верхний по стопке под точкой. Снаружи группы содержимое сюда не
+   * приходит — `visibleLayers` его отсеивает, и попасть указателем можно
+   * только в элемент верхнего уровня. Внутри группы попасть можно и в её
+   * детей, приведённых к сцене (см. `visibleLayers` выше).
    */
   const hitElementAt = useCallback(
     (point: Point): { id: string; box: Box } | undefined => {
@@ -869,9 +952,38 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       if (!hit) return;
       const element = elements.find((candidate) => candidate.id === hit.id);
       if (!element) throw new Error(`Двойной клик в элемент «${hit.id}», которого нет в сцене`);
+
+      if (element.type === 'group') {
+        /**
+         * Войти внутрь (Сессия 36, решение владельца): среди детей ЭТОЙ
+         * группы, приведённых к сцене, найти верхнего под точкой и выделить
+         * его. Под точкой никого (щелчок в просвет между детьми) —
+         * выделение остаётся как было, автор просто промахнулся.
+         *
+         * Считается заново, а не через `visibleLayers`: та отдаёт детей лишь
+         * группы, в которой автор уже «официально внутри» (`activeGroupId`),
+         * а щелчок, которым он туда попадает, происходит ДО того, как это
+         * состояние возникнет.
+         */
+        const groupState = currentSlide.states[element.id];
+        if (!groupState) return; // группы нет на этом слайде — заходить некуда
+        const groupBox = boxOf(groupState);
+        const children = elements
+          .filter((candidate) => candidate.parentId === element.id)
+          .filter((candidate) => isVisible(candidate.id))
+          .map((candidate) => {
+            const state = currentSlide.states[candidate.id]!; // isVisible гарантирует состояние
+            const scene = childBoxInScene(groupBox, boxOf(state));
+            return { ...scene, zIndex: state.zIndex, id: candidate.id };
+          });
+        const childHit = topmostAt(children, point);
+        if (childHit) onSelect(childHit.id);
+        return;
+      }
+
       beginTextEdit(element, event);
     },
-    [scenePointOf, hitElementAt, elements, beginTextEdit],
+    [scenePointOf, hitElementAt, elements, beginTextEdit, currentSlide, isVisible, onSelect],
   );
 
   const handleStageDown = useCallback(
@@ -1292,6 +1404,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
           ) : null}
           <Overlay
             frame={frame}
+            groupFrame={groupFrame}
             showHandles={selectedIds.length === 1}
             onGripDown={handleGripDown}
           />

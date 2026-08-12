@@ -238,3 +238,39 @@ export function ungroupElements(segment: Segment, groupId: string): Grouped {
 
   return { elements, slides, groupId };
 }
+
+/**
+ * Группа, внутри которой сейчас автор, — ВЫВЕДЕНА из выделения, а не хранится
+ * отдельным полем (Сессия 36, решение владельца: двойной щелчок входит внутрь
+ * группы).
+ *
+ * Отдельное поле «внутри» пришлось бы либо тоже класть в историю рядом
+ * с `selectedIds` — тогда `Ctrl+Z` откатывал бы «в какой группе автор», что
+ * ему совсем не нужно, — либо мириться с тем, что откат вернёт выделение
+ * верхнего уровня, а редактор молча останется «внутри». Вывод снимает вопрос:
+ * «внутри» — это просто «выделено ровно то, что лежит в одной группе»,
+ * а выход (Escape, щелчок по пустому месту) уже снимает выделение сам,
+ * никакого отдельного пути наружу программировать не нужно.
+ *
+ * Возвращает id группы, только если ВСЕ выделенные — её прямые дети.
+ * Пустое выделение, разные родители, хоть один элемент верхнего уровня —
+ * `undefined`: тогда автор считается «снаружи».
+ */
+export function activeGroupOf(
+  elements: readonly Element[],
+  selectedIds: readonly string[],
+): string | undefined {
+  if (selectedIds.length === 0) return undefined;
+
+  const byId = new Map(elements.map((element) => [element.id, element]));
+  let groupId: string | undefined;
+
+  for (const id of selectedIds) {
+    const parentId = byId.get(id)?.parentId;
+    if (parentId === undefined) return undefined; // верхнего уровня или не найден вовсе
+    if (groupId === undefined) groupId = parentId;
+    else if (groupId !== parentId) return undefined; // дети РАЗНЫХ групп
+  }
+
+  return groupId;
+}
