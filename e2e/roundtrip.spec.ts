@@ -312,14 +312,33 @@ test.describe('круг: правка в редакторе — просмотр
     // 'card' виден только начиная с этого слайда, дальше он не гаснет.
     await expect(page.locator('.ed-stage-host [data-id="card"]')).toBeVisible();
 
-    // Размер области сцены в редакторе задаёт условия сравнения: ванильный
-    // хост открывается ровно в таком вьюпорте, тогда масштаб выходит тот же,
-    // а значит снимки одного размера.
-    const size = await page.evaluate(() => {
-      const host = document.querySelector<HTMLElement>('.ed-stage-host');
-      if (!host) throw new Error('нет области сцены');
-      return { width: host.clientWidth, height: host.clientHeight };
-    });
+    /**
+     * Условие сравнения — ОДИНАКОВАЯ площадь вписывания, а не одинаковый
+     * размер окна. Ванильный хост открывается во вьюпорте той величины,
+     * от которой считает вписывание редактор, — тогда масштаб выходит тот же
+     * и снимки получаются одного размера.
+     *
+     * С Сессии 36 редактор вписывает в область ЗА ВЫЧЕТОМ зазора вокруг сцены
+     * (`STAGE_GAP_X`/`STAGE_GAP_Y` в `stage/zoom.ts`, числа сняты с живой
+     * Canva). Зритель полей не видит, поэтому `fitStage` в плеере не тронута
+     * вовсе — вычесть зазор обязан ЗДЕСЬ тот, кто воспроизводит условия
+     * редактора.
+     *
+     * Смысл проверки от этого не изменился: один и тот же рендер при одном
+     * и том же размере обязан дать те же пиксели. Числа записаны прямо, а не
+     * взяты из модуля: тест, сверяющийся с той же константой, что и предмет,
+     * остался бы зелёным при любом её значении.
+     */
+    const GAP_X = 24;
+    const GAP_Y = 16;
+    const size = await page.evaluate(
+      ({ gapX, gapY }) => {
+        const host = document.querySelector<HTMLElement>('.ed-stage-host');
+        if (!host) throw new Error('нет области сцены');
+        return { width: host.clientWidth - 2 * gapX, height: host.clientHeight - 2 * gapY };
+      },
+      { gapX: GAP_X, gapY: GAP_Y },
+    );
 
     const fromEditor = await page.locator('[data-testid="stage-scene"]').screenshot();
 

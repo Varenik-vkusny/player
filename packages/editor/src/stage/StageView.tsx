@@ -64,6 +64,9 @@ import {
   canZoomOut,
   canvasSize,
   effectiveScale,
+  fitHostSize,
+  STAGE_GAP_X,
+  STAGE_GAP_Y,
   zoomIn as stepIn,
   zoomOut as stepOut,
 } from './zoom.js';
@@ -436,12 +439,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     if (!preview) return;
     // Размер берётся у контейнера заново каждый раз. Сохранённому масштабу
     // доверять нельзя — прямое требование ADR-007.
-    if (!(host.clientWidth > 0 && host.clientHeight > 0)) return;
+    // Окно, меньшее зазора, рисовать нечем — и это не ошибка, а промежуточное
+    // состояние раскладки (панель тянут, окно схлопывают). Раньше здесь стояла
+    // проверка на положительность; зазор поднял порог, но не смысл.
+    if (!(host.clientWidth > 2 * STAGE_GAP_X && host.clientHeight > 2 * STAGE_GAP_Y)) return;
 
     // Вписывание считает ПЛЕЕР. Своя формула летербокса здесь была бы второй
     // реализацией вписывания (инвариант №5) и разошлась бы молча: на масштабе
     // 1 обе дают одно и то же.
-    const fitScale = fitStage(host.clientWidth, host.clientHeight, segment.stage).scale;
+    //
+    // Зазор вокруг сцены (Сессия 36) сделан НЕ правкой этой формулы, а тем,
+    // что ей отдаётся уменьшенное окно. Зритель видит сцену во весь экран,
+    // поля нужны только автору — значит плеер не трогается вовсе.
+    const fitHost = fitHostSize(host.clientWidth, host.clientHeight);
+    const fitScale = fitStage(fitHost.width, fitHost.height, segment.stage).scale;
     const scale = effectiveScale(zoomRef.current, fitScale);
     const size = canvasSize(segment.stage, scale, host.clientWidth, host.clientHeight);
     canvas.style.width = `${size.width}px`;
