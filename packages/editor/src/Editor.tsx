@@ -61,6 +61,7 @@ import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
 import { ContextMenu, type MenuItem } from './stage/ContextMenu.js';
 import { LAYER_BUTTONS, PropBar } from './stage/PropBar.js';
+import { type Box, childBoxInGroup, childBoxInScene } from './stage/geometry.js';
 import {
   align,
   distribute,
@@ -74,6 +75,7 @@ import { canRedoState, canUndoState, historyReducer, initialHistoryState } from 
 import { createElement } from './state/elements.js';
 import { answerVariables, variableRenameProblem } from './state/exits.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
+import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupElements.js';
 import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
@@ -1396,19 +1398,108 @@ export function Editor({
            * перетаскивание (см. `handleCommitHistory`).
            */
           const at = headTimeRef();
+          /** Новые ЛОКАЛЬНЫЕ боксы сдвинутых — считаются здесь же, потому что
+           *  `currentSlide` в этом кадре ещё несёт состояние ДО сдвига. */
+          const nudged = new Map<string, Box>();
           let moved = false;
           for (const id of state.selectedIds) {
             const currentState = currentSlide.states[id];
             if (!currentState) continue;
+
+            /**
+             * Дельта стрелки — СЦЕННАЯ, и это видно из `keyboard.ts`: «вверх»
+             * там уменьшает `y`, то есть речь про оси ЭКРАНА. У элемента
+             * верхнего уровня `x`/`y` тоже сценные, и прибавка гонит его
+             * ровно туда, куда показывает стрелка.
+             *
+             * У ребёнка группы `x`/`y` ЛОКАЛЬНЫЕ. Та же прибавка погнала бы
+             * его вдоль осей ГРУППЫ: на группе, повёрнутой на 10°, стрелка
+             * вправо уводила бы вниз на 0.17 от переезда — измерено e2e.
+             * Это тот же дефект, что починен у тяги мышью в срезе 3а, только
+             * пришедший другим путём, через клавиатуру.
+             *
+             * Перевод делает ТА ЖЕ пара функций, что и жест, а не третья
+             * формула: «повернуть дельту на минус угол группы» из неё
+             * выводится, а второе описание одного факта разошлось бы молча.
+             */
+            const owner = segment.elements.find((element) => element.id === id);
+            const groupState =
+              owner?.parentId === undefined ? undefined : currentSlide.states[owner.parentId];
+
+            let box: Box;
+            if (groupState) {
+              const scene = childBoxInScene(groupState, currentState);
+              box = childBoxInGroup(groupState, {
+                ...scene,
+                x: scene.x + intent.dx,
+                y: scene.y + intent.dy,
+              });
+            } else {
+              box = {
+                x: currentState.x + intent.dx,
+                y: currentState.y + intent.dy,
+                width: currentState.width,
+                height: currentState.height,
+                rotation: currentState.rotation,
+              };
+            }
+            // Округления здесь нет намеренно: у ребёнка повёрнутой группы
+            // локальные координаты дробные по существу, и округление каждого
+            // нажатия копило бы ошибку — пятнадцать нажатий увели бы объект
+            // на несколько пикселей от того, куда его вела стрелка.
+            nudged.set(id, box);
+
             dispatch({
               type: 'setElementState',
               elementId: id,
-              patch: { x: currentState.x + intent.dx, y: currentState.y + intent.dy },
+              patch: { x: box.x, y: box.y },
               at,
               commit: false,
             });
             moved = true;
           }
+
+          /**
+           * Охват группы следует за содержимым и когда его двигают стрелками,
+           * а не только мышью (`endGesture` в `StageView`). Иначе одно и то же
+           * действие автора давало бы разный результат в зависимости от того,
+           * каким органом он его сделал, — расхождение, которое видно глазами:
+           * рамка отстала бы от содержимого до следующей тяги мышью.
+           */
+          const activeGroupId = activeGroupOf(segment.elements, state.selectedIds);
+          const activeGroupState =
+            activeGroupId === undefined ? undefined : currentSlide.states[activeGroupId];
+          if (moved && activeGroupId !== undefined && activeGroupState) {
+            const children: GroupChildBox[] = [];
+            for (const element of segment.elements) {
+              if (element.parentId !== activeGroupId) continue;
+              const childState = currentSlide.states[element.id];
+              if (!childState) continue;
+              // Сдвинутые берутся из `nudged`, остальные — как лежат: слайд
+              // ещё не пересобран, и `currentSlide` для сдвинутых устарел.
+              children.push({ id: element.id, box: nudged.get(element.id) ?? childState });
+            }
+            const reflow = reflowGroup(activeGroupState, children);
+            if (reflow) {
+              dispatch({
+                type: 'setElementState',
+                elementId: activeGroupId,
+                patch: reflow.group,
+                at,
+                commit: false,
+              });
+              for (const child of reflow.children) {
+                dispatch({
+                  type: 'setElementState',
+                  elementId: child.id,
+                  patch: child.box,
+                  at,
+                  commit: false,
+                });
+              }
+            }
+          }
+
           if (moved) dispatch({ type: 'commit' });
           return;
         }

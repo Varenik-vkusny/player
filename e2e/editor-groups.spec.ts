@@ -637,4 +637,121 @@ test.describe('группы в редакторе', () => {
       'нижний край рамки группы обязан достать до нижнего края ребёнка',
     ).toBeGreaterThanOrEqual(moverScreen.y + moverScreen.height - 2);
   });
+
+  /**
+   * Стрелки — тот же класс, что тяга мышью, только через `Editor.tsx`.
+   *
+   * У элемента ВЕРХНЕГО УРОВНЯ стрелка прибавляет дельту к `x`/`y`, а они
+   * сценные, значит объект едет вдоль осей ЭКРАНА — и это то, что автор
+   * видит у любого объекта, как бы тот ни был повёрнут. У ребёнка группы
+   * `x`/`y` локальные, и та же прибавка гонит его вдоль осей ГРУППЫ.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ: возврат `nudge` к прямой
+   * прибавке `currentState.x + dx`. На группе с углом 30° сломанный код
+   * даёт по вертикали половину горизонтального переезда вместо нуля.
+   *
+   * НА НЕПОВЁРНУТОЙ ГРУППЕ ЭТОТ СЛОМ НЕВИДИМ: сдвиг вдоль осей группы
+   * и вдоль осей экрана там одно и то же. Поэтому группа поворачивается
+   * настоящим жестом, а не берётся из фикстуры, где все углы нулевые.
+   */
+  test('стрелка двигает ребёнка ПОВЁРНУТОЙ группы по осям экрана, а не вдоль осей группы', async ({
+    page,
+  }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await clickElement(page, 'mover'); // одиночный щелчок берёт ГРУППУ целиком
+    await expect(page.getByTestId('selection-frame')).toBeVisible();
+    // 10°, по тому же доводу, что у теста тяги выше: группа сильно вытянута,
+    // и крутой угол подводит содержимое к краю сцены.
+    await rotateSelectedGroup(page, 10);
+
+    // Промежуточная проверка: поворот СОСТОЯЛСЯ. Без неё тест на неповёрнутой
+    // группе проверял бы тождество и был бы зелен при любой реализации.
+    const rotation = await page.evaluate(() => {
+      const project = (window as unknown as {
+        __project: { segments: { slides: { states: Record<string, { rotation: number }> }[] }[] };
+      }).__project;
+      const group = Object.entries(project.segments[0]!.slides[0]!.states).find(
+        ([, state]) => state.rotation !== 0,
+      );
+      return group?.[1].rotation ?? 0;
+    });
+    expect(rotation, 'группа обязана была повернуться жестом, иначе тест ничего не проверяет')
+      .toBeCloseTo(10, 0);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const before = await screenBox(page, 'mover');
+    // Быстрый шаг (Shift) — 10 единиц сцены за нажатие. Пятнадцать нажатий
+    // дают переезд, у которого вертикальная составляющая сломанного кода
+    // (sin 10° ≈ 0.17 от горизонтальной) заведомо крупнее шума округления.
+    for (let i = 0; i < 15; i += 1) await page.keyboard.press('Shift+ArrowRight');
+    const after = await screenBox(page, 'mover');
+
+    const dx = after.x - before.x;
+    const dy = after.y - before.y;
+
+    expect(dx, 'стрелка вправо обязана двигать вправо').toBeGreaterThan(20);
+    expect(
+      Math.abs(dy),
+      `стрелка была горизонтальной, а по вертикали уехало на ${dy.toFixed(1)}px при переезде ${dx.toFixed(1)}px вбок`,
+    ).toBeLessThan(3);
+  });
+
+  /**
+   * Охват группы обязан следовать за содержимым и когда его двигают
+   * СТРЕЛКАМИ, а не только мышью. Иначе одно и то же действие автора даёт
+   * разный результат в зависимости от того, каким органом он его сделал:
+   * после тяги рамка догоняет, после стрелок — отстаёт до следующей тяги.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ: пропуск вызова `reflowGroup`
+   * в ветке `nudge` (`Editor.tsx`). Тогда рамка останется на прежнем месте,
+   * а ребёнок уедет за её правый край.
+   *
+   * Проверяется ГЕОМЕТРИЯ, а не наличие узла: «видимость не равна наличию».
+   */
+  test('рамка группы догоняет содержимое и после сдвига стрелками', async ({ page }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const frameBefore = await page.getByTestId('group-frame').boundingBox();
+    if (!frameBefore) throw new Error('бледной рамки группы нет сразу после захода внутрь');
+    const moverBefore = await screenBox(page, 'mover');
+
+    // ВНИЗ, а не вбок: охват `mover`+`leaver` вытянут по горизонтали
+    // (1440×200), и `mover` в нём левее — сдвиг вправо двигал бы ЛЕВЫЙ край
+    // охвата, а не правый. По вертикали же ребёнок выходит за прежний нижний
+    // край сразу. Поймано промежуточной проверкой ниже, а не рассуждением.
+    // 30 нажатий по 10 единиц — 300 единиц сцены вниз.
+    for (let i = 0; i < 30; i += 1) await page.keyboard.press('Shift+ArrowDown');
+
+    const frameAfter = await page.getByTestId('group-frame').boundingBox();
+    if (!frameAfter) throw new Error('бледная рамка группы пропала после сдвига стрелками');
+    const mover = await screenBox(page, 'mover');
+
+    // Промежуточная проверка ПРО ДРУГОЕ: сдвиг стрелками состоялся. Без неё
+    // тест был бы зелёным и при полностью отключённых стрелках — двигать
+    // нечего, догонять нечего, рамка законно стоит на месте.
+    expect(
+      mover.y - moverBefore.y,
+      'ребёнок обязан был уехать вниз, иначе стрелки не сработали вовсе',
+    ).toBeGreaterThan(20);
+
+    // А это уже сам предмет: рамка догнала.
+    expect(
+      frameAfter.y + frameAfter.height,
+      'нижний край рамки группы обязан достать до нижнего края ребёнка',
+    ).toBeGreaterThanOrEqual(mover.y + mover.height - 2);
+    expect(
+      frameAfter.y + frameAfter.height,
+      'рамка обязана была вырасти вниз, а не остаться прежней',
+    ).toBeGreaterThan(frameBefore.y + frameBefore.height + 20);
+  });
 });
