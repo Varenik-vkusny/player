@@ -46,6 +46,7 @@ import { applyTheme, fitStage, ScenePreview, type Segment, type Zoom } from '@pl
 
 import {
   boxToScreen,
+  childBoxInGroup,
   childBoxInScene,
   intersectsRect,
   stageScale,
@@ -57,7 +58,7 @@ import {
 } from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
 import { ZoomBar } from './ZoomBar.js';
-import { activeGroupOf } from '../state/groupElements.js';
+import { activeGroupOf, reflowGroup } from '../state/groupElements.js';
 import {
   canZoomIn,
   canZoomOut,
@@ -348,6 +349,60 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const activeGroupId = activeGroupOf(elements, selectedIds);
   const activeGroupState = activeGroupId !== undefined ? currentSlide.states[activeGroupId] : undefined;
 
+  /**
+   * Состояние ЛЮБОГО элемента → бокс СЦЕНЫ. У ребёнка группы координаты
+   * в состоянии ЛОКАЛЬНЫЕ (§14 журнала Сессии 35), и наивная подстановка
+   * `currentSlide.states[id]` в геометрию напрямую дала бы бокс у начала
+   * координат сцены — тот же призрак, что был в списке попаданий, только
+   * в другом месте. Родитель берётся из `elements`, а не из `activeGroupId`:
+   * помощник обязан работать для ЛЮБОГО ребёнка, а не только пока автор
+   * «официально внутри» его группы.
+   *
+   * Один помощник на ВСЕХ читателей геометрии выделенного: рамку
+   * (`syncFrame`), захват жеста (`beginGesture`, `handleGripDown`). Второе
+   * описание того же перевода разошлось бы с ним молча.
+   */
+  const sceneBoxOf = useCallback(
+    (id: string): Box | undefined => {
+      const state = currentSlide.states[id];
+      if (!state) return undefined;
+      const owner = elements.find((candidate) => candidate.id === id);
+      if (owner?.parentId !== undefined) {
+        const groupState = currentSlide.states[owner.parentId];
+        if (groupState) return childBoxInScene(boxOf(groupState), boxOf(state));
+      }
+      return boxOf(state);
+    },
+    [elements, currentSlide],
+  );
+
+  /**
+   * Обратная пара `sceneBoxOf`: бокс СЦЕНЫ, посчитанный жестом, → то, что
+   * обязано попасть в `ElementState`. У ребёнка группы это ЛОКАЛЬНЫЕ
+   * координаты (`childBoxInGroup`), у всех остальных — тот же бокс без
+   * изменений.
+   *
+   * Вся арифметика жеста (`moveBox`, `resizeBox`, `rotateBox`, прилипание)
+   * всегда считает в координатах сцены — план С36 §3а: перевести не дельту,
+   * а состояние целиком, и получить перевод дельты СЛЕДСТВИЕМ формулы,
+   * а не второй, независимо написанной. Без этого помощника запись жеста
+   * клала бы сценное число прямо в локальное поле — дефект, из-за которого
+   * заведена эта сессия: перетаскивание ребёнка внутри группы на N экранных
+   * пикселей давало переезд, кратно больший N, потому что запись добавляла
+   * жестовую дельту к координате, УЖЕ включающей смещение группы.
+   */
+  const localBoxFor = useCallback(
+    (id: string, box: Box): Box => {
+      const owner = elements.find((candidate) => candidate.id === id);
+      if (owner?.parentId !== undefined) {
+        const groupState = currentSlide.states[owner.parentId];
+        if (groupState) return childBoxInGroup(boxOf(groupState), box);
+      }
+      return box;
+    },
+    [elements, currentSlide],
+  );
+
   /** Требует контейнеры: их отсутствие означает сломанную разметку, а не штатный случай. */
   const requireNodes = useCallback((): {
     host: HTMLDivElement;
@@ -442,28 +497,11 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     const stageRect = stage.getBoundingClientRect();
     const hostRect = canvas.getBoundingClientRect();
 
-    /**
-     * Состояние выделенного → бокс СЦЕНЫ.
-     *
-     * Не подставляет `currentSlide.states[id]` в геометрию напрямую: у ребёнка
-     * группы координаты ЛОКАЛЬНЫЕ (§14 журнала Сессии 35), и наивная
-     * подстановка дала бы рамку у начала координат сцены — тот же призрак,
-     * что был в списке попаданий, только в оверлее. Родитель берётся из
-     * `elements`, а не из `activeGroupId`: рамка обязана быть верной для
-     * ЛЮБОГО выделенного ребёнка, а не только пока автор «официально внутри»
-     * (`activeGroupOf` требует, чтобы ВСЕ выделенные были детьми одной
-     * группы, — здесь такое допущение делать не для чего).
-     */
-    const sceneBoxOf = (id: string): Box | undefined => {
-      const state = currentSlide.states[id];
-      if (!state) return undefined;
-      const owner = elements.find((candidate) => candidate.id === id);
-      if (owner?.parentId !== undefined) {
-        const groupState = currentSlide.states[owner.parentId];
-        if (groupState) return childBoxInScene(boxOf(groupState), boxOf(state));
-      }
-      return boxOf(state);
-    };
+    // Бокс СЦЕНЫ выделенного — общий помощник `sceneBoxOf` (объявлен выше,
+    // в области компонента): рамка обязана быть верной для ЛЮБОГО
+    // выделенного ребёнка, а не только пока автор «официально внутри» его
+    // группы (`activeGroupOf` требует, чтобы ВСЕ выделенные были детьми
+    // одной группы, — здесь такое допущение делать не для чего).
 
     // Рамка строится по тем выделенным, кто ЕСТЬ на этом слайде: элемент
     // может быть выделен и при этом не появляться в текущем кадре.
@@ -506,7 +544,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     } else {
       setGroupFrame(null);
     }
-  }, [requireNodes, selectedIds, currentSlide, segment.stage.width, elements, activeGroupState]);
+  }, [requireNodes, selectedIds, currentSlide, segment.stage.width, sceneBoxOf, activeGroupState]);
 
   /**
    * Сегмент из ОДНОГО слайда — то, что реально показывает и правит сцена.
@@ -764,10 +802,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       const startBoxes = new Map<string, Box>([[elementId, box]]);
       for (const id of alsoMove) {
         if (id === elementId) continue;
-        const state = currentSlide.states[id];
-        // Выделенный, которого нет на этом слайде, не двигается: двигать
-        // нечего. Это не ошибка — элемент просто не появляется в этом кадре.
-        if (state) startBoxes.set(id, boxOf(state));
+        // `sceneBoxOf`, а не `boxOf(currentSlide.states[id])` напрямую: среди
+        // `alsoMove` может быть ребёнок группы (несколько выделенных детей
+        // одной активной группы), а его координаты в состоянии ЛОКАЛЬНЫЕ.
+        // `undefined` — выделенный, которого нет на этом слайде: двигать
+        // нечего, это не ошибка, элемент просто не появляется в этом кадре.
+        const sceneBox = sceneBoxOf(id);
+        if (sceneBox) startBoxes.set(id, sceneBox);
       }
 
       // Содержимое группы снимается ВСЕГДА, а не только под ручку: узнать
@@ -807,7 +848,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // список элементов только что изменился, и устаревшее замыкание не нашло
     // бы у новой группы ни одного ребёнка — ручка масштабировала бы пустую
     // рамку, молча.
-    [requireNodes, scenePointOf, elements, currentSlide],
+    [requireNodes, scenePointOf, elements, currentSlide, sceneBoxOf],
   );
 
   /**
@@ -1077,11 +1118,14 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // сюда нельзя попасть с пачкой — а если попали, это сломанная разметка.
       const soleId = selectedIds.length === 1 ? selectedIds[0] : undefined;
       if (soleId === undefined) throw new Error('Ручка нажата без единственного выделенного элемента');
-      const state = currentSlide.states[soleId];
-      if (!state) throw new Error(`У выделенного элемента «${soleId}» нет состояния на текущем слайде`);
-      beginGesture(grip, soleId, boxOf(state), event);
+      // `sceneBoxOf`, а не `boxOf(currentSlide.states[soleId])` напрямую: ручка
+      // может стоять у ребёнка группы, чьи координаты в состоянии ЛОКАЛЬНЫЕ —
+      // жест обязан начинаться от бокса СЦЕНЫ, как и вся остальная геометрия.
+      const box = sceneBoxOf(soleId);
+      if (!box) throw new Error(`У выделенного элемента «${soleId}» нет состояния на текущем слайде`);
+      beginGesture(grip, soleId, box, event);
     },
-    [selectedIds, currentSlide, beginGesture],
+    [selectedIds, sceneBoxOf, beginGesture],
   );
 
   const handleMove = useCallback(
@@ -1156,7 +1200,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
         for (const [id, startBox] of gesture.startBoxes) {
           const moved = moveBox(startBox, dx, dy);
-          onElementStateChange(id, { x: round(moved.x), y: round(moved.y) });
+          // `localBoxFor`: `moved` — бокс СЦЕНЫ (дельта жеста и прилипание
+          // считают только в ней). У ребёнка группы в `ElementState` обязаны
+          // остаться ЛОКАЛЬНЫЕ координаты — без перевода сценное число легло
+          // бы прямо в локальное поле, ровно тот дефект, ради которого
+          // заведена эта сессия.
+          const local = localBoxFor(id, moved);
+          onElementStateChange(id, { x: round(local.x), y: round(local.y) });
         }
         return;
       }
@@ -1192,12 +1242,16 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         setGuides(guidesToHost(result.guides));
       }
 
+      // `localBoxFor`: `next` — бокс СЦЕНЫ (ресайз и поворот тоже считают
+      // только в ней, как и перетаскивание выше). У ребёнка группы это
+      // приводит результат к ЛОКАЛЬНЫМ координатам перед записью.
+      const local = localBoxFor(gesture.elementId, next);
       onElementStateChange(gesture.elementId, {
-        x: round(next.x),
-        y: round(next.y),
-        width: round(next.width),
-        height: round(next.height),
-        rotation: round(next.rotation),
+        x: round(local.x),
+        y: round(local.y),
+        width: round(local.width),
+        height: round(local.height),
+        rotation: round(local.rotation),
       });
 
       /**
@@ -1210,12 +1264,18 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
        * иначе на каждом `pointermove` они перемножались бы, и содержимое
        * улетело бы степенью за одно движение.
        *
-       * Умножение локальных координат на множитель — и есть весь пересчёт:
-       * они отсчитываются от левого верхнего угла группы, значит масштаб
+       * **Пространство здесь ЛОКАЛЬНОЕ, и это не упущение** (ADR-007: не
+       * смешивать пространства, а не приводить всё к одному). Умножение
+       * локальных координат на множитель — и есть весь пересчёт: они
+       * отсчитываются от левого верхнего угла ГРУППЫ, значит масштаб
        * относительно этого угла применяется к ним напрямую, каким бы боком
-       * ни тянули. Поворот сюда не попадает: `rotateBox` размера не меняет,
-       * множители вышли бы единичными, а содержимое поворачивается само —
-       * узел группы его предок.
+       * ни тянули. `localBoxFor`/`sceneBoxOf` (перевод через центр группы,
+       * с поворотом) сюда не подходят и не нужны: у содержимого группы нет
+       * своего родителя выше неё, приводить содержимое к сцене и обратно
+       * значило бы дважды применить одно и то же преобразование. Поворот
+       * сюда тоже не попадает: `rotateBox` размера не меняет, множители
+       * вышли бы единичными, а содержимое поворачивается само — узел группы
+       * его предок.
        */
       if (gesture.grip !== 'rotate' && gesture.startChildren.size > 0) {
         const sx = gesture.startBox.width === 0 ? 1 : next.width / gesture.startBox.width;
@@ -1230,7 +1290,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         }
       }
     },
-    [scenePointOf, onElementStateChange, requireNodes, segment.stage.width],
+    [scenePointOf, onElementStateChange, requireNodes, segment.stage.width, localBoxFor],
   );
 
   const endGesture = useCallback(
@@ -1287,13 +1347,79 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       if (!moved && gesture.grip === 'body' && gesture.startBoxes.size > 1) {
         onSelect(gesture.elementId);
       }
+
+      /**
+       * Охват группы следует за содержимым (план С36 §8, `reflowGroup`,
+       * `state/groupElements.ts`).
+       *
+       * Зовётся ЗДЕСЬ — на завершении жеста, а не на каждом кадре
+       * `handleMove`. Живой пересчёт дал бы обратную связь самому себе: жест
+       * держит стартовые боксы в СТАРОЙ системе координат группы (см.
+       * `Gesture.startBox`/`startBoxes`), а `reflowGroup` эту систему
+       * меняет. Видимая цена — бледная рамка группы догоняет содержимое
+       * на отпускании, а не тянется за ним следом; так и задумано.
+       *
+       * Срабатывает, только если жест реально подвинул взятый элемент,
+       * и тот — РЕБЁНОК группы. Перетаскивание/ресайз самой группы сюда
+       * не попадает (у нею нет `parentId`) — её содержимое уже держится
+       * плотным умножением на множитель (комментарий выше, «Ручка размера
+       * у группы…»), и повторный пересчёт там был бы вторым описанием того
+       * же результата.
+       */
+      if (moved) {
+        const owner = elements.find((candidate) => candidate.id === gesture.elementId);
+        const groupId = owner?.parentId;
+        const groupState = groupId !== undefined ? currentSlide.states[groupId] : undefined;
+        if (groupId !== undefined && groupState) {
+          const children = elements
+            .filter((candidate) => candidate.parentId === groupId)
+            .map((candidate): { id: string; box: Box } | undefined => {
+              const state = currentSlide.states[candidate.id];
+              return state ? { id: candidate.id, box: boxOf(state) } : undefined;
+            })
+            .filter((child): child is { id: string; box: Box } => child !== undefined);
+
+          const reflow = reflowGroup(boxOf(groupState), children);
+          if (reflow) {
+            onElementStateChange(groupId, {
+              x: round(reflow.group.x),
+              y: round(reflow.group.y),
+              width: round(reflow.group.width),
+              height: round(reflow.group.height),
+              rotation: round(reflow.group.rotation),
+            });
+            for (const child of reflow.children) {
+              onElementStateChange(child.id, {
+                x: round(child.box.x),
+                y: round(child.box.y),
+                width: round(child.box.width),
+                height: round(child.box.height),
+                rotation: round(child.box.rotation),
+              });
+            }
+          }
+        }
+      }
+
       // Коммит-точка жеста (срез 2): если движение и правда было,
-      // `onElementStateChange` уже записал финальное значение — здесь только
-      // закрываем шаг истории. Если жеста фактически не было (простой клик
-      // без движения), это безопасный no-op на стороне историй.
+      // `onElementStateChange` уже записал финальное значение (включая
+      // пересчёт охвата группы выше) — здесь только закрываем шаг истории,
+      // ОДНИМ шагом на весь жест. Если жеста фактически не было (простой
+      // клик без движения), это безопасный no-op на стороне историй.
       onCommitHistory();
     },
-    [onCommitHistory, onSelect, onSelectMany, marquee, requireNodes, scenePointOf, visibleLayers],
+    [
+      onCommitHistory,
+      onSelect,
+      onSelectMany,
+      onElementStateChange,
+      marquee,
+      requireNodes,
+      scenePointOf,
+      visibleLayers,
+      elements,
+      currentSlide,
+    ],
   );
 
   /**

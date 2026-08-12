@@ -98,6 +98,45 @@ async function groupTwo(page: Page): Promise<string> {
   return group!.id;
 }
 
+/**
+ * Поворачивает ВЫДЕЛЕННУЮ (одну) группу жестом за ручку `rotate` на заданный
+ * угол вокруг центра её рамки — тем же приёмом, что и
+ * `stage-controls-reachable.spec.ts:184`: ручка ведётся по своей окружности,
+ * радиус сохраняется, чтобы двигался именно угол, а не случайное попадание.
+ * `rotateBox` (`transform.ts`) выводит новый поворот из УГЛОВОГО смещения
+ * указателя относительно старта (через `grabOffset`), поэтому итоговый
+ * поворот бокса равен ровно `degrees`, а не зависит от радиуса ручки.
+ *
+ * Угол — параметр, а не всегда четверть оборота: группа `mover`+`leaver`
+ * сильно вытянута (1440×200 в единицах сцены), и поворот на 90° уносит её
+ * за пределы сцены 1920×1080 — часть содержимого стала бы физически
+ * невидимой. Небольшой угол держит группу на сцене и достаточен, чтобы
+ * поймать пропущенное слагаемое поворота (грабля §13 журнала С35): 0°
+ * и 20° различаются в `sin`/`cos` ровно тем, ради чего тест и существует.
+ *
+ * Жестом, а не новой фикстурой с повёрнутой группой (план С36 §11): такая
+ * фикстура стоила бы пяти новых скриншотных эталонов, а ручка поворота уже
+ * умеет поворачивать (тест выше по ссылке).
+ */
+async function rotateSelectedGroup(page: Page, degrees: number): Promise<void> {
+  const before = await page.evaluate(() => {
+    const frame = document.querySelector('.ed-frame')!.getBoundingClientRect();
+    const grip = document.querySelector('[data-grip="rotate"]')!.getBoundingClientRect();
+    return {
+      center: { x: frame.left + frame.width / 2, y: frame.top + frame.height / 2 },
+      grip: { x: grip.left + grip.width / 2, y: grip.top + grip.height / 2 },
+    };
+  });
+  const radius = Math.hypot(before.grip.x - before.center.x, before.grip.y - before.center.y);
+  const startAngle = Math.atan2(before.grip.y - before.center.y, before.grip.x - before.center.x);
+  const targetAngle = startAngle + (degrees * Math.PI) / 180;
+  const target = {
+    x: before.center.x + radius * Math.cos(targetAngle),
+    y: before.center.y + radius * Math.sin(targetAngle),
+  };
+  await dragFrom(page, before.grip, target.x - before.grip.x, target.y - before.grip.y);
+}
+
 test.describe('группы в редакторе', () => {
   test('Ctrl+G связывает выделенное: появляется группа, содержимое ссылается на неё', async ({ page }) => {
     await openEditor(page);
@@ -417,5 +456,185 @@ test.describe('группы в редакторе', () => {
 
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('group-frame')).toHaveCount(0);
+  });
+
+  /**
+   * ДЕФЕКТ ИЗ ШАПКИ ЗАДАНИЯ Сессии 36, ИЗМЕРЕННЫЙ В ЖИВОМ БРАУЗЕРЕ.
+   *
+   * Вся арифметика жеста считает в координатах СЦЕНЫ, а `ElementState.x/y`
+   * ребёнка группы — ЛОКАЛЬНЫЕ, от угла группы (`render.ts` ставит их прямо
+   * в CSS `left`/`top` относительно узла группы). Запись жеста без перевода
+   * кладёт сценное число в локальное поле: тяга на 60×40 экранных px ранее
+   * давала переезд 91.7×71.3 — сценная координата ДОБАВЛЯЛАСЬ к координате,
+   * уже включающей смещение группы.
+   *
+   * Проверяется на группе БЕЗ поворота: именно на ней замер и был снят,
+   * и именно на ней дефект самый грубый — рамка группы (162, тест выше)
+   * прибавляет к ребёнку смещение x=160, значит переезд искажается уже
+   * от этого одного слагаемого, без всякого поворота.
+   *
+   * Краснеет, если запись жеста (StageView.tsx, тело перетаскивания)
+   * продолжает писать бокс СЦЕНЫ прямо в `ElementState` ребёнка группы,
+   * минуя перевод в локальные координаты (`childBoxInGroup`).
+   */
+  test('тяга ребёнка внутри НЕПОВЁРНУТОЙ группы: экранный переезд равен жесту', async ({ page }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const before = await screenBox(page, 'mover');
+    const DX = 60;
+    const DY = 40;
+    await dragFrom(page, await centerOnScreen(page, 'mover'), DX, DY);
+
+    const after = await screenBox(page, 'mover');
+
+    expect(
+      Math.abs(after.x - before.x - DX),
+      `экранный переезд по x обязан быть ${DX}px, получено ${after.x - before.x}`,
+    ).toBeLessThan(3);
+    expect(
+      Math.abs(after.y - before.y - DY),
+      `экранный переезд по y обязан быть ${DY}px, получено ${after.y - before.y}`,
+    ).toBeLessThan(3);
+  });
+
+  /**
+   * ТА ЖЕ ПРОВЕРКА НА ПОВЁРНУТОЙ ГРУППЕ — МИНА, НЕВИДИМАЯ НА ПРЕДЫДУЩЕМ ТЕСТЕ.
+   *
+   * Перевод жеста в локальные координаты обязан учитывать угол группы
+   * (`childBoxInGroup` поворачивает вокруг ЕЁ центра), а не только вычитать
+   * смещение угла. На НЕПОВЁРНУТОЙ группе (тест выше) обе формулы — «вычесть
+   * угол» и «повернуть вокруг центра и вычесть» — дают одно и то же, поэтому
+   * потеря поворота там незаметна. Группа здесь повёрнута ЖЕСТОМ за ручку.
+   *
+   * Краснеет, если перевод результата жеста в локальные координаты не
+   * учитывает поворот группы (использует смещение без `rotate`).
+   */
+  test('тяга ребёнка внутри ПОВЁРНУТОЙ группы: экранный переезд равен жесту', async ({ page }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await clickElement(page, 'mover'); // одиночный щелчок по содержимому берёт ГРУППУ целиком
+    await expect(page.getByTestId('selection-frame')).toBeVisible();
+    // 10°, а не более крутой угол: группа `mover`+`leaver` сильно вытянута
+    // (1440×200), и её содержимое при повороте начинает подходить близко
+    // к краю сцены (y=0) — там стоит направляющая холста (`targetsOf` в
+    // `snapping.ts` включает [0, size/2, size] кандидатами), и прилипание
+    // ПОДЛИННО срабатывает («прилипание у ПОВЁРНУТОГО элемента не делается
+    // намеренно» — это про `snapResize`, а не про `snap` при перетаскивании:
+    // тот прилипание рассматривает бокс как неповёрнутый). 10° поворота
+    // достаточно, чтобы поймать пропущенное слагаемое поворота, и держит
+    // содержимое подальше от направляющих холста.
+    await rotateSelectedGroup(page, 10);
+
+    const rotation = await page.evaluate(() => {
+      const project = (window as unknown as {
+        __project: { segments: { slides: { states: Record<string, { rotation: number }> }[] }[] };
+      }).__project;
+      const group = Object.entries(project.segments[0]!.slides[0]!.states).find(
+        ([, state]) => state.rotation !== 0,
+      );
+      return group?.[1].rotation ?? 0;
+    });
+    expect(rotation, 'группа обязана была повернуться жестом, иначе тест ничего не проверяет')
+      .toBeCloseTo(10, 0);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const before = await screenBox(page, 'mover');
+    const DX = 60;
+    const DY = 40;
+    await dragFrom(page, await centerOnScreen(page, 'mover'), DX, DY);
+
+    const after = await screenBox(page, 'mover');
+
+    expect(
+      Math.abs(after.x - before.x - DX),
+      `экранный переезд по x обязан быть ${DX}px, получено ${after.x - before.x}`,
+    ).toBeLessThan(4);
+    expect(
+      Math.abs(after.y - before.y - DY),
+      `экранный переезд по y обязан быть ${DY}px, получено ${after.y - before.y}`,
+    ).toBeLessThan(4);
+  });
+
+  /**
+   * Ресайз ребёнка ручкой обязан менять его размер, а не швырять его
+   * в сторону. Тот же дефект записи, что у перетаскивания выше, только
+   * в ветке `resizeBox`/`snapResize`: без перевода в локальные координаты
+   * бокс СЦЕНЫ лёг бы в `ElementState`, и ребёнок отрисовался бы со вторым,
+   * лишним смещением на угол группы — то есть уехал бы, а не подрос.
+   *
+   * Противоположный ручке угол (левый верхний у ручки `se`) — неподвижная
+   * точка ресайза (та же гарантия, что у `transform.ts:resizeBox`). Именно
+   * его положение и швыряет дефект: у ребёнка внутри группы лишнее слагаемое
+   * добавляется к x/y, а размер меняется верно, значит проверка размера ОДНА
+   * дефект не поймает — обязательна и проверка неподвижного угла.
+   *
+   * Краснеет, если запись ресайза ребёнка группы не переведена в локальные
+   * координаты.
+   */
+  test('ресайз ребёнка ручкой меняет его размер, а не швыряет его', async ({ page }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    const before = await screenBox(page, 'mover');
+    const grip = await page.locator('[data-grip="se"]').boundingBox();
+    if (!grip) throw new Error('ручка se не видна у выделенного ребёнка группы');
+
+    await dragFrom(page, { x: grip.x + grip.width / 2, y: grip.y + grip.height / 2 }, 80, 60);
+
+    const after = await screenBox(page, 'mover');
+
+    expect(after.width, 'ширина обязана вырасти').toBeGreaterThan(before.width + 20);
+    expect(after.height, 'высота обязана вырасти').toBeGreaterThan(before.height + 10);
+    // Левый верхний угол противоположен ручке se и обязан остаться на месте —
+    // ручка обязана менять размер, а не швырять элемент в сторону.
+    expect(Math.abs(after.x - before.x), `левый край уехал на ${after.x - before.x}px`).toBeLessThan(4);
+    expect(Math.abs(after.y - before.y), `верхний край уехал на ${after.y - before.y}px`).toBeLessThan(4);
+  });
+
+  /**
+   * `reflowGroup` (план С36 §8): охват группы обязан следовать за
+   * содержимым, когда ребёнка вытащили за прежний край.
+   *
+   * Тянем `mover` далеко вниз, за прежний нижний край группы (охват
+   * `mover`+`leaver` кончается на y=360 у фикстуры `morph`, слайд 1). После
+   * отпускания бледная рамка группы обязана дорасти до нового положения
+   * ребёнка — иначе автор видит содержимое, торчащее за пределами рамки,
+   * которая, по решению владельца, обозначает границу группы.
+   *
+   * Краснеет, если `endGesture` не зовёт `reflowGroup` после жеста над
+   * ребёнком группы: рамка останется на прежнем месте, а `mover` уедет
+   * далеко за её нижний край.
+   */
+  test('рамка группы охватывает содержимое после того, как ребёнка вытащили за край', async ({ page }) => {
+    await openEditor(page);
+    await groupTwo(page);
+
+    await page.keyboard.press('Escape');
+    await doubleClickAt(page, await centerOnScreen(page, 'mover'));
+    await expect(page.getByTestId('element-row-mover')).toHaveAttribute('aria-pressed', 'true');
+
+    await dragFrom(page, await centerOnScreen(page, 'mover'), 0, 220);
+
+    const groupFrameBox = await page.getByTestId('group-frame').boundingBox();
+    if (!groupFrameBox) throw new Error('бледной рамки группы нет после пересчёта охвата');
+    const moverScreen = await screenBox(page, 'mover');
+
+    expect(
+      groupFrameBox.y + groupFrameBox.height,
+      'нижний край рамки группы обязан достать до нижнего края ребёнка',
+    ).toBeGreaterThanOrEqual(moverScreen.y + moverScreen.height - 2);
   });
 });

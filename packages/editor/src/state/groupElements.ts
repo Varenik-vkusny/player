@@ -18,7 +18,14 @@
  */
 import type { Element, ElementState, Segment, Slide } from '@player/core';
 
-import { type Box, childBoxInGroup, childBoxInScene, unionBox } from '../stage/geometry.js';
+import {
+  type Box,
+  centerOf,
+  childBoxInGroup,
+  childBoxInScene,
+  rotate,
+  unionBox,
+} from '../stage/geometry.js';
 import { freeId } from './elements.js';
 
 /** Результат сборки или разборки: полные новые массивы взамен прежних. */
@@ -273,4 +280,94 @@ export function activeGroupOf(
   }
 
   return groupId;
+}
+
+/** Один ребёнок группы для `reflowGroup`: id и бокс в ЛОКАЛЬНЫХ координатах. */
+export interface GroupChildBox {
+  readonly id: string;
+  readonly box: Box;
+}
+
+/**
+ * Пересчитывает охват группы по её содержимому — второй вызывающий
+ * `unionBox`, обещанный Сессией 35 (план С35 §11).
+ *
+ * Правка ребёнка (передвинули, растянули, вытащили за край) меняет то, что
+ * группа обязана охватывать. Наивный пересчёт «взять охват детей и записать
+ * его группе» ломает картинку тем сильнее, чем больше угол ПОВОРОТА группы:
+ * дети вращаются вокруг ЕЁ центра, а смена бокса группы двигает этот центр —
+ * и всё содержимое уезжает на экране, хотя автор его не трогал. На
+ * неповёрнутой группе (то есть на всей фикстуре `groups.json`) наивный
+ * пересчёт ведёт себя безупречно и прячет дефект (план С36 §8).
+ *
+ * Правильность — следствие построения, а не удачи:
+ *
+ * 1. снимаем боксы детей НА СЦЕНЕ (`childBoxInScene`) — это истина, которую
+ *    обязано сохранить всё остальное, зритель её уже видел;
+ * 2. считаем охват в ЛОКАЛЬНОЙ системе координат группы (`unionBox` по
+ *    боксам, которые пришли аргументом, — они уже локальные; `unionBox`
+ *    считает по УГЛАМ, значит собственные повороты детей учтены);
+ * 3. новый бокс группы получает размер этого охвата, а положение выбирается
+ *    так, чтобы видимый центр нового охвата совпал с тем, где он виден
+ *    СЕЙЧАС — тем же поворотом вокруг центра СТАРОГО бокса, каким живёт вся
+ *    остальная геометрия группы;
+ * 4. локальные координаты детей пересчитываются ОТ НОВОГО бокса группы
+ *    через `childBoxInGroup`, но от сценных боксов из пункта 1 — то есть
+ *    дети ставятся туда, где были видны, каким бы ни вышел новый бокс.
+ *
+ * Зовётся на ЗАВЕРШЕНИИ жеста (`StageView.endGesture`), а не на каждом
+ * кадре: живой пересчёт на каждый `pointermove` менял бы систему координат
+ * жеста под ним самим, пока жест держит стартовые боксы в старой системе.
+ * Видимая цена — бледная рамка группы догоняет содержимое на отпускании,
+ * а не тянется за ним следом (план С36 §8, названо там же вслух).
+ *
+ * `undefined`, если пересчитывать нечего: детей нет, либо охват уже плотно
+ * совпадает с боксом группы (с точностью до 0.5 единицы сцены — жест почти
+ * никогда не даёт точный ноль из-за округления `PRECISION`, а вызывающий
+ * обязан отличать «нечего писать» от «пишем то же самое», чтобы не заводить
+ * пустой шаг истории на каждое перетаскивание).
+ */
+export function reflowGroup(
+  groupState: Box,
+  children: readonly GroupChildBox[],
+): { readonly group: Box; readonly children: readonly GroupChildBox[] } | undefined {
+  if (children.length === 0) return undefined;
+
+  // Пункт 1: истина, которую обязано сохранить всё остальное.
+  const sceneBoxes = children.map((child) => ({
+    id: child.id,
+    box: childBoxInScene(groupState, child.box),
+  }));
+
+  // Пункт 2: охват в ЛОКАЛЬНОЙ системе — на боксах, которые пришли
+  // аргументом, они уже локальные.
+  const local = unionBox(children.map((child) => child.box))!; // children непусто ⇒ не undefined
+
+  const tight =
+    Math.abs(local.x) < 0.5 &&
+    Math.abs(local.y) < 0.5 &&
+    Math.abs(local.width - groupState.width) < 0.5 &&
+    Math.abs(local.height - groupState.height) < 0.5;
+  if (tight) return undefined;
+
+  // Пункт 3: центр нового охвата в НЕВРАЩЁННОЙ системе группы, затем —
+  // тем же поворотом, что несёт содержимое, — на экран.
+  const centerBeforeRotation = {
+    x: groupState.x + local.x + local.width / 2,
+    y: groupState.y + local.y + local.height / 2,
+  };
+  const center = rotate(centerBeforeRotation, centerOf(groupState), groupState.rotation);
+  const group: Box = {
+    x: center.x - local.width / 2,
+    y: center.y - local.height / 2,
+    width: local.width,
+    height: local.height,
+    rotation: groupState.rotation,
+  };
+
+  // Пункт 4: дети пересчитываются от НОВОГО бокса группы, но от сценных
+  // боксов пункта 1 — там, где они были видны.
+  const newChildren = sceneBoxes.map(({ id, box }) => ({ id, box: childBoxInGroup(group, box) }));
+
+  return { group, children: newChildren };
 }

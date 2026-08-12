@@ -201,8 +201,15 @@ export function rotate(point: Point, center: Point, degrees: number): Point {
   };
 }
 
-/** Центр бокса. Он же — точка, вокруг которой бокс поворачивается. */
-function centerOf(box: Box): Point {
+/**
+ * Центр бокса. Он же — точка, вокруг которой бокс поворачивается.
+ *
+ * Экспортирована ради `reflowGroup` (`state/groupElements.ts`, Сессия 36):
+ * пересчёт охвата поворачивает центр НОВОГО охвата вокруг центра СТАРОГО
+ * бокса группы той же формулой, что здесь, — второе описание разошлось бы
+ * молча, как и остальные формулы этого модуля.
+ */
+export function centerOf(box: Box): Point {
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
 }
 
