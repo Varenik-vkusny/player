@@ -46,6 +46,8 @@ import { applyTheme, fitStage, ScenePreview, type Segment, type Zoom } from '@pl
 
 import {
   boxToScreen,
+  childBoxInGroup,
+  childBoxInScene,
   intersectsRect,
   stageScale,
   toScene,
@@ -56,11 +58,15 @@ import {
 } from './geometry.js';
 import { Overlay, type Frame, type Grip } from './Overlay.js';
 import { ZoomBar } from './ZoomBar.js';
+import { activeGroupOf, reflowGroup } from '../state/groupElements.js';
 import {
   canZoomIn,
   canZoomOut,
   canvasSize,
   effectiveScale,
+  fitHostSize,
+  STAGE_GAP_X,
+  STAGE_GAP_Y,
   zoomIn as stepIn,
   zoomOut as stepOut,
 } from './zoom.js';
@@ -310,6 +316,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const marqueeRef = useRef<Marquee | null>(null);
 
   const [frame, setFrame] = useState<Frame | null>(null);
+  /**
+   * Бледная рамка группы, пока автор внутри неё (Сессия 36). `null` — автор
+   * снаружи. Отдельным состоянием, а не производной от `frame`: `frame` —
+   * рамка ВЫДЕЛЕННОГО (обычно ребёнка), эта — рамка самой группы, размер
+   * почти всегда другой.
+   */
+  const [groupFrame, setGroupFrame] = useState<Frame | null>(null);
   /** Рамка в пикселях контейнера — то, что рисуется. `null` — жеста нет. */
   const [marquee, setMarquee] = useState<{
     left: number;
@@ -326,6 +339,72 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   >([]);
 
   const elements = segment.elements;
+
+  /**
+   * Группа, внутри которой сейчас автор, — ВЫВЕДЕНА из выделения
+   * (`activeGroupOf`, Сессия 36), а не отдельное состояние: см. её шапку
+   * в `groupElements.ts` за разбором, почему хранить отдельно было бы хуже.
+   *
+   * `activeGroupState` — состояние этой группы на ТЕКУЩЕМ слайде. Если его
+   * нет, приводить содержимое не к чему, и ниже это везде трактуется как
+   * «автор снаружи» — приводить не к чему в буквальном смысле.
+   */
+  const activeGroupId = activeGroupOf(elements, selectedIds);
+  const activeGroupState = activeGroupId !== undefined ? currentSlide.states[activeGroupId] : undefined;
+
+  /**
+   * Состояние ЛЮБОГО элемента → бокс СЦЕНЫ. У ребёнка группы координаты
+   * в состоянии ЛОКАЛЬНЫЕ (§14 журнала Сессии 35), и наивная подстановка
+   * `currentSlide.states[id]` в геометрию напрямую дала бы бокс у начала
+   * координат сцены — тот же призрак, что был в списке попаданий, только
+   * в другом месте. Родитель берётся из `elements`, а не из `activeGroupId`:
+   * помощник обязан работать для ЛЮБОГО ребёнка, а не только пока автор
+   * «официально внутри» его группы.
+   *
+   * Один помощник на ВСЕХ читателей геометрии выделенного: рамку
+   * (`syncFrame`), захват жеста (`beginGesture`, `handleGripDown`). Второе
+   * описание того же перевода разошлось бы с ним молча.
+   */
+  const sceneBoxOf = useCallback(
+    (id: string): Box | undefined => {
+      const state = currentSlide.states[id];
+      if (!state) return undefined;
+      const owner = elements.find((candidate) => candidate.id === id);
+      if (owner?.parentId !== undefined) {
+        const groupState = currentSlide.states[owner.parentId];
+        if (groupState) return childBoxInScene(boxOf(groupState), boxOf(state));
+      }
+      return boxOf(state);
+    },
+    [elements, currentSlide],
+  );
+
+  /**
+   * Обратная пара `sceneBoxOf`: бокс СЦЕНЫ, посчитанный жестом, → то, что
+   * обязано попасть в `ElementState`. У ребёнка группы это ЛОКАЛЬНЫЕ
+   * координаты (`childBoxInGroup`), у всех остальных — тот же бокс без
+   * изменений.
+   *
+   * Вся арифметика жеста (`moveBox`, `resizeBox`, `rotateBox`, прилипание)
+   * всегда считает в координатах сцены — план С36 §3а: перевести не дельту,
+   * а состояние целиком, и получить перевод дельты СЛЕДСТВИЕМ формулы,
+   * а не второй, независимо написанной. Без этого помощника запись жеста
+   * клала бы сценное число прямо в локальное поле — дефект, из-за которого
+   * заведена эта сессия: перетаскивание ребёнка внутри группы на N экранных
+   * пикселей давало переезд, кратно больший N, потому что запись добавляла
+   * жестовую дельту к координате, УЖЕ включающей смещение группы.
+   */
+  const localBoxFor = useCallback(
+    (id: string, box: Box): Box => {
+      const owner = elements.find((candidate) => candidate.id === id);
+      if (owner?.parentId !== undefined) {
+        const groupState = currentSlide.states[owner.parentId];
+        if (groupState) return childBoxInGroup(boxOf(groupState), box);
+      }
+      return box;
+    },
+    [elements, currentSlide],
+  );
 
   /** Требует контейнеры: их отсутствие означает сломанную разметку, а не штатный случай. */
   const requireNodes = useCallback((): {
@@ -360,12 +439,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     if (!preview) return;
     // Размер берётся у контейнера заново каждый раз. Сохранённому масштабу
     // доверять нельзя — прямое требование ADR-007.
-    if (!(host.clientWidth > 0 && host.clientHeight > 0)) return;
+    // Окно, меньшее зазора, рисовать нечем — и это не ошибка, а промежуточное
+    // состояние раскладки (панель тянут, окно схлопывают). Раньше здесь стояла
+    // проверка на положительность; зазор поднял порог, но не смысл.
+    if (!(host.clientWidth > 2 * STAGE_GAP_X && host.clientHeight > 2 * STAGE_GAP_Y)) return;
 
     // Вписывание считает ПЛЕЕР. Своя формула летербокса здесь была бы второй
     // реализацией вписывания (инвариант №5) и разошлась бы молча: на масштабе
     // 1 обе дают одно и то же.
-    const fitScale = fitStage(host.clientWidth, host.clientHeight, segment.stage).scale;
+    //
+    // Зазор вокруг сцены (Сессия 36) сделан НЕ правкой этой формулы, а тем,
+    // что ей отдаётся уменьшенное окно. Зритель видит сцену во весь экран,
+    // поля нужны только автору — значит плеер не трогается вовсе.
+    const fitHost = fitHostSize(host.clientWidth, host.clientHeight);
+    const fitScale = fitStage(fitHost.width, fitHost.height, segment.stage).scale;
     const scale = effectiveScale(zoomRef.current, fitScale);
     const size = canvasSize(segment.stage, scale, host.clientWidth, host.clientHeight);
     canvas.style.width = `${size.width}px`;
@@ -418,33 +505,57 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
   const syncFrame = useCallback((): void => {
     const { canvas, stage } = requireNodes();
+    const stageRect = stage.getBoundingClientRect();
+    const hostRect = canvas.getBoundingClientRect();
+
+    // Бокс СЦЕНЫ выделенного — общий помощник `sceneBoxOf` (объявлен выше,
+    // в области компонента): рамка обязана быть верной для ЛЮБОГО
+    // выделенного ребёнка, а не только пока автор «официально внутри» его
+    // группы (`activeGroupOf` требует, чтобы ВСЕ выделенные были детьми
+    // одной группы, — здесь такое допущение делать не для чего).
+
     // Рамка строится по тем выделенным, кто ЕСТЬ на этом слайде: элемент
     // может быть выделен и при этом не появляться в текущем кадре.
     const boxes = selectedIds
-      .map((id) => currentSlide.states[id])
-      .filter((state): state is ElementState => state !== undefined)
-      .map(boxOf);
+      .map((id) => sceneBoxOf(id))
+      .filter((box): box is Box => box !== undefined);
     const selectedState = boxes.length === 1 ? boxes[0]! : unionBox(boxes);
     if (!selectedState) {
       setFrame(null);
-      return;
+    } else {
+      // Прямоугольник берётся у ВНУТРЕННЕГО узла: у внешнего при летербоксе
+      // ширина другая, и масштаб вышел бы завышенным — тихо и правдоподобно.
+      const screen = boxToScreen(stageRect, segment.stage.width, selectedState);
+      setFrame({
+        left: screen.left - hostRect.left,
+        top: screen.top - hostRect.top,
+        width: screen.width,
+        height: screen.height,
+        rotation: selectedState.rotation,
+        // Тем же замером, что и сама рамка: Overlay выбирает по этому числу,
+        // помещается ли ручка поворота под рамкой (см. rotateSide).
+        canvasHeight: hostRect.height,
+      });
     }
-    // Прямоугольник берётся у ВНУТРЕННЕГО узла: у внешнего при летербоксе
-    // ширина другая, и масштаб вышел бы завышенным — тихо и правдоподобно.
-    const stageRect = stage.getBoundingClientRect();
-    const hostRect = canvas.getBoundingClientRect();
-    const screen = boxToScreen(stageRect, segment.stage.width, selectedState);
-    setFrame({
-      left: screen.left - hostRect.left,
-      top: screen.top - hostRect.top,
-      width: screen.width,
-      height: screen.height,
-      rotation: selectedState.rotation,
-      // Тем же замером, что и сама рамка: Overlay выбирает по этому числу,
-      // помещается ли ручка поворота под рамкой (см. rotateSide).
-      canvasHeight: hostRect.height,
-    });
-  }, [requireNodes, selectedIds, currentSlide, segment.stage.width]);
+
+    // Бледная рамка группы, пока автор внутри неё. ТЕМ ЖЕ замером
+    // (stageRect/hostRect выше), что и основная рамка: второй
+    // getBoundingClientRect здесь развёл бы два числа, которые обязаны
+    // совпасть в одном кадре.
+    if (activeGroupState) {
+      const screen = boxToScreen(stageRect, segment.stage.width, boxOf(activeGroupState));
+      setGroupFrame({
+        left: screen.left - hostRect.left,
+        top: screen.top - hostRect.top,
+        width: screen.width,
+        height: screen.height,
+        rotation: activeGroupState.rotation,
+        canvasHeight: hostRect.height,
+      });
+    } else {
+      setGroupFrame(null);
+    }
+  }, [requireNodes, selectedIds, currentSlide, segment.stage.width, sceneBoxOf, activeGroupState]);
 
   /**
    * Сегмент из ОДНОГО слайда — то, что реально показывает и правит сцена.
@@ -622,40 +733,61 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
    * это ответ самого рендера на вопрос «что сейчас на экране», а не вторая
    * реализация той же логики.
    */
+  /**
+   * Кандидаты на попадание указателя. У ЧЕТЫРЁХ вызывающих (попадание,
+   * прилипание при перетаскивании, прилипание при ресайзе, обведение рамкой)
+   * список один и тот же намеренно: отдельное правило для любого из них было
+   * бы вторым описанием одного факта, а такие расходятся молча.
+   *
+   * Снаружи группы (`activeGroupId === undefined`, или у группы нет состояния
+   * на этом слайде — приводить не к чему) поведение прежнее: кандидаты —
+   * элементы верхнего уровня, группа неделима для указателя, её бокс — охват
+   * содержимого.
+   *
+   * Внутри группы G (автор вошёл двойным щелчком, Сессия 36) кандидаты — дети
+   * G, ПРИВЕДЁННЫЕ К СЦЕНЕ через `childBoxInScene`, плюс элементы верхнего
+   * уровня, кроме самой G. Приведение обязательно, а не просто снятый фильтр:
+   * боксы, взятые из состояний напрямую, — ЛОКАЛЬНЫЕ координаты ребёнка,
+   * и без пересчёта содержимое стало бы призраком у начала координат сцены —
+   * тем самым дефектом, из-за которого содержимое групп раньше отсеивалось
+   * целиком (§14 журнала Сессии 35, разбор — там же).
+   */
   const visibleLayers = useCallback(
-    (): readonly (Box & { zIndex: number; id: string })[] =>
-      elements
-        /**
-         * Содержимое групп в список кандидатов НЕ ПОПАДАЕТ, и это не про
-         * выделение, а про координаты.
-         *
-         * Боксы здесь строятся из состояний напрямую и считаются СЦЕНHЫМИ.
-         * У ребёнка группы координаты ЛОКАЛЬНЫЕ — `state.x: 40` означает
-         * «40 от левого края группы». Оставь его в списке, и он будет
-         * числиться стоящим у начала координат сцены, там, где на экране
-         * пусто: автор щёлкает по пустому холсту, а выделяется объект,
-         * которого он там не видит. Проверено e2e, а не рассуждением —
-         * первая попытка проверить дала ложную зелень.
-         *
-         * Отсеивание заодно и есть то, что делает группу неделимой для
-         * указателя: попасть можно только в неё, её бокс — охват содержимого.
-         * Заход внутрь двойным щелчком (Сессия 36) снимет это ограничение,
-         * и тогда координаты придётся приводить к сцене, а не отсеивать.
-         */
-        .filter((element) => element.parentId === undefined)
-        .filter((element) => isVisible(element.id))
-        .map((element) => {
-          const state = currentSlide.states[element.id]!; // isVisible гарантирует отрисованный узел ⇒ состояние есть
-          return { ...boxOf(state), zIndex: state.zIndex, id: element.id };
-        }),
-    [elements, currentSlide, isVisible],
+    (): readonly (Box & { zIndex: number; id: string })[] => {
+      const groupBox = activeGroupState ? boxOf(activeGroupState) : undefined;
+      const layers: (Box & { zIndex: number; id: string })[] = [];
+
+      for (const element of elements) {
+        if (!isVisible(element.id)) continue;
+        const state = currentSlide.states[element.id];
+        if (!state) continue; // isVisible гарантирует отрисованный узел ⇒ обычно есть, но защититься дёшево
+
+        if (groupBox !== undefined) {
+          if (element.id === activeGroupId) continue; // сама группа недоступна, пока автор внутри
+          if (element.parentId === activeGroupId) {
+            const scene = childBoxInScene(groupBox, boxOf(state));
+            layers.push({ ...scene, zIndex: state.zIndex, id: element.id });
+            continue;
+          }
+          if (element.parentId !== undefined) continue; // содержимое ЧУЖОЙ группы недоступно
+          layers.push({ ...boxOf(state), zIndex: state.zIndex, id: element.id });
+          continue;
+        }
+
+        if (element.parentId !== undefined) continue; // снаружи — содержимое любой группы недоступно
+        layers.push({ ...boxOf(state), zIndex: state.zIndex, id: element.id });
+      }
+
+      return layers;
+    },
+    [elements, currentSlide, isVisible, activeGroupId, activeGroupState],
   );
 
   /**
-   * Верхний по стопке под точкой. Содержимое групп сюда не приходит вовсе:
-   * `visibleLayers` его отсеивает, и попасть указателем можно только
-   * в элемент верхнего уровня. Группа поэтому неделима для мыши,
-   * а её бокс — охват содержимого.
+   * Верхний по стопке под точкой. Снаружи группы содержимое сюда не
+   * приходит — `visibleLayers` его отсеивает, и попасть указателем можно
+   * только в элемент верхнего уровня. Внутри группы попасть можно и в её
+   * детей, приведённых к сцене (см. `visibleLayers` выше).
    */
   const hitElementAt = useCallback(
     (point: Point): { id: string; box: Box } | undefined => {
@@ -681,10 +813,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       const startBoxes = new Map<string, Box>([[elementId, box]]);
       for (const id of alsoMove) {
         if (id === elementId) continue;
-        const state = currentSlide.states[id];
-        // Выделенный, которого нет на этом слайде, не двигается: двигать
-        // нечего. Это не ошибка — элемент просто не появляется в этом кадре.
-        if (state) startBoxes.set(id, boxOf(state));
+        // `sceneBoxOf`, а не `boxOf(currentSlide.states[id])` напрямую: среди
+        // `alsoMove` может быть ребёнок группы (несколько выделенных детей
+        // одной активной группы), а его координаты в состоянии ЛОКАЛЬНЫЕ.
+        // `undefined` — выделенный, которого нет на этом слайде: двигать
+        // нечего, это не ошибка, элемент просто не появляется в этом кадре.
+        const sceneBox = sceneBoxOf(id);
+        if (sceneBox) startBoxes.set(id, sceneBox);
       }
 
       // Содержимое группы снимается ВСЕГДА, а не только под ручку: узнать
@@ -724,7 +859,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // список элементов только что изменился, и устаревшее замыкание не нашло
     // бы у новой группы ни одного ребёнка — ручка масштабировала бы пустую
     // рамку, молча.
-    [requireNodes, scenePointOf, elements, currentSlide],
+    [requireNodes, scenePointOf, elements, currentSlide, sceneBoxOf],
   );
 
   /**
@@ -869,9 +1004,38 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       if (!hit) return;
       const element = elements.find((candidate) => candidate.id === hit.id);
       if (!element) throw new Error(`Двойной клик в элемент «${hit.id}», которого нет в сцене`);
+
+      if (element.type === 'group') {
+        /**
+         * Войти внутрь (Сессия 36, решение владельца): среди детей ЭТОЙ
+         * группы, приведённых к сцене, найти верхнего под точкой и выделить
+         * его. Под точкой никого (щелчок в просвет между детьми) —
+         * выделение остаётся как было, автор просто промахнулся.
+         *
+         * Считается заново, а не через `visibleLayers`: та отдаёт детей лишь
+         * группы, в которой автор уже «официально внутри» (`activeGroupId`),
+         * а щелчок, которым он туда попадает, происходит ДО того, как это
+         * состояние возникнет.
+         */
+        const groupState = currentSlide.states[element.id];
+        if (!groupState) return; // группы нет на этом слайде — заходить некуда
+        const groupBox = boxOf(groupState);
+        const children = elements
+          .filter((candidate) => candidate.parentId === element.id)
+          .filter((candidate) => isVisible(candidate.id))
+          .map((candidate) => {
+            const state = currentSlide.states[candidate.id]!; // isVisible гарантирует состояние
+            const scene = childBoxInScene(groupBox, boxOf(state));
+            return { ...scene, zIndex: state.zIndex, id: candidate.id };
+          });
+        const childHit = topmostAt(children, point);
+        if (childHit) onSelect(childHit.id);
+        return;
+      }
+
       beginTextEdit(element, event);
     },
-    [scenePointOf, hitElementAt, elements, beginTextEdit],
+    [scenePointOf, hitElementAt, elements, beginTextEdit, currentSlide, isVisible, onSelect],
   );
 
   const handleStageDown = useCallback(
@@ -965,11 +1129,14 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // сюда нельзя попасть с пачкой — а если попали, это сломанная разметка.
       const soleId = selectedIds.length === 1 ? selectedIds[0] : undefined;
       if (soleId === undefined) throw new Error('Ручка нажата без единственного выделенного элемента');
-      const state = currentSlide.states[soleId];
-      if (!state) throw new Error(`У выделенного элемента «${soleId}» нет состояния на текущем слайде`);
-      beginGesture(grip, soleId, boxOf(state), event);
+      // `sceneBoxOf`, а не `boxOf(currentSlide.states[soleId])` напрямую: ручка
+      // может стоять у ребёнка группы, чьи координаты в состоянии ЛОКАЛЬНЫЕ —
+      // жест обязан начинаться от бокса СЦЕНЫ, как и вся остальная геометрия.
+      const box = sceneBoxOf(soleId);
+      if (!box) throw new Error(`У выделенного элемента «${soleId}» нет состояния на текущем слайде`);
+      beginGesture(grip, soleId, box, event);
     },
-    [selectedIds, currentSlide, beginGesture],
+    [selectedIds, sceneBoxOf, beginGesture],
   );
 
   const handleMove = useCallback(
@@ -1044,7 +1211,13 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
 
         for (const [id, startBox] of gesture.startBoxes) {
           const moved = moveBox(startBox, dx, dy);
-          onElementStateChange(id, { x: round(moved.x), y: round(moved.y) });
+          // `localBoxFor`: `moved` — бокс СЦЕНЫ (дельта жеста и прилипание
+          // считают только в ней). У ребёнка группы в `ElementState` обязаны
+          // остаться ЛОКАЛЬНЫЕ координаты — без перевода сценное число легло
+          // бы прямо в локальное поле, ровно тот дефект, ради которого
+          // заведена эта сессия.
+          const local = localBoxFor(id, moved);
+          onElementStateChange(id, { x: round(local.x), y: round(local.y) });
         }
         return;
       }
@@ -1080,12 +1253,16 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         setGuides(guidesToHost(result.guides));
       }
 
+      // `localBoxFor`: `next` — бокс СЦЕНЫ (ресайз и поворот тоже считают
+      // только в ней, как и перетаскивание выше). У ребёнка группы это
+      // приводит результат к ЛОКАЛЬНЫМ координатам перед записью.
+      const local = localBoxFor(gesture.elementId, next);
       onElementStateChange(gesture.elementId, {
-        x: round(next.x),
-        y: round(next.y),
-        width: round(next.width),
-        height: round(next.height),
-        rotation: round(next.rotation),
+        x: round(local.x),
+        y: round(local.y),
+        width: round(local.width),
+        height: round(local.height),
+        rotation: round(local.rotation),
       });
 
       /**
@@ -1098,12 +1275,18 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
        * иначе на каждом `pointermove` они перемножались бы, и содержимое
        * улетело бы степенью за одно движение.
        *
-       * Умножение локальных координат на множитель — и есть весь пересчёт:
-       * они отсчитываются от левого верхнего угла группы, значит масштаб
+       * **Пространство здесь ЛОКАЛЬНОЕ, и это не упущение** (ADR-007: не
+       * смешивать пространства, а не приводить всё к одному). Умножение
+       * локальных координат на множитель — и есть весь пересчёт: они
+       * отсчитываются от левого верхнего угла ГРУППЫ, значит масштаб
        * относительно этого угла применяется к ним напрямую, каким бы боком
-       * ни тянули. Поворот сюда не попадает: `rotateBox` размера не меняет,
-       * множители вышли бы единичными, а содержимое поворачивается само —
-       * узел группы его предок.
+       * ни тянули. `localBoxFor`/`sceneBoxOf` (перевод через центр группы,
+       * с поворотом) сюда не подходят и не нужны: у содержимого группы нет
+       * своего родителя выше неё, приводить содержимое к сцене и обратно
+       * значило бы дважды применить одно и то же преобразование. Поворот
+       * сюда тоже не попадает: `rotateBox` размера не меняет, множители
+       * вышли бы единичными, а содержимое поворачивается само — узел группы
+       * его предок.
        */
       if (gesture.grip !== 'rotate' && gesture.startChildren.size > 0) {
         const sx = gesture.startBox.width === 0 ? 1 : next.width / gesture.startBox.width;
@@ -1118,7 +1301,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
         }
       }
     },
-    [scenePointOf, onElementStateChange, requireNodes, segment.stage.width],
+    [scenePointOf, onElementStateChange, requireNodes, segment.stage.width, localBoxFor],
   );
 
   const endGesture = useCallback(
@@ -1175,13 +1358,79 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       if (!moved && gesture.grip === 'body' && gesture.startBoxes.size > 1) {
         onSelect(gesture.elementId);
       }
+
+      /**
+       * Охват группы следует за содержимым (план С36 §8, `reflowGroup`,
+       * `state/groupElements.ts`).
+       *
+       * Зовётся ЗДЕСЬ — на завершении жеста, а не на каждом кадре
+       * `handleMove`. Живой пересчёт дал бы обратную связь самому себе: жест
+       * держит стартовые боксы в СТАРОЙ системе координат группы (см.
+       * `Gesture.startBox`/`startBoxes`), а `reflowGroup` эту систему
+       * меняет. Видимая цена — бледная рамка группы догоняет содержимое
+       * на отпускании, а не тянется за ним следом; так и задумано.
+       *
+       * Срабатывает, только если жест реально подвинул взятый элемент,
+       * и тот — РЕБЁНОК группы. Перетаскивание/ресайз самой группы сюда
+       * не попадает (у нею нет `parentId`) — её содержимое уже держится
+       * плотным умножением на множитель (комментарий выше, «Ручка размера
+       * у группы…»), и повторный пересчёт там был бы вторым описанием того
+       * же результата.
+       */
+      if (moved) {
+        const owner = elements.find((candidate) => candidate.id === gesture.elementId);
+        const groupId = owner?.parentId;
+        const groupState = groupId !== undefined ? currentSlide.states[groupId] : undefined;
+        if (groupId !== undefined && groupState) {
+          const children = elements
+            .filter((candidate) => candidate.parentId === groupId)
+            .map((candidate): { id: string; box: Box } | undefined => {
+              const state = currentSlide.states[candidate.id];
+              return state ? { id: candidate.id, box: boxOf(state) } : undefined;
+            })
+            .filter((child): child is { id: string; box: Box } => child !== undefined);
+
+          const reflow = reflowGroup(boxOf(groupState), children);
+          if (reflow) {
+            onElementStateChange(groupId, {
+              x: round(reflow.group.x),
+              y: round(reflow.group.y),
+              width: round(reflow.group.width),
+              height: round(reflow.group.height),
+              rotation: round(reflow.group.rotation),
+            });
+            for (const child of reflow.children) {
+              onElementStateChange(child.id, {
+                x: round(child.box.x),
+                y: round(child.box.y),
+                width: round(child.box.width),
+                height: round(child.box.height),
+                rotation: round(child.box.rotation),
+              });
+            }
+          }
+        }
+      }
+
       // Коммит-точка жеста (срез 2): если движение и правда было,
-      // `onElementStateChange` уже записал финальное значение — здесь только
-      // закрываем шаг истории. Если жеста фактически не было (простой клик
-      // без движения), это безопасный no-op на стороне историй.
+      // `onElementStateChange` уже записал финальное значение (включая
+      // пересчёт охвата группы выше) — здесь только закрываем шаг истории,
+      // ОДНИМ шагом на весь жест. Если жеста фактически не было (простой
+      // клик без движения), это безопасный no-op на стороне историй.
       onCommitHistory();
     },
-    [onCommitHistory, onSelect, onSelectMany, marquee, requireNodes, scenePointOf, visibleLayers],
+    [
+      onCommitHistory,
+      onSelect,
+      onSelectMany,
+      onElementStateChange,
+      marquee,
+      requireNodes,
+      scenePointOf,
+      visibleLayers,
+      elements,
+      currentSlide,
+    ],
   );
 
   /**
@@ -1292,6 +1541,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
           ) : null}
           <Overlay
             frame={frame}
+            groupFrame={groupFrame}
             showHandles={selectedIds.length === 1}
             onGripDown={handleGripDown}
           />

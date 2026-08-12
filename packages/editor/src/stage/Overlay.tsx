@@ -39,6 +39,15 @@ export interface OverlayProps {
   /** null — выделения нет, рисовать нечего. */
   frame: Frame | null;
   /**
+   * Бледная рамка группы, пока автор внутри неё (Сессия 36, решение
+   * владельца). `null` или `undefined` — автор снаружи, не рисовать.
+   *
+   * Отдельная величина, а не производная от `frame`: `frame` — это рамка
+   * ВЫДЕЛЕННОГО (обычно ребёнка группы), а эта — рамка САМОЙ группы, и они
+   * почти всегда разного размера.
+   */
+  groupFrame?: Frame | null;
+  /**
    * Рисовать ли ручки. `false` при множественном выделении: тянуть общую
    * рамку пока нечем — изменение размера пачки потребовало бы масштабировать
    * каждого относительно этой рамки, а своей геометрии у неё нет.
@@ -109,9 +118,44 @@ const HANDLES: readonly { grip: ResizeHandle; x: number; y: number; cursor: stri
   { grip: 'w', x: 0, y: 0.5, cursor: 'ew-resize' },
 ];
 
-export function Overlay({ frame, showHandles, onGripDown }: OverlayProps): ReactElement | null {
-  if (!frame) return null;
+export function Overlay({ frame, groupFrame, showHandles, onGripDown }: OverlayProps): ReactElement | null {
+  if (!frame && !groupFrame) return null;
 
+  return (
+    <>
+      {/*
+        Рамка группы рисуется ПЕРВОЙ — то есть НИЖЕ рамки выделения в порядке
+        отрисовки: ни у одной, ни у другой нет своего z-index, а более поздний
+        узел в DOM ложится поверх более раннего. Своих ручек у неё нет —
+        рамка группы только показывает контекст, тянуть за неё нечем.
+      */}
+      {groupFrame ? (
+        <div
+          className="ed-group-frame"
+          data-testid="group-frame"
+          style={{
+            left: `${groupFrame.left}px`,
+            top: `${groupFrame.top}px`,
+            width: `${groupFrame.width}px`,
+            height: `${groupFrame.height}px`,
+            transform: groupFrame.rotation ? `rotate(${groupFrame.rotation}deg)` : undefined,
+          }}
+        />
+      ) : null}
+      {frame ? <SelectionFrame frame={frame} showHandles={showHandles} onGripDown={onGripDown} /> : null}
+    </>
+  );
+}
+
+function SelectionFrame({
+  frame,
+  showHandles,
+  onGripDown,
+}: {
+  frame: Frame;
+  showHandles: boolean;
+  onGripDown: (grip: Grip, event: ReactPointerEvent<HTMLElement>) => void;
+}): ReactElement {
   const side = rotateSide(frame);
 
   return (

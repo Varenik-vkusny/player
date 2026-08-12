@@ -72,6 +72,44 @@ async function drag(page: Page, from: { x: number; y: number }, dx: number, dy: 
 }
 
 test.describe('масштаб холста', () => {
+  /**
+   * Зазор вокруг сцены (Сессия 36, решение владельца 12.08.2026; числа сняты
+   * с живой Canva — `docs/research/2026-08-12-canva-stage-gap.md`).
+   *
+   * Проверяется то, что ВИДИТ автор: край сцены не совпадает с краем области
+   * холста. Ради этого зазор и заведён — ручки размера стоят центром на краю
+   * рамки и выступают за неё на 5 px, а точка ровно на границе достаётся
+   * соседнему узлу.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ: обнуление `STAGE_GAP_X`/
+   * `STAGE_GAP_Y` или возврат вписывания к полному размеру окна.
+   *
+   * Сверяется НЕ с константой из кода, а с независимым числом: тест не должен
+   * оставаться зелёным при любом значении зазора, включая ноль.
+   */
+  test('при вписывании между краем сцены и краем области холста есть поле', async ({ page }) => {
+    await openEditor(page, 'demo');
+
+    const gaps = await page.evaluate(() => {
+      const host = document.querySelector('.ed-stage-host')!.getBoundingClientRect();
+      // Фон `bg` занимает всю сцену — его бокс и есть бокс сцены на экране.
+      const scene = document.querySelector('[data-id="bg"]')!.getBoundingClientRect();
+      return {
+        top: scene.top - host.top,
+        bottom: host.bottom - scene.bottom,
+        left: scene.left - host.left,
+        right: host.right - scene.right,
+      };
+    });
+
+    // По ведущей оси поле равно зазору, по ведомой — больше него. Нижняя
+    // граница проверяется по обеим: именно НИЖНИЕ ручки были недостижимы.
+    expect(gaps.top, `сверху поле ${gaps.top.toFixed(1)}px`).toBeGreaterThanOrEqual(15);
+    expect(gaps.bottom, `снизу поле ${gaps.bottom.toFixed(1)}px`).toBeGreaterThanOrEqual(15);
+    expect(gaps.left, `слева поле ${gaps.left.toFixed(1)}px`).toBeGreaterThanOrEqual(15);
+    expect(gaps.right, `справа поле ${gaps.right.toFixed(1)}px`).toBeGreaterThanOrEqual(15);
+  });
+
   test('по умолчанию сцена вписана, и полотно равно окну холста', async ({ page }) => {
     // Несущее свойство совместимости: пока автор не тронул масштаб, картинка
     // обязана остаться ровно той, что была до появления этой возможности.
@@ -176,12 +214,26 @@ test.describe('масштаб холста', () => {
   test('складывание озвучки пересчитывает вписывание по НОВОЙ высоте холста', async ({ page }) => {
     await openEditor(page, 'morph');
 
-    /** Каким вписывание ОБЯЗАНО быть при нынешнем размере холста. */
+    /**
+     * Каким вписывание ОБЯЗАНО быть при нынешнем размере холста.
+     *
+     * Зазор вокруг сцены (Сессия 36, `STAGE_GAP_X`/`STAGE_GAP_Y` в
+     * `stage/zoom.ts`, числа сняты с живой Canva) входит сюда, потому что
+     * вписывание считается от окна ЗА ВЫЧЕТОМ зазора. Проверяемое свойство
+     * от этого не изменилось: масштаб обязан отвечать НЫНЕШНЕМУ размеру
+     * холста, а не сохранённому. Изменилась только формула ожидания —
+     * вместе с самим вписыванием, а не ради зелени.
+     */
     const fitFromHost = async (): Promise<number> =>
       page.evaluate(() => {
         const host = document.querySelector('.ed-stage-host');
         if (!host) throw new Error('нет .ed-stage-host');
-        return Math.min(host.clientWidth / 1920, host.clientHeight / 1080);
+        const GAP_X = 24;
+        const GAP_Y = 16;
+        return Math.min(
+          (host.clientWidth - 2 * GAP_X) / 1920,
+          (host.clientHeight - 2 * GAP_Y) / 1080,
+        );
       });
 
     const hostHeight = async (): Promise<number> =>
