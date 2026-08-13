@@ -71,6 +71,14 @@ export { allSegments, entrySegmentOf, ScenePreview, segmentOf, type Segment } fr
 export { answersToClear, openableGates } from './repeat.js';
 export { SlideEngine, type SlideEngineOptions } from './slides.js';
 export {
+  collectVideos,
+  pauseVideos,
+  startVideos,
+  syncVideos,
+  VIDEO_RESYNC_S,
+  type TimedVideo,
+} from './video.js';
+export {
   isCorrect,
   Player,
   type GateAnswer,

@@ -1,0 +1,107 @@
+{
+  "schemaVersion": 11,
+  "meta": {
+    "title": "Видео: говорящая голова в круге",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-head",
+  "segments": [
+    {
+      "id": "s-head",
+      "title": "Голова говорит, слайды идут под ней",
+      "audio": {
+        "src": "/video/talking-head.mp4",
+        "offset": 2,
+        "duration": 4,
+        "words": []
+      },
+      "elements": [
+        { "id": "bg", "type": "shape", "content": "" },
+        { "id": "caption", "type": "text", "content": "Голова говорит в круге" },
+        { "id": "head", "type": "video", "content": "/video/talking-head.mp4" }
+      ],
+      "slides": [
+        {
+          "id": "v-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "caption": {
+              "x": 160, "y": 220, "width": 1200, "height": 120,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "64px", "font-family": "system-ui, sans-serif" }
+            },
+            "head": {
+              "x": 1320, "y": 620, "width": 360, "height": 360,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "border-radius": "50%", "background": "#000000" }
+            }
+          }
+        },
+        {
+          "id": "v-2",
+          "at": { "kind": "seconds", "t": 1.5 },
+          "transition": "morph",
+          "transitionSeconds": 0.5,
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "caption": {
+              "x": 160, "y": 220, "width": 1200, "height": 120,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "64px", "font-family": "system-ui, sans-serif" }
+            },
+            "head": {
+              "x": 1220, "y": 520, "width": 480, "height": 480,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "border-radius": "50%", "background": "#000000" }
+            }
+          }
+        },
+        {
+          "id": "v-3",
+          "at": { "kind": "seconds", "t": 3 },
+          "transition": "morph",
+          "transitionSeconds": 0.5,
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "caption": {
+              "x": 160, "y": 220, "width": 1200, "height": 120,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "color": "#f5f7fa", "font-size": "64px", "font-family": "system-ui, sans-serif" }
+            },
+            "head": {
+              "x": 760, "y": 300, "width": 400, "height": 400,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "border-radius": "50%", "background": "#000000" }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-video",
+          "at": { "kind": "seconds", "t": 2 },
+          "config": { "kind": "continue", "label": "Дальше" },
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "recordAs": "видел-голову"
+        }
+      ],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

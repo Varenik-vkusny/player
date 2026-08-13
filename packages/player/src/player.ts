@@ -19,6 +19,7 @@ import { applyFit } from './render.js';
 import { allSegments, entrySegmentOf, segmentOf, type Segment } from './preview.js';
 import { answersToClear, openableGates } from './repeat.js';
 import { SlideEngine } from './slides.js';
+import { collectVideos, pauseVideos, startVideos, syncVideos } from './video.js';
 
 /**
  * `at-reveal` — открыт разбор на месте: гейт уже отвечен неверно, ответ
@@ -549,6 +550,10 @@ export class Player {
 
     clock.start(this.#state === 'ended' ? this.#toClockTime(0) : clock.position);
     if (this.#state === 'ended') this.#nextGateIndex = 0;
+    // ПОСЛЕ clock.start: позиция берётся у часов, уже получивших якорь,
+    // а не считается здесь заново. Два описания одного вычисления
+    // расходятся тихо (ADR-028).
+    startVideos(collectVideos(this.#stage), clock.position);
     this.#setState('playing');
     this.#startFrameLoop();
   }
@@ -572,6 +577,11 @@ export class Player {
       const position = this.#toSegmentTime(clock.position);
       // Инвариант №2 в одной строке: время сцены = время аудио.
       slides.seekSeconds(position);
+      // Видео сверяется по позиции ДОРОЖКИ, а не сегмента: при сценарии
+      // «один файл» медиавремя картинки совпадает с медиавременем звука,
+      // а время сегмента отличается от него на `audio.offset`. При нулевом
+      // окне обе шкалы совпадают, и ошибка была бы невидима (ADR-028).
+      syncVideos(collectVideos(this.#stage), clock.position);
       this.#events.onFrame?.(position);
 
       if (this.#gateDueAt(position)) {
@@ -784,6 +794,10 @@ export class Player {
     const scheduled = this.#gates[this.#nextGateIndex];
     if (!scheduled) throw new Error('Нет гейта для открытия');
 
+    // Гейт останавливает ВСЁ сразу (инвариант №4), картинку в том числе.
+    // Одна точка на все виды гейта, включая гейт на нулевой секунде, где
+    // видео ещё не играло: пауза уже остановленного безвредна.
+    pauseVideos(collectVideos(this.#stage));
     this.#stopFrameLoop();
     this.#stage.style.pointerEvents = 'auto';
     this.#setState('at-gate');
@@ -903,12 +917,16 @@ export class Player {
     // Возобновление с ТОЙ ЖЕ позиции. Перемотки не возникает по построению:
     // источник стартует с числа, записанного при остановке.
     await clock.resumeFromFreeze();
+    // Возобновление — тот же пуск по расписанию, что и в play(): позиция
+    // берётся у часов после разморозки, а не запоминается до неё.
+    startVideos(collectVideos(this.#stage), clock.position);
     this.#setState('playing');
     this.#startFrameLoop();
   }
 
   #finish(): void {
     this.#stopFrameLoop();
+    pauseVideos(collectVideos(this.#stage));
     this.#dropPending();
     this.#clock?.stop();
     this.#setState('ended');
@@ -923,6 +941,7 @@ export class Player {
 
   destroy(): void {
     this.#stopFrameLoop();
+    pauseVideos(collectVideos(this.#stage));
     this.#dropPending();
     this.#resizeObserver?.disconnect();
     this.#clock?.stop();

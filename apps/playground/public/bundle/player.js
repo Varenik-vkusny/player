@@ -5727,6 +5727,7 @@ fu("text", (e, t) => {
 }), fu("shape", (e) => {
 	e.textContent = "";
 }), fu("video", (e, t) => {
+	e.style.overflow = "hidden";
 	let n = e.firstElementChild;
 	if (!(n instanceof HTMLVideoElement)) {
 		e.textContent = "", n = e.appendChild(document.createElement("video"));
@@ -6021,8 +6022,27 @@ function ku(e, t) {
 	return n;
 }
 //#endregion
+//#region packages/player/src/video.ts
+var Au = .25;
+function ju(e) {
+	return [...e.querySelectorAll("video")];
+}
+function Mu(e, t) {
+	let n = 0;
+	for (let r of e) r.src !== "" && Math.abs(r.currentTime - t) > .25 && (r.currentTime = t, n += 1);
+	return n;
+}
+function Nu(e, t) {
+	for (let n of e) n.src !== "" && (n.currentTime = t, n.play().catch((e) => {
+		console.error("[video] play() отклонён, картинка встанет при идущем звуке:", e);
+	}));
+}
+function Pu(e) {
+	for (let t of e) t.src !== "" && t.pause();
+}
+//#endregion
 //#region packages/player/src/player.ts
-var Au = 2, ju = .4, Mu = class {
+var Fu = 2, Iu = .4, Lu = class {
 	#e;
 	#t;
 	#n;
@@ -6159,7 +6179,7 @@ var Au = 2, ju = .4, Mu = class {
 				e.holdBeforeStart(this.#T(0)), this.#U();
 				return;
 			}
-			e.start(this.#m === "ended" ? this.#T(0) : e.position), this.#m === "ended" && (this.#f = 0), this.#D("playing"), this.#F();
+			e.start(this.#m === "ended" ? this.#T(0) : e.position), this.#m === "ended" && (this.#f = 0), Nu(ju(this.#t), e.position), this.#D("playing"), this.#F();
 		}
 	}
 	#P(e) {
@@ -6170,7 +6190,7 @@ var Au = 2, ju = .4, Mu = class {
 		let e = () => {
 			if (this.#m !== "playing") return;
 			let t = this.#Y(), n = this.#X(), r = this.#w(t.position);
-			if (n.seekSeconds(r), this.#r.onFrame?.(r), this.#P(r)) {
+			if (n.seekSeconds(r), Mu(ju(this.#t), t.position), this.#r.onFrame?.(r), this.#P(r)) {
 				this.#H();
 				return;
 			}
@@ -6193,9 +6213,9 @@ var Au = 2, ju = .4, Mu = class {
 		let n = zo(Fo(this.#n, this.#i), this.#c);
 		if (n === null) return;
 		let r = n.goto, i = this.#a.duration - e;
-		if (i > Au) return;
+		if (i > Fu) return;
 		let a = wu(this.#n, r), o = a.source;
-		if (i > ju) {
+		if (i > Iu) {
 			this.#o.warm(o);
 			return;
 		}
@@ -6243,7 +6263,7 @@ var Au = 2, ju = .4, Mu = class {
 	#U() {
 		let e = this.#d[this.#f];
 		if (!e) throw Error("Нет гейта для открытия");
-		this.#J(), this.#t.style.pointerEvents = "auto", this.#D("at-gate"), this.#W();
+		Pu(ju(this.#t)), this.#J(), this.#t.style.pointerEvents = "auto", this.#D("at-gate"), this.#W();
 		let t = this.#j(e.gate);
 		this.#r.onGateOpen?.(e.gate, t);
 	}
@@ -6262,7 +6282,7 @@ var Au = 2, ju = .4, Mu = class {
 		}
 		let r = (this.#p.get(n.id) ?? 0) + 1;
 		this.#p.set(n.id, r);
-		let i = Nu(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
+		let i = Ru(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
 		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
 		let s = {
 			gate: n,
@@ -6293,16 +6313,16 @@ var Au = 2, ju = .4, Mu = class {
 	}
 	async #K() {
 		let e = this.#Y();
-		this.#y = null, this.#N(), this.#t.style.pointerEvents = "none", this.#f += 1, await e.resumeFromFreeze(), this.#D("playing"), this.#F();
+		this.#y = null, this.#N(), this.#t.style.pointerEvents = "none", this.#f += 1, await e.resumeFromFreeze(), Nu(ju(this.#t), e.position), this.#D("playing"), this.#F();
 	}
 	#q() {
-		this.#J(), this.#R(), this.#l?.stop(), this.#D("ended");
+		this.#J(), Pu(ju(this.#t)), this.#R(), this.#l?.stop(), this.#D("ended");
 	}
 	#J() {
 		this.#h !== null && (cancelAnimationFrame(this.#h), this.#h = null);
 	}
 	destroy() {
-		this.#J(), this.#R(), this.#g?.disconnect(), this.#l?.stop(), this.#u?.destroy(), this.#o.close(), this.#t.remove(), this.#D("idle");
+		this.#J(), Pu(ju(this.#t)), this.#R(), this.#g?.disconnect(), this.#l?.stop(), this.#u?.destroy(), this.#o.close(), this.#t.remove(), this.#D("idle");
 	}
 	#Y() {
 		if (!this.#l) throw Error("Плеер не загружен: сначала load()");
@@ -6313,7 +6333,7 @@ var Au = 2, ju = .4, Mu = class {
 		return this.#u;
 	}
 };
-function Nu(e, t) {
+function Ru(e, t) {
 	let n = e.config;
 	switch (n.kind) {
 		case "continue": return !0;
@@ -6326,4 +6346,4 @@ function Nu(e, t) {
 	}
 }
 //#endregion
-export { is as AudioClock, as as AudioClocks, hu as DEFAULT_STAGE_HEIGHT, mu as DEFAULT_STAGE_WIDTH, Gl as FROZEN_DIRECTION, Mu as Player, Ho as ProjectLoadError, Du as ScenePreview, Cu as SlideEngine, Wl as TECHNIQUE_PROPS, ql as UNMATCHED_FRACTION, $l as WHOLE_SCENE, Eu as allSegments, ku as answersToClear, vu as applyElement, xu as applyFit, _u as applyTheme, uu as buildMorph, Tu as entrySegmentOf, gu as fitStage, Xo as getAudio, pu as getElementRenderer, eu as halfStates, Yl as indexAt, Nu as isCorrect, Ql as layoutStatesFor, Uo as loadProject, ns as loadTrack, Jl as morphSecondsFor, Kl as motionOf, Ou as openableGates, Xl as phaseAt, Zl as planMorph, yu as planPlacement, Yo as putAudio, fu as registerElementRenderer, Qo as releaseAudioUrl, bu as renderScene, Zo as resolveAudioUrl, wu as segmentOf };
+export { is as AudioClock, as as AudioClocks, hu as DEFAULT_STAGE_HEIGHT, mu as DEFAULT_STAGE_WIDTH, Gl as FROZEN_DIRECTION, Lu as Player, Ho as ProjectLoadError, Du as ScenePreview, Cu as SlideEngine, Wl as TECHNIQUE_PROPS, ql as UNMATCHED_FRACTION, Au as VIDEO_RESYNC_S, $l as WHOLE_SCENE, Eu as allSegments, ku as answersToClear, vu as applyElement, xu as applyFit, _u as applyTheme, uu as buildMorph, ju as collectVideos, Tu as entrySegmentOf, gu as fitStage, Xo as getAudio, pu as getElementRenderer, eu as halfStates, Yl as indexAt, Ru as isCorrect, Ql as layoutStatesFor, Uo as loadProject, ns as loadTrack, Jl as morphSecondsFor, Kl as motionOf, Ou as openableGates, Pu as pauseVideos, Xl as phaseAt, Zl as planMorph, yu as planPlacement, Yo as putAudio, fu as registerElementRenderer, Qo as releaseAudioUrl, bu as renderScene, Zo as resolveAudioUrl, wu as segmentOf, Nu as startVideos, Mu as syncVideos };
