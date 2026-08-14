@@ -27,7 +27,7 @@ import {
 } from 'react';
 
 import type {
-  Condition, Element, ElementState, Gate, Project, Slide, Theme, TimeRef,
+  Condition, Element, ElementState, Gate, Project, Slide, Style, Theme, TimeRef,
   TransitionDirection, Word,
 } from '@player/core';
 import { findSegment } from '@player/core';
@@ -57,6 +57,7 @@ import { InsertPanel } from './panels/InsertPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
 import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js';
 import { SlidePanel } from './panels/SlidePanel.js';
+import { StylesPanel } from './panels/StylesPanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
 import { ContextMenu, type MenuItem } from './stage/ContextMenu.js';
@@ -85,6 +86,7 @@ import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark }
 import {
   commonStyleValue,
   setStyleValue,
+  styleFieldsFor,
   type LengthOrPercent,
   type StyleFieldKey,
 } from './state/style.js';
@@ -894,6 +896,46 @@ export function Editor({
    */
   const handleSetThemeRoleLive = useCallback((role: keyof Theme, value: string) => {
     dispatch({ type: 'setThemeRole', role, value, commit: false });
+  }, []);
+
+  /**
+   * «Сохранить вид как стиль» (`StylesPanel.tsx`, ADR-029): собирает `Style`
+   * из СОБСТВЕННОЙ карты выделенного элемента на текущем слайде, но только
+   * по ключам `styleFieldsFor(type)` (ADR-012) — не всю карту целиком, иначе
+   * в стиль ушли бы и посторонние ключи (например, руками вписанный `border`).
+   * Идентификатор — машинный (`freeId`, латиница/цифры/дефис), имя — то, что
+   * ввёл автор. Один dispatch: редьюсер (`case 'addStyle'`) одним шагом
+   * истории и кладёт стиль в проект, и переводит элемент на него.
+   */
+  const handleSaveStyle = useCallback(
+    (name: string) => {
+      if (selected === undefined || selectedState === undefined) return;
+      const keys = new Set(styleFieldsFor(selected.type).map((field) => field.key));
+      const props = Object.fromEntries(
+        Object.entries(selectedState.style).filter(([key]) => keys.has(key as StyleFieldKey)),
+      );
+      const style: Style = {
+        id: freeId('style', currentProject.styles),
+        name,
+        type: selected.type,
+        props,
+      };
+      dispatch({ type: 'addStyle', style, sourceElementId: selected.id });
+    },
+    [selected, selectedState, currentProject.styles],
+  );
+
+  /** Применить стиль к выделенному — тот же `setElementState`, что и любая другая правка вида. */
+  const handleApplyStyle = useCallback(
+    (styleId: string) => {
+      if (selected === undefined) return;
+      dispatch({ type: 'setElementState', elementId: selected.id, patch: { styleId }, at: headTimeRef() });
+    },
+    [selected, headTimeRef],
+  );
+
+  const handleDeleteStyle = useCallback((styleId: string) => {
+    dispatch({ type: 'removeStyle', styleId });
   }, []);
 
   const handleInsert = useCallback(
@@ -1773,6 +1815,16 @@ export function Editor({
                 onChangeRole={handleSetThemeRoleLive}
                 onCommitHistory={handleCommitHistory}
               />
+            ) : panelId === 'styles' ? (
+              <StylesPanel
+                styles={currentProject.styles}
+                segments={currentProject.segments}
+                selectedElement={selected}
+                selectedElementState={selectedState}
+                onSave={handleSaveStyle}
+                onApply={handleApplyStyle}
+                onDelete={handleDeleteStyle}
+              />
             ) : (
               // panelId === 'object': панель свойств выделенного элемента —
               // переехала сюда с правой колонки (Сессия 30, задача «полоса
@@ -1782,6 +1834,7 @@ export function Editor({
               <Inspector
                 element={selected}
                 state={selectedState}
+                styles={currentProject.styles}
                 onContentChange={(content) => {
                   if (selected) handleElementContentChange({ ...selected, content });
                 }}

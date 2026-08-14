@@ -18,7 +18,7 @@ export interface CatalogCategory {
 }
 
 /** Категории рельса — порядок совпадает с порядком кнопок сверху вниз. */
-export type CategoryId = 'templates' | 'shapes' | 'text' | 'theme' | 'own';
+export type CategoryId = 'templates' | 'shapes' | 'text' | 'theme' | 'styles' | 'own';
 
 /**
  * Идентификатор ЛЮБОЙ панели каталога, включая `object`.
@@ -37,5 +37,6 @@ export const CATALOG_CATEGORIES: readonly CatalogCategory[] = [
   { id: 'shapes', label: 'Фигуры', glyph: '◇', hint: 'Фигуры для сцены' },
   { id: 'text', label: 'Текст', glyph: 'T', hint: 'Текстовые заготовки' },
   { id: 'theme', label: 'Тема', glyph: '◐', hint: 'Цвета и стиль объяснения' },
+  { id: 'styles', label: 'Стили', glyph: '✦', hint: 'Именованные наборы свойств вида' },
   { id: 'own', label: 'Своё', glyph: '↑', hint: 'Загруженное автором' },
 ];

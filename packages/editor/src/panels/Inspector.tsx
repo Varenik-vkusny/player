@@ -37,7 +37,7 @@
  */
 import type { ReactElement } from 'react';
 
-import type { Element, ElementState } from '@player/core';
+import type { Element, ElementState, Style } from '@player/core';
 
 import {
   ANY_NUMBER,
@@ -56,6 +56,7 @@ import {
   type LengthOrPercent,
   type StyleFieldKey,
 } from '../state/style.js';
+import { isDetached, revertToStyle } from '../state/styleLink.js';
 import { StyleFieldWidget } from './styleFieldWidget.js';
 
 /** Прозрачность — число от 0 до 1, как того требует ElementStateSchema. */
@@ -66,6 +67,13 @@ export interface InspectorProps {
   element: Element | undefined;
   /** Состояние элемента на текущем слайде. undefined — элемента здесь ещё нет. */
   state: ElementState | undefined;
+  /**
+   * Стили проекта (схема v12, `project.styles`) — нужны секции «Вид», чтобы
+   * найти стиль по `state.styleId` и проверить отцепление свойств
+   * (`styleLink.ts`). Список, а не один стиль: элемент ссылается на любой
+   * из них, и панель не знает заранее, на какой именно.
+   */
+  styles: readonly Style[];
   /** Правка содержимого (текст, путь к картинке) — самостоятельный шаг истории. */
   onContentChange: (content: string) => void;
   /** Одношаговая правка состояния — например, чекбокс видимости или цвет. */
@@ -77,7 +85,7 @@ export interface InspectorProps {
 }
 
 export function Inspector(props: InspectorProps): ReactElement {
-  const { element, state, onContentChange, onStateChange, onStateChangeLive, onCommitHistory } = props;
+  const { element, state, styles, onContentChange, onStateChange, onStateChangeLive, onCommitHistory } = props;
 
   return (
     <aside className="ed-inspector" data-testid="inspector">
@@ -95,6 +103,7 @@ export function Inspector(props: InspectorProps): ReactElement {
           key={element.id}
           element={element}
           state={state}
+          styles={styles}
           onContentChange={onContentChange}
           onStateChange={onStateChange}
           onStateChangeLive={onStateChangeLive}
@@ -108,6 +117,7 @@ export function Inspector(props: InspectorProps): ReactElement {
 interface ElementFieldsProps {
   element: Element;
   state: ElementState | undefined;
+  styles: readonly Style[];
   onContentChange: (content: string) => void;
   onStateChange: (patch: Partial<ElementState>) => void;
   onStateChangeLive: (patch: Partial<ElementState>) => void;
@@ -117,6 +127,7 @@ interface ElementFieldsProps {
 function ElementFields({
   element,
   state,
+  styles,
   onContentChange,
   onStateChange,
   onStateChangeLive,
@@ -208,6 +219,7 @@ function ElementFields({
           <StyleSection
             element={element}
             state={state}
+            styles={styles}
             onStyleChange={(style) => onStateChange({ style })}
             onStyleChangeLive={(style) => onStateChangeLive({ style })}
             onCommitHistory={onCommitHistory}
@@ -245,6 +257,7 @@ function ElementFields({
 interface StyleSectionProps {
   element: Element;
   state: ElementState;
+  styles: readonly Style[];
   onStyleChange: (style: ElementStyle) => void;
   onStyleChangeLive: (style: ElementStyle) => void;
   onCommitHistory: () => void;
@@ -260,16 +273,31 @@ interface StyleSectionProps {
  * разметка. Стиль читается из `state.style` — в схеме v3 он переехал
  * с `Element` на `ElementState` (см. `schema.ts`), тип элемента при этом
  * по-прежнему решает, какие поля вообще применимы.
+ *
+ * Пометка «отличается от стиля» (ADR-029, схема v12). У элемента, идущего
+ * по стилю (`state.styleId`), поле МОЖЕТ быть отцеплено — `isDetached`
+ * смотрит на НАЛИЧИЕ ключа в собственной карте, а не на равенство значений
+ * (`styleLink.ts`). Пометка — ОТДЕЛЬНЫЙ видимый узел
+ * (`data-testid="style-detached-<ключ>"`), а не текст в подписи поля: подписи
+ * на полосе свойств визуально скрыты `clip-path`, и в Сессии 30 это уже дало
+ * три зелёных e2e при пустом экране. Здесь, в панели «Объект», подписи не
+ * скрыты — но пометка всё равно узел, а не довесок к подписи, чтобы это
+ * решение не пришлось пересматривать при следующей перекладке разметки.
  */
 function StyleSection({
   element,
   state,
+  styles,
   onStyleChange,
   onStyleChangeLive,
   onCommitHistory,
 }: StyleSectionProps): ReactElement | null {
   const fields = styleFieldsFor(element.type);
   if (fields.length === 0) return null;
+
+  const linkedStyle = state.styleId === undefined
+    ? undefined
+    : styles.find((style) => style.id === state.styleId);
 
   const commit = (key: StyleFieldKey, value: string | number | LengthOrPercent): void => {
     const next = setStyleValue(state.style, key, value);
@@ -286,19 +314,49 @@ function StyleSection({
     onStyleChangeLive(next);
   };
 
+  /**
+   * «Вернуть как в стиле» — СНИМАЕТ ключ (`revertToStyle`), не вписывает
+   * текущее значение стиля. Одношаговая правка, как чекбокс видимости:
+   * `onStyleChange` идёт через `onStateChange` (Inspector.tsx выше), у него
+   * `commit` не передан — значит `undefined`, то есть «самостоятельный шаг».
+   */
+  const revert = (key: StyleFieldKey): void => {
+    const next = revertToStyle(state.style, key);
+    if (next === state.style) return;
+    onStyleChange(next);
+  };
+
   return (
     <div className="ed-insp-block">
       <h3 className="ed-insp-title">Вид</h3>
-      {fields.map((field) => (
-        <StyleFieldWidget
-          key={field.key}
-          field={field}
-          read={getStyleValue(state.style, field.key)}
-          onCommit={(value) => commit(field.key, value)}
-          onLiveCommit={(value) => commitLive(field.key, value)}
-          onCommitHistory={onCommitHistory}
-        />
-      ))}
+      {fields.map((field) => {
+        const detached = linkedStyle !== undefined && isDetached(state, linkedStyle, field.key);
+        return (
+          <div key={field.key}>
+            <StyleFieldWidget
+              field={field}
+              read={getStyleValue(state.style, field.key)}
+              onCommit={(value) => commit(field.key, value)}
+              onLiveCommit={(value) => commitLive(field.key, value)}
+              onCommitHistory={onCommitHistory}
+            />
+            {detached && linkedStyle !== undefined && (
+              <div className="ed-insp-note" data-testid={`style-detached-${field.key}`}>
+                Отличается от стиля «{linkedStyle.name}»
+                <br />
+                <button
+                  type="button"
+                  className="ed-action"
+                  data-testid={`style-revert-${field.key}`}
+                  onClick={() => revert(field.key)}
+                >
+                  Вернуть как в стиле
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

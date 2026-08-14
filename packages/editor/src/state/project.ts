@@ -13,7 +13,7 @@
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
 import type {
-  Condition, Element, ElementState, Gate, Project, Segment, Slide, Theme, TimeRef,
+  Condition, Element, ElementState, Gate, Project, Segment, Slide, Style, Theme, TimeRef,
   TransitionDirection, Word,
 } from '@player/core';
 import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
@@ -36,6 +36,7 @@ import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
 import { splitSegmentAtGate } from './split.js';
+import { bakeStyle } from './styleLink.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
 
 /**
@@ -307,6 +308,29 @@ export type EditorAction =
   | { readonly type: 'duplicateSlide'; readonly slideId: string; readonly at: TimeRef }
   | { readonly type: 'addGate'; readonly gate: Gate }
   | { readonly type: 'updateGate'; readonly gate: Gate }
+  /**
+   * Стили проекта (схема v12, ADR-029).
+   *
+   * `addStyle` — «Сохранить вид как стиль» (`StylesPanel.tsx`): кладёт новый
+   * стиль в `project.styles` И одним и тем же шагом истории переводит
+   * `sourceElementId` на него — на ТЕКУЩЕМ слайде (`currentSlideId`), а не
+   * через `at`/`slideForEdit`: элемент, из чьего вида собран стиль, уже
+   * стоит на этом слайде, и рождать слайд заново нечем и незачем. Ключи,
+   * ушедшие в `style.props`, редьюсер сам вычищает из собственной карты
+   * элемента — иначе он остался бы отцеплённым по всем свойствам сразу,
+   * и живая связь не сработала бы ни разу (см. `styleLink.ts`).
+   *
+   * `updateStyle` — замена стиля целиком по id, тот же приём, что
+   * у `updateGate`/`replaceElement`.
+   *
+   * `removeStyle` — снимает стиль с ЛЮБОГО состояния любого сегмента
+   * проекта, впечатывая в него `bakeStyle` (`styleLink.ts`) ПЕРЕД тем, как
+   * убрать сам стиль из `project.styles`. Одним шагом истории: разложи это
+   * на «впечатать» + «удалить», и Ctrl+Z вернул бы половинчатое состояние.
+   */
+  | { readonly type: 'addStyle'; readonly style: Style; readonly sourceElementId: string }
+  | { readonly type: 'updateStyle'; readonly style: Style }
+  | { readonly type: 'removeStyle'; readonly styleId: string }
   | {
       readonly type: 'moveMark';
       readonly kind: MarkKind;
@@ -912,6 +936,67 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return replaceSegment(state, { ...segment, gates: next });
     }
 
+    case 'addStyle': {
+      if (state.project.styles.some((style) => style.id === action.style.id)) {
+        throw new Error(`Стиль «${action.style.id}» уже есть: идентификаторы обязаны быть уникальны`);
+      }
+      if (!hasElement(state.project, state.currentSegmentId, action.sourceElementId)) {
+        throw new Error(
+          `Нельзя сохранить стиль: элемента «${action.sourceElementId}» нет в проекте`,
+        );
+      }
+      const segment = currentSegment(state);
+      const slide = segment.slides.find((candidate) => candidate.id === state.currentSlideId);
+      if (!slide) {
+        throw new Error(`Текущего слайда «${state.currentSlideId}» нет в сегменте «${segment.id}»`);
+      }
+      const existing = slide.states[action.sourceElementId];
+      if (existing === undefined) {
+        throw new Error(
+          `У элемента «${action.sourceElementId}» нет состояния на текущем слайде — сохранять нечего`,
+        );
+      }
+
+      // Ключи, ушедшие в стиль, УДАЛЯЮТСЯ из собственной карты элемента —
+      // иначе он оказался бы отцеплённым по всем свойствам сразу
+      // (`isDetached` в styleLink.ts смотрит на НАЛИЧИЕ ключа), и правка
+      // стиля задним числом не тронула бы элемент, из чьего вида его
+      // только что собрали.
+      const movedKeys = new Set(Object.keys(action.style.props));
+      const ownStyle = Object.fromEntries(
+        Object.entries(existing.style).filter(([key]) => !movedKeys.has(key)),
+      );
+      const nextElementState: ElementState = { ...existing, styleId: action.style.id, style: ownStyle };
+      const slides = segment.slides.map((candidate) =>
+        candidate.id === state.currentSlideId
+          ? { ...candidate, states: { ...candidate.states, [action.sourceElementId]: nextElementState } }
+          : candidate,
+      );
+
+      const withStyle: EditorState = {
+        ...state,
+        project: { ...state.project, styles: [...state.project.styles, action.style] },
+      };
+      return replaceSegment(withStyle, { ...segment, slides });
+    }
+
+    case 'updateStyle': {
+      const styles = state.project.styles;
+      const index = styles.findIndex((style) => style.id === action.style.id);
+      if (index < 0) {
+        throw new Error(`Нельзя обновить стиль «${action.style.id}»: его нет в проекте`);
+      }
+      if (styles[index] === action.style) return state;
+      const next = styles.slice();
+      next[index] = action.style;
+      return { ...state, project: { ...state.project, styles: next } };
+    }
+
+    case 'removeStyle': {
+      const project = bakeAndRemoveStyle(state.project, action.styleId);
+      return { ...state, project };
+    }
+
     case 'moveMark': {
       const segment = currentSegment(state);
       if (action.kind === 'gate') {
@@ -1173,6 +1258,46 @@ export function duplicateSegment(project: Project, segmentId: string): Project {
   ];
 
   return { ...project, segments };
+}
+
+/**
+ * Удаление стиля из ВСЕГО проекта: впечатывает `bakeStyle` в каждое
+ * состояние, ссылавшееся на него (в любом сегменте, не только текущем —
+ * стиль виден всему проекту), снимает `styleId`, и только потом убирает
+ * сам стиль из `project.styles`.
+ *
+ * Живёт здесь, а не в `styleLink.ts`: та не видит `Project` целиком
+ * намеренно (чистые функции про ОДНО состояние/усечённый сегмент), а собрать
+ * новый `project.segments` — работа стороны записи, тем же доводом, что
+ * у `splitAtGate`/`duplicateSegment` ниже.
+ */
+function bakeAndRemoveStyle(project: Project, styleId: string): Project {
+  const style = project.styles.find((candidate) => candidate.id === styleId);
+  if (!style) {
+    throw new Error(`Стиля «${styleId}» нет в проекте: удалять нечего`);
+  }
+
+  const segments = project.segments.map((segment) => {
+    let segmentChanged = false;
+    const slides = segment.slides.map((slide) => {
+      let slideChanged = false;
+      const states: Record<string, ElementState> = {};
+      for (const [elementId, elementState] of Object.entries(slide.states)) {
+        if (elementState.styleId === styleId) {
+          states[elementId] = { ...elementState, style: bakeStyle(elementState.style, style), styleId: undefined };
+          slideChanged = true;
+        } else {
+          states[elementId] = elementState;
+        }
+      }
+      if (!slideChanged) return slide;
+      segmentChanged = true;
+      return { ...slide, states };
+    });
+    return segmentChanged ? { ...segment, slides } : segment;
+  });
+
+  return { ...project, segments, styles: project.styles.filter((candidate) => candidate.id !== styleId) };
 }
 
 function currentSegment(state: EditorState): Segment {
