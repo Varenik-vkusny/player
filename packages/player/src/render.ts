@@ -14,7 +14,7 @@
  * косметическое — оно и есть условие морфинга: элемент с устойчивым `id`
  * живёт через все слайды раздела, меняя только состояние.
  */
-import type { Element, ElementState, Theme } from '@player/core';
+import type { Element, ElementState, Style, Theme } from '@player/core';
 import { getElementRenderer } from './renderers/registry.js';
 
 export const DEFAULT_STAGE_WIDTH = 1920;
@@ -136,12 +136,100 @@ export function applyTheme(host: HTMLElement, theme: Theme): void {
   }
 }
 
+/**
+ * Метка сцены. Нужна, чтобы правила стилей одного проекта не задели другой.
+ *
+ * Лист стилей глобален для документа, где бы ни стоял тег `<style>`. Значит
+ * два проекта на одной странице — предпросмотр редактора и плеер рядом —
+ * с одинаковым идентификатором стиля подменяли бы правила друг друга МОЛЧА.
+ * Измерено S14: с приставкой контейнера один и тот же идентификатор дал
+ * 21px в первой сцене и 22px во второй, а ручная правка осталась сильнее
+ * выросшей специфичности (77px).
+ *
+ * Счётчик, а не случайное число: рендер обязан быть детерминированным —
+ * одинаковый слайд всегда даёт одинаковый DOM (см. `renderScene`).
+ */
+const SCENE_UID = new WeakMap<HTMLElement, string>();
+let sceneCounter = 0;
+
+function sceneUid(host: HTMLElement): string {
+  const known = SCENE_UID.get(host);
+  if (known !== undefined) return known;
+
+  const uid = `sc${++sceneCounter}`;
+  SCENE_UID.set(host, uid);
+  host.dataset['scene'] = uid;
+  return uid;
+}
+
+/**
+ * Записывает стили проекта правилами CSS для этой сцены.
+ *
+ * Правилами класса, а не обходом элементов, и это не приём экономии.
+ * Живая связь, отцепление ПО СВОЙСТВУ и «вернуть как в стиле» — всё три
+ * даёт сам каскад браузера, и писать их нечем (S14, ADR-029):
+ *
+ *   инлайн элемента перекрывает правило класса ПОКОМПОНЕНТНО — правка
+ *   кегля рукой дала 72px, а цвет и скругление остались стилевыми;
+ *   одна запись в правило увела непотревоженный элемент с 40 на 90px,
+ *   не тронув отцепленный;
+ *   снятие ключа вернуло элемент на ТЕКУЩЕЕ значение стиля, а не на то,
+ *   что было в момент отцепления.
+ *
+ * Значения проходят через `setProperty` детали, а не подставляются в текст.
+ * Так они, во-первых, разбираются ровно тем же путём, что и сегодняшний
+ * инлайн (`applyElement` ниже), а во-вторых, значение с фигурной скобкой
+ * не может разорвать правило: браузер отбрасывает то, чего не понимает,
+ * ещё до сборки текста.
+ */
+export function applyStyles(host: HTMLElement, styles: readonly Style[]): void {
+  const uid = sceneUid(host);
+  const sheet = ensureSheet(uid);
+
+  const carrier = document.createElement('div');
+  const rules: string[] = [];
+
+  for (const style of styles) {
+    carrier.style.cssText = '';
+    for (const [key, value] of Object.entries(style.props)) {
+      carrier.style.setProperty(key, String(value));
+    }
+    const declarations = carrier.style.cssText;
+    if (declarations === '') continue;
+
+    rules.push(`[data-scene="${uid}"] .st-${style.id} { ${declarations} }`);
+  }
+
+  sheet.textContent = rules.join('\n');
+}
+
+/**
+ * Лист стилей этой сцены. Один на сцену, дописывается в конец `head`.
+ *
+ * В конец не для порядка в файле: специфичность у правила стиля и у правила
+ * сцены одинаковая, и при равной специфичности решает ПОРЯДОК. Проверено
+ * в обе стороны (S14): тот же селектор из листа, вставленного раньше,
+ * проиграл (90px против 11px), из вставленного позже — выиграл (12px).
+ * Лист, оказавшийся выше базовых правил, молча перестал бы действовать.
+ */
+function ensureSheet(uid: string): HTMLStyleElement {
+  const found = document.head.querySelector<HTMLStyleElement>(`style[data-scene-styles="${uid}"]`);
+  if (found) return found;
+
+  const sheet = document.createElement('style');
+  sheet.dataset['sceneStyles'] = uid;
+  document.head.appendChild(sheet);
+  return sheet;
+}
+
 export function applyElement(
   node: HTMLElement,
   element: Element,
   state: ElementState,
 ): void {
-  node.className = `scene-el scene-${element.type}`;
+  node.className = state.styleId === undefined
+    ? `scene-el scene-${element.type}`
+    : `scene-el scene-${element.type} st-${state.styleId}`;
   node.dataset['id'] = element.id;
 
   const style = node.style;

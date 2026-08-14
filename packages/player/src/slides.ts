@@ -14,7 +14,7 @@
  *
  * `transition: 'cut'` — намеренный разрыв, применяется мгновенно.
  */
-import type { Element, Slide, Theme, Word } from '@player/core';
+import type { Element, Slide, Style, Theme, Word } from '@player/core';
 import { resolveTimeRef } from '@player/core';
 
 import {
@@ -31,12 +31,20 @@ import {
   type MorphTimeline,
   type Phase,
 } from './morph.js';
-import { applyElement, applyTheme, renderScene, type SlideStates, type StageSize } from './render.js';
+import { applyElement, applyStyles, applyTheme, renderScene, type SlideStates, type StageSize } from './render.js';
 
 export interface SlideEngineOptions {
   host: HTMLElement;
   /** Тема сцены (схема v9). Пишется переменными на контейнер один раз при сборке. */
   theme: Theme;
+  /**
+   * Стили проекта (схема v12). Правилами CSS, один раз при сборке.
+   *
+   * Рядом с темой и по той же причине: элемент ссылается на стиль классом,
+   * и правило обязано существовать раньше, чем на него сошлются. Иначе
+   * первый кадр браузер нарисует без него — молча, как и с ролью темы.
+   */
+  styles: readonly Style[];
   elements: readonly Element[];
   slides: readonly Slide[];
   words: readonly Word[];
@@ -92,6 +100,7 @@ export class SlideEngine {
     // сошлются. Иначе первый кадр браузер нарисует, отбросив объявление
     // целиком и МОЛЧА (S11).
     applyTheme(options.host, options.theme);
+    applyStyles(options.host, options.styles);
     this.#elements = options.elements;
     this.#stage = options.stage;
 

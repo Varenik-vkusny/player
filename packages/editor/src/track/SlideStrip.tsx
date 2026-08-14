@@ -27,7 +27,7 @@ import {
   type ReactElement,
 } from 'react';
 
-import type { Element, Slide, Theme, Word } from '@player/core';
+import type { Element, Slide, Style, Theme, Word } from '@player/core';
 import { ScenePreview, type Segment } from '@player/player';
 
 import { markSeconds } from './marks.js';
@@ -40,6 +40,7 @@ export interface SlideStripProps {
    * значениями ссылок и расходились бы с холстом.
    */
   readonly theme: Theme;
+  readonly styles: readonly Style[];
   readonly slides: readonly Slide[];
   readonly words: readonly Word[];
   readonly elements: readonly Element[];
@@ -86,6 +87,7 @@ export function SlideStrip({
   elements,
   currentSlideId,
   theme,
+  styles,
   stageWidth,
   stageHeight,
   onSelectSlide,
@@ -231,6 +233,7 @@ export function SlideStrip({
             elements={elements}
             words={words}
             theme={theme}
+            styles={styles}
             stageWidth={stageWidth}
             stageHeight={stageHeight}
             isCurrent={slide.id === currentSlideId}
@@ -250,6 +253,7 @@ export function SlideStrip({
 
 interface SlideCardProps {
   readonly theme: Theme;
+  readonly styles: readonly Style[];
   readonly slide: Slide;
   readonly prevSlide: Slide | undefined;
   readonly elements: readonly Element[];
@@ -266,6 +270,7 @@ function SlideCard({
   elements,
   words,
   theme,
+  styles,
   stageWidth,
   stageHeight,
   isCurrent,
@@ -302,7 +307,8 @@ function SlideCard({
     gates: [],
     stage: { width: stageWidth, height: stageHeight },
     theme,
-  }), [slide, elements, words, stageWidth, stageHeight, theme]);
+    styles,
+  }), [slide, elements, words, stageWidth, stageHeight, theme, styles]);
 
   // Строит сцену один раз при монтировании карточки. Пересборка при каждой
   // правке идёт через второй эффект ниже (`rebuild`) — тот же приём: строить

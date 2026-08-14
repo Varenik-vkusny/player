@@ -13,7 +13,7 @@
  * рендере. Второй реализации здесь по-прежнему неоткуда взяться.
  */
 import { findSegment as findSegment } from '@player/core';
-import type { Element, ElementState, Gate, Project, Slide, Theme, Word } from '@player/core';
+import type { Element, ElementState, Gate, Project, Slide, Style, Theme, Word } from '@player/core';
 
 import type { AudioSource } from './assets.js';
 import { applyElement, applyFit, type Fit, type StageSize, type Zoom } from './render.js';
@@ -60,6 +60,15 @@ export interface Segment {
    * второго места, где тему можно было бы применить иначе, не существует.
    */
   readonly theme: Theme;
+  /**
+   * Стили проекта (схема v12). Едут здесь по той же причине, что и тема:
+   * это единственная точка, из которой вид-модель получают ОБА хоста.
+   *
+   * Проектные, а не сегментные, и это не небрежность: стиль — нижняя ступень
+   * шаблонов (`design/styles.md` §4а), и «Заголовок», меняющийся от сегмента
+   * к сегменту, шаблоном бы не был.
+   */
+  readonly styles: readonly Style[];
 }
 
 /**
@@ -88,6 +97,7 @@ export function segmentOf(project: Project, segmentId: string): Segment {
     gates: segment.gates,
     stage: { width: project.meta.stageWidth, height: project.meta.stageHeight },
     theme: project.meta.theme,
+    styles: project.styles,
   };
 }
 
@@ -218,6 +228,7 @@ export class ScenePreview {
     return new SlideEngine({
       host: this.#host,
       theme: segment.theme,
+      styles: segment.styles,
       elements: segment.elements,
       slides: segment.slides,
       words: segment.words,

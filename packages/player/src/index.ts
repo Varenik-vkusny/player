@@ -54,6 +54,7 @@ export {
 } from './renderers/registry.js';
 export {
   applyElement,
+  applyStyles,
   applyTheme,
   applyFit,
   fitStage,

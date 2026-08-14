@@ -375,6 +375,7 @@ export class Player {
     this.#slides = new SlideEngine({
       host: this.#stage,
       theme: this.#segment.theme,
+      styles: this.#segment.styles,
       elements: this.#segment.elements,
       slides: this.#segment.slides,
       words: this.#segment.words,

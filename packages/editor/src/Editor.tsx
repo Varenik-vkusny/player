@@ -2009,6 +2009,7 @@ export function Editor({
         />
         <SlideStrip
           theme={segment.theme}
+          styles={segment.styles}
           slides={segment.slides}
           words={segment.words}
           elements={segment.elements}
