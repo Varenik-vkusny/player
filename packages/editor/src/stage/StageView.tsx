@@ -270,6 +270,7 @@ const boxOf = (state: ElementState): Box => ({
 
 const round = (value: number): number => Number(value.toFixed(PRECISION));
 
+
 export const StageView = forwardRef<StageViewHandle, StageViewProps>(function StageView(
   {
     segment,
@@ -666,6 +667,15 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // препятствие №3). Источник истины остаётся element.content — DOM
       // расходится с ним ровно на время жеста, как и при перетаскивании.
       if (state && state !== previous[element.id] && editingRef.current?.id !== element.id) {
+        // «Вернуть как в стиле» (ADR-029, styleLink.ts) СНИМАЕТ ключ из
+        // state.style. `applyElement` (player/src/render.ts) только
+        // ЗАПИСЫВАЕТ ключи, которые есть в style, — ключ, пропавший между
+        // прошлым и новым состоянием, иначе остался бы висеть на узле
+        // инлайном и продолжал бы перебивать правило класса вечно (S14:
+        // инлайн сильнее правила ПОКОМПОНЕНТНО). Единственный способ снять
+        // инлайн-свойство, которого applyElement не пишет, — очистить
+        // атрибут style перед повторным применением: applyElement тут же
+        // отстраивает его заново из состояния целиком, поэтому потери нет.
         preview.updateElement(element, state);
       }
     }

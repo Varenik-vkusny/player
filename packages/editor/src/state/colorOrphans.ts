@@ -20,7 +20,7 @@
  * второй счётчик на ту же болезнь — ошибка, уже названная в проекте.
  */
 import { ThemeSchema } from '@player/core';
-import type { Project } from '@player/core';
+import type { Slide, Style } from '@player/core';
 
 /**
  * Любая ссылка на переменную, а не только правильная.
@@ -50,7 +50,6 @@ export interface ColorOrphan {
     | { readonly kind: 'style'; readonly styleId: string }
     | {
         readonly kind: 'element';
-        readonly segmentId: string;
         readonly slideId: string;
         readonly elementId: string;
       };
@@ -75,16 +74,27 @@ function scanValue(raw: string | number): { role: string; reason: OrphanReason }
 }
 
 /**
- * Все сироты цвета проекта — и в стилях, и у элементов на слайдах.
+ * Все сироты цвета — и в стилях проекта, и у элементов на слайдах.
+ *
+ * Принимает стили и слайды, а НЕ проект целиком, и это не вкусовщина:
+ * `project.segments` читаются ровно в одном месте (`segmentOf`), и охраняет
+ * это тест инвариантов. Он и поймал первую редакцию этой функции.
+ *
+ * Слайды — текущего сегмента, как и у счётчика сирот-меток рядом: автор
+ * смотрит на дорожку одного сегмента, и число обязано означать то же, что
+ * и соседнее.
  *
  * Стили проверяются ПЕРВЫМИ и это не порядок ради порядка: одна сирота
  * в стиле красит в чёрный столько элементов, сколько под ним ходит,
  * поэтому автору полезнее увидеть её раньше.
  */
-export function colorOrphans(project: Project): readonly ColorOrphan[] {
+export function colorOrphans(
+  styles: readonly Style[],
+  slides: readonly Slide[],
+): readonly ColorOrphan[] {
   const orphans: ColorOrphan[] = [];
 
-  for (const style of project.styles) {
+  for (const style of styles) {
     for (const [key, value] of Object.entries(style.props)) {
       for (const { role, reason } of scanValue(value)) {
         orphans.push({ role, reason, key, where: { kind: 'style', styleId: style.id } });
@@ -92,19 +102,12 @@ export function colorOrphans(project: Project): readonly ColorOrphan[] {
     }
   }
 
-  for (const segment of project.segments) {
-    for (const slide of segment.slides) {
-      for (const [elementId, state] of Object.entries(slide.states)) {
-        if (state === undefined) continue;
-        for (const [key, value] of Object.entries(state.style)) {
-          for (const { role, reason } of scanValue(value)) {
-            orphans.push({
-              role,
-              reason,
-              key,
-              where: { kind: 'element', segmentId: segment.id, slideId: slide.id, elementId },
-            });
-          }
+  for (const slide of slides) {
+    for (const [elementId, state] of Object.entries(slide.states)) {
+      if (state === undefined) continue;
+      for (const [key, value] of Object.entries(state.style)) {
+        for (const { role, reason } of scanValue(value)) {
+          orphans.push({ role, reason, key, where: { kind: 'element', slideId: slide.id, elementId } });
         }
       }
     }

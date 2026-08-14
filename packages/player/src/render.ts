@@ -256,9 +256,40 @@ export function applyElement(
    */
   style.visibility = state.visible ? '' : 'hidden';
 
+  /**
+   * Ключи, которые ЭТА функция поставила в прошлый раз, но которых больше
+   * нет в состоянии, снимаются явно.
+   *
+   * `setProperty` умеет только записывать. Пока ключи из карты стиля
+   * не исчезали, снимать было нечего, и дефект не проявлялся ни разу —
+   * поэтому он и дожил до сих пор. Проявился на «вернуть как в стиле»:
+   * модель обновлялась верно, пометка отличия пропадала, а элемент
+   * оставался с прежним инлайном НАВСЕГДА — инлайн сильнее правила класса.
+   *
+   * Это НЕ дефект стилей. Он и без них бил бы в плеере: ключ, который есть
+   * на одном слайде и отсутствует на соседнем, оставался бы на элементе
+   * после точечной перерисовки (`#renderStates`, половины перехода). Просто
+   * до появления стилей такое состояние никто не строил.
+   *
+   * Снимаются ТОЛЬКО свои ключи, а не весь инлайн: рядом живут значения,
+   * поставленные не здесь — `cursor` и `opacity` у кликабельного варианта
+   * в гейте (`player.ts`), фон картинки у рендерера типа (`registry.ts`).
+   * Чистка `cssText` стёрла бы и их.
+   */
+  const previous = node.dataset['styleKeys'];
+  if (previous !== undefined && previous !== '') {
+    for (const key of previous.split(' ')) {
+      if (!(key in state.style)) style.removeProperty(key);
+    }
+  }
+
   for (const [key, value] of Object.entries(state.style)) {
     style.setProperty(key, String(value));
   }
+
+  const keys = Object.keys(state.style);
+  if (keys.length === 0) delete node.dataset['styleKeys'];
+  else node.dataset['styleKeys'] = keys.join(' ');
 
   const renderer = getElementRenderer(element.type);
   if (!renderer) {

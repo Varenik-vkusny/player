@@ -18,19 +18,28 @@ import { colorOrphans } from '../src/state/colorOrphans.js';
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/projects/styles.json', import.meta.url));
 const base = (): Project => loadProject(JSON.parse(readFileSync(FIXTURE, 'utf8')));
 
+/**
+ * Сироты фикстуры: стили проекта плюс слайды ЕДИНСТВЕННОГО её сегмента.
+ *
+ * Функция принимает стили и слайды, а не проект: `project.segments` читаются
+ * ровно в одном месте, и тест инвариантов это охраняет — он и поймал первую
+ * редакцию, ходившую к проекту напрямую.
+ */
+const orphansOf = (project: Project) => colorOrphans(project.styles, project.segments[0]!.slides);
+
 describe('сироты цвета', () => {
   it('здоровая фикстура не даёт ни одной сироты', () => {
     // Фикстура ссылается на роли ТОЛЬКО с запасом: `var(--scene-accent, #4c8dff)`.
     // Слом: убрать запас в фикстуре — тест покраснеет. Он же страхует
     // от реализации, которая считает сиротой любую ссылку подряд.
-    expect(colorOrphans(base())).toEqual([]);
+    expect(orphansOf(base())).toEqual([]);
   });
 
   it('неизвестная роль в СТИЛЕ находится, и место названо', () => {
     const project = base();
     project.styles[0]!.props['color'] = 'var(--scene-nonexistent, #fff)';
 
-    const found = colorOrphans(project);
+    const found = orphansOf(project);
 
     expect(found).toHaveLength(1);
     expect(found[0]!.reason).toBe('unknown-role');
@@ -45,7 +54,7 @@ describe('сироты цвета', () => {
     const project = base();
     project.styles[1]!.props['color'] = 'var(--scene-ink-muted)';
 
-    const found = colorOrphans(project);
+    const found = orphansOf(project);
 
     expect(found).toHaveLength(1);
     expect(found[0]!.reason).toBe('no-fallback');
@@ -56,15 +65,10 @@ describe('сироты цвета', () => {
     const project = base();
     project.segments[0]!.slides[0]!.states['sub']!.style['color'] = 'var(--нет-такой)';
 
-    const found = colorOrphans(project);
+    const found = orphansOf(project);
 
     expect(found).toHaveLength(1);
-    expect(found[0]!.where).toEqual({
-      kind: 'element',
-      segmentId: 's-styles',
-      slideId: 'st-1',
-      elementId: 'sub',
-    });
+    expect(found[0]!.where).toEqual({ kind: 'element', slideId: 'st-1', elementId: 'sub' });
   });
 
   it('считает КАЖДОЕ место, а не каждую роль', () => {
@@ -76,7 +80,7 @@ describe('сироты цвета', () => {
     project.styles[1]!.props['color'] = 'var(--scene-nope, #fff)';
     project.segments[0]!.slides[1]!.states['note']!.style['background'] = 'var(--scene-nope, #000)';
 
-    expect(colorOrphans(project)).toHaveLength(3);
+    expect(orphansOf(project)).toHaveLength(3);
   });
 
   it('две ссылки внутри одного значения считаются обе', () => {
@@ -84,7 +88,7 @@ describe('сироты цвета', () => {
     project.styles[2]!.props['background'] =
       'linear-gradient(var(--scene-a), var(--scene-b, #fff))';
 
-    const found = colorOrphans(project);
+    const found = orphansOf(project);
 
     expect(found.map((o) => o.role)).toEqual(['--scene-a', '--scene-b']);
   });
