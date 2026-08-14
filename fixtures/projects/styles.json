@@ -1,0 +1,119 @@
+{
+  "schemaVersion": 12,
+  "meta": {
+    "title": "Стили: живая связь и отцепление по свойству",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-styles",
+  "styles": [
+    {
+      "id": "heading",
+      "name": "Главный",
+      "type": "text",
+      "props": {
+        "font-family": "system-ui, sans-serif",
+        "font-size": "96px",
+        "color": "var(--scene-accent, #4c8dff)"
+      }
+    },
+    {
+      "id": "quiet",
+      "name": "Тихий",
+      "type": "text",
+      "props": {
+        "font-family": "system-ui, sans-serif",
+        "font-size": "40px",
+        "color": "var(--scene-ink-muted, #93a4b8)"
+      }
+    },
+    {
+      "id": "plate",
+      "name": "Плашка",
+      "type": "shape",
+      "props": {
+        "background": "var(--scene-surface, #1b2430)",
+        "border-radius": "var(--scene-radius, 28px)"
+      }
+    }
+  ],
+  "segments": [
+    {
+      "id": "s-styles",
+      "title": "Заголовок начинается Главным и становится Тихим",
+      "audio": {
+        "src": "/audio/branch-yes.mp3",
+        "duration": 2.736,
+        "words": []
+      },
+      "elements": [
+        { "id": "title", "type": "text", "content": "Стиль" },
+        { "id": "sub", "type": "text", "content": "Кегль правлен рукой" },
+        { "id": "note", "type": "text", "content": "Тихая строка" },
+        { "id": "plate-1", "type": "shape", "content": "" }
+      ],
+      "slides": [
+        {
+          "id": "st-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "plate-1": {
+              "x": 120, "y": 160, "width": 1680, "height": 760,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "styleId": "plate", "style": {}
+            },
+            "title": {
+              "x": 200, "y": 260, "width": 1400, "height": 160,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "styleId": "heading", "style": {}
+            },
+            "sub": {
+              "x": 200, "y": 460, "width": 1400, "height": 120,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "styleId": "heading",
+              "style": { "font-size": "48px" }
+            },
+            "note": {
+              "x": 200, "y": 640, "width": 1400, "height": 100,
+              "rotation": 0, "zIndex": 4, "opacity": 1, "visible": true,
+              "styleId": "quiet", "style": {}
+            }
+          }
+        },
+        {
+          "id": "st-2",
+          "at": { "kind": "seconds", "t": 1.4 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "plate-1": {
+              "x": 120, "y": 160, "width": 1680, "height": 760,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "styleId": "plate", "style": {}
+            },
+            "title": {
+              "x": 200, "y": 260, "width": 1400, "height": 160,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "styleId": "quiet", "style": {}
+            },
+            "sub": {
+              "x": 200, "y": 460, "width": 1400, "height": 120,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "styleId": "heading",
+              "style": { "font-size": "48px" }
+            },
+            "note": {
+              "x": 200, "y": 640, "width": 1400, "height": 100,
+              "rotation": 0, "zIndex": 4, "opacity": 1, "visible": true,
+              "styleId": "quiet", "style": {}
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

@@ -63,6 +63,7 @@ function project(segment: Segment): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Буфер обмена слайдов', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: segment.id,
+    styles: [],
     segments: [segment],
   };
 }
@@ -323,6 +324,7 @@ describe('направление перехода: смена приёма не 
       schemaVersion: SCHEMA_VERSION,
       meta: { title: 'т', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
       entry: segment.id,
+      styles: [],
       segments: [segment],
     };
 

@@ -57,6 +57,7 @@ function projectWithGate(): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Копия куска', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 's-1',
+    styles: [],
     segments: [
       {
         id: 's-1',
@@ -127,6 +128,7 @@ function projectWithSpeech(): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Копия с озвучкой', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 's-1',
+    styles: [],
     segments: [{
       id: 's-1',
       title: 'Кусок с озвучкой',

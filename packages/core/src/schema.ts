@@ -25,7 +25,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 /**
  * Длительность перехода по умолчанию, секунды.
@@ -276,6 +276,50 @@ export const TimeRefSchema = z.discriminatedUnion('kind', [
  */
 export const ELEMENT_TYPES = ['text', 'image', 'shape', 'video', 'group'] as const;
 
+/**
+ * Карта свойств вида. Одна на состояние элемента и на стиль — намеренно.
+ *
+ * Второй перечень полей вида в проекте уже был бы третьим списком одного
+ * смысла, а такие списки разъезжаются МОЛЧА: на этом обожглись типы
+ * элементов (см. `ELEMENT_TYPES` выше — из двух мест покраснело одно).
+ */
+const StyleProps = z.record(z.string(), z.union([z.string(), z.number()]));
+
+/**
+ * Идентификатор стиля. Уже, чем `Id`, и это не педантизм.
+ *
+ * Он попадает в СЕЛЕКТОР CSS (`.st-<id>`), а селектор не принимает ни
+ * пробелов, ни кириллицы, ни кавычек. Идентификатор с пробелом дал бы
+ * не ошибку, а нерабочее правило: браузер отбрасывает нечитаемый селектор
+ * и молчит — то же семейство отказа, что и неизвестная роль темы в S11.
+ *
+ * Поэтому машинный идентификатор ограничен, а человеческое имя живёт
+ * отдельным полем `name` и не ограничено ничем.
+ */
+const StyleId = z.string().regex(/^[A-Za-z0-9_-]+$/, {
+  message: 'Идентификатор стиля попадает в селектор CSS: только латиница, цифры, дефис и подчёркивание',
+});
+
+/**
+ * Стиль — именованный набор свойств ВИДА. Появился в v12.
+ *
+ * Геометрии в нём нет и быть не может: `x`, `y`, `width`, `height`,
+ * `rotation` — отдельные поля состояния, а стиль заполняет карту свойств.
+ * Положить туда положение нечем. Это требование `design/styles.md` §2,
+ * выраженное формой, а не проверкой.
+ *
+ * `type` — не украшение: стиль текста нельзя применить к фигуре, наборы
+ * свойств не пересекаются. Проверяется у проекта, где видны и стили,
+ * и элементы сразу.
+ */
+export const StyleSchema = z.object({
+  id: StyleId,
+  /** То, что видит автор. Может быть любым — «Заголовок», «Тихий», «Цифра». */
+  name: z.string().min(1),
+  type: z.enum(ELEMENT_TYPES),
+  props: StyleProps.default({}),
+});
+
 export const ElementSchema = z.object({
   id: Id,
   type: z.enum(ELEMENT_TYPES),
@@ -351,7 +395,26 @@ export const ElementStateSchema = z.object({
    */
   flipX: z.boolean().default(false),
   flipY: z.boolean().default(false),
-  style: z.record(z.string(), z.union([z.string(), z.number()])).default({}),
+  style: StyleProps.default({}),
+  /**
+   * Стиль, по которому идёт элемент на ЭТОМ слайде. Появилось в v12.
+   *
+   * У СОСТОЯНИЯ, а не у элемента, по тому же критерию, по которому здесь
+   * оказались `flipX` и поворот: вид элемента видит зритель, значит он
+   * вправе меняться от слайда к слайду. Решение владельца 14.08.2026:
+   * заголовок начинается «Главным» и к концу становится «Тихим».
+   *
+   * Ссылка и `style` рядом друг друга НЕ дублируют, и решение [Р]
+   * `product.md` §2 «ни одно свойство не лежит в двух местах» не нарушено.
+   * У каждого свойства ровно один действующий источник: ключ есть в `style` —
+   * источник элемент, ключа нет — источник стиль. Разводит их не проверка
+   * в коде, а каскад браузера: стиль лежит правилом класса, `style` —
+   * инлайном, и инлайн перекрывает правило ПОКОМПОНЕНТНО. Измерено S14:
+   * правка кегля рукой дала 72px, а цвет и скругление остались стилевыми.
+   *
+   * → docs/adr/ADR-029-styles.md
+   */
+  styleId: StyleId.optional(),
 });
 
 /**
@@ -851,6 +914,19 @@ export const ProjectSchema = z
     /** Сегмент, с которого начинается объяснение. Явно, а не «первый в массиве». */
     entry: Id,
     segments: z.array(SegmentSchema).min(1),
+    /**
+     * Стили проекта. Появились в v12.
+     *
+     * Лежат В ПРОЕКТЕ, а не берутся со склада по ссылке, и это следствие
+     * инварианта №9: плеер собирается в самостоятельный бандл и открывается
+     * в голом HTML-файле. Проект, ссылающийся наружу, у зрителя не разрешился
+     * бы — и по замеру S14 это была бы не пропажа стиля, а ПОЧЕРНЕВШАЯ сцена
+     * без единой ошибки в консоли. Склад наборов только источник, откуда
+     * стили копируют внутрь.
+     *
+     * → docs/adr/ADR-029-styles.md §6
+     */
+    styles: z.array(StyleSchema).default([]),
   })
   .superRefine((project, ctx) => {
     const { segments, entry } = project;
@@ -861,6 +937,18 @@ export const ProjectSchema = z
         code: 'custom',
         path: ['segments'],
         message: 'Идентификатор сегмента повторяется',
+      });
+    }
+
+    // Стили: тип стиля обязан совпасть с типом элемента, а ссылка — вести
+    // к существующему стилю. Проверка стоит У ПРОЕКТА, потому что только
+    // здесь видны сразу и стили, и элементы сегментов.
+    const styleTypeById = new Map(project.styles.map((style) => [style.id, style.type]));
+    if (styleTypeById.size !== project.styles.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['styles'],
+        message: 'Идентификатор стиля повторяется',
       });
     }
 
@@ -912,6 +1000,41 @@ export const ProjectSchema = z
           path: at('elements'),
           message: `Сегмент «${segment.id}»: идентификатор элемента повторяется`,
         });
+      }
+
+      // Ссылка на стиль: ведёт к существующему и подходит элементу по типу.
+      //
+      // Второе важнее первого. Стиль текста, вставший на фигуру, не упал бы
+      // и не почернел — он просто применил бы `font-size` к тому, у чего нет
+      // текста, и автор увидел бы, что «стиль не работает», без единого
+      // признака причины.
+      const elementTypeById = new Map(segment.elements.map((e) => [e.id, e.type]));
+      for (const [slideIndex, slide] of segment.slides.entries()) {
+        for (const [elementId, state] of Object.entries(slide.states)) {
+          if (state.styleId === undefined) continue;
+          const path = at('slides', slideIndex, 'states', elementId, 'styleId');
+
+          const styleType = styleTypeById.get(state.styleId);
+          if (styleType === undefined) {
+            ctx.addIssue({
+              code: 'custom',
+              path,
+              message: `Стиль «${state.styleId}» не существует в проекте`,
+            });
+            continue;
+          }
+
+          const elementType = elementTypeById.get(elementId);
+          if (elementType !== undefined && styleType !== elementType) {
+            ctx.addIssue({
+              code: 'custom',
+              path,
+              message:
+                `Стиль «${state.styleId}» описывает вид элементов типа «${styleType}», `
+                + `а «${elementId}» имеет тип «${elementType}». Наборы свойств не пересекаются.`,
+            });
+          }
+        }
       }
 
       /** Секунды ссылки, если их можно узнать не глядя на транскрипт. */

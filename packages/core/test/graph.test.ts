@@ -31,6 +31,7 @@ const project = (segments: Segment[]): Project => ({
   schemaVersion: SCHEMA_VERSION,
   meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
   entry: segments[0]!.id,
+  styles: [],
   segments,
 });
 
@@ -176,6 +177,7 @@ describe('сколько частей осталось', () => {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: '', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
     entry: 'a',
+    styles: [],
     segments: ['a', 'b', 'c'].map((id, index, all) => ({
       id,
       title: '',

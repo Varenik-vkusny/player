@@ -26,6 +26,7 @@ function baseProject(): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'seg-1',
+    styles: [],
     segments: [
       {
         id: 'seg-1',

@@ -51,6 +51,7 @@ function project(): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'whole',
+    styles: [],
     segments: [{
       id: 'whole',
       title: 'Цельное повествование',

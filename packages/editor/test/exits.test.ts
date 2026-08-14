@@ -75,6 +75,7 @@ function project(segments: readonly Segment[], entry = 'seg-1'): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry,
+    styles: [],
     segments: [...segments],
   };
 }

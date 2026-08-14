@@ -786,6 +786,46 @@ const migrateV10toV11: Migration = (input) => {
   };
 };
 
+interface ProjectV11 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+}
+
+/**
+ * v11 → v12: стили как объект проекта и ссылка на стиль у состояния слайда.
+ *
+ * Содержимого не меняет НИЧЕГО, и это условие доказательства, а не лень.
+ * Оба изменения добавочные: `styles` имеет умолчание — пустой список,
+ * `styleId` необязателен, и его отсутствие означает «элемент идёт своими
+ * значениями», то есть ровно сегодняшнее поведение.
+ *
+ * Отсюда проверка с внятным ответом на вопрос «что должно сломаться, чтобы
+ * тест покраснел»: прежние скриншотные эталоны обязаны совпасть В НОЛЬ
+ * ПИКСЕЛЕЙ, ни одного перезаписанного. Красное означает, что стили изменили
+ * картинку там, где ни одного стиля нет.
+ *
+ * Зачем бамп, если содержимое не меняется. Он защищает ОТКАЗ НАЗАД. Проект
+ * со стилями, попав в сборку, знающую только v11, потерял бы при разборе
+ * и `styles`, и все `styleId`. Сцена собралась бы — из элементов, лишённых
+ * вида, который автор задал стилями, и притом БЕЗ ошибки: `styleId`
+ * необязателен, а `styles` неизвестно. Бамп заставляет сборку сказать
+ * «сохранено в версии 12, понимаю 11» и остановиться.
+ *
+ * → docs/adr/ADR-029-styles.md
+ */
+const migrateV11toV12: Migration = (input) => {
+  const v11 = input as ProjectV11;
+
+  return {
+    schemaVersion: 12,
+    meta: v11.meta,
+    entry: v11.entry,
+    segments: v11.segments,
+    styles: [],
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
@@ -797,6 +837,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   8: migrateV8toV9,
   9: migrateV9toV10,
   10: migrateV10toV11,
+  11: migrateV11toV12,
 });
 
 export class SchemaVersionError extends Error {

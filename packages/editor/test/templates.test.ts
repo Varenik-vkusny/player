@@ -36,6 +36,7 @@ function projectAround(segment: Segment): Project {
     schemaVersion: SCHEMA_VERSION,
     meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height, theme: ThemeSchema.parse({}) },
     entry: segment.id,
+    styles: [],
     segments: [segment],
   };
 }
@@ -212,6 +213,7 @@ describe('шаблон «вопрос»: варианты действитель
         schemaVersion: SCHEMA_VERSION,
         meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
         entry: 'n1',
+        styles: [],
         segments: [
           { ...segment, id: 'n1', audio },
           {
