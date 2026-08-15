@@ -239,9 +239,30 @@ test.describe('масштаб холста', () => {
     const hostHeight = async (): Promise<number> =>
       page.evaluate(() => document.querySelector('.ed-stage-host')!.clientHeight);
 
+    /**
+     * Ждёт, пока масштаб догонит нынешний размер холста.
+     *
+     * Не смягчение проверки, а устранение ГОНКИ, найденной 15.08.2026
+     * (Сессия 40) — до этого падение числилось плавающим с неустановленной
+     * причиной. Высота холста меняется СИНХРОННО со щелчком по панели,
+     * а масштаб — в колбэке `ResizeObserver`, то есть кадром позже. Обычно
+     * тест успевал прочитать уже пересчитанное; под нагрузкой (полный шард)
+     * читал прежнее и падал с `0.0741` против `0.1685`, где 0.0741 — ровно
+     * масштаб при РАСКРЫТОЙ панели: (112 − 32) / 1080.
+     *
+     * Проверяемое свойство не ослаблено: масштаб по-прежнему обязан СОЙТИСЬ
+     * с нынешним размером холста, просто ему дан кадр. Если пересчёта
+     * не произойдёт вовсе — ожидание истечёт и тест покраснеет.
+     */
+    const scaleCatchesUp = async (): Promise<void> => {
+      await expect
+        .poll(async () => (await sceneScale(page)) - (await fitFromHost()), { timeout: 5000 })
+        .toBeCloseTo(0, 3);
+    };
+
     // Панель свёрнута по умолчанию — холсту досталась высота.
     const tallHost = await hostHeight();
-    expect(await sceneScale(page)).toBeCloseTo(await fitFromHost(), 3);
+    await scaleCatchesUp();
 
     // Автор разворачивает озвучку: холст обязан отдать ей высоту...
     await page.getByTestId('audio-source-toggle').click();
@@ -250,12 +271,12 @@ test.describe('масштаб холста', () => {
 
     // ...а сцена — пересчитаться по тому, что осталось. Без пересчёта здесь
     // остался бы прежний масштаб, и он разошёлся бы с холстом вдвое.
-    expect(await sceneScale(page)).toBeCloseTo(await fitFromHost(), 3);
+    await scaleCatchesUp();
 
     // И обратно: свернули — холст вернул себе высоту, масштаб снова сошёлся.
     await page.getByTestId('audio-source-toggle').click();
     expect(await hostHeight()).toBe(tallHost);
-    expect(await sceneScale(page)).toBeCloseTo(await fitFromHost(), 3);
+    await scaleCatchesUp();
   });
 
   test('Ctrl+0 возвращает вписывание, каким оно и было', async ({ page }) => {

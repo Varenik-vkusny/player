@@ -1372,3 +1372,17 @@ export type Segment = z.infer<typeof SegmentSchema>;
 export type Theme = z.infer<typeof ThemeSchema>;
 export type Style = z.infer<typeof StyleSchema>;
 export type Project = z.infer<typeof ProjectSchema>;
+
+/**
+ * Проект ДО умолчаний — то, что законно подать на вход разбору.
+ *
+ * Нужен тем, кто проект СОБИРАЕТ, а не читает: импорту прежде всего.
+ * Разница с `Project` не косметическая — в выходном типе `meta.theme`
+ * и десяток полей состояния обязательны, потому что их проставила схема,
+ * и собрать такое значение руками нельзя, не переписав умолчания второй
+ * раз. Второе описание умолчаний разъехалось бы с первым МОЛЧА.
+ *
+ * Появился в v13 вместе с импортом. Выводится из той же схемы, поэтому
+ * расходиться ему не с чем.
+ */
+export type ProjectInput = z.input<typeof ProjectSchema>;

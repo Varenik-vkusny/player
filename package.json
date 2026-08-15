@@ -26,7 +26,8 @@
     "spike:editor-stack": "vite --config spikes/editor-stack/vite.config.mjs",
     "spike:map-stack": "vite --config spikes/map-stack/vite.config.mjs",
     "spike:tokens": "node spikes/run-tokens.mjs",
-    "spike:transitions": "node spikes/run-transitions.mjs"
+    "spike:transitions": "node spikes/run-transitions.mjs",
+    "spike:pptx": "node spikes/run-pptx-import.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.0",
@@ -39,6 +40,7 @@
     "animejs": "^4.5.0",
     "pixelmatch": "^7.2.0",
     "pngjs": "^7.0.0",
+    "pptx-viewer-core": "^2.3.8",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-moveable": "^0.56.0",

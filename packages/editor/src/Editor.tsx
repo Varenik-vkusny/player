@@ -98,6 +98,7 @@ import { THEME_ROLES } from './theme.js';
 import { TRANSITION_INFO } from './transitions.js';
 import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
 import { saveWork } from './state/workspace.js';
+import { importPptxFile, PPTX_ACCEPT } from './import/openPptx.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { AudioSourcePanel } from './track/AudioSourcePanel.js';
@@ -186,6 +187,7 @@ export function Editor({
    */
   const [workError, setWorkError] = useState<string | undefined>(undefined);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pptxInputRef = useRef<HTMLInputElement>(null);
 
   /** Какая панель каталога открыта на рельсе слева (chrome/catalog.ts). */
   const [panelId, setPanelId] = useState<PanelId>('templates');
@@ -1501,6 +1503,40 @@ export function Editor({
   );
 
   /**
+   * Импорт презентации: тот же путь, что и у «Открыть файл».
+   *
+   * Отдельная кнопка, а не второе расширение у той же: открытие проекта
+   * и импорт презентации — разные действия с разной ценой. Открытие
+   * возвращает работу как была, импорт СОБИРАЕТ новую из чужого формата
+   * и часть данных при этом теряет (картинки приезжают рамками, ADR-031).
+   * Спрятать это за общей кнопкой значило бы сделать потерю незаметной.
+   */
+  const handleImportPptx = useCallback(
+    async (file: File): Promise<void> => {
+      if (!canWrite) {
+        setWorkError('Работа открыта в другой вкладке — здесь нельзя импортировать');
+        return;
+      }
+      try {
+        const { project, report } = await importPptxFile(file);
+        await saveWork(project, file.name);
+        location.href = location.pathname;
+        // Строка ниже до перезагрузки не доживёт — она для случая, когда
+        // переход не состоялся. Молчать о срезанном нельзя: автор увидит
+        // рамки вместо картинок и решит, что импорт сломался.
+        setWorkError(
+          `Импортировано страниц: ${report.slides}, элементов: ${report.elements}. `
+          + `Картинок без содержимого: ${report.picturesWithoutBytes}, `
+          + `линий, приехавших рамкой: ${report.linesAsFrames}.`,
+        );
+      } catch (error: unknown) {
+        setWorkError(`Не удалось импортировать ${file.name}: ${String(error)}`);
+      }
+    },
+    [canWrite],
+  );
+
+  /**
    * Что из выделенного можно собрать в группу, а что разобрать.
    *
    * Считается ЗДЕСЬ, а не в `keyboard.ts`: та таблица отвечает на вопрос
@@ -1834,6 +1870,29 @@ export function Editor({
             onClick={() => fileInputRef.current?.click()}
           >
             Открыть файл
+          </button>
+          {/* Импорт презентации. Тот же приём со спрятанным input, что и выше. */}
+          <input
+            ref={pptxInputRef}
+            type="file"
+            accept={PPTX_ACCEPT}
+            className="ed-file-input"
+            data-testid="import-pptx-input"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              if (file) void handleImportPptx(file);
+            }}
+          />
+          <button
+            type="button"
+            className="ed-action"
+            data-testid="import-pptx"
+            disabled={!canWrite}
+            title={canWrite ? 'Презентация из Canva, PowerPoint, Google Slides или Keynote' : 'Работа открыта в другой вкладке'}
+            onClick={() => pptxInputRef.current?.click()}
+          >
+            Импорт презентации
           </button>
           {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
               Без него условные варианты ответа физически непроверяемы: редактор
