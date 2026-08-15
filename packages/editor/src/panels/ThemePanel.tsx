@@ -29,6 +29,7 @@ import { useId, type ReactElement } from 'react';
 import type { Theme } from '@player/core';
 
 import { tryColor } from '../state/style.js';
+import { PALETTES } from '../state/palettes.js';
 import { THEME_FIELDS, THEME_ROLES } from '../theme.js';
 
 export interface ThemePanelProps {
@@ -37,6 +38,13 @@ export interface ThemePanelProps {
   onChangeRole: (role: keyof Theme, value: string) => void;
   /** Потеря фокуса поля — точка коммита жеста (см. комментарий модуля). */
   onCommitHistory: () => void;
+  /**
+   * Щелчок по образцу палитры (`PALETTES`, `state/palettes.ts`) — заменяет
+   * ВСЕ десять ролей темы разом, одной записью в историю (Editor.tsx собирает
+   * её тем же приёмом, что и `applyArrange`: `commit: false` на каждую роль,
+   * один `commit` в конце). Отмена обязана вернуть прежнюю тему целиком.
+   */
+  onApplyPalette: (paletteId: string) => void;
 }
 
 interface ThemeRoleFieldProps {
@@ -102,10 +110,41 @@ function ThemeRoleField({ role, value, onChangeRole, onCommitHistory }: ThemeRol
   );
 }
 
-export function ThemePanel({ theme, onChangeRole, onCommitHistory }: ThemePanelProps): ReactElement {
+export function ThemePanel({
+  theme,
+  onChangeRole,
+  onCommitHistory,
+  onApplyPalette,
+}: ThemePanelProps): ReactElement {
   return (
     <section className="ed-theme-panel" aria-label="Тема">
       <h2 className="ed-insp-title">Тема</h2>
+
+      {/* Палитры — над списком ролей: выбор готовой темы одним щелчком,
+          раньше, чем автор доберётся до правки отдельной роли. «Ночь» стоит
+          первой в PALETTES (умолчания схемы) — возврат к сегодняшнему виду
+          не дороже одного щелчка в один конец. */}
+      <div className="ed-theme-palettes" role="list" aria-label="Палитры">
+        {PALETTES.map((palette) => (
+          <button
+            key={palette.id}
+            type="button"
+            className="ed-palette-swatch"
+            data-testid={`palette-${palette.id}`}
+            role="listitem"
+            title={palette.name}
+            onClick={() => onApplyPalette(palette.id)}
+          >
+            <span className="ed-palette-chips" aria-hidden="true">
+              <span className="ed-palette-chip" style={{ background: palette.theme['--scene-bg'] }} />
+              <span className="ed-palette-chip" style={{ background: palette.theme['--scene-accent'] }} />
+              <span className="ed-palette-chip" style={{ background: palette.theme['--scene-ink'] }} />
+            </span>
+            <span className="ed-palette-name">{palette.name}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="ed-insp-body">
         {THEME_ROLES.map((role) => (
           <ThemeRoleField

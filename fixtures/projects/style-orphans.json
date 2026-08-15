@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 12,
+  "meta": {
+    "title": "Сироты цвета: как это выглядит у зрителя",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-orphans",
+  "styles": [
+    {
+      "id": "broken",
+      "name": "Сломанный",
+      "type": "text",
+      "props": {
+        "font-family": "system-ui, sans-serif",
+        "font-size": "96px",
+        "color": "var(--scene-nonexistent)"
+      }
+    },
+    {
+      "id": "healthy",
+      "name": "Здоровый",
+      "type": "text",
+      "props": {
+        "font-family": "system-ui, sans-serif",
+        "font-size": "96px",
+        "color": "var(--scene-accent, #4c8dff)"
+      }
+    }
+  ],
+  "segments": [
+    {
+      "id": "s-orphans",
+      "title": "Слева сирота, справа здоровая ссылка",
+      "audio": {
+        "src": "/audio/branch-yes.mp3",
+        "duration": 2.736,
+        "words": []
+      },
+      "elements": [
+        { "id": "orphan-style", "type": "text", "content": "Сирота в стиле" },
+        { "id": "orphan-own", "type": "text", "content": "Сирота у элемента" },
+        { "id": "healthy-one", "type": "text", "content": "Здоровая ссылка" }
+      ],
+      "slides": [
+        {
+          "id": "o-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "orphan-style": {
+              "x": 160, "y": 200, "width": 1600, "height": 140,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "styleId": "broken", "style": {}
+            },
+            "orphan-own": {
+              "x": 160, "y": 460, "width": 1600, "height": 140,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": {
+                "font-family": "system-ui, sans-serif",
+                "font-size": "96px",
+                "color": "var(--scene-also-missing)"
+              }
+            },
+            "healthy-one": {
+              "x": 160, "y": 720, "width": 1600, "height": 140,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "styleId": "healthy", "style": {}
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

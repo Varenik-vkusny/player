@@ -331,6 +331,16 @@ export type EditorAction =
   | { readonly type: 'addStyle'; readonly style: Style; readonly sourceElementId: string }
   | { readonly type: 'updateStyle'; readonly style: Style }
   | { readonly type: 'removeStyle'; readonly styleId: string }
+  /**
+   * Импорт набора со склада (`StylesPanel.tsx`, кнопка «Взять» — ADR-029 §6,
+   * `state/styleStore.ts`). В отличие от `addStyle`, здесь НЕТ элемента-
+   * источника: пришедшие стили ничего не переводят на себя, они просто
+   * ложатся в `project.styles`. Коллизии идентификаторов уже разрешены
+   * `mergeStyleSet` до вызова этого действия — переименовывать здесь
+   * нечего. Один dispatch на весь набор: взять пять стилей и отменить взятие
+   * одним Ctrl+Z, а не пятью.
+   */
+  | { readonly type: 'addStyles'; readonly styles: readonly Style[] }
   | {
       readonly type: 'moveMark';
       readonly kind: MarkKind;
@@ -995,6 +1005,21 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'removeStyle': {
       const project = bakeAndRemoveStyle(state.project, action.styleId);
       return { ...state, project };
+    }
+
+    case 'addStyles': {
+      if (action.styles.length === 0) return state;
+      const taken = new Set(state.project.styles.map((style) => style.id));
+      for (const style of action.styles) {
+        if (taken.has(style.id)) {
+          throw new Error(
+            `Стиль «${style.id}» уже есть в проекте: mergeStyleSet (styleStore.ts) обязан был ` +
+              'исключить совпадение идентификаторов до вызова addStyles',
+          );
+        }
+        taken.add(style.id);
+      }
+      return { ...state, project: { ...state.project, styles: [...state.project.styles, ...action.styles] } };
     }
 
     case 'moveMark': {

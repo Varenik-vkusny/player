@@ -60,6 +60,16 @@ export interface PropBarProps {
   onAlign: (kind: AlignKind) => void;
   onDistribute: (axis: DistributeAxis) => void;
   onLayer: (move: LayerMove) => void;
+  /**
+   * «Копировать форматирование» (docs/design/styles.md §5) — не «кисть»,
+   * слово в интерфейс не идёт (натура снята в Canva 14.08.2026, там пункт
+   * называется ровно так). Живо только при ОДНОМ выделенном с видом на этом
+   * слайде — снимать формат с пачки или «ниоткуда» нечем.
+   */
+  copyFormatEnabled: boolean;
+  /** Формат уже «в руке» — кнопка обязана выглядеть нажатой. */
+  copyFormatArmed: boolean;
+  onCopyFormat: () => void;
   /** Открывает панель «Объект» — единственная дверь в полный список свойств. */
   onOpenObject: () => void;
 }
@@ -195,6 +205,13 @@ export const LAYER_BUTTONS: readonly {
   },
 ];
 
+/** Значок валика: тело + ручка + мазок краски, в поле 16×16 как остальные. */
+const COPY_FORMAT_SHAPES: readonly Shape[] = [
+  [2, 2, 9, 4],
+  [4, 6, 2, 5],
+  [9, 9, 5, 3],
+];
+
 export function PropBar({
   selectedCount,
   styleFields,
@@ -205,6 +222,9 @@ export function PropBar({
   onAlign,
   onDistribute,
   onLayer,
+  copyFormatEnabled,
+  copyFormatArmed,
+  onCopyFormat,
   onOpenObject,
 }: PropBarProps): ReactElement {
   // Ничего не выделено — ни полей стиля, ни кнопок расположения, но СТРОКА
@@ -294,6 +314,25 @@ export function PropBar({
             <Icon shapes={shapes} />
           </button>
         ))}
+
+        <span className="ed-propbar-sep" aria-hidden="true" />
+
+        <button
+          type="button"
+          className="ed-propbar-btn"
+          data-testid="copy-format"
+          aria-label="Копировать форматирование"
+          aria-pressed={copyFormatArmed}
+          title={
+            copyFormatEnabled
+              ? 'Копировать форматирование (Ctrl+Alt+C)'
+              : 'Копировать форматирование — нужно выделить один элемент с видом на этом слайде'
+          }
+          disabled={!copyFormatEnabled}
+          onClick={onCopyFormat}
+        >
+          <Icon shapes={COPY_FORMAT_SHAPES} />
+        </button>
 
         <span className="ed-propbar-spacer" aria-hidden="true" />
 

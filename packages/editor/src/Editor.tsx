@@ -81,16 +81,20 @@ import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, type MarkKind } from './state/project.js';
+import { colorOrphans } from './state/colorOrphans.js';
+import { paletteById } from './state/palettes.js';
 import { propbarStyleFields } from './state/propbar.js';
 import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
 import {
   commonStyleValue,
   setStyleValue,
   styleFieldsFor,
+  type ElementStyle,
   type LengthOrPercent,
   type StyleFieldKey,
 } from './state/style.js';
 import { sceneTemplate } from './state/templates.js';
+import { THEME_ROLES } from './theme.js';
 import { TRANSITION_INFO } from './transitions.js';
 import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
 import { saveWork } from './state/workspace.js';
@@ -141,6 +145,30 @@ function isTextFieldNode(node: globalThis.Element | null): boolean {
   if (!node) return false;
   return node.tagName === 'INPUT' || node.tagName === 'TEXTAREA' || node.tagName === 'SELECT';
 }
+
+/**
+ * Формат «в руке» — что «Копировать форматирование» (`PropBar.tsx`,
+ * data-testid `copy-format`) сняло с исходного элемента и ждёт второго
+ * щелчка (`docs/design/styles.md` §5, натура снята в Canva 14.08.2026).
+ *
+ * `elementType` проверяется ПЕРЕД применением: формат текста на фигуру
+ * не переносится, схема отвергла бы стиль чужого типа (ProjectSchema.
+ * superRefine, «Наборы свойств не пересекаются»).
+ *
+ * `kind: 'style'` — источник сам стоял на стиле: приёмник получает ТОТ ЖЕ
+ * `styleId`, то есть попадает в ту же живую связь — ровно то же действие,
+ * что «Применить» в StylesPanel.
+ *
+ * `kind: 'values'` — источник свободен от стиля: копируются СЫРЫЕ значения
+ * полей `styleFieldsFor(type)`, какими они лежат в его карте `style` —
+ * без повторного разбора через `setStyleValue`, потому что это уже
+ * провалидированные значения (в том числе ссылки на роль темы,
+ * `var(--x, y)`), а строгий разбор `setStyleValue` такую ссылку отверг бы
+ * как значение не того формата для поля.
+ */
+type CopyFormat =
+  | { readonly kind: 'style'; readonly sourceId: string; readonly elementType: Element['type']; readonly styleId: string }
+  | { readonly kind: 'values'; readonly sourceId: string; readonly elementType: Element['type']; readonly props: ElementStyle };
 
 export function Editor({
   project,
@@ -302,6 +330,9 @@ export function Editor({
   const [selectedMark, setSelectedMark] = useState<{ kind: MarkKind; id: string } | undefined>(
     undefined,
   );
+
+  /** Формат «в руке» (см. комментарий типа `CopyFormat` выше). */
+  const [copyFormat, setCopyFormat] = useState<CopyFormat | undefined>(undefined);
 
   const markData: SelectedMarkData | undefined = useMemo(() => {
     if (!selectedMark) return undefined;
@@ -899,6 +930,22 @@ export function Editor({
   }, []);
 
   /**
+   * Палитра (`ThemePanel.tsx`, образец из `PALETTES`) — ВСЕ десять ролей
+   * ОДНОЙ записью в историю. Тот же приём, что у `applyArrange`: `commit:
+   * false` на каждую роль, один явный `commit` в конце закрывает жест —
+   * `historyReducer` (`state/editorHistory.ts`) кладёт в past состояние ДО
+   * первой отличающейся роли и больше не пушет, пока жест открыт, поэтому
+   * Ctrl+Z возвращает прежнюю тему целиком.
+   */
+  const handleApplyPalette = useCallback((paletteId: string) => {
+    const palette = paletteById(paletteId);
+    for (const role of THEME_ROLES) {
+      dispatch({ type: 'setThemeRole', role, value: palette.theme[role], commit: false });
+    }
+    dispatch({ type: 'commit' });
+  }, []);
+
+  /**
    * «Сохранить вид как стиль» (`StylesPanel.tsx`, ADR-029): собирает `Style`
    * из СОБСТВЕННОЙ карты выделенного элемента на текущем слайде, но только
    * по ключам `styleFieldsFor(type)` (ADR-012) — не всю карту целиком, иначе
@@ -937,6 +984,72 @@ export function Editor({
   const handleDeleteStyle = useCallback((styleId: string) => {
     dispatch({ type: 'removeStyle', styleId });
   }, []);
+
+  /**
+   * «Взять» набор со склада (`StylesPanel.tsx`): панель уже слила его через
+   * `mergeStyleSet` (свои `project.styles` против набора) и решила
+   * переименования — сюда приходит готовый к вставке список, редьюсер
+   * (`case 'addStyles'`) кладёт его в `project.styles` одним шагом истории.
+   */
+  const handleTakeStyles = useCallback((incoming: readonly Style[]) => {
+    if (incoming.length === 0) return;
+    dispatch({ type: 'addStyles', styles: incoming });
+  }, []);
+
+  /**
+   * «Копировать форматирование» — снимает формат с ОДНОГО выделенного
+   * (см. комментарий типа `CopyFormat` выше). Источник без style на этом
+   * слайде взять нечего — кнопка и без этой проверки гаснет по
+   * `copyFormatEnabled`, но обработчик обязан оставаться безопасным сам
+   * по себе, а не полагаться на то, что кнопка его прикрыла.
+   */
+  const handleCopyFormat = useCallback(() => {
+    if (selected === undefined || selectedState === undefined) return;
+    if (
+      selectedState.styleId !== undefined
+      && currentProject.styles.some((style) => style.id === selectedState.styleId)
+    ) {
+      setCopyFormat({
+        kind: 'style',
+        sourceId: selected.id,
+        elementType: selected.type,
+        styleId: selectedState.styleId,
+      });
+      return;
+    }
+    const keys = new Set(styleFieldsFor(selected.type).map((field) => field.key));
+    const props = Object.fromEntries(
+      Object.entries(selectedState.style).filter(([key]) => keys.has(key as StyleFieldKey)),
+    );
+    setCopyFormat({ kind: 'values', sourceId: selected.id, elementType: selected.type, props });
+  }, [selected, selectedState, currentProject.styles]);
+
+  /**
+   * Клик по сцене — тонкая обёртка над `handleSelect`: если формат «в руке»
+   * и клик попал в ДРУГОЙ элемент ТОГО ЖЕ типа с видом на этом слайде,
+   * применяет формат ОДНИМ dispatch и разряжает руку. Клик по элементу
+   * чужого типа или пустому месту формат не трогает — автор может целиться
+   * ещё раз. Только сцена (не `ElementList`): «Копировать форматирование» —
+   * инструмент холста, как и в Canva, откуда снята натура.
+   */
+  const handleStageSelect = useCallback(
+    (id: string | undefined, additive = false) => {
+      if (copyFormat !== undefined && !additive && id !== undefined && id !== copyFormat.sourceId) {
+        const target = segment.elements.find((element) => element.id === id);
+        const targetState = currentSlide.states[id];
+        if (target !== undefined && targetState !== undefined && target.type === copyFormat.elementType) {
+          const patch: Partial<ElementState> =
+            copyFormat.kind === 'style'
+              ? { styleId: copyFormat.styleId }
+              : { style: { ...targetState.style, ...copyFormat.props } };
+          dispatch({ type: 'setElementState', elementId: id, patch, at: headTimeRef() });
+          setCopyFormat(undefined);
+        }
+      }
+      handleSelect(id, additive);
+    },
+    [copyFormat, segment.elements, currentSlide, headTimeRef, handleSelect],
+  );
 
   const handleInsert = useCallback(
     (itemId: string) => {
@@ -1143,6 +1256,24 @@ export function Editor({
   const slideSeconds = useMemo(
     () => segment.slides.map((slide) => markSeconds(slide.at, segment.words)),
     [segment.slides, segment.words],
+  );
+
+  /**
+   * Сколько мест ссылаются на цвет темы, который не разрешится.
+   *
+   * Считается ЗДЕСЬ, а не в панели дорожки: сироты живут и в стилях
+   * ПРОЕКТА, и у элементов слайда, а вниз приезжает только сегмент.
+   * Показывается тем же счётчиком, где живут сироты меток — второй
+   * счётчик на ту же болезнь приучил бы автора смотреть в одно место
+   * и пропускать другое (`design/styles.md` §4).
+   *
+   * Плеер про это не скажет никогда: браузер отбрасывает неразрешённую
+   * ссылку МОЛЧА, и элемент чернеет насквозь — базовое оформление сцены
+   * его не спасает (замерено S14).
+   */
+  const colorOrphanCount = useMemo(
+    () => colorOrphans(currentProject.styles, segment.slides).length,
+    [currentProject.styles, segment.slides],
   );
 
   const marks = useMemo((): Mark[] => {
@@ -1814,6 +1945,7 @@ export function Editor({
                 theme={currentProject.meta.theme}
                 onChangeRole={handleSetThemeRoleLive}
                 onCommitHistory={handleCommitHistory}
+                onApplyPalette={handleApplyPalette}
               />
             ) : panelId === 'styles' ? (
               <StylesPanel
@@ -1824,6 +1956,7 @@ export function Editor({
                 onSave={handleSaveStyle}
                 onApply={handleApplyStyle}
                 onDelete={handleDeleteStyle}
+                onTake={handleTakeStyles}
               />
             ) : (
               // panelId === 'object': панель свойств выделенного элемента —
@@ -1884,6 +2017,9 @@ export function Editor({
           onAlign={handleAlign}
           onDistribute={handleDistribute}
           onLayer={handleLayer}
+          copyFormatEnabled={selected !== undefined && selectedState !== undefined}
+          copyFormatArmed={copyFormat !== undefined}
+          onCopyFormat={handleCopyFormat}
           onOpenObject={() => handleSelectCategory('object')}
         />
         <StageView
@@ -1891,7 +2027,7 @@ export function Editor({
           segment={segment}
           currentSlide={currentSlide}
           selectedIds={state.selectedIds}
-          onSelect={handleSelect}
+          onSelect={handleStageSelect}
           onSelectMany={handleSelectMany}
           onElementStateChange={handleElementStateChangeLive}
           onElementContentChange={handleElementContentChange}
@@ -2088,6 +2224,7 @@ export function Editor({
           onMoveMark={handleMoveMark}
           onMoveMarkEnd={handleCommitHistory}
           onAddGate={handleAddGate}
+          colorOrphanCount={colorOrphanCount}
           onTransitionSecondsLive={handleTrackTransitionSecondsLive}
           onTransitionSecondsCommit={handleCommitHistory}
         />

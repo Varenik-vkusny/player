@@ -162,3 +162,64 @@ test.describe('панель стилей проекта', () => {
     await expect(page.getByTestId('style-item-quiet')).toBeVisible();
   });
 });
+
+test.describe('склад наборов стилей (Сессия 39, ADR-029 §6)', () => {
+  test('круг: сохранил набор, удалил стиль из проекта, взял набор обратно — стиль снова есть', async ({
+    page,
+  }) => {
+    await openEditor(page, 'styles');
+    await page.getByTestId('rail-styles').click();
+
+    // Промежуточная проверка: quiet СУЩЕСТВУЕТ до всякого удаления — иначе
+    // «стиль снова есть» после «взять» ничего бы не доказывало.
+    await expect(page.getByTestId('style-item-quiet')).toBeVisible();
+
+    // Сохраняем склад ДО удаления — набор несёт все три стиля проекта.
+    await page.getByLabel('Имя набора').fill('Резервный');
+    await page.getByTestId('styleset-save').click();
+    const saved = page.getByTestId('styleset-set-1');
+    await expect(saved).toBeVisible();
+    await expect(saved).toContainText('Резервный');
+
+    // Удаляем quiet из проекта.
+    await page.getByTestId('style-remove-quiet').click();
+    await expect(page.getByTestId('style-delete-usage')).toBeVisible();
+    await page.getByTestId('style-delete-confirm').click();
+
+    // Промежуточная проверка: удаление СОСТОЯЛОСЬ — иначе «взять» вернуло бы
+    // стиль, который никуда и не пропадал, и круг ничего бы не проверил.
+    await expect(page.getByTestId('style-item-quiet')).toHaveCount(0);
+
+    // Берём сохранённый набор обратно.
+    await page.getByTestId('styleset-take-set-1').click();
+
+    // quiet не сталкивался идентификатором ни с чем в проекте (его там уже
+    // не было) — mergeStyleSet вернул его под ТЕМ ЖЕ id, без переименования.
+    await expect(page.getByTestId('style-item-quiet')).toBeVisible();
+  });
+
+  test('переименование при столкновении id сказано вслух, а не молча', async ({ page }) => {
+    await openEditor(page, 'styles');
+    await page.getByTestId('rail-styles').click();
+
+    // Набор со ВСЕМИ тремя текущими стилями — их id совпадут со своими же
+    // при попытке взять обратно БЕЗ удаления: гарантированное столкновение.
+    await page.getByLabel('Имя набора').fill('Дубликат');
+    await page.getByTestId('styleset-save').click();
+    await expect(page.getByTestId('styleset-set-1')).toBeVisible();
+
+    await expect(page.getByTestId('styleset-renamed')).toHaveCount(0);
+    await page.getByTestId('styleset-take-set-1').click();
+
+    // Все три id столкнулись со своими прототипами — сообщение обязано
+    // назвать переименование по имени, не молчать.
+    const renamed = page.getByTestId('styleset-renamed');
+    await expect(renamed).toBeVisible();
+    await expect(renamed).toContainText('heading → heading-2');
+    await expect(renamed).toContainText('quiet → quiet-2');
+    await expect(renamed).toContainText('plate → plate-2');
+
+    // И переименованные стили реально легли в проект под новыми id.
+    await expect(page.getByTestId('style-item-heading-2')).toBeVisible();
+  });
+});

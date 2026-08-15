@@ -486,6 +486,14 @@ export const EDITOR_STYLES = `
   cursor: default;
 }
 
+/* Формат «в руке» (copy-format) — кнопка обязана выглядеть нажатой,
+   иначе автор забывает, что курсор ждёт второго щелчка, и жест теряется
+   молча (тот же довод, что у .ed-zoom-step[aria-pressed='true']). */
+.ed-propbar-btn[aria-pressed='true'] {
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg);
+}
+
 .ed-propbar-sep {
   flex: 0 0 auto;
   width: 1px;
@@ -1020,6 +1028,43 @@ export const EDITOR_STYLES = `
   gap: 8px;
   flex: 0 0 auto;
 }
+
+/* Ряд образцов палитр над списком ролей темы. Цвет самих квадратиков идёт
+   инлайн-стилем прямо из PALETTES (данные, не роль редактора) — этот файл
+   красит только рамку и фон КНОПКИ, ролями --ui-*, как и весь хром. */
+.ed-theme-palettes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ed-palette-swatch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: var(--ui-surface-raised);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ed-palette-swatch:hover { border-color: var(--ui-action-selected-line); }
+
+.ed-palette-chips { display: flex; }
+
+.ed-palette-chip {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid var(--ui-line);
+  margin-left: -4px;
+}
+.ed-palette-chip:first-child { margin-left: 0; }
+
+.ed-palette-name { white-space: nowrap; }
 
 .ed-slide-list,
 .ed-segment-list {

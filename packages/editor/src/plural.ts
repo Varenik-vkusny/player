@@ -50,3 +50,4 @@ export const ANIMATIONS: PluralForms = { one: 'анимация', few: 'аним
  */
 export const GATES: PluralForms = { one: 'остановка', few: 'остановки', many: 'остановок' };
 export const SLIDES: PluralForms = { one: 'слайде', few: 'слайдах', many: 'слайдах' };
+export const STYLES: PluralForms = { one: 'стиль', few: 'стиля', many: 'стилей' };

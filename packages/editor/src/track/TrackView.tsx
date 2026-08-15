@@ -110,6 +110,8 @@ function laneNote(
 
 /** Винительный падеж: «Проверьте 1 метку / 2 метки / 5 меток». */
 const ORPHAN_MARKS: PluralForms = { one: 'метку', few: 'метки', many: 'меток' };
+/** Тот же падеж: «Проверьте 1 место / 2 места / 5 мест». */
+const ORPHAN_COLORS: PluralForms = { one: 'место', few: 'места', many: 'мест' };
 
 export interface TrackViewProps {
   transport: TransportApi;
@@ -131,6 +133,18 @@ export interface TrackViewProps {
   onMoveMarkEnd: () => void;
   /** Добавляет гейт на текущей позиции. */
   onAddGate: () => void;
+  /**
+   * Сколько мест ссылаются на цвет темы, который не разрешится.
+   *
+   * Числом, а не списком: панель дорожки показывает СЧЁТЧИК, а разбор
+   * мест — дело панели стилей. Считается наверху (`Editor.tsx`) функцией
+   * `colorOrphans`, потому что ей нужны стили ПРОЕКТА, а сюда приезжает
+   * только один сегмент.
+   *
+   * Умолчание — ноль: без него каждый вызывающий обязан был бы считать
+   * сирот, даже если ему это не нужно.
+   */
+  colorOrphanCount?: number;
   /** Живое событие ручки стыка (Задача 5) — пробрасывается в `MarksLane`. */
   onTransitionSecondsLive: (id: string, seconds: number) => void;
   /** Жест ручки стыка завершён — коммит истории, как `onMoveMarkEnd`. */
@@ -163,6 +177,7 @@ export function TrackView({
   onMoveMark,
   onMoveMarkEnd,
   onAddGate,
+  colorOrphanCount = 0,
   onTransitionSecondsLive,
   onTransitionSecondsCommit,
 }: TrackViewProps): ReactElement {
@@ -492,12 +507,30 @@ export function TrackView({
         Строки нет, когда сирот нет: пустой блок «0 меток требуют проверки»
         приучал бы глаз пропускать это место.
       */}
-      {orphanCount > 0 && (
+      {(orphanCount > 0 || colorOrphanCount > 0) && (
         <p className="ed-orphans" data-testid="orphan-counter">
           <span className="ed-orphans-sign" aria-hidden="true">⚠</span>
           {' '}
-          Проверьте {plural(orphanCount, ORPHAN_MARKS)}: слово не найдено в записи.
-          {' '}
+          {orphanCount > 0 && (
+            <>Проверьте {plural(orphanCount, ORPHAN_MARKS)}: слово не найдено в записи.{' '}</>
+          )}
+          {/*
+            Сироты ЦВЕТА живут в том же счётчике, а не в своём
+            (`design/styles.md` §4). Второй счётчик на ту же болезнь —
+            ошибка, уже названная в проекте: автор приучился бы смотреть
+            в одно место и пропускал бы второе.
+
+            Формулировка «мест», а не «цветов»: сирота бывает и в стиле
+            проекта, и у элемента на слайде, и открывать автору придётся
+            именно места. Плеер про это не скажет никогда — ему нечем.
+          */}
+          {colorOrphanCount > 0 && (
+            <span data-testid="orphan-colors">
+              Проверьте {plural(colorOrphanCount, ORPHAN_COLORS)}: ссылка на цвет темы
+              не разрешится.{' '}
+            </span>
+          )}
+          {orphanCount > 0 && (
           <button
             type="button"
             className="ed-orphans-next"
@@ -514,6 +547,7 @@ export function TrackView({
           >
             к следующей
           </button>
+          )}
         </p>
       )}
 
