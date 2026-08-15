@@ -19,8 +19,10 @@ import {
 } from '@player/core';
 import { describe, expect, it } from 'vitest';
 
-import { splitAtGate } from '../src/state/project.js';
-import { speechLossWarning, splitSegmentAtGate, SplitError } from '../src/state/split.js';
+import { splitAtGate, splitAtTime } from '../src/state/project.js';
+import {
+  speechLossWarning, splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime, SplitError,
+} from '../src/state/split.js';
 
 /** Десять слов по секунде: «w0» в 0.000, «w1» в 1.000 и так далее. */
 const WORDS: Word[] = Array.from({ length: 10 }, (_, index) => ({
@@ -427,5 +429,112 @@ describe('предупреждение о потере текста озвучк
     };
 
     expect(speechLossWarning(segment, segment.gates[0]!)).toBeUndefined();
+  });
+});
+
+/**
+ * Метка режет главу ГДЕ УГОДНО (`product.md` §2з [Р], отменяет прежнее [Р]
+ * «разрезать можно только на гейте»).
+ *
+ * ЧЕГО ЗДЕСЬ НАМЕРЕННО НЕТ: проверки «после разреза глав стало две». Она
+ * верна при ЛЮБОЙ реализации разреза, включая ту, что копирует главу целиком
+ * и оставляет обеим один и тот же кусок звука. Пуста по построению.
+ *
+ * Несущее утверждение другое: ОКНО ПОДЕЛЕНО, а не продублировано — звук
+ * второй главы начинается ровно там, где кончился звук первой, и сумма
+ * их длительностей равна исходной. Ложно, если `offset` скопирован.
+ */
+describe('метка режет главу где угодно', () => {
+  const at = 4;
+  const cut = () => splitSegmentAtTime(project().segments[0]!, at, project().segments);
+
+  it('окно звука ПОДЕЛЕНО, а не скопировано обеим главам', () => {
+    const source = project().segments[0]!;
+    const { head, tail } = cut();
+
+    // Файл один и тот же — «аудио физически не режется» ([Р], branches.md §2.1).
+    expect(tail.audio.src).toBe(head.audio.src);
+
+    // Вторая глава начинается там, где кончилась первая.
+    expect(head.audio.offset + head.audio.duration).toBe(tail.audio.offset);
+    // И вместе они дают исходное окно целиком: ни нахлёста, ни дыры.
+    expect(head.audio.duration + tail.audio.duration).toBe(source.audio.duration);
+    // Скопированный offset дал бы здесь 0 — то самое, что ловит эта проверка.
+    expect(tail.audio.offset).toBe(source.audio.offset + at);
+  });
+
+  it('стык невидим: первый слайд второй главы — снимок сцены на разрезе', () => {
+    const { tail } = cut();
+    const first = tail.slides[0]!;
+
+    expect(resolveTimeRef(first.at, tail.audio.words)).toBe(0);
+    expect(first.transition).toBe('cut');
+    // На разрезе в 4 с последним наступившим был sl-3 (слово №3 = 3.0 с).
+    expect(first.states['hero']!.x).toBe(300);
+  });
+
+  it('слайды и слова расходятся по шву, индексы слов сдвигаются согласованно', () => {
+    const { head, tail } = cut();
+
+    expect(head.slides.map((s) => s.id)).toEqual(['sl-0', 'sl-3']);
+    // Слова 0..3 остались в голове, 4..9 уехали и начались заново с нуля.
+    expect(head.audio.words.map((w) => w.text)).toEqual(['w0', 'w1', 'w2', 'w3']);
+    expect(tail.audio.words[0]!.text).toBe('w4');
+    expect(tail.audio.words[0]!.start).toBe(0);
+
+    // sl-7 ссылался на слово №7 исходного транскрипта; в новом оно стоит
+    // третьим, и метка обязана указывать на ТО ЖЕ слово (инвариант №10).
+    const moved = tail.slides.find((s) => s.id === 'sl-7')!;
+    expect(tail.audio.words[(moved.at as { wordIndex: number }).wordIndex]!.text).toBe('w7');
+  });
+
+  it('голова уходит в продолжение, продолжение забирает прежний выход', () => {
+    const source = project().segments[0]!;
+    const { head, tail } = cut();
+
+    expect(head.exit.default).toBe(tail.id);
+    expect(head.exit.rules).toEqual([]);
+    expect(tail.exit).toEqual(source.exit);
+  });
+
+  it('веток не рождается: метка — это шов, а не развилка', () => {
+    const { head, tail } = cut();
+    // Остановка на 5 с уехала во вторую главу и осталась обычной остановкой:
+    // разрез меткой не объявляет её развилкой и correctId не трогает.
+    expect(head.gates).toEqual([]);
+    expect(tail.gates).toHaveLength(1);
+    expect(tail.gates[0]!.config).toMatchObject({ correctId: 'left' });
+  });
+
+  it('проект собирается: вторая глава встаёт СРАЗУ ПОСЛЕ первой', () => {
+    const after = splitAtTime(project(), 'whole', at);
+
+    expect(after.segments.map((s) => s.id)[0]).toBe('whole');
+    expect(after.segments).toHaveLength(2);
+    // Результат обязан быть не просто валидным, а загружаемым схемой.
+    expect(() => loadProject(after)).not.toThrow();
+  });
+});
+
+describe('метка отказывается делать бессмыслицу', () => {
+  it('в самом начале главы делить нечего', () => {
+    expect(() => splitSegmentAtTime(project().segments[0]!, 0, project().segments))
+      .toThrow(/в самом начале главы/);
+  });
+
+  it('в самом конце главы вторая была бы пустой', () => {
+    expect(() => splitSegmentAtTime(project().segments[0]!, 10, project().segments))
+      .toThrow(/в самом конце главы/);
+  });
+
+  /**
+   * Одна правда на отказ разреза и на гашение кнопки. Разъехавшись, они дали бы
+   * кнопку, которая нажимается и падает, — и это молчаливый дефект.
+   */
+  it('причина отказа у кнопки и у разреза — одна и та же функция', () => {
+    expect(splitAtTimeBlockedReason(0, 10)).toMatch(/в самом начале главы/);
+    expect(splitAtTimeBlockedReason(10, 10)).toMatch(/в самом конце главы/);
+    expect(splitAtTimeBlockedReason(4, 10)).toBeUndefined();
+    expect(splitAtTimeBlockedReason(Number.NaN, 10)).toMatch(/это не время/);
   });
 });

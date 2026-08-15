@@ -1383,6 +1383,21 @@ export function Editor({
   }, [currentSegment.gates, segment.words, transport.positionSeconds]);
 
   /**
+   * Метка на позиции головки: глава делится надвое (`product.md` §2з [Р]).
+   *
+   * Секунды берутся у транспорта в момент нажатия, а не из состояния:
+   * головка ходит каждый кадр, и запомненное число разошлось бы с тем,
+   * что автор видит на дорожке.
+   *
+   * Выделение слайда и элемента сбрасывает сам редьюсер: выделенное могло
+   * уехать во вторую главу, и ссылка на него стала бы висячей.
+   */
+  const handleSplitHere = useCallback(() => {
+    dispatch({ type: 'splitAtTime', seconds: transport.positionSeconds });
+    setSelectedMark(undefined);
+  }, [transport.positionSeconds]);
+
+  /**
    * Сколько меток сейчас привязано к слову — для текста подтверждения
    * замены озвучки (AudioSourcePanel). Считается от ЖИВОГО сегмента
    * (currentSegment, а не segment-предпросмотр — оба несут одни и те же
@@ -2287,6 +2302,7 @@ export function Editor({
           onMoveMark={handleMoveMark}
           onMoveMarkEnd={handleCommitHistory}
           onAddGate={handleAddGate}
+          onSplitHere={handleSplitHere}
           colorOrphanCount={colorOrphanCount}
           onTransitionSecondsLive={handleTrackTransitionSecondsLive}
           onTransitionSecondsCommit={handleCommitHistory}

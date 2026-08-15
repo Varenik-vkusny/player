@@ -177,3 +177,94 @@ test.describe('разрез повествования по развилке', (
     expect(errors, 'разрез не должен ронять редактор').toEqual([]);
   });
 });
+
+/**
+ * Метка режет главу ГДЕ УГОДНО (`product.md` §2з [Р] — прямая отмена прежнего
+ * [Р] «разрезать можно только на гейте»).
+ *
+ * Нажимается ВИДИМАЯ кнопка транспорта, а не зовётся действие редьюсера,
+ * по той же причине, что и у разреза по развилке выше: разрез исправен
+ * и при кнопке, до которой нельзя дотянуться, а автору от такого разреза
+ * толку нет.
+ *
+ * ЧЕГО ЗДЕСЬ НАМЕРЕННО НЕТ: проверки «глав стало две». Она верна при любой
+ * реализации, включая ту, что копирует главу целиком, оставив обеим один
+ * и тот же кусок звука. Проверяется, что ОКНО ПОДЕЛЕНО.
+ */
+test.describe('метка режет главу где угодно, а не только на остановке', () => {
+  test('кнопка «разделить здесь» делит главу, и окно звука делится вместе с ней', async ({ page }) => {
+    await openEditor(page, 'exit-branch');
+
+    const before = await segmentsOf(page);
+
+    // Перемотка нажатием по дорожке — так же, как это делает человек.
+    const box = await page.getByTestId('track-lane').boundingBox();
+    if (!box) throw new Error('дорожка не видна');
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
+
+    const at = await page.evaluate(() =>
+      (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds);
+    expect(at, 'головка обязана стоять внутри главы, иначе кнопка законно погашена').toBeGreaterThan(0);
+
+    await expect(page.getByTestId('split-here')).toBeEnabled();
+    await page.getByTestId('split-here').click();
+
+    const after = await segmentsOf(page);
+    // Промежуточная проверка «предыдущий шаг СОСТОЯЛСЯ»: без неё проверки
+    // ниже сравнивали бы главу саму с собой и молчали бы об этом.
+    expect(after.length, 'разрез обязан был родить ровно одну новую главу')
+      .toBe(before.length + 1);
+
+    // Обе главы находятся НАБЛЮДЕНИЕМ, а не допущением о том, какая из трёх
+    // глав фикстуры текущая: новая — та, которой не было; разрезанная — та,
+    // у которой изменилась длительность. Допущение «первая в массиве»
+    // совпало бы с правдой случайно и разъехалось бы при смене фикстуры.
+    const wasById = new Map(before.map((segment) => [segment.id, segment]));
+    const tail = after.find((segment) => !wasById.has(segment.id))!;
+    const head = after.find((segment) => {
+      const was = wasById.get(segment.id);
+      return was !== undefined && was.duration !== segment.duration;
+    })!;
+    expect(tail, 'новая глава не найдена').toBeTruthy();
+    expect(head, 'ни у одной прежней главы не изменилась длительность').toBeTruthy();
+    const source = wasById.get(head.id)!;
+
+    // Несущее: вторая глава начинается там, где кончилась первая, и вместе
+    // они дают исходное окно целиком. Скопированный offset дал бы здесь
+    // равные offset у обеих.
+    expect(tail.offset).toBeCloseTo(head.offset + head.duration, 3);
+    expect(head.duration + tail.duration).toBeCloseTo(source.duration, 3);
+    expect(tail.offset, 'окно продублировано, а не поделено').toBeGreaterThan(head.offset);
+  });
+
+  test('в самом начале главы кнопка погашена и называет причину', async ({ page }) => {
+    await openEditor(page, 'exit-branch');
+
+    // Головка стоит на нуле сразу после открытия — делить нечего.
+    await expect(page.getByTestId('split-here')).toBeDisabled();
+    await expect(page.getByTestId('split-here')).toHaveAttribute('title', /в самом начале главы/);
+  });
+
+  test('разрезанный проект остаётся загружаемым схемой', async ({ page }) => {
+    await openEditor(page, 'exit-branch');
+
+    const countBefore = (await segmentsOf(page)).length;
+
+    const box = await page.getByTestId('track-lane').boundingBox();
+    if (!box) throw new Error('дорожка не видна');
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
+    await page.getByTestId('split-here').click();
+
+    // ПРОМЕЖУТОЧНАЯ ПРОВЕРКА «предыдущий шаг СОСТОЯЛСЯ», без которой тест
+    // декоративен: проект валиден и когда разреза не было вовсе. Поймано
+    // сломом при написании — с пустым обработчиком тест оставался зелёным,
+    // ровно как e2e «Ctrl+Z убирает вставленное» в Сессии 33.
+    expect((await segmentsOf(page)).length, 'разреза не произошло — проверять нечего')
+      .toBe(countBefore + 1);
+
+    const project = await page.evaluate(() => (window as unknown as { __project: unknown }).__project);
+    // Валидность данных не равна достижимости поведения, но невалидные
+    // данные не спасёт ничто: это нижняя граница, а не доказательство.
+    expect(() => loadProject(project)).not.toThrow();
+  });
+});

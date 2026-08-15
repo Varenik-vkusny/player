@@ -35,7 +35,7 @@ import * as exits from './exits.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
-import { splitSegmentAtGate } from './split.js';
+import { splitSegmentAtGate, splitSegmentAtTime } from './split.js';
 import { bakeStyle } from './styleLink.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
 
@@ -374,6 +374,7 @@ export type EditorAction =
   // connect + правку гейта значило бы отдать автору полуразрезанное состояние
   // на каждом промежуточном Ctrl+Z.
   | { readonly type: 'splitAtGate'; readonly gateId: string }
+  | { readonly type: 'splitAtTime'; readonly seconds: number }
   // Автор загрузил свой файл озвучки и подтвердил замену (см. state/audio.ts:
   // wordMarkCount/replaceAudioConfirmMessage — подтверждение строит вызывающий
   // ДО отправки этого действия). fileId уже лежит в хранилище плеера
@@ -1162,6 +1163,21 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     }
 
+    case 'splitAtTime': {
+      const project = splitAtTime(state.project, state.currentSegmentId, action.seconds);
+      const head = requireSegment(project, state.currentSegmentId);
+      // Автор остаётся в ПЕРВОЙ главе, тем же доводом, что и у разреза
+      // по развилке: он ставил метку здесь, а не просил перевести себя
+      // за неё. Выделение сбрасывается не для порядка — выделенное могло
+      // уехать во вторую главу.
+      return {
+        ...state,
+        project,
+        currentSlideId: requireFirstSlide(head).id,
+        selectedIds: [],
+      };
+    }
+
     case 'replaceSegmentAudio': {
       const segment = currentSegment(state);
       // Слова СТАРЫЕ, той озвучки, которую заменяем. Читать их обязательно
@@ -1241,6 +1257,32 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
  * рассинхронизировать с первым — а схема запрещает правилу выхода ссылаться
  * на вариант, которого у гейта нет («Эта ветка недостижима навсегда»).
  */
+/**
+ * Ставит МЕТКУ в момент `seconds`: глава делится на две.
+ *
+ * `product.md` §2з [Р] «Метку можно ставить где угодно, не только
+ * на вопросе» — прямая отмена прежнего [Р] «разрезать можно только
+ * на гейте». `branches.md` §2: метка И ЕСТЬ стык глав, отдельного объекта
+ * у неё нет, граница между главами и есть метка.
+ *
+ * Вторая глава встаёт СРАЗУ ПОСЛЕ первой в `project.segments`, а не
+ * в конец: порядок в списке — это порядок рассказа для автора, и метка,
+ * рождающая главу где-то внизу списка, читалась бы как прыжок.
+ *
+ * Живёт здесь, а не в `split.ts`, по тому же доводу, что и `splitAtGate`:
+ * собрать новый состав `project.segments` — работа стороны записи, узкой
+ * дверцы, которую охраняет тест инвариантов.
+ */
+export function splitAtTime(project: Project, segmentId: string, seconds: number): Project {
+  const segment = requireSegment(project, segmentId);
+  const { head, tail } = splitSegmentAtTime(segment, seconds, project.segments);
+
+  const segments = project.segments.flatMap((candidate) =>
+    (candidate.id === head.id ? [head, tail] : [candidate]));
+
+  return { ...project, segments };
+}
+
 export function splitAtGate(project: Project, segmentId: string, gateId: string): Project {
   const segment = requireSegment(project, segmentId);
   const { head, branches, tail } = splitSegmentAtGate(segment, gateId, project.segments);

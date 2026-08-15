@@ -117,6 +117,204 @@ function usedElements(segment: Segment, slides: readonly Slide[]): Segment['elem
   return segment.elements.filter((element) => used.has(element.id));
 }
 
+/** Две половины главы, разрезанной в момент `at`. Выходы каждой — дело вызывающего. */
+interface Halves {
+  /** Всё до разреза. Выход поставлен продолжением; развилка его перепишет. */
+  readonly head: Segment;
+  /** Всё после разреза. `null`, когда после разреза не осталось ничего. */
+  readonly tail: Segment | null;
+  /** Сколько слов расшифровки досталось голове — нужно для сдвига меток. */
+  readonly wordsCut: number;
+}
+
+/**
+ * ШОВ: как ЛЮБОЙ разрез главы делит её надвое.
+ *
+ * Заведён Сессией 41, когда к разрезу по развилке добавился разрез меткой
+ * в произвольном месте (`product.md` §2з отменяет [Р] «разрезать только
+ * на гейте»). Написать второй разрез рядом было бы дешевле на день и дороже
+ * навсегда: две правды об одном и том же расходятся молча и ровно тогда,
+ * когда на них перестают смотреть — тем же доводом, которым `segmentOf`
+ * держит доступ к `project.segments` в одном месте.
+ *
+ * Здесь живёт всё, что от вида разреза НЕ зависит: окно дорожки, слова
+ * расшифровки, шов текста озвучки, расход слайдов и остановок по времени,
+ * снимок сцены первым слайдом продолжения. Чем разрезы отличаются — это
+ * ВЫХОДЫ и то, появляются ли ветки; и то и другое остаётся снаружи.
+ *
+ * Выход головы поставлен простым продолжением, потому что это верно
+ * по умолчанию для любого разреза: договорив первую половину, рассказ идёт
+ * во вторую. Развилка его переписывает правилами на варианты.
+ */
+function cutInTwo(segment: Segment, at: number, tailId: string | null): Halves {
+  const words = segment.audio.words;
+
+  // --- дорожка: одно окно превращается в два, файл не трогается ---
+
+  const wordsCut = words.filter((word) => word.start < at).length;
+  const headWords = words.slice(0, wordsCut);
+  const tailWords = words.slice(wordsCut).map((word) => ({
+    ...word,
+    start: word.start - at,
+    end: word.end - at,
+  }));
+
+  const tailSeconds = segment.audio.duration - at;
+  const hasTail = tailId !== null && tailSeconds >= MIN_TAIL_SECONDS;
+
+  // --- текст озвучки: делится тем же швом, что и расшифровка ---
+  //
+  // Своим индексом делить нельзя: слова речи и слова расшифровки — разные
+  // разбиения (у автора «объяснение», у Deepgram «объясненье»), и k-е слово
+  // одного не обязано быть k-м словом другого. Шов переносится
+  // сопоставлением — это и есть правило `CLAUDE.md` «сравнивать пословно
+  // можно только после сопоставления последовательностей».
+  const speechCut = speechCutIndex(segment.speech, words, wordsCut);
+
+  const spokenWords = segment.speech === undefined ? [] : splitIntoWords(segment.speech);
+  const headSpeech = speechCut === undefined
+    ? segment.speech
+    : joinWords(spokenWords.slice(0, speechCut));
+  const tailSpeech = speechCut === undefined
+    ? undefined
+    : joinWords(spokenWords.slice(speechCut));
+
+  // --- слайды и остановки расходятся по времени разреза ---
+
+  const headSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) <= at);
+  const tailSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) > at);
+  const headGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) <= at);
+  const tailGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) > at);
+
+  const head: Segment = {
+    ...segment,
+    speech: headSpeech,
+    audio: { ...segment.audio, duration: at, words: headWords },
+    elements: usedElements(segment, headSlides),
+    slides: headSlides,
+    gates: headGates,
+    // Продолжения нет — выход исходной главы остаётся у головы: договаривает
+    // отныне она. Есть — уходим в него.
+    exit: hasTail ? { rules: [], default: tailId } : segment.exit,
+  };
+
+  // --- продолжение: первый слайд — точный снимок сцены на разрезе ---
+
+  const snapshot = statesAt(segment.slides, words, at);
+
+  const tail: Segment | null = hasTail
+    ? {
+      id: tailId,
+      title: `${segment.title || segment.id} — продолжение`,
+      // Не наследуется от исходной главы: её описание описывает ЦЕЛОЕ,
+      // а не продолжение. Скопировать значило бы соврать на карте.
+      description: '',
+      speech: tailSpeech,
+      audio: {
+        ...segment.audio,
+        // Файл тот же, окно сдвинуто: «аудио физически не режется».
+        offset: segment.audio.offset + at,
+        duration: tailSeconds,
+        words: tailWords,
+      },
+      elements: usedElements(segment, [
+        {
+          id: 'snapshot', at: { kind: 'seconds', t: 0 },
+          transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: snapshot,
+        },
+        ...tailSlides,
+      ]),
+      slides: [
+        {
+          id: freeId('slide', tailSlides),
+          at: { kind: 'seconds', t: 0 },
+          // Не морфинг: на стыке глав анимировать нечего. Граница невидима
+          // потому, что картинка совпадает с предыдущим кадром, а не потому,
+          // что переход её сглаживает.
+          transition: 'cut',
+          // Срез не длится, поэтому число здесь роли не играет; ставим
+          // умолчание, чтобы у поля не было второго значения на один смысл.
+          transitionSeconds: DEFAULT_TRANSITION_SECONDS,
+          states: snapshot,
+        },
+        ...tailSlides.map((slide) => ({ ...slide, at: shiftRef(slide.at, at, wordsCut) })),
+      ],
+      gates: tailGates.map((candidate) => ({
+        ...candidate,
+        at: shiftRef(candidate.at, at, wordsCut),
+      })),
+      // Куда шло объяснение после этой главы, туда теперь идёт продолжение:
+      // выход отвечает на вопрос «что дальше, когда договорили», а договаривает
+      // отныне именно оно.
+      exit: segment.exit,
+    }
+    : null;
+
+  return { head, tail, wordsCut };
+}
+
+/**
+ * Почему метку в этот момент поставить нельзя. `undefined` — можно.
+ *
+ * ОДНА ПРАВДА НА ДВА МЕСТА: этой же функцией разрез отказывается работать,
+ * и ею же гаснет кнопка в транспорте. Разъехавшись, они дали бы либо кнопку,
+ * которая нажимается и падает, либо погашенную там, где всё законно, —
+ * и оба случая молчаливые.
+ *
+ * Возвращает ПРИЧИНУ, а не `false`: погашенное управление обязано назвать,
+ * почему оно погашено (`screens.md` §6).
+ */
+export function splitAtTimeBlockedReason(
+  seconds: number,
+  durationSeconds: number,
+): string | undefined {
+  if (!Number.isFinite(seconds)) {
+    return `Метка поставлена в момент «${seconds}» — это не время`;
+  }
+  if (seconds <= 0) {
+    return 'Метка в самом начале главы: до неё нет рассказа, и делить нечего';
+  }
+  const tailSeconds = durationSeconds - seconds;
+  if (tailSeconds < MIN_TAIL_SECONDS) {
+    // Не «строго больше нуля»: глава длиной в микросекунды — не глава,
+    // а мусор, который зритель не услышит, зато прыгать в него можно будет.
+    return `Метка в самом конце главы: после неё остаётся ${tailSeconds.toFixed(2)} с,`
+      + ' вторая глава была бы пустой';
+  }
+  return undefined;
+}
+
+/**
+ * Делит главу МЕТКОЙ в произвольном месте — там, где стоит головка.
+ *
+ * `product.md` §2з [Р]: «Метку можно ставить где угодно, не только
+ * на вопросе», и это прямо отменяет прежнее [Р] «разрезать можно только
+ * на гейте». `branches.md` §2: метка И ЕСТЬ стык глав, отдельного объекта
+ * у неё нет — граница между главами и есть метка.
+ *
+ * Веток не рождается: развилки здесь нет, есть шов. Голова уходит
+ * в продолжение простым выходом, продолжение забирает выход исходной главы.
+ *
+ * Возвращается пара, а не `SplitResult`: у этого разреза веток НЕ БЫВАЕТ,
+ * и пустой массив в ответе был бы приглашением однажды его наполнить.
+ */
+export function splitSegmentAtTime(
+  segment: Segment,
+  seconds: number,
+  takenSegmentIds: readonly { id: string }[],
+): { readonly head: Segment; readonly tail: Segment } {
+  const blocked = splitAtTimeBlockedReason(seconds, segment.audio.duration);
+  if (blocked !== undefined) throw new SplitError(blocked);
+
+  const tailId = freeId('segment', takenSegmentIds);
+  const { head, tail } = cutInTwo(segment, seconds, tailId);
+  // `tail` здесь не может быть null: длину продолжения проверили выше,
+  // и `cutInTwo` отдаёт null только при её нехватке. Проверка нужна типу,
+  // а не логике — но падать она обязана громко, а не подставлять заглушку.
+  if (!tail) throw new SplitError('Продолжение не собралось, хотя длины хватало');
+  return { head, tail };
+}
+
 /**
  * Делит часть по остановке `gateId`.
  *
@@ -149,44 +347,13 @@ export function splitSegmentAtGate(
     );
   }
 
-  // --- дорожка: одно окно превращается в два, файл не трогается ---
-
-  const wordsCut = words.filter((word) => word.start < at).length;
-  const headWords = words.slice(0, wordsCut);
-  const tailWords = words.slice(wordsCut).map((word) => ({
-    ...word,
-    start: word.start - at,
-    end: word.end - at,
-  }));
-
-  const tailSeconds = segment.audio.duration - at;
-  const hasTail = tailSeconds >= MIN_TAIL_SECONDS;
-
-  // --- текст озвучки: делится тем же швом, что и расшифровка ---
+  // --- имена новых глав ---
   //
-  // Своим индексом делить нельзя: слова речи и слова расшифровки — разные
-  // разбиения (у автора «объяснение», у Deepgram «объясненье»), и k-е слово
-  // одного не обязано быть k-м словом другого. Шов переносится
-  // сопоставлением — это и есть правило `CLAUDE.md` «сравнивать пословно
-  // можно только после сопоставления последовательностей».
-  const speechCut = speechCutIndex(segment.speech, words, wordsCut);
+  // Считается ДО разреза, потому что порядок выдачи идентификаторов —
+  // наблюдаемое свойство: сначала ветки, потом продолжение. Тот же порядок
+  // был и до появления общего шва, и фикстуры на него опираются.
 
-  const spokenWords = segment.speech === undefined ? [] : splitIntoWords(segment.speech);
-  const headSpeech = speechCut === undefined
-    ? segment.speech
-    : joinWords(spokenWords.slice(0, speechCut));
-  const tailSpeech = speechCut === undefined
-    ? undefined
-    : joinWords(spokenWords.slice(speechCut));
-
-  // --- слайды и остановки расходятся по времени разреза ---
-
-  const headSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) <= at);
-  const tailSlides = segment.slides.filter((slide) => secondsOf(slide.at, words) > at);
-  const headGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) <= at);
-  const tailGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) > at);
-
-  // --- имена новых частей ---
+  const hasTail = segment.audio.duration - at >= MIN_TAIL_SECONDS;
 
   const taken = [...takenSegmentIds];
   const claim = (): string => {
@@ -198,6 +365,11 @@ export function splitSegmentAtGate(
   const branchIds = gate.config.options.map(() => claim());
   const tailId = hasTail ? claim() : null;
 
+  // --- общий шов: всё, что от вида разреза не зависит ---
+
+  const halves = cutInTwo(segment, at, tailId);
+  const tail = halves.tail;
+
   // --- голова: то же повествование, но остановка стала последней ---
 
   const forkGate: Gate = {
@@ -208,12 +380,10 @@ export function splitSegmentAtGate(
   };
 
   const head: Segment = {
-    ...segment,
-    speech: headSpeech,
-    audio: { ...segment.audio, duration: at, words: headWords },
-    elements: usedElements(segment, headSlides),
-    slides: headSlides,
-    gates: headGates.map((candidate) => (candidate.id === gateId ? forkGate : candidate)),
+    ...halves.head,
+    gates: halves.head.gates.map((candidate) => (candidate.id === gateId ? forkGate : candidate)),
+    // Выход головы, поставленный швом (простое продолжение), здесь
+    // ПЕРЕПИСЫВАЕТСЯ: развилка ведёт не в продолжение, а в ветки.
     exit: {
       // По правилу на вариант — покрытие полное, поэтому запасной выход не нужен
       // и схема признаёт такой выход тотальным (см. `ProjectSchema.superRefine`).
@@ -228,59 +398,7 @@ export function splitSegmentAtGate(
     },
   };
 
-  // --- продолжение: первый слайд — точный снимок сцены на разрезе ---
-
-  const snapshot = statesAt(segment.slides, words, at);
-
-  const tail: Segment | null = hasTail
-    ? {
-      id: tailId!,
-      title: `${segment.title || segment.id} — продолжение`,
-      // Не наследуется от исходной части: её описание описывает ЦЕЛОЕ,
-      // а не продолжение. Скопировать значило бы соврать на карте.
-      description: '',
-      speech: tailSpeech,
-      audio: {
-        ...segment.audio,
-        // Файл тот же, окно сдвинуто: «аудио физически не режется».
-        offset: segment.audio.offset + at,
-        duration: tailSeconds,
-        words: tailWords,
-      },
-      elements: usedElements(segment, [
-        {
-          id: 'snapshot', at: { kind: 'seconds', t: 0 },
-          transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: snapshot,
-        },
-        ...tailSlides,
-      ]),
-      slides: [
-        {
-          id: freeId('slide', tailSlides),
-          at: { kind: 'seconds', t: 0 },
-          // Не морфинг: на стыке частей анимировать нечего. Граница невидима
-          // потому, что картинка совпадает с предыдущим кадром, а не потому,
-          // что переход её сглаживает.
-          transition: 'cut',
-          // Срез не длится, поэтому число здесь роли не играет; ставим
-          // умолчание, чтобы у поля не было второго значения на один смысл.
-          transitionSeconds: DEFAULT_TRANSITION_SECONDS,
-          states: snapshot,
-        },
-        ...tailSlides.map((slide) => ({ ...slide, at: shiftRef(slide.at, at, wordsCut) })),
-      ],
-      gates: tailGates.map((candidate) => ({
-        ...candidate,
-        at: shiftRef(candidate.at, at, wordsCut),
-      })),
-      // Куда шло объяснение после этой части, туда теперь идёт продолжение:
-      // выход отвечает на вопрос «что дальше, когда договорили», а договаривает
-      // отныне именно оно.
-      exit: segment.exit,
-    }
-    : null;
-
-  // --- ветки: пустые части, сходящиеся обратно в продолжение ---
+  // --- ветки: пустые главы, сходящиеся обратно в продолжение ---
 
   const branches: Segment[] = gate.config.options.map((option, index) => ({
     id: branchIds[index]!,

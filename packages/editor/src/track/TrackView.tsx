@@ -21,6 +21,7 @@ import type { Word } from '@player/core';
 
 import { plural, type PluralForms } from '../plural.js';
 import type { MarkKind } from '../state/project.js';
+import { splitAtTimeBlockedReason } from '../state/split.js';
 import { nextOrphan } from './marks.js';
 import { MarksLane, type Mark } from './MarksLane.js';
 import {
@@ -134,6 +135,15 @@ export interface TrackViewProps {
   /** Добавляет гейт на текущей позиции. */
   onAddGate: () => void;
   /**
+   * Ставит метку на текущей позиции: глава делится надвое.
+   *
+   * `product.md` §2з [Р] — отмена прежнего [Р] «разрезать можно только
+   * на гейте». Позицию сюда не передаём: она и так живёт в транспорте,
+   * а второй её экземпляр в пропе разошёлся бы с головкой ровно тогда,
+   * когда автор её двигает.
+   */
+  onSplitHere: () => void;
+  /**
    * Сколько мест ссылаются на цвет темы, который не разрешится.
    *
    * Числом, а не списком: панель дорожки показывает СЧЁТЧИК, а разбор
@@ -177,6 +187,7 @@ export function TrackView({
   onMoveMark,
   onMoveMarkEnd,
   onAddGate,
+  onSplitHere,
   colorOrphanCount = 0,
   onTransitionSecondsLive,
   onTransitionSecondsCommit,
@@ -362,6 +373,11 @@ export function TrackView({
   // считаются от уже пришедших данных (marks по kind, words.length), а не
   // заводят новых пропов. Пустой случай (0 остановок, нет расшифровки)
   // решён минимально: подпись просто показывает «0».
+  // Причина, по которой метку сюда не поставить, — ТОЙ ЖЕ функцией, которой
+  // отказывается сам разрез (`state/split.ts`). Повтори её здесь своими
+  // условиями — и однажды кнопка нажалась бы, а разрез упал.
+  const splitProblem = splitAtTimeBlockedReason(positionSeconds, durationSeconds);
+
   const laneCounts = {
     slides: marks.filter((mark) => mark.kind === 'slide').length,
     stops: marks.filter((mark) => mark.kind === 'gate').length,
@@ -490,6 +506,26 @@ export function TrackView({
             title="Остановка на этой секунде"
           >
             ▮ остановка
+          </button>
+          {/* Метка — стык глав (`branches.md` §2). Отдельного значка у неё
+              нет: граница между главами и есть метка, поэтому кнопка говорит
+              о ДЕЙСТВИИ, а не об объекте.
+
+              Надпись «Разделить здесь», а не «Поставить метку», намеренно:
+              слово «метка» в продукте занято дважды — ромбом слайда на дорожке
+              и якорем привязки к слову («проверьте N меток»), и `branches.md`
+              §1 называет это прямо как причину, по которой заведено слово
+              «глава». Третье значение добило бы его. Спецификация надписи
+              кнопки не диктует. */}
+          <button
+            type="button"
+            className="ed-add-mark"
+            data-testid="split-here"
+            disabled={splitProblem !== undefined}
+            onClick={onSplitHere}
+            title={splitProblem ?? 'Разделить главу надвое в этой секунде'}
+          >
+            ✂ разделить здесь
           </button>
         </span>
       </div>
