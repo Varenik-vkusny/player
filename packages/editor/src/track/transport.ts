@@ -15,7 +15,7 @@
  * Отличие от плеера одно: здесь перемотка есть. У зрителя её не существует
  * (инвариант №4), поэтому она живёт в часах, а не в классе Player.
  */
-import { AudioClock, loadTrack } from '@player/player';
+import { AudioClock, loadTrack, SilentClock, type EditorClock } from '@player/player';
 
 export type TransportState = 'idle' | 'loading' | 'ready' | 'playing' | 'failed';
 
@@ -38,7 +38,7 @@ export interface TransportEvents {
 export class Transport {
   readonly #events: TransportEvents;
   #ctx: AudioContext | null = null;
-  #clock: AudioClock | null = null;
+  #clock: EditorClock | null = null;
   #buffer: AudioBuffer | null = null;
   /** Начало окна части внутри файла, секунды (схема v4). */
   #offset = 0;
@@ -121,6 +121,35 @@ export class Transport {
     this.#setState('ready');
     this.#emitPosition();
     return buffer;
+  }
+
+  /**
+   * Заводит транспорт немого сегмента (схема v13): дорожки нет, длина объявлена.
+   *
+   * Отдельным методом, а не `load(null)`, намеренно. Загрузка — это сеть,
+   * декодирование и отказ с внятной причиной; здесь нет ни одного из трёх,
+   * и общая подпись заставила бы каждого читателя гадать, какая половина
+   * тела относится к его случаю.
+   *
+   * Возвращает `null` там, где `load` возвращает буфер: пиков у тишины нет,
+   * и вызывающий код на этом же `null` сам отсекает расчёт волны.
+   */
+  loadSilent(seconds: number, window?: { offset: number; duration: number }): null {
+    this.#setState('loading');
+    // Смещение у немого сегмента всегда ноль — файла, внутрь которого можно
+    // было бы сместиться, не существует. Схема это же требует проверкой.
+    this.#offset = 0;
+    this.#window = window?.duration ?? seconds;
+    const ctx = new AudioContext();
+    this.#ctx = ctx;
+    this.#buffer = null;
+    this.#clock = new SilentClock(ctx, this.#window > 0 ? this.#window : seconds);
+    if (this.#pending > 0) {
+      this.#clock.seek(Math.min(this.#pending, this.durationSeconds));
+    }
+    this.#setState('ready');
+    this.#emitPosition();
+    return null;
   }
 
   async play(): Promise<void> {

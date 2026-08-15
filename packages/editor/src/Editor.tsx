@@ -296,7 +296,11 @@ export function Editor({
    * сама показывает ДО того, как асинхронное имя пришло: идентификатор
    * файла или URL, не выдуманное «красивое» имя.
    */
-  const soundLabel = segment.source.kind === 'file' ? segment.source.fileId : segment.source.url;
+  const soundLabel = segment.source.kind === 'file'
+    ? segment.source.fileId
+    : segment.source.kind === 'url'
+      ? segment.source.url
+      : 'без звука';
 
   // Ровно одно, а не «первое из списка»: показать свойства первого при трёх
   // выделенных значит соврать автору о том, что он сейчас правит.

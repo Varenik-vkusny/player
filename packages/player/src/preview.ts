@@ -82,11 +82,13 @@ export function segmentOf(project: Project, segmentId: string): Segment {
   // действия расходятся тихо, и первым разойдётся текст ошибки (ADR-004).
   const segment = findSegment(project, segmentId);
   const { src, fileId } = segment.audio;
-  // Схема гарантирует ровно один источник (`.refine` над audio), поэтому
-  // ветвление здесь исчерпывающее, а не «на всякий случай».
-  const source: AudioSource = src !== undefined
-    ? { kind: 'url', url: src }
-    : { kind: 'file', fileId: fileId as string };
+  // Схема гарантирует НЕ БОЛЬШЕ одного источника (`.superRefine` над audio),
+  // поэтому ветвление здесь исчерпывающее, а не «на всякий случай».
+  // Третий случай — немой сегмент (v13): источника нет, длительность объявлена.
+  let source: AudioSource;
+  if (src !== undefined) source = { kind: 'url', url: src };
+  else if (fileId !== undefined) source = { kind: 'file', fileId };
+  else source = { kind: 'silent', seconds: segment.audio.duration };
   return {
     source,
     offset: segment.audio.offset,

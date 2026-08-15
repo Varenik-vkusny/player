@@ -126,7 +126,11 @@ describe('миграция v11 → v12', () => {
 
     const migrated = migrateToCurrent(v11) as any;
 
-    expect(migrated.schemaVersion).toBe(12);
+    // Не литерал: здесь вызывается `migrateToCurrent`, то есть проверяется
+    // подъём до ТЕКУЩЕЙ версии, а не шаг v11 → v12. Прибитое «12» сгнило
+    // на первом же бампе (v13, немой сегмент) и покраснело в тесте, который
+    // ни про звук, ни про версии не писался.
+    expect(migrated.schemaVersion).toBe(SCHEMA_VERSION);
     expect(migrated.styles).toEqual([]);
     expect(migrated.meta).toEqual(v11.meta);
     expect(migrated.entry).toEqual(v11.entry);

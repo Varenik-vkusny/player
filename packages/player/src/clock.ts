@@ -108,6 +108,21 @@ export interface Clock {
 }
 
 /**
+ * Часы, которыми редактор двигает головку.
+ *
+ * Отдельно от `Clock`, а не добавкой в него, потому что перемотки у ЗРИТЕЛЯ
+ * не существует: тест инвариантов следит, чтобы у `Player` не появилось ни
+ * `seek`, ни `pause`. Положи `seek` в общий интерфейс — и плеер получил бы
+ * его в руки, а запрет остался бы только на словах.
+ *
+ * Обе реализации — `AudioClock` и `SilentClock` — ему удовлетворяют.
+ */
+export interface EditorClock extends Clock {
+  readonly context: AudioContext;
+  seek(position: number): void;
+}
+
+/**
  * Откуда плеер берёт часы. Он их не конструирует — он их просит.
  *
  * Здесь же живёт кэш уже готовых источников: декодирование 49-секундной
@@ -135,7 +150,13 @@ export interface ClockSource {
  * а этот ключ не покидает карту внутри одного источника часов.
  */
 function cacheKey(source: AudioSource): string {
-  return source.kind === 'url' ? `url:${source.url}` : `file:${source.fileId}`;
+  if (source.kind === 'url') return `url:${source.url}`;
+  if (source.kind === 'file') return `file:${source.fileId}`;
+  // Немому сегменту декодировать нечего, и в кэш дорожек он не попадает
+  // ни разу: обе точки входа (`clockFor`, `clockIfReady`) отводят его
+  // раньше, чем дело доходит до ключа. Ветка существует, чтобы перечисление
+  // оставалось исчерпывающим и молчаливого `undefined` в ключе не возникло.
+  throw new Error('У немого сегмента нет дорожки, а значит и ключа кэша');
 }
 
 export interface ClockDiagnostics {
@@ -397,6 +418,149 @@ export class AudioClock implements Clock {
 }
 
 /**
+ * Часы немого сегмента (схема v13): длительность объявлена, звука нет.
+ *
+ * **Почему это НЕ нарушает инвариант №1.** Время и у озвученного сегмента
+ * берётся не из дорожки, а из `AudioContext`: `AudioClock.position` считает
+ * его от якоря по контекстному времени, а буфер только звучит. Здесь ровно
+ * тот же механизм и тот же контекст — просто без буфера. Никакого
+ * `setInterval`, счётчика кадров или второго таймера не появляется, и часы
+ * остаются теми же аппаратными, у которых S0b намерил наклон −0.014 мс/мин
+ * за десять минут. → ADR-030
+ *
+ * От `AudioClock` расходится ровно в двух местах, и оба — следствие того,
+ * что слушать нечего:
+ *
+ * 1. **Задержка вывода не вычитается.** У озвученного сегмента она нужна,
+ *    чтобы картинка совпала с тем, что СЛЫШНО: `outputLatency` — это лаг
+ *    между планированием сэмпла и его звучанием (S9 намерил на нём 65 мс
+ *    задержки при опросе в кадре). Здесь выходом является сама картинка,
+ *    совмещать её не с чем, и вычитание задержки сдвинуло бы слайды назад
+ *    относительно расписания без всякой причины.
+ * 2. **Рампы усиления нет.** Симметричная рампа в 8 мс существует против
+ *    щелчка при возобновлении (S3), а щёлкать нечему.
+ *
+ * Заморозка при этом делается ТАК ЖЕ — через `ctx.suspend()`. Это не
+ * подражание ради единообразия: приостановленный контекст останавливает
+ * `currentTime`, и позиция переживает паузу без пересчёта. Своя арифметика
+ * паузы была бы вторым описанием одного смысла.
+ */
+export class SilentClock implements Clock {
+  readonly #ctx: AudioContext;
+  readonly #duration: number;
+
+  #anchor: Anchor | null = null;
+  #frozenPosition: number | null = null;
+  #running = false;
+
+  constructor(ctx: AudioContext, durationSeconds: number) {
+    if (!(durationSeconds > 0 && Number.isFinite(durationSeconds))) {
+      throw new RangeError(
+        `Длительность немого сегмента должна быть положительной, получено ${durationSeconds}`,
+      );
+    }
+    this.#ctx = ctx;
+    this.#duration = durationSeconds;
+  }
+
+  get context(): AudioContext { return this.#ctx; }
+  get duration(): number { return this.#duration; }
+  get scheduleNow(): number { return this.#ctx.currentTime; }
+
+  get scheduleEnd(): number | null {
+    const anchor = this.#anchor;
+    if (!anchor) return null;
+    return anchor.ctxTime + (this.#duration - anchor.mediaTime);
+  }
+
+  get isFrozen(): boolean { return this.#frozenPosition !== null; }
+  get isRunning(): boolean { return this.#running && this.#frozenPosition === null; }
+
+  async wake(): Promise<void> {
+    if (this.#ctx.state === 'suspended') await this.#ctx.resume();
+  }
+
+  get position(): number {
+    if (this.#frozenPosition !== null) return this.#frozenPosition;
+    const anchor = this.#anchor;
+    if (!anchor) return 0;
+
+    const raw = anchor.mediaTime + (this.#ctx.currentTime - anchor.ctxTime);
+    return Math.min(Math.max(raw, anchor.mediaTime), this.#duration);
+  }
+
+  start(offset = 0, options: ClockStartOptions = {}): number {
+    if (this.#running) throw new Error('Часы уже запущены, сначала stop()');
+    if (!(offset >= 0 && offset <= this.#duration)) {
+      throw new RangeError(`Позиция ${offset} вне сегмента [0, ${this.#duration}]`);
+    }
+
+    // Опережение сохранено, хотя запускать нечего: на нём стоит СТЫК узлов.
+    // Следующий узел планируется ровно на `scheduleEnd` предыдущего, и если
+    // немой сегмент начнёт отсчёт не так, как озвученный, стык поедет ровно
+    // на величину опережения — S9 намерил, что цена неточного стыка это
+    // щелчок на одном переходе из двадцати.
+    const startAt = this.#ctx.currentTime + (options.leadTime ?? DEFAULT_LEAD_S);
+
+    this.#running = true;
+    this.#anchor = { ctxTime: startAt, mediaTime: offset };
+    this.#frozenPosition = null;
+    return startAt;
+  }
+
+  async freezeAt(targetPosition: number): Promise<void> {
+    if (!this.#running || !this.#anchor) {
+      throw new Error('Нечего останавливать: часы не запущены');
+    }
+    this.#frozenPosition = targetPosition;
+    this.#running = false;
+    await this.#ctx.suspend();
+  }
+
+  holdBeforeStart(position: number): void {
+    if (this.#running) {
+      throw new Error('Часы уже запущены: остановка до начала здесь неуместна');
+    }
+    if (!(position >= 0)) {
+      throw new RangeError(`Позиция паузы до начала должна быть неотрицательной, получено ${position}`);
+    }
+    this.#frozenPosition = position;
+  }
+
+  async resumeFromFreeze(): Promise<void> {
+    if (this.#frozenPosition === null) throw new Error('Часы не в состоянии паузы');
+    const at = this.#frozenPosition;
+    await this.#ctx.resume();
+    this.#frozenPosition = null;
+    this.start(at);
+  }
+
+  /** Перемотка головки в редакторе. Смысл тот же, что у `AudioClock.seek`. */
+  seek(position: number): void {
+    if (!(position >= 0 && position <= this.#duration)) {
+      throw new RangeError(`Позиция ${position} вне сегмента [0, ${this.#duration}]`);
+    }
+
+    const wasRunning = this.isRunning;
+    this.#running = false;
+    this.#anchor = null;
+    this.#frozenPosition = null;
+
+    if (wasRunning) {
+      this.start(position);
+      return;
+    }
+    this.#frozenPosition = position;
+  }
+
+  stop(): void {
+    this.#running = false;
+    this.#anchor = null;
+    this.#frozenPosition = null;
+  }
+}
+
+/**
  * Источник аудиочасов: один контекст, кэш декодированных дорожек.
  *
  * Контекст один на всю жизнь плеера намеренно: свой на каждый сегмент упёрся
@@ -422,6 +586,10 @@ export class AudioClocks implements ClockSource {
 
   async clockFor(source: AudioSource): Promise<Clock> {
     const ctx = this.#context();
+    // Немой сегмент не имеет дорожки, значит и кэшировать нечего: часы
+    // строятся из объявленной длительности за ноль работы.
+    if (source.kind === 'silent') return new SilentClock(ctx, source.seconds);
+
     const key = cacheKey(source);
     const cached = this.#tracks.get(key);
     if (cached) return new AudioClock(ctx, cached);
@@ -441,6 +609,11 @@ export class AudioClocks implements ClockSource {
   }
 
   clockIfReady(source: AudioSource): Clock | null {
+    // Немые часы готовы ВСЕГДА: греть нечего, ждать нечего. Возврат null
+    // здесь заставил бы стык узлов ловить конец опросом в кадре — а S9
+    // намерил на этом 65 мс задержки и щелчок на одном переходе из двадцати.
+    if (source.kind === 'silent') return new SilentClock(this.#context(), source.seconds);
+
     const buffer = this.#tracks.get(cacheKey(source));
     if (!buffer) return null;
     return new AudioClock(this.#context(), buffer);

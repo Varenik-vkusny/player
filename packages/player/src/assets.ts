@@ -44,7 +44,17 @@ export interface StoredAudio {
  */
 export type AudioSource =
   | { readonly kind: 'url'; readonly url: string }
-  | { readonly kind: 'file'; readonly fileId: string };
+  | { readonly kind: 'file'; readonly fileId: string }
+  /**
+   * Немой сегмент (схема v13): звука нет, есть объявленная длительность.
+   *
+   * Длина едет ЗДЕСЬ, а не берётся отдельным доводом, и это не удобство:
+   * `clockFor` получает ровно один аргумент, и часы обязаны строиться из него
+   * целиком. У озвученного сегмента длину даёт декодированный буфер, у немого
+   * взять её больше неоткуда — значит она обязана быть частью описания
+   * источника, иначе появится второй путь передачи длительности.
+   */
+  | { readonly kind: 'silent'; readonly seconds: number };
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -145,6 +155,17 @@ export async function getAudio(fileId: string): Promise<StoredAudio | null> {
  */
 export async function resolveAudioUrl(source: AudioSource): Promise<string> {
   if (source.kind === 'url') return source.url;
+  if (source.kind === 'silent') {
+    // Громко и здесь. У немого сегмента адреса нет и быть не может: часы для
+    // него строятся отдельной веткой в `AudioClocks.clockFor`, и попадание
+    // сюда означает, что ветку обошли. Вернуть пустую строку значило бы
+    // получить сегмент, который молчит ПО ДРУГОЙ ПРИЧИНЕ, чем задумано,
+    // и отличить одно от другого потом уже нечем.
+    throw new Error(
+      'У немого сегмента нет адреса озвучки. Часы для него строит clockFor, '
+      + 'минуя разрешение адреса; сюда попали в обход этой ветки.',
+    );
+  }
 
   const stored = await getAudio(source.fileId);
   if (!stored) {

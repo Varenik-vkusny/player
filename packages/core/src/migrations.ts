@@ -826,6 +826,48 @@ const migrateV11toV12: Migration = (input) => {
   };
 };
 
+interface ProjectV12 {
+  meta?: unknown;
+  entry?: unknown;
+  segments?: unknown;
+  styles?: unknown;
+}
+
+/**
+ * v12 → v13: сегмент может быть НЕМЫМ — без `src` и без `fileId`.
+ *
+ * Содержимого не меняет ничего, и на этот раз доказательство короче обычного:
+ * изменение — ОСЛАБЛЕНИЕ проверки. Было «ровно один источник», стало
+ * «не больше одного». Всё, что проходило разбор в v12, проходит и в v13
+ * дословно тем же путём; ни одного поля не добавлено и не переписано.
+ *
+ * Что должно сломаться, чтобы тест покраснел: любой существующий проект имеет
+ * либо `src`, либо `fileId`, значит ветка немого сегмента на них не
+ * срабатывает вовсе. Прежние скриншотные эталоны обязаны совпасть в НОЛЬ
+ * пикселей — красное означало бы, что ослабление проверки почему-то изменило
+ * картинку там, где все сегменты озвучены.
+ *
+ * Зачем бамп при ослаблении. Он защищает ОТКАЗ НАЗАД, и здесь это не
+ * формальность: немой проект, попав в сборку, знающую только v12, упёрся бы
+ * в `.refine()` «ни ноль, ни два» и получил бы отказ разбора. Отказ внятный —
+ * но он сказал бы «дорожка сломана», хотя сломана версия. Бамп заставляет
+ * сборку сказать «сохранено в версии 13, понимаю 12» и остановиться там,
+ * где причина видна.
+ *
+ * → docs/adr/ADR-030-silent-segment.md
+ */
+const migrateV12toV13: Migration = (input) => {
+  const v12 = input as ProjectV12;
+
+  return {
+    schemaVersion: 13,
+    meta: v12.meta,
+    entry: v12.entry,
+    segments: v12.segments,
+    styles: v12.styles,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
@@ -838,6 +880,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   9: migrateV9toV10,
   10: migrateV10toV11,
   11: migrateV11toV12,
+  12: migrateV12toV13,
 });
 
 export class SchemaVersionError extends Error {

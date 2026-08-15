@@ -129,7 +129,15 @@ export function AudioSourcePanel({
   // а не сам `source`: он собирается заново на каждый рендер (segmentOf),
   // и объект в deps перечитывал бы хранилище на каждое движение мыши, — тот
   // же приём, что и `sourceKey` в `useTransport.ts`.
-  const sourceKey = source.kind === 'file' ? `file:${source.fileId}` : `url:${source.url}`;
+  const sourceKey = source.kind === 'file'
+    ? `file:${source.fileId}`
+    : source.kind === 'url'
+      ? `url:${source.url}`
+      // Немой сегмент: ключ обязан МЕНЯТЬСЯ вместе с длительностью, иначе
+      // правка длины не перерисует панель. Бросать здесь, как в кэше дорожек
+      // плеера, нельзя: это ключ зависимостей React, он считается на каждом
+      // рендере, в том числе у сегмента без звука.
+      : `silent:${source.seconds}`;
   const [loadedName, setLoadedName] = useState<string | undefined>(undefined);
   useEffect(() => {
     if (source.kind !== 'file') {
@@ -236,7 +244,9 @@ export function AudioSourcePanel({
 
   const currentLabel = source.kind === 'file'
     ? `файл автора: ${loadedName ?? source.fileId}`
-    : `файл на сервере: ${source.url}`;
+    : source.kind === 'url'
+      ? `файл на сервере: ${source.url}`
+      : `без звука: ${source.seconds} с`;
 
   /**
    * Панель свёрнута ПО УМОЛЧАНИЮ (Сессия 34).

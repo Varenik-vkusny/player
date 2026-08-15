@@ -52,7 +52,11 @@ export function useTransport(
   stopsAt: readonly number[] = [],
   offsetSeconds = 0,
 ): TransportApi {
-  const sourceKey = source.kind === 'url' ? `url:${source.url}` : `file:${source.fileId}`;
+  const sourceKey = source.kind === 'url'
+    ? `url:${source.url}`
+    : source.kind === 'file'
+      ? `file:${source.fileId}`
+      : `silent:${source.seconds}`;
 
   const [positionSeconds, setPositionSeconds] = useState(0);
   const [state, setState] = useState<TransportState>('idle');
@@ -116,13 +120,29 @@ export function useTransport(
     previousRef.current = 0;
 
     let cancelled = false;
-    // Источник превращается в адрес ровно здесь и сразу отпускается: адрес
-    // загруженного файла держит в памяти байты целиком, а после декодирования
-    // нужен уже только буфер.
-    void resolveAudioUrl(source)
-      .then((url) => transport
-        .load(url, { offset: offsetSeconds, duration: declaredDuration })
-        .finally(() => { releaseAudioUrl(source, url); }))
+    // У немого сегмента адреса нет и `resolveAudioUrl` на нём падает НАРОЧНО:
+    // тихий возврат пустой строки дал бы мёртвый транспорт без единого
+    // сообщения. Поэтому ветка стоит здесь, до похода за адресом.
+    //
+    // Дальше обе ветки сходятся в одну цепочку: `loadSilent` возвращает `null`
+    // там, где `load` возвращает буфер, и расчёт пиков сам отсекается на
+    // проверке `!buffer` ниже. Второго места, где считается волна, не заводим.
+    const loaded: Promise<AudioBuffer | null> = source.kind === 'silent'
+      ? Promise.resolve(
+        transport.loadSilent(source.seconds, {
+          offset: offsetSeconds,
+          duration: declaredDuration,
+        }),
+      )
+      // Источник превращается в адрес ровно здесь и сразу отпускается: адрес
+      // загруженного файла держит в памяти байты целиком, а после декодирования
+      // нужен уже только буфер.
+      : resolveAudioUrl(source)
+        .then((url) => transport
+          .load(url, { offset: offsetSeconds, duration: declaredDuration })
+          .finally(() => { releaseAudioUrl(source, url); }));
+
+    void loaded
       .then((buffer) => {
       // Компонент могли снять, пока декодировался звук. Считать пики
       // и трогать состояние после этого незачем.

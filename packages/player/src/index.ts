@@ -21,10 +21,12 @@ export {
   AudioClock,
   AudioClocks,
   loadTrack,
+  SilentClock,
   type Clock,
   type ClockDiagnostics,
   type ClockSource,
   type ClockStartOptions,
+  type EditorClock,
   type TrackLoad,
 } from './clock.js';
 export {

@@ -63,6 +63,16 @@ async function resolveBytes(source: AudioSource): Promise<{ bytes: ArrayBuffer; 
     return { bytes: stored.bytes, type: stored.type || 'audio/mpeg' };
   }
 
+  if (source.kind === 'silent') {
+    // Расшифровка описывает то, что ПРОЗВУЧАЛО. У немого сегмента не звучало
+    // ничего, и схема это же выражает запретом на слова (v13). Отказ громкий
+    // и в месте возникновения: пустая расшифровка выглядела бы как успешный
+    // разбор тишины, то есть как «речи не распознано» — совсем другой смысл.
+    throw new Error(
+      'У сегмента нет озвучки — расшифровывать нечего. Загрузите звук или видео.',
+    );
+  }
+
   const response = await fetch(source.url);
   if (!response.ok) {
     throw new Error(`Не удалось скачать озвучку с сервера (${source.url}): код ${response.status}`);

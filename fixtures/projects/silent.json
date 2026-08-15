@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 13,
+  "meta": {
+    "title": "Немой сегмент: слайды идут по расписанию без единого звука",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-silent",
+  "styles": [],
+  "segments": [
+    {
+      "id": "s-silent",
+      "title": "Три слайда, ни одной дорожки",
+      "speech": "Текст озвучки уже есть, а самой озвучки ещё нет — так выглядит заготовка, пришедшая импортом.",
+      "audio": {
+        "duration": 6,
+        "words": []
+      },
+      "elements": [
+        { "id": "plate", "type": "shape", "content": "" },
+        { "id": "title", "type": "text", "content": "Без звука" },
+        { "id": "counter", "type": "text", "content": "Подпись едет по слайдам" }
+      ],
+      "slides": [
+        {
+          "id": "sl-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "plate": {
+              "x": 160, "y": 200, "width": 1600, "height": 680,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#1b2430", "border-radius": "28px" }
+            },
+            "title": {
+              "x": 260, "y": 320, "width": 1400, "height": 160,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "font-family": "system-ui, sans-serif", "font-size": "96px", "color": "#e8eef7" }
+            },
+            "counter": {
+              "x": 260, "y": 560, "width": 1400, "height": 100,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "style": { "font-family": "system-ui, sans-serif", "font-size": "48px", "color": "#93a4b8" }
+            }
+          }
+        },
+        {
+          "id": "sl-2",
+          "at": { "kind": "seconds", "t": 2 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "plate": {
+              "x": 160, "y": 200, "width": 1600, "height": 680,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#1b2430", "border-radius": "28px" }
+            },
+            "title": {
+              "x": 260, "y": 320, "width": 1400, "height": 160,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "font-family": "system-ui, sans-serif", "font-size": "96px", "color": "#e8eef7" }
+            },
+            "counter": {
+              "x": 900, "y": 560, "width": 1400, "height": 100,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "style": { "font-family": "system-ui, sans-serif", "font-size": "48px", "color": "#93a4b8" }
+            }
+          }
+        },
+        {
+          "id": "sl-3",
+          "at": { "kind": "seconds", "t": 4 },
+          "transition": "morph",
+          "transitionSeconds": 0.6,
+          "states": {
+            "plate": {
+              "x": 160, "y": 200, "width": 1600, "height": 680,
+              "rotation": 0, "zIndex": 1, "opacity": 1, "visible": true,
+              "style": { "background": "#1b2430", "border-radius": "28px" }
+            },
+            "title": {
+              "x": 260, "y": 320, "width": 1400, "height": 160,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "font-family": "system-ui, sans-serif", "font-size": "96px", "color": "#e8eef7" }
+            },
+            "counter": {
+              "x": 260, "y": 760, "width": 1400, "height": 100,
+              "rotation": 0, "zIndex": 3, "opacity": 1, "visible": true,
+              "style": { "font-family": "system-ui, sans-serif", "font-size": "48px", "color": "#93a4b8" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}
