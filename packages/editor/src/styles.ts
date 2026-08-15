@@ -1403,6 +1403,34 @@ export const EDITOR_STYLES = `
   min-width: 0;
 }
 
+/* Кнопка складывания ленты (Сессия 41). Повторяет .ed-audio-source-toggle
+   намеренно, вплоть до чисел: два складывающихся блока стоят друг под
+   другом в одной колонке, и разный вид кнопки читался бы автором как
+   разное действие.
+
+   Свёрнутого варианта у .ed-slide-strip-wrap нет, и это не упущение:
+   у обёртки уже padding 4px по вертикали — ровно тот, до которого
+   ужимается развёрнутая панель озвучки. Заводить класс, который ничего
+   не меняет, значило бы положить в стили мёртвое правило. */
+.ed-slide-strip-toggle {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.ed-slide-strip-toggle:hover {
+  border-color: var(--ui-line-strong);
+}
+
 .ed-slide-strip-counter {
   font-variant-numeric: tabular-nums;
   color: var(--ui-content-fg);

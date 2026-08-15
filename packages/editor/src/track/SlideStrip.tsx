@@ -103,6 +103,24 @@ export function SlideStrip({
   const [metrics, setMetrics] = useState<ScrollMetrics>(EMPTY_METRICS);
 
   /**
+   * Свёрнута ли лента. По умолчанию ДА — решение владельца 15.08.2026,
+   * принятое по замеру, а не по вкусу.
+   *
+   * Замер (`spikes/run-bottom-zone.mjs`, 15.08.2026): нижняя зона занимала
+   * 436 px при ЛЮБОМ размере окна, из них лента — 153, больше всех. При этом
+   * те же слайды уже есть полосой «Слайды» внутри дорожки, то есть автор
+   * видел их дважды и платил за это высотой сцены: на 1440×900 сцена
+   * показывалась в 26 % натуральной величины.
+   *
+   * Состояние живёт ЗДЕСЬ, а не в проекте, и это закон, а не удобство
+   * (`tracks.md` §2): «скрыто в редакторе» и «скрыто для зрителя» — разные
+   * вещи, которые выглядят одинаково. Попади это в проект — автор свернул бы
+   * ленту себе, а пропала бы она у зрителя. Тот же приём и по той же причине
+   * у панели озвучки (`AudioSourcePanel.tsx`).
+   */
+  const [collapsed, setCollapsed] = useState(true);
+
+  /**
    * Нажатие ведёт головку; головка (через `currentSlideId` снаружи) ведёт
    * ленту. Обе связки истинны одновременно, поэтому нужен флаг: без него
    * собственный клик по карточке немедленно попадал бы под эффект
@@ -141,8 +159,13 @@ export function SlideStrip({
     // measure() читает готовую позицию сразу; полоска догонит анимацию
     // прокрутки сама через onScroll ниже, кадр за кадром.
     measure();
+    // `collapsed` в зависимостях — не формальность линтера. Пока лента
+    // свёрнута, `stripRef.current` пуст и эффект выходит первой строкой;
+    // без пересчёта на разворачивании автор, работавший на двенадцатом
+    // слайде, увидел бы ленту, прокрученную на первый, — и молча, потому
+    // что `currentSlideId` при этом не менялся.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlideId]);
+  }, [currentSlideId, collapsed]);
 
   const handleSelect = useCallback((id: string) => {
     selectedFromWithin.current = true;
@@ -180,6 +203,21 @@ export function SlideStrip({
   return (
     <div className="ed-slide-strip-wrap">
       <div className="ed-slide-strip-head">
+        {/* Кнопка складывания — текстовая, а не один значок, тем же приёмом
+            и по той же причине, что у панели озвучки: слово «Слайды» заодно
+            называет ленту, у которой своего заголовка не было вовсе.
+            Стоит ПЕРВОЙ, чтобы у свёрнутой ленты строка начиналась с имени,
+            а не со счётчика. */}
+        <button
+          type="button"
+          className="ed-slide-strip-toggle"
+          data-testid="slide-strip-toggle"
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed((was) => !was)}
+        >
+          <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+          <span>Слайды</span>
+        </button>
         <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
         <div className="ed-actions">
           <button
@@ -219,6 +257,13 @@ export function SlideStrip({
           менялась бы при каждой перемотке головки, и сцена под руками
           автора прыгала бы. `min-height` в стилях держит место. */}
       <span className="ed-slide-strip-note" data-testid="slide-clipboard-note">{clipboardNote}</span>
+      {/* Сворачиваются ТОЛЬКО картинки и полоска положения. Голова со
+          счётчиком, кнопками буфера и подписью-причиной остаётся: спрячь
+          мы подпись, автор видел бы погашенные кнопки без объяснения —
+          ровно то, что запрещает `screens.md` §6. Свёрнутая лента отнимает
+          место, а не возможности. */}
+      {collapsed ? null : (
+      <>
       <div
         className="ed-slide-strip"
         data-testid="slide-strip"
@@ -247,6 +292,8 @@ export function SlideStrip({
           <div className="ed-slide-strip-postick" style={{ left: `${pickPct}%` }} />
         ) : null}
       </div>
+      </>
+      )}
     </div>
   );
 }

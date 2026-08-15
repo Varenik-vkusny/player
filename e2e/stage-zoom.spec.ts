@@ -60,6 +60,50 @@ async function centerOnScreen(page: Page, id: string): Promise<{ x: number; y: n
   }, id);
 }
 
+/**
+ * Каким вписывание ОБЯЗАНО быть при нынешнем размере холста.
+ *
+ * Зазор вокруг сцены (Сессия 36, `STAGE_GAP_X`/`STAGE_GAP_Y` в `stage/zoom.ts`,
+ * числа сняты с живой Canva) входит сюда, потому что вписывание считается
+ * от окна ЗА ВЫЧЕТОМ зазора.
+ */
+async function fitFromHost(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const host = document.querySelector('.ed-stage-host');
+    if (!host) throw new Error('нет .ed-stage-host');
+    const GAP_X = 24;
+    const GAP_Y = 16;
+    return Math.min((host.clientWidth - 2 * GAP_X) / 1920, (host.clientHeight - 2 * GAP_Y) / 1080);
+  });
+}
+
+async function hostHeight(page: Page): Promise<number> {
+  return page.evaluate(() => document.querySelector('.ed-stage-host')!.clientHeight);
+}
+
+/**
+ * Ждёт, пока масштаб догонит нынешний размер холста.
+ *
+ * Не смягчение проверки, а устранение ГОНКИ, найденной 15.08.2026 (Сессия 40) —
+ * до этого падение числилось плавающим с неустановленной причиной. Высота
+ * холста меняется СИНХРОННО со щелчком по панели, а масштаб — в колбэке
+ * `ResizeObserver`, то есть кадром позже. Обычно тест успевал прочитать уже
+ * пересчитанное; под нагрузкой (полный шард) читал прежнее и падал
+ * с `0.0741` против `0.1685`, где 0.0741 — ровно масштаб при РАСКРЫТОЙ
+ * панели: (112 − 32) / 1080.
+ *
+ * Проверяемое свойство не ослаблено: масштаб по-прежнему обязан СОЙТИСЬ
+ * с нынешним размером холста, просто ему дан кадр. Если пересчёта
+ * не произойдёт вовсе — ожидание истечёт и тест покраснеет. Доказано сломом:
+ * убранный `fit()` из `ResizeObserver` даёт расхождение 0.09444, то есть
+ * ровно то, с которым падало плавающее.
+ */
+async function scaleCatchesUp(page: Page): Promise<void> {
+  await expect
+    .poll(async () => (await sceneScale(page)) - (await fitFromHost(page)), { timeout: 5000 })
+    .toBeCloseTo(0, 3);
+}
+
 async function drag(page: Page, from: { x: number; y: number }, dx: number, dy: number): Promise<void> {
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -214,69 +258,78 @@ test.describe('масштаб холста', () => {
   test('складывание озвучки пересчитывает вписывание по НОВОЙ высоте холста', async ({ page }) => {
     await openEditor(page, 'morph');
 
-    /**
-     * Каким вписывание ОБЯЗАНО быть при нынешнем размере холста.
-     *
-     * Зазор вокруг сцены (Сессия 36, `STAGE_GAP_X`/`STAGE_GAP_Y` в
-     * `stage/zoom.ts`, числа сняты с живой Canva) входит сюда, потому что
-     * вписывание считается от окна ЗА ВЫЧЕТОМ зазора. Проверяемое свойство
-     * от этого не изменилось: масштаб обязан отвечать НЫНЕШНЕМУ размеру
-     * холста, а не сохранённому. Изменилась только формула ожидания —
-     * вместе с самим вписыванием, а не ради зелени.
-     */
-    const fitFromHost = async (): Promise<number> =>
-      page.evaluate(() => {
-        const host = document.querySelector('.ed-stage-host');
-        if (!host) throw new Error('нет .ed-stage-host');
-        const GAP_X = 24;
-        const GAP_Y = 16;
-        return Math.min(
-          (host.clientWidth - 2 * GAP_X) / 1920,
-          (host.clientHeight - 2 * GAP_Y) / 1080,
-        );
-      });
-
-    const hostHeight = async (): Promise<number> =>
-      page.evaluate(() => document.querySelector('.ed-stage-host')!.clientHeight);
-
-    /**
-     * Ждёт, пока масштаб догонит нынешний размер холста.
-     *
-     * Не смягчение проверки, а устранение ГОНКИ, найденной 15.08.2026
-     * (Сессия 40) — до этого падение числилось плавающим с неустановленной
-     * причиной. Высота холста меняется СИНХРОННО со щелчком по панели,
-     * а масштаб — в колбэке `ResizeObserver`, то есть кадром позже. Обычно
-     * тест успевал прочитать уже пересчитанное; под нагрузкой (полный шард)
-     * читал прежнее и падал с `0.0741` против `0.1685`, где 0.0741 — ровно
-     * масштаб при РАСКРЫТОЙ панели: (112 − 32) / 1080.
-     *
-     * Проверяемое свойство не ослаблено: масштаб по-прежнему обязан СОЙТИСЬ
-     * с нынешним размером холста, просто ему дан кадр. Если пересчёта
-     * не произойдёт вовсе — ожидание истечёт и тест покраснеет.
-     */
-    const scaleCatchesUp = async (): Promise<void> => {
-      await expect
-        .poll(async () => (await sceneScale(page)) - (await fitFromHost()), { timeout: 5000 })
-        .toBeCloseTo(0, 3);
-    };
-
     // Панель свёрнута по умолчанию — холсту досталась высота.
-    const tallHost = await hostHeight();
-    await scaleCatchesUp();
+    const tallHost = await hostHeight(page);
+    await scaleCatchesUp(page);
 
     // Автор разворачивает озвучку: холст обязан отдать ей высоту...
     await page.getByTestId('audio-source-toggle').click();
-    const shortHost = await hostHeight();
+    const shortHost = await hostHeight(page);
     expect(shortHost).toBeLessThan(tallHost);
 
     // ...а сцена — пересчитаться по тому, что осталось. Без пересчёта здесь
     // остался бы прежний масштаб, и он разошёлся бы с холстом вдвое.
-    await scaleCatchesUp();
+    await scaleCatchesUp(page);
 
     // И обратно: свернули — холст вернул себе высоту, масштаб снова сошёлся.
     await page.getByTestId('audio-source-toggle').click();
-    expect(await hostHeight()).toBe(tallHost);
-    await scaleCatchesUp();
+    expect(await hostHeight(page)).toBe(tallHost);
+    await scaleCatchesUp(page);
+  });
+
+  /**
+   * Лента слайдов свёрнута по умолчанию (Сессия 41, решение владельца
+   * 15.08.2026), и это не косметика, а высота сцены.
+   *
+   * ЗАМЕР, из которого решение выросло (`spikes/run-bottom-zone.mjs`,
+   * 15.08.2026, числа с живого DOM): нижняя зона занимала 436 px при ЛЮБОМ
+   * размере окна, из них лента — 153, больше всех, и повторяла полосу
+   * «Слайды», которая уже есть внутри дорожки. После сворачивания зона стала
+   * 338 px, а сцена на стенде 1280×800 выросла с 0.1685 до 0.2593 — в полтора
+   * раза.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ: `useState(false)` вместо
+   * `useState(true)` в `SlideStrip.tsx` роняет первую проверку; убранный
+   * `fit()` из `ResizeObserver` роняет схождение масштаба.
+   *
+   * ЧЕГО ЗДЕСЬ НАМЕРЕННО НЕТ: проверки «высота зоны уменьшилась». Она верна
+   * при ЛЮБОЙ реализации, которая прячет хоть что-нибудь, — то есть пуста
+   * по построению. Несущее утверждение другое: масштаб обязан СОЙТИСЬ
+   * с новой высотой холста, а это ложно, если пересчёта не случилось.
+   */
+  test('лента слайдов свёрнута по умолчанию, и сцена считается по возвращённой высоте', async ({ page }) => {
+    const errors = await openEditor(page, 'morph');
+
+    // Решение владельца: открывается свёрнутой.
+    await expect(page.getByTestId('slide-strip')).toBeHidden();
+    const tallHost = await hostHeight(page);
+    await scaleCatchesUp(page);
+
+    // Автор раскрывает ленту — холст обязан отдать ей высоту.
+    await page.getByTestId('slide-strip-toggle').click();
+    await expect(page.getByTestId('slide-strip')).toBeVisible();
+    const shortHost = await hostHeight(page);
+
+    // Порог 80, а не «больше нуля»: замер дал 98 px, и сворачивание одной
+    // только полоски положения (6 px) обязано считаться поломкой, а не
+    // выполнением. Точное число сюда не пишется — оно поедет от шрифта.
+    expect(
+      tallHost - shortHost,
+      `лента вернула сцене ${tallHost - shortHost} px, замер обещал ~98`,
+    ).toBeGreaterThan(80);
+
+    // Голова ленты со счётчиком и кнопками буфера видна в ОБОИХ состояниях:
+    // свёрнутая лента отнимает место, а не возможности. Спрячь она подпись
+    // с причиной — автор видел бы погашенные кнопки без объяснения.
+    await page.getByTestId('slide-strip-toggle').click();
+    await expect(page.getByTestId('slide-strip')).toBeHidden();
+    await expect(page.getByTestId('strip-counter')).toBeVisible();
+    await expect(page.getByTestId('slide-duplicate')).toBeVisible();
+    await expect(page.getByTestId('slide-clipboard-note')).toBeAttached();
+
+    expect(await hostHeight(page)).toBe(tallHost);
+    await scaleCatchesUp(page);
+    expect(errors).toEqual([]);
   });
 
   test('Ctrl+0 возвращает вписывание, каким оно и было', async ({ page }) => {
