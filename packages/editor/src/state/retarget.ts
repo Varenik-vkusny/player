@@ -263,7 +263,7 @@ export function describeRetarget(report: RetargetReport): string {
     );
   }
   if (parts.length === 0) {
-    return 'Меток, привязанных к слову, в этой части не было — переносить было нечего.';
+    return 'Меток, привязанных к слову, в этой главе не было — переносить было нечего.';
   }
   return parts.join(' ');
 }

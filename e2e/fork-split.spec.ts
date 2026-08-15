@@ -108,7 +108,7 @@ test.describe('разрез повествования по развилке', (
     await selectFork(page);
 
     // До разреза пустых частей в этой фикстуре нет: у концовок есть элементы.
-    await expect(page.getByTestId('empty-segments')).toContainText('Во всех частях что-то есть');
+    await expect(page.getByTestId('empty-segments')).toContainText('Во всех главах что-то есть');
 
     await page.getByTestId('gate-split').click();
 

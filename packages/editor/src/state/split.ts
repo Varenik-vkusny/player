@@ -103,7 +103,7 @@ function statesAt(slides: readonly Slide[], words: readonly Word[], seconds: num
   // Первый слайд обязан стоять на нуле (схема), поэтому «ни одного
   // наступившего» невозможно ни при каком неотрицательном `seconds`.
   if (!current) {
-    throw new SplitError('У части нет слайда на нуле — снимок сцены взять неоткуда');
+    throw new SplitError('У главы нет слайда на нуле — снимок сцены взять неоткуда');
   }
   return current.states;
 }
@@ -130,7 +130,7 @@ export function splitSegmentAtGate(
 ): SplitResult {
   const gate = segment.gates.find((candidate) => candidate.id === gateId);
   if (!gate) {
-    throw new SplitError(`В части «${segment.id}» нет остановки «${gateId}»`);
+    throw new SplitError(`В главе «${segment.id}» нет остановки «${gateId}»`);
   }
   if (gate.config.kind !== 'choice') {
     throw new SplitError(
@@ -144,7 +144,7 @@ export function splitSegmentAtGate(
 
   if (at <= 0) {
     throw new SplitError(
-      `Остановка «${gateId}» стоит в начале части: до неё нет повествования, `
+      `Остановка «${gateId}» стоит в начале главы: до неё нет повествования, `
       + 'и делить нечего.',
     );
   }
@@ -381,7 +381,7 @@ export function splitBlockedReason(gate: Gate, words: readonly Word[]): string |
     return 'Метка остановки потеряла своё слово в транскрипте: сначала поставьте её заново.';
   }
   if (at <= 0) {
-    return 'Развилка стоит в самом начале части: до неё нет рассказа, и делить нечего.';
+    return 'Развилка стоит в самом начале главы: до неё нет рассказа, и делить нечего.';
   }
   return undefined;
 }
@@ -418,7 +418,7 @@ export function speechLossWarning(segment: Segment, gate: Gate): string | undefi
   }
   if (segment.audio.duration - at < MIN_TAIL_SECONDS) return undefined;
 
-  return 'У продолжения нет текста озвучки: разделить его было не по чему — у этой части нет '
+  return 'У продолжения нет текста озвучки: разделить его было не по чему — у этой главы нет '
     + 'расшифровки. Впишите текст продолжения или получите расшифровку и разрежьте заново.';
 }
 

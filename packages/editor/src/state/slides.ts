@@ -106,14 +106,14 @@ export function addSlide(segment: Segment, afterSlideId: string, at: TimeRef): S
  */
 export function cutProblem(segment: Segment, slideId: string): string | undefined {
   if (segment.slides.length <= 1) {
-    return 'Единственный слайд вырезать нельзя: части нечего будет показывать';
+    return 'Единственный слайд вырезать нельзя: главе нечего будет показывать';
   }
   const index = slideIndex(segment, slideId);
   if (index < 0) {
     throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
   }
   if (index === 0) {
-    return 'Первый слайд вырезать нельзя: он обязан стоять на нуле — это стартовый вид части';
+    return 'Первый слайд вырезать нельзя: он обязан стоять на нуле — это стартовый вид главы';
   }
   return undefined;
 }
@@ -162,7 +162,7 @@ export function setTransition(segment: Segment, slideId: string, transition: Sli
   }
   if (index === 0) {
     throw new Error(
-      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом части, ехать в него неоткуда',
+      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом главы, ехать в него неоткуда',
     );
   }
   if (segment.slides[index]!.transition === transition) return segment;
@@ -210,7 +210,7 @@ export function setTransitionDirection(
   }
   if (index === 0) {
     throw new Error(
-      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом части, ехать в него неоткуда',
+      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом главы, ехать в него неоткуда',
     );
   }
 
@@ -247,7 +247,7 @@ export function setTransitionSeconds(segment: Segment, slideId: string, transiti
   }
   if (index === 0) {
     throw new Error(
-      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом части, ехать в него неоткуда',
+      'У первого слайда нет перехода: он стоит на нуле и является стартовым видом главы, ехать в него неоткуда',
     );
   }
   if (segment.slides[index]!.transitionSeconds === transitionSeconds) return segment;
@@ -524,7 +524,7 @@ export function pasteProblem(segment: Segment, at: TimeRef): string | undefined 
   const newSeconds = seconds(at, words);
 
   if (newSeconds <= 0) {
-    return `Начало части занято: первый слайд обязан стоять на нуле (получено ${newSeconds.toFixed(3)} с)`;
+    return `Начало главы занято: первый слайд обязан стоять на нуле (получено ${newSeconds.toFixed(3)} с)`;
   }
 
   const hit = slideOnMark(segment, newSeconds, words);

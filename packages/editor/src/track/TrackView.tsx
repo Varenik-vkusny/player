@@ -705,7 +705,7 @@ export function TrackView({
                   style={{ height: `${laneHeight('words', tier)}px`, ...border }}
                 >
                   {words.length === 0
-                    ? 'Расшифровки нет — метки этой части ставятся по секундам'
+                    ? 'Расшифровки нет — метки этой главы ставятся по секундам'
                     : words.map((word, wordIndex) => (
                         <span
                           key={`${word.start}-${wordIndex}`}

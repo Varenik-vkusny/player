@@ -435,7 +435,7 @@ function SpeechField({ value, onCommit, onBlurCommit }: SpeechFieldProps): React
         }}
       />
       <p className="ed-insp-note">
-        То, что вы произносите в этой части. Расшифровка — это то, что услышала машина;
+        То, что вы произносите в этой главе. Расшифровка — это то, что услышала машина;
         они могут расходиться.
       </p>
     </div>

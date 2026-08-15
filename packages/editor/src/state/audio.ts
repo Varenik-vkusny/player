@@ -48,7 +48,7 @@ export function wordMarkCount(segment: MarkedSegment): number {
  */
 export function replaceAudioConfirmMessage(markCount: number): string {
   if (markCount === 0) {
-    return 'Меток, привязанных к слову, в этой части нет — заменить озвучку можно без потерь для расстановки.';
+    return 'Меток, привязанных к слову, в этой главе нет — заменить озвучку можно без потерь для расстановки.';
   }
   return (
     `${plural(markCount, MARKS)}, привязанных к слову, потеряют эту связь: `

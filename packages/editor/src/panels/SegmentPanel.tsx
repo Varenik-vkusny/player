@@ -365,8 +365,8 @@ export function SegmentPanel({
     setTargets((prev) => ({ ...prev, [key]: value }));
 
   return (
-    <section className="ed-segment-panel" aria-label="Части">
-      <h2 className="ed-insp-title">Части</h2>
+    <section className="ed-segment-panel" aria-label="Главы">
+      <h2 className="ed-insp-title">Главы</h2>
 
       <ul className="ed-segment-list">
         {project.segments.map((segment) => {
@@ -405,7 +405,7 @@ export function SegmentPanel({
 
       <div className="ed-segment-actions">
         <button type="button" className="ed-action" data-testid="segment-add" onClick={onAddSegment}>
-          Добавить часть
+          Добавить главу
         </button>
         <button
           type="button"
@@ -414,7 +414,7 @@ export function SegmentPanel({
           disabled={currentSegmentId === project.entry}
           onClick={() => onRemoveSegment(currentSegmentId)}
         >
-          Удалить часть
+          Удалить главу
         </button>
         <button
           type="button"
@@ -422,7 +422,7 @@ export function SegmentPanel({
           data-testid="segment-duplicate"
           onClick={() => onDuplicateSegment(currentSegmentId)}
         >
-          Сделать копию части
+          Сделать копию главы
         </button>
       </div>
 
@@ -475,7 +475,7 @@ export function SegmentPanel({
           ) : null}
         </ul>
       ) : (
-        <p className="ed-segment-empty">У этой части нет правил перехода.</p>
+        <p className="ed-segment-empty">У этой главы нет правил перехода.</p>
       )}
 
       {/* Сравнение с числом на переменной, которая числом не бывает, схему
@@ -512,10 +512,10 @@ export function SegmentPanel({
       {/* Пустая ветка — незавершённое состояние, а не валидное
           (product.md §2б [Р]). Ветка рождается пустой по построению разреза,
           и наполнить её легко забыть: разрез рождает сразу несколько. */}
-      <h3 className="ed-insp-title">Пустые части</h3>
+      <h3 className="ed-insp-title">Пустые главы</h3>
       <div className="ed-exit-uncovered" data-testid="empty-segments">
         {empty.size === 0 ? (
-          <p className="ed-segment-empty">Во всех частях что-то есть.</p>
+          <p className="ed-segment-empty">Во всех главах что-то есть.</p>
         ) : (
           <>
             {project.segments
@@ -528,7 +528,7 @@ export function SegmentPanel({
                 </div>
               ))}
             <p className="ed-segment-empty">
-              Пока такая часть есть, объяснение публиковать нельзя: зритель прошёл бы её
+              Пока такая глава есть, объяснение публиковать нельзя: зритель прошёл бы её
               насквозь. Тишина не подходит как признак — тишину можно захотеть намеренно,
               и тогда «пусто по ошибке» стало бы неотличимо от «пауза задумана».
             </p>
@@ -539,7 +539,7 @@ export function SegmentPanel({
       <h3 className="ed-insp-title">Непокрыто</h3>
       <div className="ed-exit-uncovered" data-testid="exit-uncovered">
         {holes.length === 0 ? (
-          <p className="ed-segment-empty">Все варианты и исходы вопросов этой части ведут куда-то.</p>
+          <p className="ed-segment-empty">Все варианты и исходы вопросов этой главы ведут куда-то.</p>
         ) : (
           holes.map((hole) => (
             <div key={hole.variable} className="ed-exit-hole-group">

@@ -2186,8 +2186,8 @@ export function Editor({
               cutProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
             />
             {/* ADR-022: разрез без расшифровки потерял текст озвучки продолжения.
-                Рядом с панелью частей — тот же класс сообщения, что и «Пустые
-                части» внутри неё (state/exits.ts: emptySegments), только здесь
+                Рядом с панелью глав — тот же класс сообщения, что и «Пустые
+                главы» внутри неё (state/exits.ts: emptySegments), только здесь
                 это разовое событие самого разреза, а не постоянно пересчитываемое
                 состояние проекта (см. handleSplitAtGate выше). */}
             {speechSplitWarning ? (

@@ -208,7 +208,7 @@ export function wordAnchorProblem(
 ): string | undefined {
   if (ref.kind === 'word') return undefined;
   if (words.length === 0) {
-    return 'У этой части нет расшифровки, привязывать не к чему: метки ставятся по секундам';
+    return 'У этой главы нет расшифровки, привязывать не к чему: метки ставятся по секундам';
   }
   if (chooseTarget(words, markSeconds(ref, words), snapSeconds).kind !== 'word') {
     return 'На этой секунде рядом нет слова — здесь пауза. Метка остаётся на секунде';
