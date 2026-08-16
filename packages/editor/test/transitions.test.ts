@@ -34,6 +34,7 @@ const seconds = (t: number): TimeRef => ({ kind: 'seconds', t });
  */
 function baseSegment(): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',

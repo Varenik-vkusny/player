@@ -24,7 +24,7 @@
  *   уезжают вместе с частью, поэтому их индексы сдвигаются, и всё, что на них
  *   ссылалось, обязано переехать согласованно.
  */
-import type { Gate, Segment, Slide, TimeRef, Word } from '@player/core';
+import type { AuthorSpan, Gate, Segment, Slide, TimeRef, Word } from '@player/core';
 import {
   alignWords, DEFAULT_TRANSITION_SECONDS, resolveTimeRef, splitIntoWords,
 } from '@player/core';
@@ -92,6 +92,77 @@ function shiftRef(ref: TimeRef, splitSeconds: number, wordsCut: number): TimeRef
     return { kind: 'seconds', t: Math.max(0, ref.t - splitSeconds) };
   }
   return { ...ref, wordIndex: ref.wordIndex - wordsCut };
+}
+
+/**
+ * Отрезки «моё», разложенные по половинам разреза.
+ *
+ * Закрывает открытый вопрос `bubble.md` §8.4. Отрезок — ИНТЕРВАЛ, и в этом
+ * вся разница с остальным содержимым главы: слайд и остановка стоят в точке
+ * и потому целиком достаются одной половине, а интервал может лежать
+ * ПОПЕРЁК разреза. Такой обязан делиться, иначе он повиснет между двумя
+ * главами — то есть у одной из них хозяин капли окажется не определён.
+ *
+ * Три случая, и третий — единственный содержательный:
+ *
+ *   ├──┤        целиком до разреза  → голове как есть
+ *          ├──┤ целиком после       → продолжению со сдвигом
+ *      ├───┼──┤ поперёк             → ДЕЛИТСЯ на два, встык
+ *
+ * Новые края ставятся СЕКУНДАМИ, а не словом, и инвариант №10 это разрешает
+ * ровно здесь: точка разреза — это граница времени, а не место в речи.
+ * Привязать её к слову значило бы соврать — автор ставил отрезок не там.
+ *
+ * Отрезки элементов, не доехавших до половины, отбрасываются: `usedElements`
+ * оставляет только те элементы, что нужны слайдам половины, и отрезок
+ * на выброшенный элемент сделал бы проект невалидным по схеме.
+ */
+function cutSpans(
+  spans: readonly AuthorSpan[],
+  at: number,
+  words: readonly Word[],
+  wordsCut: number,
+  headElements: ReadonlySet<string>,
+  tailElements: ReadonlySet<string>,
+): { head: AuthorSpan[]; tail: AuthorSpan[] } {
+  const head: AuthorSpan[] = [];
+  const tail: AuthorSpan[] = [];
+
+  for (const span of spans) {
+    const from = secondsOf(span.from, words);
+    const to = secondsOf(span.to, words);
+
+    if (to <= at) {
+      if (headElements.has(span.elementId)) head.push(span);
+      continue;
+    }
+
+    if (from >= at) {
+      if (tailElements.has(span.elementId)) {
+        tail.push({
+          ...span,
+          from: shiftRef(span.from, at, wordsCut),
+          to: shiftRef(span.to, at, wordsCut),
+        });
+      }
+      continue;
+    }
+
+    // Поперёк разреза: два отрезка встык. Схема соприкосновение краёв
+    // разрешает намеренно — именно этот случай его и порождает.
+    if (headElements.has(span.elementId)) {
+      head.push({ ...span, to: { kind: 'seconds', t: at } });
+    }
+    if (tailElements.has(span.elementId)) {
+      tail.push({
+        ...span,
+        from: { kind: 'seconds', t: 0 },
+        to: shiftRef(span.to, at, wordsCut),
+      });
+    }
+  }
+
+  return { head, tail };
 }
 
 /** Состояния сцены на момент `seconds`: снимок последнего наступившего слайда. */
@@ -191,21 +262,49 @@ function cutInTwo(
   const headGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) <= at);
   const tailGates = segment.gates.filter((candidate) => secondsOf(candidate.at, words) > at);
 
+  // --- отрезки «моё»: единственное содержимое главы, которое может лежать
+  // ПОПЕРЁК разреза, и потому единственное, что делится, а не расходится ---
+  //
+  // Считается ДО построения половин: обеим нужны их наборы элементов,
+  // а спред `...segment` у головы протащил бы отрезки целиком — молча,
+  // без единой ошибки типа, и у головы остался бы хозяин на время,
+  // которого у неё больше нет.
+  // Снимок сцены на разрезе поднят сюда из построения продолжения: он входит
+  // в набор элементов хвоста, и считать этот набор двумя способами значило бы
+  // завести две правды об одном. Отрезок на элементе, который живёт только
+  // в снимке, вторым способом потерялся бы молча.
+  const snapshot = statesAt(segment.slides, words, at);
+  const snapshotSlide: Slide = {
+    id: 'snapshot', at: { kind: 'seconds', t: 0 },
+    transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: snapshot,
+  };
+
+  const headElements = usedElements(segment, headSlides);
+  const tailElements = usedElements(segment, [snapshotSlide, ...tailSlides]);
+
+  const spans = cutSpans(
+    segment.authorSpans,
+    at,
+    words,
+    wordsCut,
+    new Set(headElements.map((el) => el.id)),
+    new Set(tailElements.map((el) => el.id)),
+  );
+
   const head: Segment = {
     ...segment,
     speech: headSpeech,
     audio: { ...segment.audio, duration: at, words: headWords },
-    elements: usedElements(segment, headSlides),
+    elements: headElements,
     slides: headSlides,
     gates: headGates,
+    authorSpans: spans.head,
     // Продолжения нет — выход исходной главы остаётся у головы: договаривает
     // отныне она. Есть — уходим в него.
     exit: hasTail ? { rules: [], default: tailId } : segment.exit,
   };
 
   // --- продолжение: первый слайд — точный снимок сцены на разрезе ---
-
-  const snapshot = statesAt(segment.slides, words, at);
 
   const tail: Segment | null = hasTail
     ? {
@@ -222,13 +321,7 @@ function cutInTwo(
         duration: tailSeconds,
         words: tailWords,
       },
-      elements: usedElements(segment, [
-        {
-          id: 'snapshot', at: { kind: 'seconds', t: 0 },
-          transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: snapshot,
-        },
-        ...tailSlides,
-      ]),
+      elements: tailElements,
       slides: [
         {
           id: freeId('slide', tailSlides),
@@ -248,6 +341,7 @@ function cutInTwo(
         ...candidate,
         at: shiftRef(candidate.at, at, wordsCut),
       })),
+      authorSpans: spans.tail,
       // Куда шло объяснение после этой главы, туда теперь идёт продолжение:
       // выход отвечает на вопрос «что дальше, когда договорили», а договаривает
       // отныне именно оно.
@@ -455,6 +549,9 @@ export function splitSegmentAtGate(
       transition: 'cut', transitionSeconds: DEFAULT_TRANSITION_SECONDS, states: {},
     }],
     gates: [],
+    // Отрезков нет и быть не может: у пустой ветки нет ни одного элемента,
+    // а отрезок обязан указывать на существующий.
+    authorSpans: [],
     // Ветки сходятся обратно — самый дешёвый правильный сценарий. Автор уводит
     // ветку в сторону потом, если захочет; обрыв по умолчанию заставил бы его
     // чинить объяснение после каждой развилки.

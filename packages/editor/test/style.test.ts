@@ -331,6 +331,7 @@ describe('интеграция со схемой: результат подст�
       styles: [],
       segments: [
         {
+          authorSpans: [],
           id: 'seg-1',
           title: '',
           description: '',

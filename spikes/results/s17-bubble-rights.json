@@ -1,0 +1,217 @@
+{
+  "measuredAt": "2026-08-16T11:04:38.677Z",
+  "headless": false,
+  "pointer": {
+    "inherited": {
+      "mode": "",
+      "elementFromPoint": {
+        "bubble": "body",
+        "plain": "body",
+        "collapse": "body"
+      },
+      "clickHits": [
+        "body",
+        "body",
+        "body"
+      ]
+    },
+    "auto": {
+      "mode": "auto",
+      "elementFromPoint": {
+        "bubble": "bubble",
+        "plain": "body",
+        "collapse": "collapse"
+      },
+      "clickHits": [
+        "bubble",
+        "stage",
+        "body",
+        "collapse",
+        "bubble",
+        "stage"
+      ]
+    }
+  },
+  "withTap": {
+    "video": {
+      "duration": 8,
+      "videoWidth": 480,
+      "videoHeight": 270,
+      "audioDecodedBytes": 0,
+      "ctxState": "running"
+    },
+    "hiding": [
+      {
+        "name": "КОНТРОЛЬ: ничего не прячем",
+        "timeAdvanced": 1.21,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 708,
+        "rmsMedian": 0,
+        "rmsMax": 0.24198,
+        "samples": 20
+      },
+      {
+        "name": "display: none",
+        "timeAdvanced": 1.25,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 627,
+        "rmsMedian": 0,
+        "rmsMax": 0.17668,
+        "samples": 20
+      },
+      {
+        "name": "visibility: hidden",
+        "timeAdvanced": 1.202,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 600,
+        "rmsMedian": 0,
+        "rmsMax": 0.24198,
+        "samples": 19
+      },
+      {
+        "name": "opacity: 0",
+        "timeAdvanced": 1.24,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 685,
+        "rmsMedian": 0,
+        "rmsMax": 0.24198,
+        "samples": 20
+      },
+      {
+        "name": "transform: scale(0)",
+        "timeAdvanced": 1.241,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 648,
+        "rmsMedian": 0,
+        "rmsMax": 0.24198,
+        "samples": 20
+      },
+      {
+        "name": "размер 0 × 0",
+        "timeAdvanced": 1.232,
+        "wrapped": true,
+        "paused": false,
+        "audioBytes": 1092,
+        "rmsMedian": 0,
+        "rmsMax": 0.08825,
+        "samples": 20
+      },
+      {
+        "name": "увезли за край окна",
+        "timeAdvanced": 1.242,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 648,
+        "rmsMedian": 0,
+        "rmsMax": 0.08824,
+        "samples": 20
+      },
+      {
+        "name": "КОНТРОЛЬ: узел вынут из DOM",
+        "timeAdvanced": 0,
+        "wrapped": false,
+        "paused": true,
+        "audioBytes": 0,
+        "rmsMedian": 0,
+        "rmsMax": 0,
+        "samples": 20
+      }
+    ]
+  },
+  "noTap": {
+    "video": {
+      "duration": 8,
+      "videoWidth": 480,
+      "videoHeight": 270,
+      "audioDecodedBytes": 0,
+      "ctxState": "без отвода"
+    },
+    "hiding": [
+      {
+        "name": "КОНТРОЛЬ: ничего не прячем",
+        "timeAdvanced": 1.19,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 832,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "display: none",
+        "timeAdvanced": 1.259,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 631,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "visibility: hidden",
+        "timeAdvanced": 1.258,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 608,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "opacity: 0",
+        "timeAdvanced": 1.205,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 677,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "transform: scale(0)",
+        "timeAdvanced": 1.262,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 656,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "размер 0 × 0",
+        "timeAdvanced": 1.179,
+        "wrapped": true,
+        "paused": false,
+        "audioBytes": 790,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "увезли за край окна",
+        "timeAdvanced": 1.258,
+        "wrapped": false,
+        "paused": false,
+        "audioBytes": 652,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      },
+      {
+        "name": "КОНТРОЛЬ: узел вынут из DOM",
+        "timeAdvanced": 0,
+        "wrapped": false,
+        "paused": true,
+        "audioBytes": 0,
+        "rmsMedian": null,
+        "rmsMax": null,
+        "samples": 0
+      }
+    ]
+  }
+}

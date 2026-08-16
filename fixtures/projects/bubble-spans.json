@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 14,
+  "meta": {
+    "title": "Капля: отрезки «моё» и время зрителя",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-bubble",
+  "segments": [
+    {
+      "id": "s-bubble",
+      "title": "Голова принадлежит то автору, то зрителю",
+      "speech": "Смотри сюда я показываю схему а теперь можешь двигать сам",
+      "audio": {
+        "src": "/video/talking-head.mp4",
+        "offset": 0,
+        "duration": 10,
+        "words": [
+          { "text": "Смотри", "start": 0, "end": 0.5, "source": "tts" },
+          { "text": "сюда", "start": 0.5, "end": 1, "source": "tts" },
+          { "text": "я", "start": 1, "end": 1.3, "source": "tts" },
+          { "text": "показываю", "start": 1.3, "end": 2.2, "source": "tts" },
+          { "text": "схему", "start": 2.2, "end": 3, "source": "tts" },
+          { "text": "а", "start": 3, "end": 3.2, "source": "tts" },
+          { "text": "теперь", "start": 3.2, "end": 3.9, "source": "tts" },
+          { "text": "можешь", "start": 3.9, "end": 4.6, "source": "tts" },
+          { "text": "двигать", "start": 4.6, "end": 5.4, "source": "tts" },
+          { "text": "сам", "start": 5.4, "end": 6, "source": "tts" }
+        ]
+      },
+      "elements": [
+        { "id": "bg", "type": "shape", "content": "" },
+        { "id": "head", "type": "video", "content": "/video/talking-head.mp4" }
+      ],
+      "slides": [
+        {
+          "id": "b-1",
+          "at": { "kind": "seconds", "t": 0 },
+          "transition": "cut",
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "head": {
+              "x": 1320, "y": 620, "width": 360, "height": 360,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "border-radius": "50%", "background": "#000000" }
+            }
+          }
+        },
+        {
+          "id": "b-2",
+          "at": { "kind": "seconds", "t": 5 },
+          "transition": "morph",
+          "transitionSeconds": 0.5,
+          "states": {
+            "bg": {
+              "x": 0, "y": 0, "width": 1920, "height": 1080,
+              "rotation": 0, "zIndex": 0, "opacity": 1, "visible": true,
+              "style": { "background": "#11141a" }
+            },
+            "head": {
+              "x": 160, "y": 620, "width": 360, "height": 360,
+              "rotation": 0, "zIndex": 2, "opacity": 1, "visible": true,
+              "style": { "border-radius": "50%", "background": "#000000" }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "authorSpans": [
+        {
+          "elementId": "head",
+          "from": {
+            "kind": "word",
+            "wordIndex": 2,
+            "offset": 0,
+            "anchor": { "text": "я", "before": "сюда", "after": "показываю" }
+          },
+          "to": {
+            "kind": "word",
+            "wordIndex": 5,
+            "offset": 0,
+            "anchor": { "text": "а", "before": "схему", "after": "теперь" }
+          }
+        },
+        {
+          "elementId": "head",
+          "from": { "kind": "seconds", "t": 7 },
+          "to": { "kind": "seconds", "t": 9 }
+        }
+      ],
+      "exit": { "rules": [], "default": null }
+    }
+  ]
+}

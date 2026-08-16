@@ -39,6 +39,7 @@ function slide(id: string, states: Readonly<Record<string, ElementState>>): Slid
 
 function segment(elements: readonly Element[], slides: readonly Slide[]): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',

@@ -47,6 +47,9 @@ export function addSegment(project: Project, audioFrom: string): { project: Proj
     description: '',
     audio: source.audio,
     elements: [],
+    // Отрезков нет и быть не может: элементов у новой главы ноль, а отрезок
+    // обязан указывать на существующий элемент.
+    authorSpans: [],
     slides: [{
       id: freeId('slide', []),
       at: { kind: 'seconds', t: 0 },

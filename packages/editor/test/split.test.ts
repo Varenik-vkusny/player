@@ -81,6 +81,7 @@ function project(): Project {
         maxAttempts: null,
         recordAs: 'куда',
       }],
+      authorSpans: [],
       exit: { rules: [], default: null },
     }],
   } as Project;
@@ -310,6 +311,7 @@ function segmentWithSpeechAndWords(): Segment {
     { text: 'домой', start: 3, end: 3.5, source: 'manual' },
   ];
   return {
+    authorSpans: [],
     id: 'speech-source',
     title: 'Кусок с озвучкой',
     description: '',
@@ -565,5 +567,123 @@ describe('имена глав после многократного разрез
     const after = splitAtTime(project(), 'whole', 6);
     const tail = after.segments.find((segment) => segment.id !== 'whole')!;
     expect(tail.title).toBe('Цельное повествование — продолжение');
+  });
+});
+
+/**
+ * Отрезки «моё» при разрезе главы — закрытие открытого вопроса `bubble.md` §8.4.
+ *
+ * Отрезок — ЕДИНСТВЕННОЕ содержимое главы, которое может лежать ПОПЕРЁК
+ * разреза. Слайд и остановка стоят в точке и потому целиком достаются одной
+ * половине; интервал так не умеет, и неделённый отрезок повис бы между двумя
+ * главами — то есть у одной из них хозяин капли оказался бы не определён.
+ *
+ * ОСОБАЯ ОПАСНОСТЬ ЭТОГО МЕСТА: голова разреза строится спредом `...segment`,
+ * и он протаскивает `authorSpans` целиком МОЛЧА. Ни ошибки типа, ни отказа
+ * разбора — просто у головы остаётся хозяин на время, которого у неё больше
+ * нет. Тип здесь не помогает: он поймал два места построения сегмента из трёх,
+ * а это третье закрывается только тестом.
+ */
+describe('отрезки «моё» при разрезе главы', () => {
+  /** Проект с отрезком, лежащим ПОПЕРЁК будущего разреза, и отрезком в хвосте. */
+  function withSpans(): Project {
+    const base = project();
+    const segment = base.segments[0]!;
+    return {
+      ...base,
+      segments: [{
+        ...segment,
+        authorSpans: [
+          // Поперёк разреза на 5-й секунде.
+          { elementId: 'hero', from: { kind: 'seconds', t: 2 }, to: { kind: 'seconds', t: 8 } },
+        ],
+      }],
+    };
+  }
+
+  const halves = (): { head: Segment; tail: Segment } => {
+    const after = splitAtTime(withSpans(), 'whole', 5);
+    return {
+      head: after.segments.find((s) => s.id === 'whole')!,
+      tail: after.segments.find((s) => s.id !== 'whole')!,
+    };
+  };
+
+  it('отрезок поперёк разреза ДЕЛИТСЯ, а не достаётся одной половине', () => {
+    // ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать `authorSpans: spans.head` из головы —
+    // спред вернёт отрезок [2, 8] целиком, и `to` окажется на 8-й секунде
+    // главы, которая теперь длится 5.
+    // ВЕРНО ЛИ ПРИ ЛЮБОЙ РЕАЛИЗАЦИИ: нет. Проверяются КОНКРЕТНЫЕ края,
+    // а не факт «отрезки есть».
+    const { head, tail } = halves();
+
+    expect(head.authorSpans).toHaveLength(1);
+    expect(tail.authorSpans).toHaveLength(1);
+
+    const headSpan = head.authorSpans[0]!;
+    const tailSpan = tail.authorSpans[0]!;
+
+    expect(resolveTimeRef(headSpan.from, head.audio.words)).toBe(2);
+    expect(resolveTimeRef(headSpan.to, head.audio.words)).toBe(5);
+    expect(resolveTimeRef(tailSpan.from, tail.audio.words)).toBe(0);
+    expect(resolveTimeRef(tailSpan.to, tail.audio.words)).toBe(3);
+  });
+
+  it('владение не теряется и не удваивается: сумма длин равна исходной', () => {
+    // Проверка ПОПАДАНИЯ, а не связности. Половинки могли бы обе существовать
+    // и при этом описывать не то время: например, продолжение с [0, 8].
+    //
+    // ЧТО ДОЛЖНО СЛОМАТЬСЯ: не обрезать край у головы (оставить `to` на 8) —
+    // сумма станет 6 + 3 = 9 вместо 6.
+    const { head, tail } = halves();
+    const length = (segment: Segment): number => {
+      const span = segment.authorSpans[0]!;
+      return resolveTimeRef(span.to, segment.audio.words)
+        - resolveTimeRef(span.from, segment.audio.words);
+    };
+
+    expect(length(head) + length(tail)).toBe(6);
+  });
+
+  it('разрезанный проект ПРОХОДИТ разбор — встык законен по схеме', () => {
+    // Валидность данных не равна достижимости поведения, но здесь важно
+    // именно это: деление поперёк ПОРОЖДАЕТ отрезки, соприкасающиеся краями
+    // с границей главы. Запрети схема соприкосновение — разрез начал бы
+    // выдавать невалидный проект, и узнали бы мы об этом у автора.
+    //
+    // ЧТО ДОЛЖНО СЛОМАТЬСЯ: заменить в схеме `from < previousEnd`
+    // на `from <= previousEnd`.
+    const after = splitAtTime(withSpans(), 'whole', 5);
+    expect(() => loadProject(after)).not.toThrow();
+  });
+
+  it('отрезок элемента, не доехавшего до половины, отбрасывается', () => {
+    // `usedElements` оставляет половине только те элементы, что нужны её
+    // слайдам. Элемент `late` появляется лишь на слайде 7-й секунды, значит
+    // в голову разреза на 5-й он не попадает — и отрезок на нём сделал бы
+    // голову НЕВАЛИДНОЙ по схеме («элемента нет в сегменте»).
+    //
+    // ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать проверку `headElements.has(...)`
+    // в `cutSpans` — разбор упадёт с жалобой на элемент «late».
+    const base = project();
+    const segment = base.segments[0]!;
+    const withLateSpan: Project = {
+      ...base,
+      segments: [{
+        ...segment,
+        authorSpans: [
+          { elementId: 'late', from: { kind: 'seconds', t: 1 }, to: { kind: 'seconds', t: 9 } },
+        ],
+      }],
+    };
+
+    const after = splitAtTime(withLateSpan, 'whole', 5);
+    const head = after.segments.find((s) => s.id === 'whole')!;
+    const tail = after.segments.find((s) => s.id !== 'whole')!;
+
+    expect(head.elements.map((el) => el.id)).not.toContain('late');
+    expect(head.authorSpans).toEqual([]);
+    expect(tail.authorSpans).toHaveLength(1);
+    expect(() => loadProject(after)).not.toThrow();
   });
 });

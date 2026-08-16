@@ -60,6 +60,7 @@ function projectWithGate(): Project {
     styles: [],
     segments: [
       {
+        authorSpans: [],
         id: 's-1',
         title: 'Кусок с вопросом',
         description: '',
@@ -82,6 +83,7 @@ function projectWithGate(): Project {
         exit: { rules: [], default: 'end' },
       },
       {
+        authorSpans: [],
         id: 'end',
         title: 'Конец',
         description: '',
@@ -130,6 +132,7 @@ function projectWithSpeech(): Project {
     entry: 's-1',
     styles: [],
     segments: [{
+      authorSpans: [],
       id: 's-1',
       title: 'Кусок с озвучкой',
       description: '',

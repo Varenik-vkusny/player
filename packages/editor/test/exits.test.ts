@@ -29,6 +29,7 @@ import {
 
 function segment(id: string, overrides: Partial<Segment> = {}): Segment {
   return {
+    authorSpans: [],
     id,
     title: '',
     description: '',

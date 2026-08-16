@@ -47,6 +47,7 @@ function baseProject(): Project {
     styles: [],
     segments: [
       {
+        authorSpans: [],
         id: 'seg-1',
         title: '',
         description: '',
@@ -737,6 +738,7 @@ describe('редьюсер: переключение сегмента откры
       styles: [],
       segments: [
         {
+          authorSpans: [],
           id: 'seg-1',
           title: '',
           description: '',
@@ -747,6 +749,7 @@ describe('редьюсер: переключение сегмента откры
           exit: { rules: [], default: null },
         },
         {
+          authorSpans: [],
           id: 'seg-2',
           title: '',
           description: '',

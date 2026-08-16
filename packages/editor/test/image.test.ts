@@ -14,6 +14,7 @@ const STAGE = { width: 1920, height: 1080 };
 
 function segment(): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',

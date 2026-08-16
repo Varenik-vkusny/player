@@ -31,6 +31,7 @@ function element(id: string, overrides: Partial<Element> = {}): Element {
 
 function segment(elements: readonly Element[]): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',

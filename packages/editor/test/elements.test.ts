@@ -13,6 +13,7 @@ function emptyStates(): Record<string, ElementState> {
 
 function segment(overrides: Partial<Segment> = {}): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',

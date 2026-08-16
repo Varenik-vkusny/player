@@ -46,6 +46,7 @@ function baseProject(): Project {
     styles: [heading],
     segments: [
       {
+        authorSpans: [],
         id: 'seg-1',
         title: '',
         description: '',

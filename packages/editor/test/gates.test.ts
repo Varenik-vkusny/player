@@ -95,6 +95,7 @@ function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project
     styles: [],
     segments: [
       {
+        authorSpans: [],
         id: 'seg-1',
         title: '',
         description: '',

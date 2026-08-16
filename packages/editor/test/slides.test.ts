@@ -35,6 +35,7 @@ function slideSeconds(slide: Slide): number {
  */
 function baseSegment(): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',

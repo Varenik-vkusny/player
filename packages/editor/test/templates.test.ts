@@ -20,6 +20,7 @@ const STAGE = { width: 1920, height: 1080 };
  */
 function emptySegment(): Segment {
   return {
+    authorSpans: [],
     id: 'seg-1',
     title: '',
     description: '',
@@ -217,6 +218,7 @@ describe('шаблон «вопрос»: варианты действитель
         segments: [
           { ...segment, id: 'n1', audio },
           {
+            authorSpans: [],
             id: 'n2',
             title: 'Да',
             description: '',
@@ -227,6 +229,7 @@ describe('шаблон «вопрос»: варианты действитель
             exit: { rules: [], default: null },
           },
           {
+            authorSpans: [],
             id: 'n3',
             title: 'Нет',
             description: '',

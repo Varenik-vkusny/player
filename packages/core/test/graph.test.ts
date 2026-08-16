@@ -17,6 +17,7 @@ import {
 import { SCHEMA_VERSION, ThemeSchema, type Project, type Segment } from '../src/schema.js';
 
 const segment = (id: string, exit: Segment['exit']): Segment => ({
+  authorSpans: [],
   id,
   title: '',
   description: '',
@@ -186,6 +187,7 @@ describe('сколько частей осталось', () => {
       elements: [],
       slides: [{ id: `${id}-1`, at: { kind: 'seconds', t: 0 }, transition: 'cut', transitionSeconds: 0.6, states: {} }],
       gates: [],
+      authorSpans: [],
       exit: { rules: [], default: all[index + 1] ?? null },
     })),
   } as Project);
