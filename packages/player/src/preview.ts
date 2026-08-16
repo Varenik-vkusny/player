@@ -13,7 +13,7 @@
  * рендере. Второй реализации здесь по-прежнему неоткуда взяться.
  */
 import { findSegment as findSegment } from '@player/core';
-import type { Element, ElementState, Gate, Project, Slide, Style, Theme, Word } from '@player/core';
+import type { AuthorSpan, Element, ElementState, Gate, Project, Slide, Style, Theme, Word } from '@player/core';
 
 import type { AudioSource } from './assets.js';
 import { applyElement, applyFit, type Fit, type StageSize, type Zoom } from './render.js';
@@ -52,6 +52,20 @@ export interface Segment {
   readonly elements: readonly Element[];
   readonly slides: readonly Slide[];
   readonly gates: readonly Gate[];
+  /**
+   * Отрезки авторского владения (схема v14, ADR-032).
+   *
+   * Едут ЧЕРЕЗ ЭТУ ДВЕРЦУ, а не читаются плеером из `project.segments`
+   * напрямую. Дисциплина «доступ к сегментам в одном месте» окупилась дважды
+   * на переходах v1→v2 и v2→v3: менялась одна функция, а не всё, что стоит
+   * выше. Первый же обход кончил бы её.
+   *
+   * Времена — в координатах САМОГО сегмента, как слайды и гейты. Разрешать
+   * их в секунды здесь нельзя: `TimeRef` разрешается через `resolveTimeRef`
+   * ровно там, где известны слова, и второе место разрешения разошлось бы
+   * с первым (инвариант №10).
+   */
+  readonly authorSpans: readonly AuthorSpan[];
   readonly stage: StageSize;
   /**
    * Тема сцены (схема v9). Едет здесь, а не отдельным аргументом, потому что
@@ -97,6 +111,7 @@ export function segmentOf(project: Project, segmentId: string): Segment {
     elements: segment.elements,
     slides: segment.slides,
     gates: segment.gates,
+    authorSpans: segment.authorSpans,
     stage: { width: project.meta.stageWidth, height: project.meta.stageHeight },
     theme: project.meta.theme,
     styles: project.styles,

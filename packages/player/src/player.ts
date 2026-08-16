@@ -14,6 +14,9 @@ import {
   findSegment,
 } from '@player/core';
 
+import {
+  applyOwnership, bubbleElementOf, clearOwnership, ownerAt, type ViewerState,
+} from './bubble.js';
 import { AudioClocks, type Clock, type ClockSource } from './clock.js';
 import { applyFit } from './render.js';
 import { allSegments, entrySegmentOf, segmentOf, type Segment } from './preview.js';
@@ -192,6 +195,24 @@ export class Player {
   /** Фигуры вариантов, погашенных условием, и их прежняя прозрачность. */
   #hiddenOptions: { readonly id: string; readonly opacity: string }[] = [];
   #reveal: Reveal | null = null;
+  /**
+   * Что зритель сделал с каплей (v14, ADR-032).
+   *
+   * Ключ — id элемента, и карта НЕ ЧИСТИТСЯ при смене главы: решение
+   * владельца 13.08.2026 — правки зрителя живут до ближайшего отрезка «моё»,
+   * а не сбрасываются на границе главы. Отодвинул голову, чтобы не мешала, —
+   * она не выпрыгивает обратно на каждой новой главе. Это его настройка,
+   * как громкость.
+   */
+  #viewerBubbles = new Map<string, ViewerState>();
+  /**
+   * Орган управления зрителя. Собственный узел плеера, а не элемент сцены.
+   *
+   * Отдельным узлом, потому что свёрнутая капля ужата в точку: кнопка внутри
+   * неё ужалась бы вместе с ней, и вернуть каплю стало бы нечем. Управление,
+   * умеющее только выключать, — тупик.
+   */
+  #bubbleToggle: HTMLButtonElement | null = null;
   /**
    * Сколько частей зритель уже прошёл. Считается ходом, а не выводится
    * из проекта: пройденный путь — свойство ЭТОГО просмотра, и при ветвлении
@@ -390,6 +411,12 @@ export class Player {
     // а её больше нет: движок слайдов очищает контейнер.
     this.#markedOptionIds = [];
     this.#hiddenOptions = [];
+    // Кнопка капли лежала В ТОМ ЖЕ контейнере и уехала вместе с ним. Ссылка
+    // на неё осталась бы живой и указывала на узел, оторванный от документа:
+    // кнопка была бы, а нажать её было бы нельзя — ни ошибки, ни признака.
+    // Само СОСТОЯНИЕ зрителя (`#viewerBubbles`) при этом НЕ трогается:
+    // правки зрителя границей главы не сбрасываются.
+    this.#bubbleToggle = null;
     this.#fit();
 
     // Греть продолжения можно с самого начала сегмента: он линеен, его
@@ -588,6 +615,10 @@ export class Player {
       // а время сегмента отличается от него на `audio.offset`. При нулевом
       // окне обе шкалы совпадают, и ошибка была бы невидима (ADR-028).
       syncVideos(collectVideos(this.#stage), clock.position);
+      // Кто владеет каплей — вопрос ВРЕМЕНИ, значит ответ обновляется каждый
+      // кадр, там же, где обновляется всё остальное время сцены. Отдельного
+      // хронометра тут не заводится (инвариант №1): позиция уже посчитана.
+      this.#updateBubbleRights(position);
       this.#events.onFrame?.(position);
 
       if (this.#gateDueAt(position)) {
@@ -947,6 +978,14 @@ export class Player {
 
   destroy(): void {
     this.#stopFrameLoop();
+    // Владение снимается с узла явно, а не «сцену всё равно снесут»:
+    // хост вправе оставить контейнер себе, и капля осталась бы ужатой
+    // с чужим `pointer-events` навсегда.
+    const bubbleId = bubbleElementOf(this.#segment.elements);
+    const bubbleNode = bubbleId === undefined ? undefined : this.#nodes.get(bubbleId);
+    if (bubbleNode) clearOwnership(bubbleNode);
+    this.#bubbleToggle?.remove();
+    this.#bubbleToggle = null;
     pauseVideos(collectVideos(this.#stage));
     this.#dropPending();
     this.#resizeObserver?.disconnect();
@@ -960,6 +999,115 @@ export class Player {
   #requireClock(): Clock {
     if (!this.#clock) throw new Error('Плеер не загружен: сначала load()');
     return this.#clock;
+  }
+
+  /**
+   * Кто распоряжается каплей в этот момент — и что из этого следует для DOM.
+   *
+   * Зовётся каждый кадр. Дешёвая: перебор отрезков одной главы плюс две
+   * записи в стиль, и обе — на композиторе (`scale`, `pointer-events`).
+   * Своего времени не заводит, позиция приходит доводом (инвариант №1).
+   */
+  #updateBubbleRights(position: number): void {
+    const elementId = bubbleElementOf(this.#segment.elements);
+    if (elementId === undefined) {
+      this.#hideBubbleToggle();
+      return;
+    }
+
+    const node = this.#nodes.get(elementId);
+    if (!node) {
+      // Капля есть в главе, но не на этом слайде — элемент без состояния
+      // не рисуется вовсе (ADR-015). Владеть нечем, кнопке висеть не над чем.
+      this.#hideBubbleToggle();
+      return;
+    }
+
+    const owner = ownerAt(this.#segment.authorSpans, this.#segment.words, elementId, position);
+    let viewer = this.#viewerBubbles.get(elementId);
+    if (!viewer) {
+      viewer = { collapsed: false };
+      this.#viewerBubbles.set(elementId, viewer);
+    }
+
+    applyOwnership(node, owner, viewer);
+
+    if (owner === 'author') {
+      // Внутри отрезка зритель не может НИЧЕГО — кнопки тоже нет.
+      this.#hideBubbleToggle();
+      return;
+    }
+    this.#showBubbleToggle(node, elementId, viewer);
+  }
+
+  /** Кнопка «свернуть / показать» рядом с каплей. Живёт на сцене, но не в ней. */
+  #showBubbleToggle(node: HTMLElement, elementId: string, viewer: ViewerState): void {
+    let toggle = this.#bubbleToggle;
+    if (!toggle) {
+      toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'player-bubble-toggle';
+      toggle.dataset['testid'] = 'bubble-toggle';
+      // Указатель возвращается ОДНОМУ этому узлу — сцена остаётся мёртвой.
+      // Измерено (S17): попадание в соседний элемент по-прежнему отдаёт body.
+      // Стиль ИНЛАЙНОМ, а не классом. Инвариант №9: плеер собирается
+      // в самостоятельный ESM-бандл и открывается в ГОЛОМ html-файле —
+      // внешнего листа стилей там нет, и кнопка, оформленная классом,
+      // приехала бы к зрителю голым системным прямоугольником.
+      toggle.style.pointerEvents = 'auto';
+      toggle.style.position = 'absolute';
+      toggle.style.width = '36px';
+      toggle.style.height = '36px';
+      toggle.style.padding = '0';
+      toggle.style.border = '0';
+      toggle.style.borderRadius = '50%';
+      toggle.style.background = 'rgba(17, 20, 26, 0.72)';
+      toggle.style.color = '#f5f7fa';
+      toggle.style.fontSize = '18px';
+      toggle.style.lineHeight = '1';
+      toggle.style.cursor = 'pointer';
+      toggle.addEventListener('click', () => {
+        const state = this.#viewerBubbles.get(elementId);
+        if (!state) return;
+        state.collapsed = !state.collapsed;
+        // Применяем сразу, не дожидаясь кадра: на остановке кадров нет вовсе,
+        // а капля вне отрезка обязана слушаться и там.
+        const target = this.#nodes.get(elementId);
+        if (target) applyOwnership(target, 'viewer', state);
+        this.#paintBubbleToggle(toggle!, state);
+      });
+      this.#stage.appendChild(toggle);
+      this.#bubbleToggle = toggle;
+    }
+
+    // Кнопка ставится по КООРДИНАТАМ СЦЕНЫ элемента, а не по его экранному
+    // боксу: она лежит внутри той же сцены и делит с ней трансформацию
+    // вписывания. Смешивать пространства нельзя — `getBoundingClientRect`
+    // учитывает масштаб сцены, а `style.left` нет.
+    const left = Number.parseFloat(node.style.left) || 0;
+    const top = Number.parseFloat(node.style.top) || 0;
+    const width = Number.parseFloat(node.style.width) || 0;
+    toggle.style.left = `${left + width - 44}px`;
+    toggle.style.top = `${top - 8}px`;
+    toggle.style.zIndex = String((Number(node.style.zIndex) || 0) + 1);
+    toggle.style.display = '';
+    this.#paintBubbleToggle(toggle, viewer);
+  }
+
+  #paintBubbleToggle(toggle: HTMLButtonElement, viewer: ViewerState): void {
+    // Надпись называет ДЕЙСТВИЕ: одинаковый текст в обоих положениях оставил
+    // бы состояние жить только в атрибуте, который видит тест и не видит
+    // зритель.
+    toggle.textContent = viewer.collapsed ? '⤢' : '⤡';
+    toggle.setAttribute(
+      'aria-label',
+      viewer.collapsed ? 'Показать говорящую голову' : 'Свернуть говорящую голову',
+    );
+    toggle.setAttribute('aria-pressed', String(viewer.collapsed));
+  }
+
+  #hideBubbleToggle(): void {
+    if (this.#bubbleToggle) this.#bubbleToggle.style.display = 'none';
   }
 
   #requireSlides(): SlideEngine {

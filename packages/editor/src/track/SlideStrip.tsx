@@ -352,6 +352,11 @@ function SlideCard({
     elements,
     slides: [slide],
     gates: [],
+    // Карточка ленты — статичный снимок ОДНОГО слайда, времени в ней нет
+    // вовсе (`duration: 0`). Владение — свойство времени, значит здесь его
+    // не бывает: пустой список тут не «пока не сделали», а единственно
+    // осмысленное значение.
+    authorSpans: [],
     stage: { width: stageWidth, height: stageHeight },
     theme,
     styles,

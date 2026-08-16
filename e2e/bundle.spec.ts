@@ -33,12 +33,50 @@ async function openBare(page: Page): Promise<string[]> {
 }
 
 test.describe('инвариант №9: самостоятельный бандл в голом HTML', () => {
+  /**
+   * Внешние модули в тексте бандла — по ОБЪЯВЛЕНИЯМ, а не по слову «from».
+   *
+   * Прежний вид (`/\bfrom\s*["']…/`) искал слово `from` перед кавычкой
+   * и потому ловил обычный текст. 16.08.2026 он покраснел на строке
+   * `u(n.from, [...a, "from"]), c = u(n.to, [...a, "to"])` — это путь ошибки
+   * в проверке схемы, а не импорт. Проверено прогоном: импорт-объявлений
+   * в бандле 0, динамических импортов 0.
+   *
+   * Замена сделана СТРОЖЕ прежнего, а не слабее: добавлены side-effect
+   * импорты (`import"pkg"`), реэкспорты (`export … from "pkg"`)
+   * и динамический `import("pkg")` — прежний регекс не ловил ни один из трёх.
+   */
+  const externalModulesIn = (source: string): string[] => [
+    // import … from "pkg" / export … from "pkg" — ключевое слово обязано
+    // стоять началом инструкции, иначе это снова текст внутри строки.
+    ...source.matchAll(/(?:^|[;}\s])(?:import|export)\b[^;'"]*?\bfrom\s*["'](?![./])([^"']+)["']/g),
+    // import "pkg" — импорт ради побочного действия, без имён.
+    ...source.matchAll(/(?:^|[;}\s])import\s*["'](?![./])([^"']+)["']/g),
+    // import("pkg") — динамический.
+    ...source.matchAll(/\bimport\(\s*["'](?![./])([^"']+)["']\s*\)/g),
+  ].map((match) => match[1]!);
+
   test('в бандле не осталось неразрешимых импортов', async () => {
     const source = await readFile(BUNDLE_PATH, 'utf8');
     // Импорт по имени пакета («from "zod"») браузер разрешить не сможет:
     // карты импортов в голом HTML нет.
-    const bare = source.match(/\bfrom\s*["'](?![./])[^"']+["']/g) ?? [];
+    const bare = externalModulesIn(source);
     expect(bare, `бандл тянет внешние модули: ${bare.join(', ')}`).toEqual([]);
+  });
+
+  test('охранник умеет находить нарушение: иначе он зелен впустую', () => {
+    // Тот же приём, что у стражей инвариантов в ядре. Без него починка
+    // регекса могла бы тихо выключить проверку — и «внешних модулей нет»
+    // стало бы значить «искать перестали».
+    expect(externalModulesIn('import { z } from "zod";')).toEqual(['zod']);
+    expect(externalModulesIn('import"polyfill";')).toEqual(['polyfill']);
+    expect(externalModulesIn('export { x } from "lodash";')).toEqual(['lodash']);
+    expect(externalModulesIn('await import("chunk-pkg");')).toEqual(['chunk-pkg']);
+
+    // И НЕ находит того, чего нет: относительные пути законны, слово `from`
+    // внутри строки — тоже.
+    expect(externalModulesIn('import { a } from "./local.js";')).toEqual([]);
+    expect(externalModulesIn('u(n.from, [...a, "from"]), c = u(n.to, [...a, "to"]);')).toEqual([]);
   });
 
   test('браузер получает файл байт в байт, без сборщика в середине', async ({ page }) => {
