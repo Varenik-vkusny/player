@@ -33,6 +33,7 @@ import {
   ungroupElements as ungroupElementsInSegment,
 } from './groupElements.js';
 import * as exits from './exits.js';
+import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
@@ -401,6 +402,10 @@ export type EditorAction =
   | { readonly type: 'addCondition'; readonly ruleId: string; readonly condition: Condition }
   | { readonly type: 'removeCondition'; readonly ruleId: string; readonly index: number }
   | { readonly type: 'disconnect'; readonly ruleId: string }
+  // «Вынести диапазон глав в ветку» (владелец, 16.08.2026): смыкание основной
+  // линии над выделением — правка сразу нескольких глав, один шаг истории,
+  // тем же устройством, что у `connect`/`disconnect` выше.
+  | { readonly type: 'extractToBranch'; readonly chapterIds: readonly string[] }
   // Объявление остановки развилкой. Один шаг истории на весь разрез: он правит
   // текущую часть и рождает несколько новых, и разложить это на addSegment +
   // connect + правку гейта значило бы отдать автору полуразрезанное состояние
@@ -1213,6 +1218,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'disconnect': {
       const project = exits.disconnect(state.project, state.currentSegmentId, action.ruleId);
+      return { ...state, project };
+    }
+
+    case 'extractToBranch': {
+      const project = extractToBranch(state.project, action.chapterIds);
       return { ...state, project };
     }
 

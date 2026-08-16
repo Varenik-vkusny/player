@@ -1265,7 +1265,11 @@ export const EDITOR_STYLES = `
   color: var(--ui-content-fg);
 }
 
-/* ── Вид «Ветки» (branches.md §5) ─────────────────────────────────────── */
+/* ── Вид «Ветки» (branches.md §5, §6) ─────────────────────────────────────
+   Сессия 43: дерево целиком на пространстве, по которому автор ездит
+   и которое масштабирует (владелец 16.08.2026, «как в фигме»). Раскладка —
+   чужая арифметика (branchLayout.ts, branchSpace.ts), здесь только вёрстка
+   и жесты. */
 
 .ed-branches {
   display: flex;
@@ -1275,56 +1279,198 @@ export const EDITOR_STYLES = `
   background: var(--ui-surface-panel);
 }
 
-.ed-branches-names {
+/* Верхняя полоса — вне пространства: НЕ ездит и НЕ масштабируется вместе
+   с деревом, поэтому кнопка и подпись масштаба стоят своей строкой. */
+.ed-branches-bar {
   display: flex;
-  padding: 6px 16px 0;
-  min-width: 0;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--ui-line);
+  background: var(--ui-surface-panel);
 }
 
-.ed-branch-name {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
-.ed-branch-title {
-  font-size: 12px;
-  font-weight: 600;
+.ed-branches-fit {
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: var(--ui-surface-raised);
   color: var(--ui-content-fg);
+  font-size: 11px;
+  cursor: pointer;
 }
 
-.ed-branch-duration {
+.ed-branches-fit:hover { border-color: var(--ui-action-selected-line); }
+
+.ed-branches-zoom {
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--ui-content-fg-tertiary);
 }
 
-/* Полоса плиток. Прокрутка ГОРИЗОНТАЛЬНАЯ и намеренная: branches.md §12
-   запрещает «заставлять ветку помещаться» в какой-либо отрезок — ужатая
-   под ширину экрана ветка соврала бы о пропорциях, ради которых вид
-   и заводился. */
-.ed-branches-lane {
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 6px 16px;
+/* Вилка длительностей: у объяснения нет одного числа, ветки разной длины.
+   Моноширинные цифры, чтобы вилка не дёргалась при смене значений. */
+.ed-branches-range {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-content-fg-secondary);
+}
+
+.ed-branches-extract {
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  padding: 4px 10px;
+  background: var(--ui-surface-raised);
+  color: var(--ui-content-fg);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.ed-branches-extract:hover:enabled { border-color: var(--ui-action-selected-line); }
+
+.ed-branches-extract:disabled {
+  color: var(--ui-content-fg-tertiary);
+  cursor: default;
+}
+
+/* Причина отказа СТРОКОЙ, а не только подсказкой при наведении: проект
+   измерял, что на подсказки не смотрят, и однажды это дало три зелёных
+   проверки при пустом экране. Строка ужимается, но не исчезает. */
+.ed-branches-why {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--ui-content-fg-tertiary);
+}
+
+/* Окно пространства: ловит колесо и езду средней кнопкой, обрезает то,
+   что уехало за край. Полотно внутри двигает и масштабирует один общий
+   transform — сама эта коробка неподвижна.
+
+   ВЫСОТА ЗАДАНА ЯВНО, а не flex: 1, и это измерено, не угадано: третья
+   строка грида .ed-root — auto (styles.ts, .ed-root), то есть высота
+   .ed-track-column считается ОТ СОДЕРЖИМОГО, а не наоборот. У «Дорожек»
+   содержимое обычного потока, и строка честно раздувается под него. Полотно
+   «Веток» состоит целиком из position: absolute (иначе автору было бы
+   не по чему ездить — раскладка строит абсолютные иксы и игреки), а такие
+   элементы НЕ УЧАСТВУЮТ в расчёте высоты родителя. flex: 1 при этом
+   считает flex-basis от пустого содержимого, получает 0, и вся зона
+   схлопывается в высоту одной верхней строки — проверено в живом браузере:
+   .ed-branches-space возвращал getBoundingClientRect().height === 0.
+   Явная высота — единственный источник размера, который не зависит
+   от порядка решения этого цикла. */
+.ed-branches-space {
+  position: relative;
+  overflow: hidden;
+  height: 55vh;
+  min-height: 280px;
+  cursor: default;
+}
+
+/* Полотно раскладывается АБСОЛЮТНО позиционированными строками (у него
+   нет естественного размера от содержимого), поэтому размер задаётся
+   инлайн из bounds раскладки — иначе строкам и SVG было бы не во что
+   вписаться. */
+.ed-branches-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+.ed-branches-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* Иначе SVG перехватывает клики поверх плиток — та же ловушка захвата
+     указателя, что и с pointer capture: кнопка есть, а клика не будет. */
+  pointer-events: none;
+}
+
+.ed-wire {
+  fill: none;
+  stroke: var(--ui-line-strong);
+  stroke-width: 1.5;
+}
+
+.ed-wire--repeat {
+  stroke: var(--ui-content-fg-tertiary);
+  stroke-dasharray: 4 3;
 }
 
 .ed-branch-row {
+  position: absolute;
+}
+
+/* Утопленный фон у веток глубже основной — читается как вложенность,
+   не только через отступ по иксу. */
+.ed-branch-row--nested {
+  background: var(--ui-surface-raised);
+  border-radius: 6px;
+}
+
+.ed-branch-name {
+  position: absolute;
+  top: 0;
+  bottom: 0;
   display: flex;
-  align-items: stretch;
-  gap: 2px;
+  align-items: center;
+  gap: 6px;
+  padding-right: 8px;
   min-width: 0;
 }
 
-/* Ширина задаётся ИНЛАЙН из tileWidths (chapters.ts) — правилом, а не
-   вёрсткой. Держи её CSS через flex-grow, правило раскладки существовало
-   бы в двух местах и разошлось бы молча. */
-.ed-chapter-tile {
+.ed-branch-collapse {
   flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ed-branch-collapse:hover { color: var(--ui-content-fg); }
+
+.ed-branch-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-content-fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-branch-duration {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-content-fg-tertiary);
+}
+
+/* box-sizing НЕСУЩИЙ, а не косметика. Ширина плитки равна длительности
+   главы — в этом весь смысл вида: пропорции читаются без цифр. При
+   content-box рамка в 1 px с каждой стороны прибавляется СВЕРХУ ширины,
+   и плитка на 100 единиц рисуется 102. Замерено 17.08.2026: правый край
+   плитки-развилки уезжал на 4.08 экранных пикселя от начала ветки,
+   которая обязана стоять ровно под меткой.
+   Портится при этом именно пропорция, и тем сильнее, чем КОРОЧЕ глава:
+   на 24 px (0.6 с) две точки это +8 %, на 100 px (2.5 с) — +2 %. Короткие
+   главы систематически выглядели бы длиннее, чем они есть.
+   Соседний тест на ДОЛЮ ширины этого не ловил: прибавка к обоим числам
+   почти не меняет их отношения. Ловится сравнением абсолютных краёв. */
+.ed-chapter-tile {
+  position: absolute;
+  box-sizing: border-box;
+  top: 4px;
+  bottom: 4px;
   display: flex;
-  height: 44px;
   border-radius: 6px;
   background: var(--ui-surface-raised);
   border: 1px solid var(--ui-line);
@@ -1334,6 +1480,27 @@ export const EDITOR_STYLES = `
 .ed-chapter-tile--current {
   border-color: var(--ui-action-selected-line);
   background: var(--ui-action-selected-bg);
+}
+
+/* Выделение диапазона под «вынести в ветку» — ОТДЕЛЬНЫЙ признак от «эта
+   глава открыта на холсте». Их легко было бы слить в один класс, и тогда
+   автор, выделив три главы, увидел бы три «текущих» — то есть соврали бы
+   про то, что показывает холст. */
+.ed-chapter-tile--picked {
+  outline: 2px solid var(--ui-action-selected-line);
+  outline-offset: -2px;
+}
+
+/* Ветка, в которую не ведёт ни одно правило выхода. Пометка словами
+   зрителя, а не значком: значок пришлось бы объяснять, а «зритель
+   не попадёт» объясняет себя сам. */
+.ed-branch-orphan {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--ui-content-fg-tertiary);
+  border: 1px dashed var(--ui-line-strong);
+  border-radius: 4px;
+  padding: 0 4px;
 }
 
 .ed-chapter-pick {
@@ -1364,20 +1531,21 @@ export const EDITOR_STYLES = `
 }
 
 .ed-branch-tail {
-  flex: 0 0 auto;
-  align-self: center;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
   padding: 0 8px;
   font-size: 11px;
   color: var(--ui-content-fg-tertiary);
   white-space: nowrap;
 }
 
-.ed-branches-hint {
-  margin: 0;
-  padding: 0 16px 8px;
-  font-size: 11px;
-  line-height: 15px;
-  color: var(--ui-content-fg-tertiary);
+/* Хвост-повтор ведёт НАЗАД по рассказу — та же роль, что у меток «дальше»
+   на дорожке (--ui-mark-tail), взята сюда по смыслу, а не заново придумана. */
+.ed-branch-tail--repeat {
+  color: var(--ui-mark-tail);
 }
 
 /* Своя озвучка сегмента: загрузка файла автора и расшифровка. Строкой над

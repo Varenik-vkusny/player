@@ -91,13 +91,25 @@ test.describe('нижняя зона: два вида, один переключ
     await expect(page.getByTestId('branches-view')).toHaveCount(0);
   });
 
-  test('глава, за которой стоит развилка, помечена — лента не обрывается молча', async ({ page }) => {
+  /**
+   * Сессия 43 заменила предмет этого теста. Была одна помета «развилка →»
+   * на конце единственной показанной полосы — заглушка на время, пока веток
+   * не рисовали. Стали настоящие ветки, и у каждой свой хвост.
+   *
+   * Утверждение при этом усилилось, а не ослабло: раньше проверялось, что
+   * лента не обрывается МОЛЧА, теперь — что за развилкой видно, КУДА рассказ
+   * расходится, и обе ветки на месте.
+   */
+  test('за развилкой видны обе ветки, и у каждой свой хвост', async ({ page }) => {
     // exit-branch ветвится с первой же главы: ветка кончается здесь, и автор
     // обязан узнать почему, а не решить, что рассказ на этом всё.
     await openEditor(page, 'exit-branch');
     await page.getByTestId('view-branches').click();
 
-    await expect(page.getByTestId('branch-tail')).toBeVisible();
+    await expect(page.getByTestId('branch-row-s-right')).toBeVisible();
+    await expect(page.getByTestId('branch-row-s-left')).toBeVisible();
+    await expect(page.getByTestId('branch-tail-s-right')).toBeVisible();
+    await expect(page.getByTestId('branch-tail-s-left')).toBeVisible();
   });
 });
 

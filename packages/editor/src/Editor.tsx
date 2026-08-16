@@ -74,7 +74,10 @@ import {
 } from './state/arrange.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
-import { answerVariables, branchChapters, variableRenameProblem } from './state/exits.js';
+import { answerVariables, variableRenameProblem } from './state/exits.js';
+import { branchTree } from './state/branchTree.js';
+import { durationRange } from './state/durationRange.js';
+import { extractBlockedReason } from './state/extractBranch.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupElements.js';
 import { speechLossWarning, splitBlockedReason } from './state/split.js';
@@ -97,6 +100,7 @@ import { sceneTemplate } from './state/templates.js';
 import { THEME_ROLES } from './theme.js';
 import { TRANSITION_INFO } from './transitions.js';
 import { downloadProject, openInPlayer, openProjectFile } from './state/save.js';
+import { createBranchesHost, type BranchesHost } from './state/secondWindow.js';
 import { saveWork } from './state/workspace.js';
 import { importPptxFile, PPTX_ACCEPT } from './import/openPptx.js';
 import { wordMarkCount } from './state/audio.js';
@@ -1488,14 +1492,85 @@ export function Editor({
   const [bottomView, setBottomView] = useState<'tracks' | 'branches'>('tracks');
 
   /**
-   * Главы основной ветки — то, из чего вид «Ветки» строит плитки.
+   * Дерево веток целиком — то, из чего вид «Ветки» строит полосы и плитки
+   * (Сессия 43: вид показывает не только основную ветку, а всё дерево).
    *
    * Считается от ПРОЕКТА, а не от текущего сегмента: ветка это цепочка,
-   * и цепочку видно только целиком. Доступ к `project.segments` идёт через
-   * `branchChapters` — один узкий слой, как того требует CLAUDE.md, а не
+   * и дерево видно только целиком. Доступ к `project.segments` идёт через
+   * `branchTree` — один узкий слой, как того требует CLAUDE.md, а не
    * обход списка прямо в разметке.
    */
-  const chapters = useMemo(() => branchChapters(currentProject), [currentProject]);
+  const lanes = useMemo(() => branchTree(currentProject), [currentProject]);
+
+  /**
+   * Вилка длительностей объяснения (`branches.md` §8). Одного числа у него
+   * нет: ветки разной длины — у разных зрителей разное время, и любое
+   * единственное число будет враньём.
+   */
+  const durationSpread = useMemo(() => durationRange(currentProject), [currentProject]);
+
+  /**
+   * Связь со ВТОРЫМ ОКНОМ (`tracks.md` §4).
+   *
+   * Хост живёт всю жизнь редактора, а не открывается вместе с окном:
+   * второе окно может открыться и раньше, и позже, и заново после
+   * перезагрузки, и в каждом случае оно шлёт `hello`, а хост отдаёт
+   * последнее состояние. Проверять, открыто ли окно, чтобы решить,
+   * заводить ли канал, значило бы завести гонку на ровном месте.
+   *
+   * Второе окно ничего не решает: жесты приходят сюда и уходят в тот же
+   * редьюсер, что и жесты из главного окна. Одна сторона записи на две
+   * стороны показа — та же дисциплина, по которой редактор берёт рендер
+   * у плеера, а не пишет свой.
+   */
+  const branchesHostRef = useRef<BranchesHost | null>(null);
+  useEffect(() => {
+    const host = createBranchesHost((gesture) => {
+      if (gesture.kind === 'pick') dispatch({ type: 'selectSegment', id: gesture.chapterId });
+      else if (gesture.kind === 'rename') {
+        dispatch({ type: 'renameSegment', id: gesture.chapterId, title: gesture.title });
+      } else if (gesture.kind === 'extract') {
+        dispatch({ type: 'extractToBranch', chapterIds: gesture.chapterIds });
+      }
+    });
+    branchesHostRef.current = host;
+    return () => {
+      host.close();
+      branchesHostRef.current = null;
+    };
+  }, []);
+
+  /**
+   * Состояние уходит во второе окно ТЕКСТОМ проекта — той же формы, что
+   * уходит в файл. Своего формата для окна не заводим: он разъехался бы
+   * с файловым молча.
+   *
+   * Но БЕЗ ВАЛИДАЦИИ, и это не небрежность. `serializeProject` проверяет
+   * проект схемой и БРОСАЕТ на непрошедшем — он для сохранения, где автор
+   * нажал кнопку и обязан узнать о поломке. Здесь другое: во время правки
+   * проект законно бывает временно невалидным. Пример из прогона 17.08.2026:
+   * автор переназначает цель правила выхода, и в промежутке у главы `s-b`
+   * правила перестают покрывать все исходы, а запасного выхода ещё нет.
+   *
+   * Первая версия этого места звала `serializeProject`, и бросок из ЭФФЕКТА
+   * снимал весь редактор — три e2e умерли на ровном месте, причём ни один
+   * из них не про второе окно вовсе. Зеркало не имеет права убивать того,
+   * кого отражает.
+   *
+   * Невалидное состояние доедет до второго окна как есть, и оно скажет
+   * об этом словами (`BranchesWindow.tsx`): показать «проект не открылся»
+   * честнее, чем показывать позавчерашнее дерево, притворяясь свежим.
+   */
+  useEffect(() => {
+    branchesHostRef.current?.publish({
+      text: JSON.stringify(currentProject),
+      currentSegmentId: state.currentSegmentId,
+    });
+  }, [currentProject, state.currentSegmentId]);
+
+  const handleOpenSecondWindow = useCallback(() => {
+    window.open('/branches.html', 'player-branches', 'width=1280,height=800');
+  }, []);
 
   const handleRenameSegment = useCallback((id: string, title: string) => {
     dispatch({ type: 'renameSegment', id, title });
@@ -2404,15 +2479,31 @@ export function Editor({
             >
               Ветки
             </button>
+            {/* Второе окно показывает дерево веток во весь экран — решение
+                владельца 16.08.2026 (`tracks.md` §4). Кнопка стоит рядом
+                с переключателем видов, а не в верхней полосе: она про то же
+                самое дерево, и искать её автор будет здесь. */}
+            <button
+              type="button"
+              className="ed-zone-view"
+              data-testid="open-second-window"
+              onClick={handleOpenSecondWindow}
+              title="Дерево веток во весь экран на втором мониторе"
+            >
+              Второе окно
+            </button>
           </span>
         </div>
 
         {bottomView === 'branches' ? (
           <BranchesView
-            chapters={chapters}
+            lanes={lanes}
             currentId={state.currentSegmentId}
             onPick={handleSelectSegment}
             onRename={handleRenameSegment}
+            range={durationSpread}
+            extractReason={(ids) => extractBlockedReason(currentProject, ids)}
+            onExtract={(chapterIds) => dispatch({ type: 'extractToBranch', chapterIds })}
           />
         ) : (
         <>

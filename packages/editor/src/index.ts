@@ -88,3 +88,13 @@ export {
   type StoredWork,
 } from './state/workspace.js';
 export { openProjectFile } from './state/save.js';
+
+/**
+ * Второе окно: дерево веток во весь экран (`docs/design/tracks.md` §4).
+ *
+ * Экспорт через баррель, а не прямой путь к файлу из стенда: пакет обязан
+ * иметь ровно одну дверь наружу, иначе «инвариант №6: обратных импортов
+ * нет» держится только на честном слове. Кроме того, прямой путь к
+ * `src/BranchesWindow.js` открывал бы стенду и все внутренности пакета.
+ */
+export { BranchesWindow } from './BranchesWindow.js';

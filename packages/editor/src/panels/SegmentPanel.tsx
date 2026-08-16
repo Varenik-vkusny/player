@@ -23,8 +23,9 @@
  */
 import { useMemo, useState, type ReactElement } from 'react';
 
-import type { Condition, ExitRule, Project, Segment } from '@player/core';
+import type { Condition, Project, Segment } from '@player/core';
 
+import { conditionText, optionLabelAnywhere, ruleText, titleOfId } from '../state/conditionText.js';
 import {
   answerVariables,
   deadComparisons,
@@ -52,11 +53,6 @@ function titleOf(segment: Segment): string {
   return segment.title || segment.id;
 }
 
-function titleOfId(project: Project, id: string): string {
-  const segment = project.segments.find((candidate) => candidate.id === id);
-  return segment ? titleOf(segment) : id;
-}
-
 /**
  * Подпись варианта — из конфигурации гейта, а не голый id.
  *
@@ -72,68 +68,10 @@ function optionLabel(segment: Segment, variable: string, optionId: string): stri
   return option?.label ?? optionId;
 }
 
-/** Знак сравнения так, как его читает автор, а не как он назван в схеме. */
-const OP_SIGN: Record<'gt' | 'gte' | 'lt' | 'lte', string> = {
-  gt: '>',
-  gte: '≥',
-  lt: '<',
-  lte: '≤',
-};
-
-/**
- * Человеческое описание ОДНОГО условия.
- *
- * Значение показывается ПОДПИСЬЮ варианта, а не его id: «opt-skip» — слово
- * схемы, «Хватит на сегодня» — слово автора, и в правиле он ищет глазами
- * именно второе.
- */
-function conditionText(condition: Condition, project: Project): string {
-  switch (condition.kind) {
-    case 'equals':
-      return `«${condition.variable}» = «${optionLabelAnywhere(project, condition.variable, condition.value)}»`;
-    case 'notEquals':
-      return `«${condition.variable}» ≠ «${optionLabelAnywhere(project, condition.variable, condition.value)}»`;
-    case 'correct':
-      return `«${condition.variable}» верно`;
-    case 'wrong':
-      return `«${condition.variable}» неверно`;
-    case 'compare':
-      return `«${condition.variable}» ${OP_SIGN[condition.op]} ${condition.value}`;
-    default: {
-      const unreachable: never = condition;
-      throw new Error(`Неизвестный вид условия: ${JSON.stringify(unreachable)}`);
-    }
-  }
-}
-
-/**
- * Человеческое описание правила выхода: цепочка условий и цель.
- *
- * Условия соединены словом «и», а не значком: список читается сверху вниз
- * как предложение, и знак `&&` в нём был бы словом схемы, а не автора.
- */
-function ruleText(rule: ExitRule, project: Project): string {
-  const target = titleOfId(project, rule.goto);
-  return `${rule.when.map((condition) => conditionText(condition, project)).join(' и ')} → ${target}`;
-}
-
 const VERDICT_LABEL: Record<'correct' | 'wrong', string> = {
   correct: 'верно',
   wrong: 'неверно',
 };
-
-/**
- * Подпись варианта, найденная по ВСЕМУ объяснению.
- *
- * Отличается от `optionLabel` выше намеренно: та ищет в одном сегменте, и это
- * известный долг (`planning.md` §12.2). Панели нужен весь проект, потому что
- * она и предлагает переменные всего проекта — искать в одном сегменте значило
- * бы показать автору голые id для половины его же переменных.
- */
-function optionLabelAnywhere(project: Project, variable: string, optionId: string): string {
-  const source = answerVariables(project).find((candidate) => candidate.name === variable);
-  return source?.options.find((option) => option.id === optionId)?.label ?? optionId;
-}
 
 const KIND_LABEL: Record<Condition['kind'], string> = {
   equals: 'равен',

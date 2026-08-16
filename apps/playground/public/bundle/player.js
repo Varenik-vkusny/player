@@ -6339,7 +6339,8 @@ var Qu = 2, $u = .4, ed = class {
 		return this.#T;
 	}
 	#E(e) {
-		return e - this.#a.offset;
+		let t = e - this.#a.offset;
+		return Math.min(Math.max(t, 0), this.#a.duration);
 	}
 	#D(e) {
 		return e + this.#a.offset;

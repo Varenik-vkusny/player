@@ -286,6 +286,21 @@ describe('инвариант №8: анимируем только transform, op
  *   и правила выхода. Ей костяк и показывать. Содержимое сегмента —
  *   элементы, слайды, аудио — она не открывает.
  *
+ * Добавлено ADR-033 (Сессия 43), вид «Ветки» — все четыре той же породы,
+ * что exits.ts: спрашивают, из чего состоит рассказ и куда он ведёт,
+ * а не что нарисовано на слайде.
+ *
+ * state/branchTree.ts — раскладка костяка на полосы: цепочки по exit.default,
+ *   развилки, стыки, сироты. Из главы берёт заголовок и длительность —
+ *   ровно то же, что branchChapters в exits.ts.
+ * state/durationRange.ts — обход графа выходов от entry ради вилки «от — до».
+ *   Та же работа, что reachableFrom, только с накоплением длительностей.
+ * state/extractBranch.ts — правка самого костяка: смыкание exit.default над
+ *   вынесенным куском и перенос входа. Внутрь главы не заглядывает.
+ * state/conditionText.ts — описание правила выхода словами автора. Право
+ *   не расширено, а ПЕРЕЕХАЛО: функции пришли из SegmentPanel.tsx, который
+ *   в этом списке уже стоял.
+ *
  * ЧТО ОХРАНЯЕТСЯ НА САМОМ ДЕЛЕ. Дверца бережёт путь к СОДЕРЖИМОМУ: код,
  * который хочет элементы, слайды или дорожку, обязан спросить `segmentOf`.
  * Именно поэтому переходы v1→v2 и v2→v3 поменяли одну функцию. Перечисление
@@ -300,6 +315,11 @@ const NARROW_DOOR_EXEMPT = [
   join('packages', 'editor', 'src', 'state', 'exits.ts'),
   join('packages', 'editor', 'src', 'state', 'editorHistory.ts'),
   join('packages', 'editor', 'src', 'panels', 'SegmentPanel.tsx'),
+  // ADR-033, Сессия 43 — вид «Ветки».
+  join('packages', 'editor', 'src', 'state', 'branchTree.ts'),
+  join('packages', 'editor', 'src', 'state', 'durationRange.ts'),
+  join('packages', 'editor', 'src', 'state', 'extractBranch.ts'),
+  join('packages', 'editor', 'src', 'state', 'conditionText.ts'),
 ];
 
 /** Код без комментариев: пояснение, называющее поле, — не обращение к нему. */
