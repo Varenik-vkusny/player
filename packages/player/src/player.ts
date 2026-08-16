@@ -78,23 +78,28 @@ export interface Reveal {
 /**
  * Где зритель находится в объяснении — два уровня сразу.
  *
- * Нижний (`positionSeconds` / `durationSeconds`) точен всегда: часть линейна.
+ * Нижний (`positionSeconds` / `durationSeconds`) точен всегда: глава линейна.
  * Верхний честен ровно настолько, насколько может быть, и различие между
  * «знаю» и «не знаю» вынесено в тип, а не спрятано за подставленным числом.
+ *
+ * СЛОВО ОДНО НА ВСЕХ — «глава», и для автора, и для зрителя (решение
+ * владельца 15.08.2026, `product.md` §2з). Прежние `partIndex`/`partsLeft`
+ * переименованы вместе со строкой на экране: разные слова в коде и в подписи
+ * расходятся молча, и однажды в интерфейс возвращается то, которое убрали.
  */
 export interface PlaybackProgress {
-  /** Номер текущей части в пути ЭТОГО зрителя, начиная с единицы. */
-  readonly partIndex: number;
+  /** Номер текущей главы в пути ЭТОГО зрителя, начиная с единицы. */
+  readonly chapterIndex: number;
   /**
-   * Сколько частей осталось после текущей.
+   * Сколько глав осталось после текущей.
    *
    * `null` — впереди развилка: длина зависит от ответов, которых ещё нет.
-   * Ни процент, ни «часть 3 из 7» в этот момент не являются правдой.
+   * Ни процент, ни «глава 3 из 7» в этот момент не являются правдой.
    */
-  readonly partsLeft: number | null;
-  /** Позиция внутри текущей части, секунды. */
+  readonly chaptersLeft: number | null;
+  /** Позиция внутри текущей главы, секунды. */
   readonly positionSeconds: number;
-  /** Длительность текущей части, секунды. */
+  /** Длительность текущей главы, секунды. */
   readonly durationSeconds: number;
 }
 
@@ -192,7 +197,7 @@ export class Player {
    * из проекта: пройденный путь — свойство ЭТОГО просмотра, и при ветвлении
    * у двух зрителей он разный.
    */
-  #partsPassed = 0;
+  #chaptersPassed = 0;
 
   /**
    * Куски, которые зритель уже слышал в этом просмотре.
@@ -283,7 +288,7 @@ export class Player {
    * Где зритель находится — на двух уровнях сразу.
    *
    * Нижний уровень точен всегда: часть линейна, её длительность известна.
-   * Верхний честен настолько, насколько может быть: `partsLeft` равен `null`,
+   * Верхний честен настолько, насколько может быть: `chaptersLeft` равен `null`,
    * когда впереди развилка и длина пути зависит от ответов, которых ещё нет.
    *
    * Показывать в такой момент процент или «часть 3 из 7» — значит называть
@@ -292,8 +297,8 @@ export class Player {
    */
   get progress(): PlaybackProgress {
     return {
-      partIndex: this.#partsPassed + 1,
-      partsLeft: certainRemaining(this.#project, this.#nodeId),
+      chapterIndex: this.#chaptersPassed + 1,
+      chaptersLeft: certainRemaining(this.#project, this.#nodeId),
       positionSeconds: this.positionSeconds,
       durationSeconds: this.#segment.duration,
     };
@@ -671,7 +676,7 @@ export class Player {
     this.#nodeId = pending.nodeId;
     this.#segment = segmentOf(this.#project, pending.nodeId);
     this.#pending = null;
-    this.#partsPassed += 1;
+    this.#chaptersPassed += 1;
     // ДО #mountSegment: она читает #answeredHere, чтобы решить, какие
     // остановки открывать, а #enterSegment может его только что почистить.
     this.#enterSegment(pending.nodeId, pending.choice);
@@ -719,7 +724,7 @@ export class Player {
     this.#clock?.stop();
     this.#nodeId = nodeId;
     this.#segment = segmentOf(this.#project, nodeId);
-    this.#partsPassed += 1;
+    this.#chaptersPassed += 1;
     // ДО #mountSegment — тот же порядок, что и в #promotePendingIfStarted.
     this.#enterSegment(nodeId, choice);
     this.#clock = await this.#clocks.clockFor(this.#segment.source);

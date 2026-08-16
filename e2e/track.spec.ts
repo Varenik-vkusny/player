@@ -261,3 +261,52 @@ test.describe('дорожка редактора', () => {
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(2);
   });
 });
+
+/**
+ * ОДНО И ТО ЖЕ — ОДНИМ ЧИСЛОМ (решение владельца 15.08.2026).
+ *
+ * Голова полосы «Слайды» и счётчик ленты слайдов стоят в нижней зоне
+ * ОДНОВРЕМЕННО и оба говорят про слайды текущей главы. До этой правки они
+ * расходились на единицу: подпись полосы считала РОМБЫ на дорожке, а первый
+ * слайд ромба не получает — он стартовый вид главы. Автор видел «Слайды 14»
+ * и «1 / 15» рядом и не мог понять, какое из чисел правда.
+ *
+ * Найдено ГЛАЗАМИ на скриншоте: схема числа не проверяет, и не жаловался
+ * ни один тест.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: возврат подсчёта по меткам
+ * (`marks.filter(kind === 'slide').length`) в `TrackView`.
+ *
+ * ВЕРНО ЛИ ПРИ ЛЮБОЙ РЕАЛИЗАЦИИ: нет. Сравниваются ДВА НЕЗАВИСИМЫХ источника
+ * на экране — подпись полосы и счётчик ленты, — и они расходились на живом
+ * продукте. Проверка «подпись показывает число» была бы зелёной и тогда.
+ */
+test.describe('числа про слайды не расходятся между собой', () => {
+  test('подпись полосы «Слайды» совпадает со счётчиком ленты', async ({ page }) => {
+    const errors = await openEditor(page, 'demo');
+
+    // Счётчик ленты вида «1 / 15 · 0.00 с» — виден и при свёрнутой ленте.
+    const counter = await page.getByTestId('strip-counter').textContent();
+    const total = /\/\s*(\d+)/.exec(counter ?? '');
+    expect(total, `не разобрал счётчик ленты: ${counter}`).not.toBeNull();
+
+    const laneNote = await page.evaluate(() => {
+      const heads = Array.from(document.querySelectorAll('.ed-lane-head'));
+      const slides = heads.find(
+        (head) => head.querySelector('.ed-lane-head-title')?.textContent === 'Слайды',
+      );
+      return slides?.querySelector('.ed-lane-head-note')?.textContent ?? null;
+    });
+    expect(laneNote, 'у полосы «Слайды» нет подписи с числом').not.toBeNull();
+
+    expect(
+      Number(laneNote),
+      `полоса говорит «${laneNote}», лента — «${counter}»: одно и то же названо двумя числами`,
+    ).toBe(Number(total![1]));
+
+    // Промежуточная проверка «сравнивать было что»: одна глава с единственным
+    // слайдом сделала бы совпадение тождеством.
+    expect(Number(total![1]), 'нужно больше одного слайда, иначе тест пуст').toBeGreaterThan(1);
+    expect(errors).toEqual([]);
+  });
+});

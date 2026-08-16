@@ -34,14 +34,19 @@ const repeatingLabel = el('repeating');
 /**
  * Прогресс словами. Знаменатель называется ТОЛЬКО когда он известен.
  *
- * При ветвлении длина объяснения зависит от ответов, которых ещё нет, и «часть
+ * При ветвлении длина объяснения зависит от ответов, которых ещё нет, и «глава
  * 3 из 7» было бы выдумкой ровно там, где продукт обещает зрителю выбор.
- * Показать номер части без знаменателя — не хуже: зритель видит, что движется,
+ * Показать номер главы без знаменателя — не хуже: зритель видит, что движется,
  * и не получает обещания, которое некому сдержать.
+ *
+ * СЛОВО «ГЛАВА» — ОДНО НА АВТОРА И ЗРИТЕЛЯ (решение владельца 15.08.2026).
+ * До этого автор в редакторе видел «главы», а зритель здесь — «части»,
+ * и автор натыкался на оба слова в одном сеансе, открыв предпросмотр
+ * собственного объяснения.
  */
-function describeProgress(progress: { partIndex: number; partsLeft: number | null }): string {
-  if (progress.partsLeft === null) return `часть ${progress.partIndex}`;
-  return `часть ${progress.partIndex} из ${progress.partIndex + progress.partsLeft}`;
+function describeProgress(progress: { chapterIndex: number; chaptersLeft: number | null }): string {
+  if (progress.chaptersLeft === null) return `глава ${progress.chapterIndex}`;
+  return `глава ${progress.chapterIndex} из ${progress.chapterIndex + progress.chaptersLeft}`;
 }
 
 // Какую фикстуру открыть: ?fixture=e2e. По умолчанию — демо.

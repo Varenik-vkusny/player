@@ -2369,6 +2369,7 @@ export function Editor({
           onSelectMark={handleSelectMark}
           onMoveMark={handleMoveMark}
           onMoveMarkEnd={handleCommitHistory}
+          slideCount={segment.slides.length}
           onAddGate={handleAddGate}
           onSplitHere={handleSplitHere}
           colorOrphanCount={colorOrphanCount}
