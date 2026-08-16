@@ -34,11 +34,13 @@ import {
   resolveDrag,
   SEPARATOR_H,
   trackTier,
-  TRACK_DEFAULT_H,
+  trackDefaultHeight,
   TRANSPORT_H,
   type LaneName,
   type TrackTier,
 } from './tiers.js';
+import { BubbleLane } from './BubbleLane.js';
+import type { SpanRange } from './spans.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
 import { canvasWidth, largestFittingZoom, zoomBlockedReason, zoomFits, ZOOM_STEPS, type ZoomStep } from './zoom.js';
@@ -52,9 +54,9 @@ const SEPARATOR: CSSProperties = { borderTop: `${SEPARATOR_H}px solid var(--ui-l
  * `marks` — так уже устроен продукт (`tiers.ts: marksBodyHeight`, разметка
  * `.ed-mark-slide`/`.ed-mark-gate` разведена по `top` внутри ОДНОГО полотна).
  */
-function bodyLanesOf(tier: TrackTier): readonly LaneName[] {
+function bodyLanesOf(tier: TrackTier, showBubble: boolean): readonly LaneName[] {
   const lanes: LaneName[] = [];
-  for (const lane of lanesOf(tier)) {
+  for (const lane of lanesOf(tier, showBubble)) {
     if (lane === 'stops') continue; // слито в предыдущую 'slides' → 'marks'
     lanes.push(lane === 'slides' ? 'marks' : lane);
   }
@@ -66,6 +68,10 @@ function laneTitle(lane: LaneName, _soundLabel: string): string {
   switch (lane) {
     case 'ruler':
       return '';
+    case 'bubble':
+      // «Капля», а не «видео» и не «голова»: словарь един для автора
+      // и зрителя, и в спецификации это называется каплей везде.
+      return 'Капля';
     case 'sound':
       // «Звук», а не имя файла: заголовок называет ПОЛОСУ, подпись под ним —
       // её содержимое, как у остальных («Слайды» / «6»). Имя файла ушло
@@ -90,12 +96,17 @@ function laneTitle(lane: LaneName, _soundLabel: string): string {
 /** Подпись под заголовком головы — содержимое полосы: число или имя звука. */
 function laneNote(
   lane: LaneName,
-  counts: { slides: number; stops: number; words: number },
+  counts: { slides: number; stops: number; words: number; spans: number },
   soundLabel: string,
 ): string {
   switch (lane) {
     case 'ruler':
       return '';
+    case 'bubble':
+      // Число ОТРЕЗКОВ, а не «есть капля / нет капли»: полоса уже отвечает
+      // на второй вопрос самим своим присутствием. Ноль здесь осмыслен —
+      // «капля есть, и всё время ею распоряжается зритель».
+      return String(counts.spans);
     case 'sound':
       return soundLabel;
     case 'slides':
@@ -167,6 +178,23 @@ export interface TrackViewProps {
   onTransitionSecondsLive: (id: string, seconds: number) => void;
   /** Жест ручки стыка завершён — коммит истории, как `onMoveMarkEnd`. */
   onTransitionSecondsCommit: () => void;
+  /**
+   * Капля этой главы и её отрезки «моё» — или `undefined`, если капли нет.
+   *
+   * `undefined` и «капля есть, отрезков ноль» — РАЗНЫЕ состояния, и второе
+   * обязано показывать пустую полосу: решение владельца 16.08.2026 — полоса
+   * появляется от появления капли, а не от появления отрезков. Пустая полоса
+   * и есть сообщение «здесь всё время распоряжается зритель».
+   */
+  bubble?: {
+    readonly elementId: string;
+    /** Отрезки по порядку, секунды уже разрешены (`markSeconds`). */
+    readonly spans: readonly SpanRange[];
+  } | undefined;
+  onCreateSpan: (range: SpanRange) => void;
+  onEditSpan: (index: number, range: SpanRange) => void;
+  onEditSpanEnd: () => void;
+  onRemoveSpan: (index: number) => void;
 }
 
 /** Секунды в вид 01:23.4 — так короче и читается быстрее голых секунд. */
@@ -200,6 +228,11 @@ export function TrackView({
   colorOrphanCount = 0,
   onTransitionSecondsLive,
   onTransitionSecondsCommit,
+  bubble,
+  onCreateSpan,
+  onEditSpan,
+  onEditSpanEnd,
+  onRemoveSpan,
 }: TrackViewProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const laneScrollRef = useRef<HTMLDivElement>(null);
@@ -216,10 +249,19 @@ export function TrackView({
   // ещё один слот хранения значило бы расширять объём.
   const [track, setTrack] = useState<{ collapsed: boolean; height: number }>({
     collapsed: false,
-    height: TRACK_DEFAULT_H,
+    // Глава с каплей открывается выше ровно на свою полосу: иначе полоса,
+    // ради которой всё затевалось, оказалась бы за нижней кромкой в первый же
+    // раз, и автор решил бы, что её нет.
+    height: trackDefaultHeight(bubble !== undefined),
   });
+  // «Спрятать полосу капли» — настройка АВТОРА ДЛЯ СЕБЯ, как mute и 👁
+  // (`tracks.md` §2): в проект не пишется и до зрителя не доезжает.
+  // Отрезки при этом никуда не деваются и продолжают действовать —
+  // спрятана полоса, а не владение.
+  const [bubbleLaneHidden, setBubbleLaneHidden] = useState(false);
+  const showBubbleLane = bubble !== undefined && !bubbleLaneHidden;
   const { collapsed, height: trackHeight } = track;
-  const tier = trackTier(trackHeight);
+  const tier = trackTier(trackHeight, showBubbleLane);
   const resizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
 
   const { positionSeconds, durationSeconds, peaks, failure, isPlaying } = transport;
@@ -406,20 +448,25 @@ export function TrackView({
     slides: slideCount,
     stops: marks.filter((mark) => mark.kind === 'gate').length,
     words: words.length,
+    spans: bubble?.spans.length ?? 0,
   };
-  const headLanes = lanesOf(tier);
-  const bodyLanes = bodyLanesOf(tier);
+  const headLanes = lanesOf(tier, showBubbleLane);
+  const bodyLanes = bodyLanesOf(tier, showBubbleLane);
   // Скрытые полосы называют себя (задача 2.2): счётчик — в голове линейки,
   // полное предложение — в title. hiddenNote(tier) === undefined значит
   // «скрывать нечего» — тогда голова линейки пуста, а не «0»: пустая
   // строка и «скрывать нечего» разные случаи (tiers.ts).
   const hiddenLaneNote = hiddenNote(tier);
-  const hiddenLaneCount = lanesOf('full').length - headLanes.length;
+  // Сравнение с САМОЙ ПРОСТОРНОЙ ступенью при тех же условиях по капле:
+  // иначе спрятанная автором полоса капли попала бы в счётчик «скрыто
+  // от сжатия», и подсказка «потяните дорожку выше» соврала бы — тяга
+  // её не вернёт, вернёт кнопка.
+  const hiddenLaneCount = lanesOf('full', showBubbleLane).length - headLanes.length;
   // Сумма высот полос БЕЗ транспорта. Считается тем же способом, что
   // и minHeightOf() (сложением, а не числом), поэтому головы и тела сходятся
   // на одно и то же число по построению — ту самую сходимость, ради которой
   // marksBodyHeight() прибавляет разделитель внутри себя.
-  const lanesTotalHeight = minHeightOf(tier) - TRANSPORT_H;
+  const lanesTotalHeight = minHeightOf(tier, showBubbleLane) - TRANSPORT_H;
   const soundHeight = laneHeight('sound', tier);
 
   return (
@@ -551,6 +598,34 @@ export function TrackView({
           >
             ✂ разделить здесь
           </button>
+
+          {/* Переключатель полосы капли. Стоит В ТРАНСПОРТЕ, а не в голове
+              самой полосы, по одной причине: спрятанной полосы в перечне нет,
+              и кнопка внутри неё исчезла бы вместе с ней — вернуть было бы
+              нечем. Управление, которое умеет только выключать, это тупик.
+
+              Показывается лишь тогда, когда в главе есть капля: кнопка,
+              включающая то, чего не существует, обещала бы автору полосу,
+              которая не появится. */}
+          {bubble ? (
+            <button
+              type="button"
+              className="ed-add-mark"
+              data-testid="bubble-lane-toggle"
+              aria-pressed={!bubbleLaneHidden}
+              onClick={() => setBubbleLaneHidden((hidden) => !hidden)}
+              title={bubbleLaneHidden
+                ? 'Показать полосу капли. Отрезки «моё» действуют и сейчас — спрятана полоса, а не владение'
+                : 'Спрятать полосу капли. Это настройка для себя: в проект она не пишется и зрителя не касается'}
+            >
+              {/* Надпись называет ДЕЙСТВИЕ, а не состояние. Одинаковый текст
+                  в обоих положениях оставил бы состояние жить только
+                  в `aria-pressed`: тест его видит, автор — нет. В проекте уже
+                  записан случай, когда пометка ушла туда, где её находит
+                  `getByLabel` и не находит человек. */}
+              {bubbleLaneHidden ? '👁 показать каплю' : '🚫 спрятать каплю'}
+            </button>
+          ) : null}
         </span>
       </div>
 
@@ -730,6 +805,27 @@ export function TrackView({
                   >
                     <Waveform peaks={peaks} width={canvasWidthPx} height={soundHeight} progress={progress} />
                   </div>
+                );
+              }
+              if (lane === 'bubble') {
+                // `bubble` здесь заведомо есть: полоса появляется в перечне
+                // только при showBubbleLane, а он требует `bubble !== undefined`.
+                // Проверка нужна типу, а не логике — и падает громко, если
+                // однажды перечень и условие разойдутся.
+                if (!bubble) throw new Error('Полоса капли в перечне есть, а самой капли нет');
+                return (
+                  <BubbleLane
+                    key={lane}
+                    spans={bubble.spans}
+                    durationSeconds={durationSeconds}
+                    canvasWidthPx={canvasWidthPx}
+                    height={laneHeight('bubble', tier)}
+                    style={border}
+                    onCreate={onCreateSpan}
+                    onEdit={onEditSpan}
+                    onEditEnd={onEditSpanEnd}
+                    onRemove={onRemoveSpan}
+                  />
                 );
               }
               if (lane === 'marks') {

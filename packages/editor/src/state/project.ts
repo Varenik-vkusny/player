@@ -18,7 +18,8 @@ import type {
 } from '@player/core';
 import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
 
-import { retargetMark } from '../track/marks.js';
+import { markSeconds, retargetMark } from '../track/marks.js';
+import { insertionIndex } from '../track/spans.js';
 import { copySegment } from './duplicate.js';
 import { duplicateElements as duplicateElementsOnSlide } from './duplicateElements.js';
 import {
@@ -349,6 +350,37 @@ export type EditorAction =
       readonly commit?: boolean;
     }
   | { readonly type: 'removeMark'; readonly kind: 'gate'; readonly id: string }
+  /**
+   * Отрезки «моё» на полосе капли (v14, ADR-032).
+   *
+   * Адресуются ИНДЕКСОМ, а не идентификатором, и это законно ровно потому,
+   * что отрезки упорядочены и не пересекаются: тяга упирается в соседа
+   * (`track/spans.ts`, `clampEdge`/`clampWhole`), значит порядок за жест
+   * измениться не может, и индекс на протяжении жеста указывает на тот же
+   * отрезок. Заведи отрезкам `id` — в схеме появилось бы поле, которое
+   * ничего не выражает, кроме удобства одного редьюсера.
+   *
+   * `addSpan` сам ставит отрезок на место в упорядоченном массиве
+   * (`insertionIndex`): вставка в конец разошлась бы со схемой на первом же
+   * отрезке, нарисованном левее прежних.
+   *
+   * `commit` — та же механика, что у `moveMark`: тяга приходит на каждый
+   * `pointermove` и обязана остаться ОДНИМ шагом истории.
+   */
+  | {
+      readonly type: 'addSpan';
+      readonly elementId: string;
+      readonly from: TimeRef;
+      readonly to: TimeRef;
+    }
+  | {
+      readonly type: 'moveSpan';
+      readonly index: number;
+      readonly from: TimeRef;
+      readonly to: TimeRef;
+      readonly commit?: boolean;
+    }
+  | { readonly type: 'removeSpan'; readonly index: number }
   // Один шаг истории на кнопку: шаблон правит elements, слайды и gates разом,
   // и это обязано остаться одной правкой (см. state/templates.ts), а не
   // отдельными addElement/addSlide/addGate, которые historyReducer положил
@@ -1046,6 +1078,61 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         throw new Error(`Нечего удалять: гейта «${action.id}» нет`);
       }
       return replaceSegment(state, { ...segment, gates });
+    }
+
+    case 'addSpan': {
+      const segment = currentSegment(state);
+      if (!segment.elements.some((element) => element.id === action.elementId)) {
+        throw new Error(
+          `Отрезок «моё» нельзя завести элементу «${action.elementId}»: его нет в этой главе`,
+        );
+      }
+      const span = { elementId: action.elementId, from: action.from, to: action.to };
+      const at = insertionIndex(
+        segment.authorSpans
+          .filter((candidate) => candidate.elementId === action.elementId)
+          .map((candidate) => ({
+            fromSeconds: markSeconds(candidate.from, segment.audio.words),
+            toSeconds: markSeconds(candidate.to, segment.audio.words),
+          })),
+        markSeconds(action.from, segment.audio.words),
+      );
+      // Место считается среди отрезков ЭТОГО элемента, а вставка идёт
+      // в общий массив: у элементов свои независимые ленты отрезков,
+      // и схема проверяет порядок отдельно по каждому. В MVP полосу получает
+      // только капля, поэтому обе ленты обычно совпадают — но совпадение
+      // это, а не тождество, и опираться на него нельзя.
+      const ownIndexes = segment.authorSpans
+        .map((candidate, index) => ({ candidate, index }))
+        .filter(({ candidate }) => candidate.elementId === action.elementId)
+        .map(({ index }) => index);
+      const insertAt = ownIndexes[at] ?? segment.authorSpans.length;
+      const authorSpans = [
+        ...segment.authorSpans.slice(0, insertAt),
+        span,
+        ...segment.authorSpans.slice(insertAt),
+      ];
+      return replaceSegment(state, { ...segment, authorSpans });
+    }
+
+    case 'moveSpan': {
+      const segment = currentSegment(state);
+      const target = segment.authorSpans[action.index];
+      if (!target) {
+        throw new Error(`Отрезка «моё» №${action.index} нет: двигать нечего`);
+      }
+      const authorSpans = segment.authorSpans.map((span, index) =>
+        index === action.index ? { ...span, from: action.from, to: action.to } : span);
+      return replaceSegment(state, { ...segment, authorSpans });
+    }
+
+    case 'removeSpan': {
+      const segment = currentSegment(state);
+      if (!segment.authorSpans[action.index]) {
+        throw new Error(`Отрезка «моё» №${action.index} нет: удалять нечего`);
+      }
+      const authorSpans = segment.authorSpans.filter((_, index) => index !== action.index);
+      return replaceSegment(state, { ...segment, authorSpans });
     }
 
     case 'applyTemplate': {

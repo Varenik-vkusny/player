@@ -18,7 +18,7 @@
  */
 
 /** Полосы, из которых собирается дорожка. */
-export type LaneName = 'ruler' | 'sound' | 'slides' | 'stops' | 'words' | 'marks';
+export type LaneName = 'ruler' | 'sound' | 'bubble' | 'slides' | 'stops' | 'words' | 'marks';
 
 /**
  * Ступени сжатия, сверху вниз.
@@ -53,6 +53,9 @@ export const SEPARATOR_H = 1;
 const LANE_H: Readonly<Record<LaneName, number>> = {
   ruler: 24,
   sound: 56,
+  // Полоса капли: клипы «моё», тянущиеся за края. Высота как у расшифровки —
+  // клип это горизонтальная плашка, ей не нужна высота метки-мишени.
+  bubble: 28,
   slides: 34,
   stops: 34,
   words: 28,
@@ -79,8 +82,31 @@ const COMPACT_SOUND: ReadonlySet<TrackTier> = new Set<TrackTier>(['compact', 'de
 /** Порядок ступеней от просторной к тесной — он же порядок проверки порогов. */
 const TIERS_WIDEST_FIRST: readonly TrackTier[] = ['full', 'compact', 'dense', 'minimal'];
 
-export function lanesOf(tier: TrackTier): readonly LaneName[] {
-  return TIER_LANES[tier];
+/**
+ * Полосы ступени. `bubble` — не свойство ступени, а свойство ГЛАВЫ.
+ *
+ * Решение владельца 16.08.2026: полоса капли появляется, когда автор добавил
+ * каплю, и её можно спрятать. Не пятой строкой всегда — иначе нижняя зона
+ * вырастет примерно на 30 px У ВСЕХ, включая объяснения без головы, а владелец
+ * ровно перед этим просил дорожку похудеть.
+ *
+ * Довод сильнее вкусового: масштаб сцены считается от остатка высоты, и рост
+ * зоны на всех фикстурах сдвинул бы 115 скриншотных эталонов и пороги
+ * прилипания в жестовых e2e. Условная полоса двигает только те главы,
+ * где капля есть.
+ *
+ * Параметр ОБЯЗАТЕЛЕН намеренно. Умолчание `false` было бы удобнее и молча
+ * пропустило бы место, где про каплю забыли; компилятор обязан показать
+ * каждое такое место сам.
+ *
+ * На ступени `minimal` полосы нет: там слайды с остановками уже слиты
+ * в одну, и добавлять шестую значило бы отменить смысл ступени.
+ */
+export function lanesOf(tier: TrackTier, showBubble: boolean): readonly LaneName[] {
+  const lanes = TIER_LANES[tier];
+  if (!showBubble || tier === 'minimal') return lanes;
+  // Порядок из `tracks.md` §2: звук · капля · слайды · остановки · расшифровка.
+  return [...lanes.slice(0, 2), 'bubble', ...lanes.slice(2)];
 }
 
 /** Высота полосы на этой ступени. Волна ужимается, остальные постоянны. */
@@ -101,7 +127,10 @@ export function laneHeight(lane: LaneName, tier: TrackTier): number {
  * по-прежнему одно и ровно такой суммарной высоты.
  */
 export function marksBodyHeight(tier: TrackTier): number {
-  if (lanesOf(tier).includes('marks')) return laneHeight('marks', tier);
+  // Наличие капли на слияние слайдов с остановками не влияет никак, поэтому
+  // сюда `showBubble` не передаётся: `marks` есть только на `minimal`,
+  // а там полосы капли не бывает по построению.
+  if (lanesOf(tier, false).includes('marks')) return laneHeight('marks', tier);
   return laneHeight('slides', tier) + SEPARATOR_H + laneHeight('stops', tier);
 }
 
@@ -111,14 +140,19 @@ export function marksBodyHeight(tier: TrackTier): number {
  * Считается сложением, а не записана числом: перечни полос выше — источник
  * истины, и подписанная константа разошлась бы с ними при первой же правке.
  */
-export function minHeightOf(tier: TrackTier): number {
-  const lanes = lanesOf(tier);
+export function minHeightOf(tier: TrackTier, showBubble: boolean): number {
+  const lanes = lanesOf(tier, showBubble);
   const lanesTotal = lanes.reduce((sum, lane) => sum + laneHeight(lane, tier), 0);
   return TRANSPORT_H + lanesTotal + SEPARATOR_H * (lanes.length - 1);
 }
 
-/** Ниже этого дорожка не тянется — дальше только складывание. */
-export const TRACK_MIN_H = minHeightOf('minimal');
+/**
+ * Ниже этого дорожка не тянется — дальше только складывание.
+ *
+ * От капли не зависит: на самой тесной ступени полосы капли нет,
+ * и `lanesOf('minimal', true)` возвращает тот же перечень.
+ */
+export const TRACK_MIN_H = minHeightOf('minimal', false);
 
 /**
  * Выше этого тянуть не даём. Не вкусовщина: дорожка и сцена делят одну
@@ -126,12 +160,23 @@ export const TRACK_MIN_H = minHeightOf('minimal');
  */
 export const TRACK_MAX_H = 480;
 
-/** Высота, с которой дорожка открывается впервые. */
-export const TRACK_DEFAULT_H = minHeightOf('full');
+/**
+ * Высота, с которой дорожка открывается впервые — БЕЗ капли.
+ *
+ * Оставлено константой, потому что на неё ссылается e2e и потому что глава
+ * без капли — обычный случай. Главе с каплей нужна своя высота:
+ * `trackDefaultHeight(true)`.
+ */
+export const TRACK_DEFAULT_H = minHeightOf('full', false);
+
+/** Высота первого открытия с учётом того, есть ли в главе капля. */
+export function trackDefaultHeight(showBubble: boolean): number {
+  return minHeightOf('full', showBubble);
+}
 
 /** Ступень, помещающаяся в такую высоту. */
-export function trackTier(height: number): TrackTier {
-  const fits = TIERS_WIDEST_FIRST.find((tier) => height >= minHeightOf(tier));
+export function trackTier(height: number, showBubble: boolean): TrackTier {
+  const fits = TIERS_WIDEST_FIRST.find((tier) => height >= minHeightOf(tier, showBubble));
   // Ниже самой тесной ступени высота не опускается — её держит clampTrackHeight,
   // а сюда значение приходит уже зажатым. Запасной ответ нужен типу, не логике.
   return fits ?? 'minimal';

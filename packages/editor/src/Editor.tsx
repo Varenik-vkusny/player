@@ -103,6 +103,7 @@ import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { AudioSourcePanel } from './track/AudioSourcePanel.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
+import type { SpanRange } from './track/spans.js';
 import type { Mark } from './track/MarksLane.js';
 import { BranchesView } from './track/BranchesView.js';
 import { SlideStrip } from './track/SlideStrip.js';
@@ -1361,6 +1362,90 @@ export function Editor({
   );
 
   /**
+   * Капля этой главы и её отрезки «моё» для полосы дорожки (v14, ADR-032).
+   *
+   * Капля — ПЕРВЫЙ элемент типа `video`. Несколько капель на сцене одновременно
+   * не измерены ни разу (`bubble.md` §8.3: цена двойного декодирования
+   * неизвестна), поэтому вторая и далее полосы не получают — и это названо
+   * здесь, а не выяснится однажды на чужом проекте.
+   *
+   * `undefined` (капли нет) и «капля есть, отрезков ноль» — разные состояния:
+   * во втором полоса рисуется пустой, и пустота её и есть сообщение «всё
+   * время здесь распоряжается зритель».
+   *
+   * Секунды разрешаются тем же `markSeconds`, что и метки: два способа
+   * разрешить один `TimeRef` разошлись бы, и клип встал бы не там, где стоит.
+   */
+  const bubble = useMemo(() => {
+    const head = currentSegment.elements.find((element) => element.type === 'video');
+    if (!head) return undefined;
+    return {
+      elementId: head.id,
+      spans: currentSegment.authorSpans
+        .filter((span) => span.elementId === head.id)
+        .map((span) => ({
+          fromSeconds: markSeconds(span.from, currentSegment.audio.words),
+          toSeconds: markSeconds(span.to, currentSegment.audio.words),
+        })),
+    };
+  }, [currentSegment]);
+
+  /**
+   * Индексы отрезков капли В ОБЩЕМ массиве сегмента.
+   *
+   * Полоса адресует отрезки своим порядковым номером — она видит только
+   * отрезки капли. Редьюсер работает с общим массивом, где могут лежать
+   * и чужие. Перевод живёт ЗДЕСЬ, в одном месте: сделай его в редьюсере —
+   * и действие перестало бы быть понятным без знания того, кто его послал.
+   */
+  const bubbleSpanIndexes = useMemo(
+    () => currentSegment.authorSpans
+      .map((span, index) => ({ span, index }))
+      .filter(({ span }) => span.elementId === bubble?.elementId)
+      .map(({ index }) => index),
+    [currentSegment, bubble],
+  );
+
+  const handleCreateSpan = useCallback(
+    (range: SpanRange) => {
+      if (!bubble) throw new Error('Отрезок нарисован, а капли в главе нет');
+      dispatch({
+        type: 'addSpan',
+        elementId: bubble.elementId,
+        from: timeRefAt(currentSegment.audio.words, range.fromSeconds),
+        to: timeRefAt(currentSegment.audio.words, range.toSeconds),
+      });
+    },
+    [bubble, currentSegment],
+  );
+
+  const handleEditSpan = useCallback(
+    (index: number, range: SpanRange) => {
+      const target = bubbleSpanIndexes[index];
+      if (target === undefined) throw new Error(`Отрезка капли №${index} нет`);
+      // `commit: false` — тяга приходит на каждый `pointermove` и обязана
+      // остаться ОДНИМ шагом истории, как перетаскивание метки.
+      dispatch({
+        type: 'moveSpan',
+        index: target,
+        from: timeRefAt(currentSegment.audio.words, range.fromSeconds),
+        to: timeRefAt(currentSegment.audio.words, range.toSeconds),
+        commit: false,
+      });
+    },
+    [bubbleSpanIndexes, currentSegment],
+  );
+
+  const handleRemoveSpan = useCallback(
+    (index: number) => {
+      const target = bubbleSpanIndexes[index];
+      if (target === undefined) throw new Error(`Отрезка капли №${index} нет`);
+      dispatch({ type: 'removeSpan', index: target });
+    },
+    [bubbleSpanIndexes],
+  );
+
+  /**
    * Живое событие ручки стыка на дорожке (Задача 5, `MarksLane.tsx`).
    *
    * Тот же dispatch, что `handleSetSlideTransitionSecondsLive` выше, и то же
@@ -2375,6 +2460,11 @@ export function Editor({
           colorOrphanCount={colorOrphanCount}
           onTransitionSecondsLive={handleTrackTransitionSecondsLive}
           onTransitionSecondsCommit={handleCommitHistory}
+          bubble={bubble}
+          onCreateSpan={handleCreateSpan}
+          onEditSpan={handleEditSpan}
+          onEditSpanEnd={handleCommitHistory}
+          onRemoveSpan={handleRemoveSpan}
         />
         </>
         )}

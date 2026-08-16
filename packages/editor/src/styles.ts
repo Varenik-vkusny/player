@@ -2106,6 +2106,91 @@ export const EDITOR_STYLES = `
   border-top: 1px solid var(--ui-line);
 }
 
+/* Полоса капли: отрезки «моё» клипами (v14, ADR-032, bubble.md §3).
+
+   Фона у полосы НЕТ намеренно. Пустое место между клипами — это «здесь
+   распоряжается зритель», и оно читается само; залей его — и на полосе
+   окажется вдвое больше прямоугольников, чем смыслов.
+
+   Высота приходит инлайн из TrackView (laneHeight('bubble', tier)),
+   как у остальных полос: второе число в CSS разошлось бы с tiers.ts молча. */
+.ed-bubble-lane {
+  position: relative;
+  /* Курсор обещает то, что полоса умеет: тянуть по пустому месту — рисовать. */
+  cursor: crosshair;
+}
+
+.ed-span {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--ui-action-selected-line);
+  border-radius: 3px;
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-content-fg);
+  font-size: 10px;
+  line-height: 1;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.ed-span:active { cursor: grabbing; }
+
+/* Черновик — то, что автор сейчас рисует. Пунктиром и без ручек: отрезка
+   ещё нет ни в проекте, ни в истории, и обещать ему поведение готового
+   значило бы соврать на полкадра. */
+.ed-span-draft {
+  border-style: dashed;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.ed-span-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* Подпись не должна перехватывать жест: тянут за клип, а не за слово. */
+  pointer-events: none;
+}
+
+/* Ручки краёв. Шире, чем выглядят: 6 px — это меньше пальца и меньше
+   промаха мышью, поэтому область захвата расширена паддингом, а видимая
+   полоска остаётся тонкой. */
+.ed-span-grip {
+  flex: 0 0 auto;
+  width: 4px;
+  align-self: stretch;
+  border-radius: 2px;
+  background: var(--ui-action-primary-bg);
+  cursor: ew-resize;
+}
+
+.ed-span-remove {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.ed-span-remove:hover {
+  background: var(--ui-feedback-critical-bg);
+  color: var(--ui-feedback-critical);
+}
+
 .ed-mark {
   position: absolute;
   top: 2px;

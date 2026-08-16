@@ -22,13 +22,13 @@ describe('ступени дорожки: сколько полос помеща�
     // Ради чего тест: порог, съехавший на пиксель, даёт ступень, которая
     // не помещается в отведённую ей высоту, — полоса обрезается молча.
     for (const tier of TIERS) {
-      expect(trackTier(minHeightOf(tier)), `на своей высоте ${tier}`).toBe(tier);
+      expect(trackTier(minHeightOf(tier, false), false), `на своей высоте ${tier}`).toBe(tier);
     }
     // И на пиксель ниже — уже НЕ она, кроме самой тесной, ниже которой
     // высота не опускается вовсе.
     for (const tier of TIERS) {
       if (tier === 'minimal') continue;
-      expect(trackTier(minHeightOf(tier) - 1), `на пиксель ниже ${tier}`).not.toBe(tier);
+      expect(trackTier(minHeightOf(tier, false) - 1, false), `на пиксель ниже ${tier}`).not.toBe(tier);
     }
   });
 
@@ -36,7 +36,7 @@ describe('ступени дорожки: сколько полос помеща�
     // Покраснеет, если перепутать перечни полос местами: тогда «тесная»
     // ступень окажется выше «просторной», и trackTier начнёт выбирать
     // не ту при каждой высоте.
-    const heights = TIERS.map(minHeightOf);
+    const heights = TIERS.map((tier) => minHeightOf(tier, false));
     const sortedDescending = [...heights].sort((a, b) => b - a);
     expect(heights).toEqual(sortedDescending);
   });
@@ -45,8 +45,8 @@ describe('ступени дорожки: сколько полос помеща�
     // Грабля Сессии 18: дробная высота протекает вверх по flex-колонке
     // до .ed-stage-host и роняет e2e про целые размеры сцены.
     for (const tier of TIERS) {
-      expect(Number.isInteger(minHeightOf(tier)), `высота ${tier}`).toBe(true);
-      for (const lane of lanesOf(tier)) {
+      expect(Number.isInteger(minHeightOf(tier, false)), `высота ${tier}`).toBe(true);
+      for (const lane of lanesOf(tier, false)) {
         expect(Number.isInteger(laneHeight(lane, tier)), `полоса ${lane} на ${tier}`).toBe(true);
       }
     }
@@ -57,16 +57,16 @@ describe('ступени дорожки: сколько полос помеща�
     // Это сегодняшнее поведение продукта, и оно обязано остаться живым:
     // слитый путь MarksLane иначе становится мёртвым кодом, который
     // однажды тихо перестанет работать.
-    expect(lanesOf('minimal')).toContain('marks');
-    expect(lanesOf('minimal')).not.toContain('slides');
-    expect(lanesOf('minimal')).not.toContain('stops');
+    expect(lanesOf('minimal', false)).toContain('marks');
+    expect(lanesOf('minimal', false)).not.toContain('slides');
+    expect(lanesOf('minimal', false)).not.toContain('stops');
   });
 
   test('просторные ступени показывают слайды и остановки РАЗДЕЛЬНО', () => {
     for (const tier of ['full', 'compact', 'dense'] as const) {
-      expect(lanesOf(tier), `${tier} разделяет метки`).toContain('slides');
-      expect(lanesOf(tier), `${tier} разделяет метки`).toContain('stops');
-      expect(lanesOf(tier), `${tier} не сливает метки`).not.toContain('marks');
+      expect(lanesOf(tier, false), `${tier} разделяет метки`).toContain('slides');
+      expect(lanesOf(tier, false), `${tier} разделяет метки`).toContain('stops');
+      expect(lanesOf(tier, false), `${tier} не сливает метки`).not.toContain('marks');
     }
   });
 
@@ -95,6 +95,61 @@ describe('ступени дорожки: сколько полос помеща�
     expect(laneHeight('sound', 'compact')).toBeLessThan(laneHeight('sound', 'full'));
     expect(laneHeight('slides', 'compact')).toBe(laneHeight('slides', 'full'));
     expect(laneHeight('ruler', 'compact')).toBe(laneHeight('ruler', 'full'));
+  });
+});
+
+describe('полоса капли: она есть не всегда', () => {
+  test('без капли перечень полос не меняется ни на одной ступени', () => {
+    // САМОЕ ВАЖНОЕ утверждение этого набора. Решение владельца 16.08.2026:
+    // полоса появляется от появления капли. Появись она у всех — нижняя зона
+    // выросла бы примерно на 30 px в КАЖДОМ объяснении, масштаб сцены упал бы
+    // у всех, и за ним поехали бы 115 скриншотных эталонов и пороги
+    // прилипания в жестовых e2e.
+    //
+    // СЛОМ: вписать 'bubble' прямо в TIER_LANES — покраснеет здесь.
+    for (const tier of TIERS) {
+      expect(lanesOf(tier, false), `${tier} без капли`).not.toContain('bubble');
+    }
+  });
+
+  test('с каплей полоса встаёт между звуком и слайдами', () => {
+    // Порядок из tracks.md §2: звук · капля · слайды · остановки · расшифровка.
+    // СЛОМ: вставлять в конец — полоса окажется под расшифровкой, и «капля
+    // идёт вместе со звуком» перестанет читаться с экрана.
+    const lanes = lanesOf('full', true);
+    expect(lanes.indexOf('bubble')).toBe(lanes.indexOf('sound') + 1);
+    expect(lanes.indexOf('bubble')).toBeLessThan(lanes.indexOf('slides'));
+  });
+
+  test('на самой тесной ступени полосы капли нет даже при капле', () => {
+    // Там слайды с остановками уже слиты в одну полосу; шестая отменила бы
+    // смысл ступени.
+    expect(lanesOf('minimal', true)).not.toContain('bubble');
+    expect(lanesOf('minimal', true)).toEqual(lanesOf('minimal', false));
+  });
+
+  test('высота ступени с каплей ровно на полосу с разделителем больше', () => {
+    // Проверяется ПОПАДАНИЕ в число, а не «стало больше»: «больше» верно
+    // при любой реализации, добавляющей что угодно.
+    // СЛОМ: забыть разделитель в minHeightOf — разойдётся на 1 px, и головы
+    // с телами перестанут сходиться.
+    expect(minHeightOf('full', true) - minHeightOf('full', false))
+      .toBe(laneHeight('bubble', 'full') + 1);
+  });
+
+  test('минимум дорожки от капли не зависит', () => {
+    // TRACK_MIN_H считается по самой тесной ступени, а там полосы капли нет.
+    expect(minHeightOf('minimal', true)).toBe(TRACK_MIN_H);
+  });
+
+  test('ступень выбирается с учётом капли: та же высота даёт разные ступени', () => {
+    // Несущее следствие: высота, которой хватало на 'full' без капли,
+    // с каплей на 'full' уже не хватает.
+    // СЛОМ: игнорировать showBubble в trackTier — полоса капли обрежется
+    // молча, потому что ступень скажет 'full', а высоты на неё не хватит.
+    const withoutBubble = minHeightOf('full', false);
+    expect(trackTier(withoutBubble, false)).toBe('full');
+    expect(trackTier(withoutBubble, true)).not.toBe('full');
   });
 });
 
@@ -150,9 +205,9 @@ describe('скрытая полоса называет себя', () => {
   test('молчат ровно те, у кого полос столько же, сколько у самой просторной', () => {
     // Связывает подсказку с фактом, а не с перечислением ступеней вручную:
     // добавив ступень и забыв подсказку, получишь красное.
-    const widest = lanesOf('full').length;
+    const widest = lanesOf('full', false).length;
     for (const tier of TIERS) {
-      const hidesSomething = lanesOf(tier).length < widest;
+      const hidesSomething = lanesOf(tier, false).length < widest;
       expect(hiddenNote(tier) !== undefined, `${tier} прячет: ${hidesSomething}`).toBe(
         hidesSomething,
       );
