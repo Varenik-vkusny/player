@@ -5,8 +5,10 @@ import type { Condition, ExitRule, Gate, Project, Segment } from '@player/core';
 
 import { editorReducer, initialState } from '../src/state/project.js';
 import { historyReducer, initialHistoryState } from '../src/state/editorHistory.js';
+import { MIN_TILE_PX, tileWidths } from '../src/track/chapters.js';
 import {
   addSegment,
+  branchChapters,
   connect,
   disconnect,
   emptySegments,
@@ -729,5 +731,112 @@ describe('editorReducer: connect/disconnect через действия', () => 
     const state = initialState(p);
     const next = editorReducer(state, { type: 'disconnect', ruleId: 'r1' });
     expect(next.project.segments[0]!.exit.rules).toEqual([]);
+  });
+});
+
+/**
+ * Цепочка глав ветки (`branches.md` §1, §5.2) — то, из чего вид «Ветки»
+ * строит плитки.
+ *
+ * ЧЕГО ЗДЕСЬ НАМЕРЕННО НЕТ: проверки «функция вернула массив». Несущих
+ * утверждений три, и каждое ложно при правдоподобной неверной реализации:
+ * ветка кончается НА развилке, а не проходит сквозь неё; повтор куска
+ * не зацикливает обход; длительность берётся у главы, а не выдумывается.
+ */
+describe('цепочка глав ветки', () => {
+  it('идёт по умолчанию выхода и берёт длительности глав', () => {
+    const p = project([
+      segment('seg-1', { title: 'Введение', exit: { rules: [], default: 'seg-2' } }),
+      segment('seg-2', {
+        title: 'Производная',
+        audio: { src: 'a.mp3', offset: 0, duration: 40, words: [] },
+        exit: { rules: [], default: null },
+      }),
+    ]);
+
+    expect(branchChapters(p).map((tile) => [tile.id, tile.seconds]))
+      .toEqual([['seg-1', 10], ['seg-2', 40]]);
+    expect(branchChapters(p)[0]!.title).toBe('Введение');
+  });
+
+  it('безымянная глава показывается своим идентификатором, а не пустотой', () => {
+    // Пустая подпись на плитке — плитка, про которую автор ничего не узнает.
+    const p = project([segment('seg-1', { title: '' })]);
+    expect(branchChapters(p)[0]!.title).toBe('seg-1');
+  });
+
+  it('ветка КОНЧАЕТСЯ на развилке, а не проходит сквозь неё', () => {
+    // За развилкой рассказ расходится, и то, что дальше, принадлежит уже
+    // другим веткам. Пройди обход насквозь по `default` — вид приписал бы
+    // этой ветке главы, которые зритель увидит только на одном из путей.
+    const p = project([
+      segment('seg-1', {
+        gates: [choiceGate('g', ['a', 'b'])],
+        exit: { rules: [rule('r1', { kind: 'equals', variable: 'g', value: 'a' }, 'seg-2')], default: 'seg-3' },
+      }),
+      segment('seg-2'),
+      segment('seg-3'),
+    ]);
+
+    const tiles = branchChapters(p);
+    expect(tiles.map((tile) => tile.id)).toEqual(['seg-1']);
+    expect(tiles[0]!.forksAfter, 'плитка обязана знать, что за ней развилка').toBe(true);
+  });
+
+  it('ПОВТОР КУСКА НЕ ЗАЦИКЛИВАЕТ обход', () => {
+    // Ребро назад — законная механика продукта (leadsBack выше), и обход
+    // без множества посещённых висел бы здесь намертво, а не ошибся бы.
+    const p = project([
+      segment('seg-1', { exit: { rules: [], default: 'seg-2' } }),
+      segment('seg-2', { exit: { rules: [], default: 'seg-1' } }),
+    ]);
+
+    expect(branchChapters(p).map((tile) => tile.id)).toEqual(['seg-1', 'seg-2']);
+  });
+
+  it('оборванная ссылка обрывает цепочку, а не роняет вид', () => {
+    const p = project([segment('seg-1', { exit: { rules: [], default: 'нет-такой' } })]);
+    expect(branchChapters(p).map((tile) => tile.id)).toEqual(['seg-1']);
+  });
+});
+
+/**
+ * Ширина плитки равна длительности главы (`branches.md` §5.2).
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: возврат равных ширин. ВЕРНО ЛИ ЭТО ПРИ ЛЮБОЙ
+ * РЕАЛИЗАЦИИ: нет — проверяется ОТНОШЕНИЕ ширин к отношению длительностей,
+ * а не то, что ширины различны.
+ */
+describe('ширина плитки главы', () => {
+  it('отношение ширин равно отношению длительностей', () => {
+    const widths = tileWidths([{ seconds: 10 }, { seconds: 40 }, { seconds: 50 }], 1000);
+    expect(widths).toEqual([100, 400, 500]);
+    expect(widths[1]! / widths[0]!, 'вчетверо длиннее — вчетверо шире').toBe(4);
+  });
+
+  it('ПУСТАЯ ГЛАВА ОСТАЁТСЯ НАЖИМАЕМОЙ, а не схлопывается в ноль', () => {
+    // Пустые главы рождаются самим разрезом по развилке. Чистая пропорция
+    // дала бы им 0 px — главу, в которую автор не может войти. Молча.
+    const widths = tileWidths([{ seconds: 0 }, { seconds: 100 }], 1000);
+    expect(widths[0]).toBe(MIN_TILE_PX);
+    expect(widths[0]!, 'нулевая плитка недостижима указателем').toBeGreaterThan(0);
+  });
+
+  it('все главы пустые — ровные плитки, а не выдуманная пропорция', () => {
+    const widths = tileWidths([{ seconds: 0 }, { seconds: 0 }], 1000);
+    expect(widths[0]).toBe(widths[1]);
+  });
+
+  it('длинная ветка ПЕРЕПОЛНЯЕТ полосу, а не ужимается под неё', () => {
+    // branches.md §12 прямо запрещает заставлять ветку помещаться: ужатая
+    // ветка соврала бы о пропорциях. Лишнее уезжает в прокрутку.
+    const many = Array.from({ length: 40 }, () => ({ seconds: 1 }));
+    const widths = tileWidths(many, 100);
+    const sum = widths.reduce((a, b) => a + b, 0);
+    expect(sum, 'сумма ширин обязана превысить полосу').toBeGreaterThan(100);
+  });
+
+  it('пустой список — пустая раскладка', () => {
+    expect(tileWidths([], 1000)).toEqual([]);
   });
 });

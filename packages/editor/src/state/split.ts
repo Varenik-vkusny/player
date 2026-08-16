@@ -146,7 +146,12 @@ interface Halves {
  * по умолчанию для любого разреза: договорив первую половину, рассказ идёт
  * во вторую. Развилка его переписывает правилами на варианты.
  */
-function cutInTwo(segment: Segment, at: number, tailId: string | null): Halves {
+function cutInTwo(
+  segment: Segment,
+  at: number,
+  tailId: string | null,
+  tailTitle: string,
+): Halves {
   const words = segment.audio.words;
 
   // --- дорожка: одно окно превращается в два, файл не трогается ---
@@ -205,7 +210,7 @@ function cutInTwo(segment: Segment, at: number, tailId: string | null): Halves {
   const tail: Segment | null = hasTail
     ? {
       id: tailId,
-      title: `${segment.title || segment.id} — продолжение`,
+      title: tailTitle,
       // Не наследуется от исходной главы: её описание описывает ЦЕЛОЕ,
       // а не продолжение. Скопировать значило бы соврать на карте.
       description: '',
@@ -251,6 +256,36 @@ function cutInTwo(segment: Segment, at: number, tailId: string | null): Halves {
     : null;
 
   return { head, tail, wordsCut };
+}
+
+/**
+ * Свободное имя для второй главы: «X — продолжение», «X — продолжение 2»…
+ *
+ * НАЙДЕНО ГЛАЗАМИ 15.08.2026, а не тестом. Метка режет главу где угодно,
+ * значит резать её будут МНОГОКРАТНО — и второй разрез той же главы давал
+ * второму продолжению ровно то же имя, что и первому. В виде «Ветки» автор
+ * видел две плитки с одинаковой подписью и не мог их различить. Ни один
+ * тест на это не жаловался: имена схема не проверяет.
+ *
+ * Тот же класс дефекта уже записан в измерениях проекта: «две панели рядом
+ * дают две одинаковые подписи».
+ *
+ * Считается от ЗАНЯТЫХ имён, а не от числа глав: главу могли переименовать,
+ * и счётчик разошёлся бы с тем, что автор видит на экране.
+ */
+function freeTailTitle(
+  segment: Segment,
+  taken: readonly { readonly title?: string }[],
+): string {
+  const base = `${segment.title || segment.id} — продолжение`;
+  const used = new Set(taken.map((candidate) => candidate.title).filter(Boolean));
+  if (!used.has(base)) return base;
+  // Со второго: «… продолжение 2». Первое остаётся без числа — приписка «1»
+  // к единственному продолжению выглядела бы как обещание второго.
+  for (let n = 2; ; n += 1) {
+    const candidate = `${base} ${n}`;
+    if (!used.has(candidate)) return candidate;
+  }
 }
 
 /**
@@ -301,13 +336,15 @@ export function splitAtTimeBlockedReason(
 export function splitSegmentAtTime(
   segment: Segment,
   seconds: number,
-  takenSegmentIds: readonly { id: string }[],
+  takenSegmentIds: readonly { readonly id: string; readonly title?: string }[],
 ): { readonly head: Segment; readonly tail: Segment } {
   const blocked = splitAtTimeBlockedReason(seconds, segment.audio.duration);
   if (blocked !== undefined) throw new SplitError(blocked);
 
   const tailId = freeId('segment', takenSegmentIds);
-  const { head, tail } = cutInTwo(segment, seconds, tailId);
+  const { head, tail } = cutInTwo(
+    segment, seconds, tailId, freeTailTitle(segment, takenSegmentIds),
+  );
   // `tail` здесь не может быть null: длину продолжения проверили выше,
   // и `cutInTwo` отдаёт null только при её нехватке. Проверка нужна типу,
   // а не логике — но падать она обязана громко, а не подставлять заглушку.
@@ -324,7 +361,7 @@ export function splitSegmentAtTime(
 export function splitSegmentAtGate(
   segment: Segment,
   gateId: string,
-  takenSegmentIds: readonly { id: string }[],
+  takenSegmentIds: readonly { readonly id: string; readonly title?: string }[],
 ): SplitResult {
   const gate = segment.gates.find((candidate) => candidate.id === gateId);
   if (!gate) {
@@ -367,7 +404,10 @@ export function splitSegmentAtGate(
 
   // --- общий шов: всё, что от вида разреза не зависит ---
 
-  const halves = cutInTwo(segment, at, tailId);
+  // Имя продолжения у разреза по развилке ОСТАВЛЕНО прежним, без проверки
+  // на занятость: развилку у одной главы объявляют один раз, повтора здесь
+  // не бывает, а поведение это проверено фикстурами и тестами с Сессии 8.
+  const halves = cutInTwo(segment, at, tailId, `${segment.title || segment.id} — продолжение`);
   const tail = halves.tail;
 
   // --- голова: то же повествование, но остановка стала последней ---

@@ -74,7 +74,7 @@ import {
 } from './state/arrange.js';
 import { canRedoState, canUndoState, historyReducer, initialHistoryState } from './state/editorHistory.js';
 import { createElement } from './state/elements.js';
-import { answerVariables, variableRenameProblem } from './state/exits.js';
+import { answerVariables, branchChapters, variableRenameProblem } from './state/exits.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupElements.js';
 import { speechLossWarning, splitBlockedReason } from './state/split.js';
@@ -104,6 +104,7 @@ import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { AudioSourcePanel } from './track/AudioSourcePanel.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { Mark } from './track/MarksLane.js';
+import { BranchesView } from './track/BranchesView.js';
 import { SlideStrip } from './track/SlideStrip.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
@@ -1392,6 +1393,29 @@ export function Editor({
    * Выделение слайда и элемента сбрасывает сам редьюсер: выделенное могло
    * уехать во вторую главу, и ссылка на него стала бы висячей.
    */
+  /**
+   * Какой вид показывает нижняя зона (`branches.md` §3).
+   *
+   * Живёт в редакторе, а не в проекте: это настройка автора для себя,
+   * зритель её не видит никогда — тот же закон, что у сворачивания ленты
+   * слайдов и панели озвучки.
+   */
+  const [bottomView, setBottomView] = useState<'tracks' | 'branches'>('tracks');
+
+  /**
+   * Главы основной ветки — то, из чего вид «Ветки» строит плитки.
+   *
+   * Считается от ПРОЕКТА, а не от текущего сегмента: ветка это цепочка,
+   * и цепочку видно только целиком. Доступ к `project.segments` идёт через
+   * `branchChapters` — один узкий слой, как того требует CLAUDE.md, а не
+   * обход списка прямо в разметке.
+   */
+  const chapters = useMemo(() => branchChapters(currentProject), [currentProject]);
+
+  const handleRenameSegment = useCallback((id: string, title: string) => {
+    dispatch({ type: 'renameSegment', id, title });
+  }, []);
+
   const handleSplitHere = useCallback(() => {
     dispatch({ type: 'splitAtTime', seconds: transport.positionSeconds });
     setSelectedMark(undefined);
@@ -2263,6 +2287,50 @@ export function Editor({
           то же место, где автор уже ищет свойства звука (играть/пауза,
           часы, кнопка остановки живут в её собственной шапке чуть ниже). */}
       <div className="ed-track-column">
+        {/* Переключатель видов нижней зоны (`branches.md` §3, решение
+            владельца 13.08.2026). Две кнопки, а не вкладки: их две
+            и больше не будет.
+
+            ХОЛСТ НЕ ГАСНЕТ НИ В ОДНОМ ВИДЕ — несущее свойство, а не
+            удобство: выбрав главу в «Ветках», автор сразу видит её
+            картинку. Полноэкранный режим карты отвергнут именно потому,
+            что этого дать не мог. Поэтому переключается только СОДЕРЖИМОЕ
+            зоны, а раскладка выше не трогается вовсе. */}
+        <div className="ed-zone-head">
+          <span className="ed-zone-crumbs" data-testid="zone-crumbs">
+            Основная › {currentSegment.title || currentSegment.id}
+          </span>
+          <span className="ed-zone-views">
+            <button
+              type="button"
+              className={bottomView === 'tracks' ? 'ed-zone-view ed-zone-view--on' : 'ed-zone-view'}
+              data-testid="view-tracks"
+              aria-pressed={bottomView === 'tracks'}
+              onClick={() => setBottomView('tracks')}
+            >
+              Дорожки
+            </button>
+            <button
+              type="button"
+              className={bottomView === 'branches' ? 'ed-zone-view ed-zone-view--on' : 'ed-zone-view'}
+              data-testid="view-branches"
+              aria-pressed={bottomView === 'branches'}
+              onClick={() => setBottomView('branches')}
+            >
+              Ветки
+            </button>
+          </span>
+        </div>
+
+        {bottomView === 'branches' ? (
+          <BranchesView
+            chapters={chapters}
+            currentId={state.currentSegmentId}
+            onPick={handleSelectSegment}
+            onRename={handleRenameSegment}
+          />
+        ) : (
+        <>
         <AudioSourcePanel
           source={segment.source}
           wordMarkCount={audioWordMarkCount}
@@ -2307,6 +2375,8 @@ export function Editor({
           onTransitionSecondsLive={handleTrackTransitionSecondsLive}
           onTransitionSecondsCommit={handleCommitHistory}
         />
+        </>
+        )}
       </div>
       {/*
         Меню правой кнопки — соседка всей раскладки, а не потомок сцены.

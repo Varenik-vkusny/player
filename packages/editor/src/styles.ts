@@ -1210,6 +1210,176 @@ export const EDITOR_STYLES = `
   min-width: 0;
 }
 
+/* Шапка нижней зоны: крошки «где я» слева, переключатель видов справа
+   (branches.md §3, §4). Одна строка — зона и так самое дорогое место
+   по высоте: замер 15.08.2026 дал ей 436 px из 800 при окне 1280×800,
+   то есть 54.5 % экрана.
+
+   line-height ЦЕЛЫМ px по той же причине, что у соседей ниже: дробная
+   высота протекает вверх по flex-колонке до .ed-stage-host и роняет e2e
+   про целые размеры сцены. */
+.ed-zone-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 16px;
+  background: var(--ui-surface-panel);
+  border-bottom: 1px solid var(--ui-line);
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.ed-zone-crumbs {
+  color: var(--ui-content-fg-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ed-zone-views {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+}
+
+.ed-zone-view {
+  padding: 1px 10px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Выбранный вид отличается ЗАЛИВКОЙ, а не только цветом текста: два
+   состояния, различимые лишь оттенком серого, читаются как «оба
+   одинаковые» — тот же довод, по которому погашенная кнопка обязана
+   выглядеть погашенной. */
+.ed-zone-view--on {
+  background: var(--ui-action-selected-bg);
+  border-color: var(--ui-action-selected-line);
+  color: var(--ui-content-fg);
+}
+
+/* ── Вид «Ветки» (branches.md §5) ─────────────────────────────────────── */
+
+.ed-branches {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--ui-surface-panel);
+}
+
+.ed-branches-names {
+  display: flex;
+  padding: 6px 16px 0;
+  min-width: 0;
+}
+
+.ed-branch-name {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ed-branch-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ui-content-fg);
+}
+
+.ed-branch-duration {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-content-fg-tertiary);
+}
+
+/* Полоса плиток. Прокрутка ГОРИЗОНТАЛЬНАЯ и намеренная: branches.md §12
+   запрещает «заставлять ветку помещаться» в какой-либо отрезок — ужатая
+   под ширину экрана ветка соврала бы о пропорциях, ради которых вид
+   и заводился. */
+.ed-branches-lane {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 16px;
+  min-width: 0;
+}
+
+.ed-branch-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Ширина задаётся ИНЛАЙН из tileWidths (chapters.ts) — правилом, а не
+   вёрсткой. Держи её CSS через flex-grow, правило раскладки существовало
+   бы в двух местах и разошлось бы молча. */
+.ed-chapter-tile {
+  flex: 0 0 auto;
+  display: flex;
+  height: 44px;
+  border-radius: 6px;
+  background: var(--ui-surface-raised);
+  border: 1px solid var(--ui-line);
+  overflow: hidden;
+}
+
+.ed-chapter-tile--current {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+}
+
+.ed-chapter-pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-chapter-rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 6px;
+  border: 0;
+  background: var(--ui-surface-panel);
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-size: 11px;
+}
+
+.ed-branch-tail {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--ui-content-fg-tertiary);
+  white-space: nowrap;
+}
+
+.ed-branches-hint {
+  margin: 0;
+  padding: 0 16px 8px;
+  font-size: 11px;
+  line-height: 15px;
+  color: var(--ui-content-fg-tertiary);
+}
+
 /* Своя озвучка сегмента: загрузка файла автора и расшифровка. Строкой над
    дорожкой — то же место, где автор уже ищет свойства звука. */
 .ed-audio-source {

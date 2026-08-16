@@ -159,6 +159,66 @@ export function leadsBack(project: Project, fromSegmentId: string, targetId: str
   return reachableFrom(project, targetId).has(fromSegmentId);
 }
 
+/** Плитка главы в виде «Ветки»: что показать и какой ширины. */
+export interface ChapterTile {
+  readonly id: string;
+  /** Имя, каким его видит автор. Пустое имя заменяется идентификатором. */
+  readonly title: string;
+  /** Длительность главы в секундах — из неё считается ширина плитки. */
+  readonly seconds: number;
+  /** Кончается ли ветка развилкой: у такой главы есть правила выхода. */
+  readonly forksAfter: boolean;
+}
+
+/**
+ * Цепочка глав ОДНОЙ ветки, начиная с `startId` (по умолчанию — со входа).
+ *
+ * `branches.md` §1: ветка — цепочка глав, идущих подряд; отдельного объекта
+ * у неё нет, она ВЫЧИСЛЯЕТСЯ по связям. Основная ветка — такая же ветка,
+ * пятого слова для неё нет.
+ *
+ * Идём по `exit.default`, пока он есть. Глава с правилами выхода — конец
+ * ветки: дальше рассказ расходится, и то, что за развилкой, принадлежит
+ * уже другим веткам (`branches.md` §5.1). Плитка такой главы помечена
+ * `forksAfter`, чтобы вид мог показать хвост «дальше → …», а не оборвать
+ * ленту молча.
+ *
+ * ЦИКЛ НЕ ЗАЦИКЛИВАЕТ: повтор куска — законная механика продукта
+ * (`leadsBack` выше, фикстура `repeat.json` несёт ребро назад по построению),
+ * и обход без множества посещённых висел бы на ней намертво. Проверено
+ * тестом на этой самой фикстуре, а не рассуждением.
+ *
+ * Ссылки на несуществующие главы обрываают цепочку, а не бросают: функция
+ * отвечает на вопрос «из чего состоит ветка», а не «валиден ли проект» —
+ * тем же доводом, что и `reachableFrom` выше.
+ */
+export function branchChapters(project: Project, startId?: string): readonly ChapterTile[] {
+  const byId = new Map(project.segments.map((segment) => [segment.id, segment] as const));
+
+  const tiles: ChapterTile[] = [];
+  const seen = new Set<string>();
+
+  let current: string | null = startId ?? project.entry;
+  while (current !== null && !seen.has(current)) {
+    seen.add(current);
+    const segment = byId.get(current);
+    if (!segment) break;
+
+    tiles.push({
+      id: segment.id,
+      title: segment.title || segment.id,
+      seconds: segment.audio.duration,
+      forksAfter: segment.exit.rules.length > 0,
+    });
+
+    // Развилка — конец ветки. Продолжать по `default` значило бы приписать
+    // этой ветке то, что зритель увидит только на одном из путей.
+    current = segment.exit.rules.length > 0 ? null : segment.exit.default;
+  }
+
+  return tiles;
+}
+
 /** Переменная зрителя, какой её видит правило выхода: кто её пишет и какого рода. */
 interface VariableSource {
   readonly kind: Gate['config']['kind'];
