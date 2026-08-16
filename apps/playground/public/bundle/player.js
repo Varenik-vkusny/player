@@ -6262,8 +6262,8 @@ var Gu = 2, Ku = .4, qu = class {
 	}
 	get progress() {
 		return {
-			partIndex: this.#b + 1,
-			partsLeft: Wo(this.#n, this.#i),
+			chapterIndex: this.#b + 1,
+			chaptersLeft: Wo(this.#n, this.#i),
 			positionSeconds: this.positionSeconds,
 			durationSeconds: this.#a.duration
 		};
