@@ -15,12 +15,31 @@
  */
 import type { Element, ElementState } from '@player/core';
 
+import { nameColorValue } from '../theme.js';
+
 export interface ElementRow {
   readonly id: string;
   readonly type: Element['type'];
   /** 0 у элементов без состояния на этом слайде — показывать её незачем, см. `onSlide`. */
   readonly zIndex: number;
+  /** Короткая подпись ДЛЯ ПОКАЗА: обрезана, чтобы строка не росла в ширину. */
   readonly summary: string;
+  /**
+   * То же описание БЕЗ обрезки — чтобы его можно было прочитать целиком
+   * (Сессия 46, Задача 3).
+   *
+   * Разведено с `summary` не для симметрии. Потолок в 40 знаков existsовал
+   * ради РАСКЛАДКИ: длинная строка раздвигает колонку. У подсказки раскладки
+   * нет, и обрезать её тем же потолком значило бы чинить обрезку обрезкой:
+   * замер 18.08.2026 — видно ~18 знаков, `summary` даёт 40, а тексту demo
+   * нужно 58. То есть один `summary` в подсказке НЕ давал бы прочитать
+   * подпись целиком, хотя выглядело бы, будто даёт.
+   *
+   * Служебные строки сюда всё равно не попадают: data-URI картинки заменён
+   * на «встроенная картинка» ДО обрезки, а не ею, — иначе в подсказку уехали
+   * бы сотни килобайт текста.
+   */
+  readonly full: string;
   /** Есть ли у элемента состояние на слайде, чьи states сюда переданы. */
   readonly onSlide: boolean;
 }
@@ -46,11 +65,16 @@ export function toRows(
     .sort((a, b) => compareRows(a, b, states))
     .map((element) => {
       const state = states[element.id];
+      // Описание считается ОДИН раз и обрезается только для показа: два
+      // независимых пути «полное» и «короткое» разошлись бы молча, и
+      // подсказка однажды стала бы рассказывать не про ту строку.
+      const full = describe(element, state);
       return {
         id: element.id,
         type: element.type,
         zIndex: state?.zIndex ?? 0,
-        summary: summarize(element, state),
+        summary: truncate(full),
+        full,
         onSlide: state !== undefined,
       };
     });
@@ -74,17 +98,26 @@ function compareRows(
   return a.id.localeCompare(b.id);
 }
 
-function summarize(element: Element, state: ElementState | undefined): string {
+/**
+ * Полное описание элемента одной строкой, БЕЗ обрезки по длине.
+ *
+ * Обрезка живёт снаружи (`toRows`), а не здесь: она нужна показу и не нужна
+ * подсказке, и разводить их надо в одном месте, а не в каждой ветке.
+ * Служебные строки (data-URI) заменяются человеческими ЗДЕСЬ — то есть
+ * до обрезки и независимо от неё.
+ */
+function describe(element: Element, state: ElementState | undefined): string {
   switch (element.type) {
     case 'text': {
-      const text = truncate(element.content);
+      const text = oneLine(element.content);
       return text === '' ? '(пустой текст)' : text;
     }
     case 'image':
       return summarizeImage(element.content);
     case 'shape': {
       const background = state?.style['background'];
-      return background === undefined ? 'фигура' : `фигура, фон ${background}`;
+      if (background === undefined) return 'фигура';
+      return `фигура, ${describeBackground(background)}`;
     }
     case 'video':
       return summarizeVideo(element.content);
@@ -96,6 +129,34 @@ function summarize(element: Element, state: ElementState | undefined): string {
      */
     case 'group':
       return 'группа';
+  }
+}
+
+/**
+ * Фон фигуры — словами автора, а не языком таблицы стилей (Сессия 46).
+ *
+ * До починки строка собиралась как `фигура, фон ${background}`, где
+ * `background` — СЫРОЕ значение стиля, и автор читал дословно
+ * «фигура, фон var(--scene-surface, #1b2430» (ещё и обрезанное шириной
+ * колонки, то есть без закрывающей скобки). Родня «слайду slide-1».
+ *
+ * Имя роли берётся из `nameColorValue` (theme.ts), а не сочиняется здесь:
+ * подпись роли обязана быть той же, что в панели темы.
+ *
+ * Сирота (роли с таким именем в теме нет) называется НЕИЗВЕСТНОЙ, а не
+ * подменяется похожей: `docs/design/system.md` §4 прямо говорит, что
+ * редактор — единственное место, где о сироте можно узнать. Подставить
+ * сюда правдоподобное имя значило бы закрыть автору этот единственный путь.
+ */
+function describeBackground(background: string | number): string {
+  const naming = nameColorValue(background);
+  switch (naming.kind) {
+    case 'role':
+      return `фон по теме: ${naming.label}`;
+    case 'orphan':
+      return 'фон — роль темы не найдена';
+    case 'own':
+      return `фон ${oneLine(String(naming.value))}`;
   }
 }
 
@@ -112,18 +173,25 @@ function summarize(element: Element, state: ElementState | undefined): string {
  */
 function summarizeVideo(content: string): string {
   if (content === '') return 'пусто, ждёт файла';
-  return truncate(content);
+  return oneLine(content);
 }
 
 function summarizeImage(content: string): string {
   if (content === '') return 'пусто, ждёт файла';
   // data-URI — сотни килобайт текста, показывать его в списке нельзя:
   // это ровно та служебная строка, что раздвигает сетку (Ловушка №2).
+  // Заменяется ЗДЕСЬ, а не обрезкой: обрезка живёт только в показе, и
+  // подсказка иначе получила бы весь base64 целиком.
   if (content.startsWith('data:')) return 'встроенная картинка';
-  return truncate(content);
+  return oneLine(content);
+}
+
+/** Переносы и повторные пробелы — в один пробел. Строка списка однострочна. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 function truncate(text: string): string {
-  const oneLine = text.replace(/\s+/g, ' ').trim();
-  return oneLine.length > SUMMARY_LIMIT ? `${oneLine.slice(0, SUMMARY_LIMIT - 1)}…` : oneLine;
+  const flat = oneLine(text);
+  return flat.length > SUMMARY_LIMIT ? `${flat.slice(0, SUMMARY_LIMIT - 1)}…` : flat;
 }
