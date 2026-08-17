@@ -1,0 +1,99 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { describe, expect, it } from 'vitest';
+
+import { ICON_PATHS } from '../src/ui/icons.js';
+
+const SRC = join(process.cwd(), 'packages/editor/src');
+
+/**
+ * Поверхность связей в дереве веток — НЕ значок, а холст: внутри лежат
+ * <path> по вычисленной геометрии глав. Переносить её в библиотеку значков
+ * нечего, переиспользованию она не подлежит.
+ *
+ * Список из одного файла, а не правило «кроме файлов, где есть svg»:
+ * второй такой случай обязан появиться осознанно, а не просочиться.
+ */
+const NOT_AN_ICON: readonly string[] = ['track/BranchesView.tsx'];
+
+/**
+ * Метки на дорожке: ромб у слайда, столбик у остановки (MarksLane.tsx).
+ * Из-под правила о символах выведены НАМЕРЕННО и до Сессии 47 («Дорожка»).
+ *
+ * Причина не в трудоёмкости. **Ромб — понятие продукта, а не украшение:**
+ * владелец описал модель словами «каждый слайд показывается ромбом, чтобы
+ * было видно, на какой секунде он приходит и с анимацией он или без».
+ * Сменить ему рисунок внутри задачи про значки значило бы решить вопрос
+ * облика мимоходом, не спросив.
+ *
+ * Вторая причина — размер: метки идут по дорожке плотно и ставятся
+ * попиксельно (.ed-mark-gate стоит на top 43px), а значок Lucide — контур
+ * в поле 24×24 с толщиной 2. На месте сплошного глифа он даст другую
+ * плотность, и это видно, а не измеряется.
+ */
+const GLYPHS_DEFERRED: readonly string[] = ['track/MarksLane.tsx'];
+
+/** Все .tsx пакета редактора, кроме самой библиотеки ui/ и названных исключений. */
+function chromeSources(): { path: string; text: string }[] {
+  const out: { path: string; text: string }[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== 'ui') walk(full);
+      } else if (entry.name.endsWith('.tsx')) {
+        const relative = full.slice(SRC.length + 1).split('\\').join('/');
+        if (!NOT_AN_ICON.includes(relative)) {
+          out.push({ path: relative, text: readFileSync(full, 'utf8') });
+        }
+      }
+    }
+  };
+  walk(SRC);
+  return out;
+}
+
+describe('хром редактора пользуется общей библиотекой ui/', () => {
+  // Правило без охраны гниёт: CLAUDE.md запрещает плодить своё, и при
+  // живом запрете написаны 84 кнопки (замер 17.08.2026).
+  it('нет сырых <svg> вне ui/', () => {
+    const guilty = chromeSources()
+      .filter((f) => f.text.includes('<svg'))
+      .map((f) => f.path);
+    expect(guilty, `сырые <svg>: ${guilty.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * Символ из шрифта — не значок, а буква: его рисует шрифт системы,
+   * размер и толщина не подчиняются ничему, а на машине без глифа
+   * остаётся пустой прямоугольник (ADR-034).
+   *
+   * Точные знаки, а не «любой не-ASCII»: в интерфейсе законно живут
+   * кавычки-ёлочки, тире и знак умножения у ступеней масштаба.
+   */
+  it('значки не рисуются символами из шрифта', () => {
+    const glyphs = ['\u25AE', '\u25A0', '\u2702'];
+    const guilty = chromeSources()
+      .filter((f) => !GLYPHS_DEFERRED.includes(f.path))
+      .filter((f) => glyphs.some((g) => f.text.includes(g)))
+      .map((f) => f.path);
+    expect(guilty, `символы вместо значков: ${guilty.join(', ')}`).toEqual([]);
+  });
+
+  /**
+   * Тот же закон, что у ролей цвета и ступеней кегля: набор «на будущее»
+   * гниёт молча, потому что его никто не открывает. Значок заводится
+   * тогда, когда его ставят, а не заранее.
+   */
+  it('каждый контур из ICON_PATHS хотя бы раз использован', () => {
+    const used = chromeSources()
+      .concat([{ path: 'ui', text: readFileSync(join(SRC, 'ui/Icon.tsx'), 'utf8') }])
+      .map((f) => f.text)
+      .join('\n');
+    const dead = Object.keys(ICON_PATHS).filter(
+      (name) => !used.includes(`name="${name}"`) && !used.includes(`'${name}'`),
+    );
+    expect(dead, `значки без применения: ${dead.join(', ')}`).toEqual([]);
+  });
+});

@@ -1,0 +1,154 @@
+/**
+ * Пиксельная страховка ХРОМА редактора.
+ *
+ * Заведена по находке Сессии 45: во всём наборе e2e был ровно один
+ * toHaveScreenshot (fixtures.spec.ts), и он снимает #stage-host — сцену.
+ * Хром редактора не был покрыт ни одним пикселем, и Задачи 2 и 3 сменили
+ * гарнитуру и 64 кегля, не шелохнув ни одного из 120 эталонов.
+ *
+ * Снимаем узкими областями, а не страницей: смысл эталона не должен ехать
+ * от того, что рядом на странице появилось что-то ещё (та же причина, по
+ * которой fixtures.spec.ts снимает контейнер).
+ *
+ * ⚠️ ОГРАНИЧЕНИЕ, названное вслух. Существующий эталон сцены детерминирован
+ * подстановкой шрифтов (`?fonts=test`, ADR-006), но она реализована только
+ * в preview.ts и на editor.html не действует. Эталон хрома поэтому берёт
+ * НАСТОЯЩИЕ системные шрифты машины. Имя файла несёт суффикс платформы
+ * (`-win32`), так что сравнивается он только с себе подобными, а на CI
+ * (linux) хром не проверяется вовсе, пока там не снят свой эталон.
+ * Подставлять шрифты здесь было бы неверно и по существу: гарнитура хрома —
+ * это наше решение (роль --ui-font), и подмена проверяла бы не её.
+ */
+import { expect, test, type Page } from '@playwright/test';
+
+test.use({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+
+/**
+ * Хрому положен НУЛЕВОЙ допуск, и это не придирка, а починка слепого пятна.
+ *
+ * Общий конфиг разрешает `maxDiffPixelRatio: 0.001`. Для снимка нижней зоны
+ * 1280×367 это 469 760 пикселей × 0.001 = **469 пикселей, которым можно
+ * разойтись молча**. Замена двух символов шрифта на значки (Задача 4) дала
+ * ровно **399** — меньше порога, и все пять снимков остались зелёными при
+ * настоящей видимой правке. Страховка имела слепое пятно размером со значок.
+ *
+ * Порог 0.001 оправдан у 120 эталонов СЦЕНЫ: там сглаживание текста не
+ * воспроизводится побитово (S7). Хром — другое дело: замерено повторным
+ * прогоном, что снимки совпадают побайтово. Значит допуск ему не нужен вовсе.
+ *
+ * Задаётся ПЕР-ВЫЗОВОМ, а не правкой playwright.config.ts: общий конфиг
+ * держит 120 чужих эталонов сцены, и ужесточение там сделало бы красными
+ * снимки, к этой задаче отношения не имеющие.
+ */
+const EXACT = { maxDiffPixels: 0 } as const;
+
+/**
+ * Открывает редактор и ждёт, пока он ГОТОВ ЦЕЛИКОМ.
+ *
+ * Ждём не только метку готовности, но и дорожку: волна рисуется из
+ * декодированного звука, а декодирование асинхронно. Снимок, взятый до
+ * него, поймал бы пустую полосу — и эталон закрепил бы гонку.
+ */
+async function openChrome(page: Page, fixture: string): Promise<void> {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(`console: ${message.text()}`);
+  });
+
+  await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
+    timeout: 30_000,
+  });
+  await page.waitForFunction(
+    () => (window as unknown as { __transport?: { state: string } }).__transport?.state === 'ready',
+    null,
+    { timeout: 30_000 },
+  );
+
+  // Снимок страницы, которая открылась с ошибкой, эталоном быть не может:
+  // он закрепил бы поломку как образец.
+  expect(errors, `${fixture}: редактор открылся с ошибками`).toEqual([]);
+}
+
+/**
+ * Правая колонка с выделенной остановкой.
+ *
+ * Колонка прокручена ВНИЗ намеренно. Её содержимое — 2252 px при видимых
+ * 383, и наверху стоят списки, а панель остановки — внизу. Снимок сверху
+ * не показал бы её вовсе, то есть «выделена остановка» ничего не значило бы.
+ * Внизу же стоит орган, которым остановку превращают в развилку, — тот
+ * самый, который Задача 1 достала из 24-пиксельной щели.
+ */
+test('хром: правая колонка с панелью остановки', async ({ page }) => {
+  await openChrome(page, 'demo');
+  await page.getByTestId('mark-gate-gate-choice').click();
+  await expect(page.getByTestId('mark-panel')).toBeVisible();
+
+  await page.evaluate(() => {
+    const side = document.querySelector('.ed-side');
+    if (!side) throw new Error('правая колонка не найдена');
+    side.scrollTop = side.scrollHeight;
+  });
+
+  await expect(page.locator('.ed-side')).toHaveScreenshot('chrome-side-column.png', EXACT);
+});
+
+/**
+ * Верх той же колонки: списки ЭЛЕМЕНТЫ и СЛАЙДЫ.
+ *
+ * Отдельный снимок, а не часть предыдущего, по арифметике: видно 383 px
+ * при содержимом 2252, и одна рамка не вмещает и низ, и верх. Верх покрыт
+ * не для полноты — его перестраивает Задача 7 (складывающиеся секции),
+ * и без эталона та перестройка пошла бы вслепую.
+ *
+ * Ничего не выделяем: это состояние, в котором редактор открывается,
+ * и любое выделение пришлось бы обосновывать отдельно.
+ */
+test('хром: верх правой колонки со списками', async ({ page }) => {
+  await openChrome(page, 'demo');
+  await expect(page.getByTestId('element-row-title')).toBeVisible();
+
+  // Положительный контроль: колонка ДЕЙСТВИТЕЛЬНО непрокручена, иначе
+  // снимок молча оказался бы серединой колонки, а не её верхом.
+  const top = await page.evaluate(() => {
+    const side = document.querySelector('.ed-side');
+    if (!side) throw new Error('правая колонка не найдена');
+    return side.scrollTop;
+  });
+  expect(top, 'колонка прокручена — это не верх').toBe(0);
+
+  await expect(page.locator('.ed-side')).toHaveScreenshot('chrome-side-column-top.png', EXACT);
+});
+
+/** Полоса свойств над холстом при выделенном текстовом элементе. */
+test('хром: полоса свойств при выделенном тексте', async ({ page }) => {
+  await openChrome(page, 'demo');
+  await page.getByTestId('element-row-title').click();
+  await expect(page.getByTestId('propbar')).toBeVisible();
+
+  await expect(page.locator('.ed-propbar-row')).toHaveScreenshot('chrome-propbar.png', EXACT);
+});
+
+/** Нижняя зона в виде «Дорожки»: волна, ряды слайдов, остановок, расшифровки. */
+test('хром: нижняя зона, вид Дорожки', async ({ page }) => {
+  await openChrome(page, 'demo');
+  await expect(page.getByTestId('view-tracks')).toHaveAttribute('aria-pressed', 'true');
+
+  await expect(page.locator('.ed-track-column')).toHaveScreenshot('chrome-track-zone.png', EXACT);
+});
+
+/**
+ * Нижняя зона в виде «Ветки».
+ *
+ * Фикстура branching, а не demo: у demo одна глава, и карта веток свелась бы
+ * к одной плитке — снимок покрывал бы вид, который никто так не видит.
+ * У branching три главы и настоящие связи.
+ */
+test('хром: нижняя зона, вид Ветки', async ({ page }) => {
+  await openChrome(page, 'branching');
+  await page.getByTestId('view-branches').click();
+  await expect(page.getByTestId('view-branches')).toHaveAttribute('aria-pressed', 'true');
+
+  await expect(page.locator('.ed-track-column')).toHaveScreenshot('chrome-branches-zone.png', EXACT);
+});
