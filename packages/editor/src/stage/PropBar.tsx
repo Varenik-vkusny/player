@@ -39,13 +39,31 @@
  * Кнопка «Ещё» — ОДНА дверь в панель «Объект». В каркасе рядом с ней стоит
  * ещё «Положение», ведущая туда же, и задание прямо запрещает вторую дверь:
  * автор перестаёт смотреть в обе. Здесь её нет и не будет.
+ *
+ * **Строка прокручивается и обязана об этом говорить (Сессия 46).** Замер
+ * 18.08.2026 при окне 1280 и открытом каталоге — том состоянии, в котором
+ * редактор открывается: полосе нужно 1276 px, достаётся 586. За краем
+ * остаются ВСЕ тринадцать кнопок выравнивания, раскладки, слоёв и формата
+ * и сама «Ещё…» — то есть единственная дверь ко всем прочим свойствам была
+ * не видна вовсе. Отсюда ScrollStrip: он не убирает переполнение (при этой
+ * ширине оно неустранимо — см. ниже), а делает его видимым и проходимым.
+ *
+ * **Переполнение при окне 1280 неустранимо перестановкой, и это числа,
+ * а не мнение.** Из нужных 1276 px поля стиля занимают 697, а кнопки
+ * с разделителями и «Ещё…» — 540. Доступно 586. То есть не помещаются
+ * даже ОДНИ ПОЛЯ, без единой кнопки. Сделать так, чтобы влезло всё,
+ * можно только убрав органы, или разложив их в две строки (высота полосы
+ * постоянна и равна 56 — см. выше, почему она не может дышать), или
+ * растянув полосу во всю ширину окна. Последние два — облик, а он
+ * в каркасе задан (design/shell.css: полоса живёт над холстом одной
+ * строкой), и меняет его владелец, а не эта правка.
  */
 import type { ReactElement } from 'react';
 
 import type { AlignKind, DistributeAxis, LayerMove } from '../state/arrange.js';
 import type { LengthOrPercent, StyleFieldDef, StyleFieldKey, StyleReadResult } from '../state/style.js';
 import { StyleFieldWidget } from '../panels/styleFieldWidget.js';
-import { AlignIcon, type Shape } from '../ui/index.js';
+import { AlignIcon, ScrollStrip, type Shape } from '../ui/index.js';
 
 export interface PropBarProps {
   /** Сколько элементов выделено: от этого зависит, какие кнопки живые. */
@@ -231,7 +249,7 @@ export function PropBar({
 
   return (
     <div className="ed-propbar-row">
-      <div className="ed-propbar" data-testid="propbar" role="toolbar" aria-label="Свойства объекта">
+      <ScrollStrip className="ed-propbar" role="toolbar" label="Свойства объекта" testId="propbar">
         {styleFields.length === 0 ? (
           <span className="ed-propbar-hint">Общих свойств нет</span>
         ) : (
@@ -326,7 +344,7 @@ export function PropBar({
         >
           Ещё…
         </button>
-      </div>
+      </ScrollStrip>
     </div>
   );
 }
