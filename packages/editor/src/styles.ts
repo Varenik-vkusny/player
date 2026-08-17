@@ -104,6 +104,43 @@ export const EDITOR_STYLES = `
   --ui-shadow-overlay: 0 6px 20px #0e131826;
   --ui-motion-fast: 0.18s;
   --ui-motion-base: 0.22s;
+
+  /* Гарнитура. Системный стек выбран ОСОЗНАННО, а не поставлен до лучших
+     времён: интерфейс целиком на русском, и системный стек даёт кириллицу
+     без файла шрифта, без лицензии, без загрузки и без ADR. Поменять его
+     можно одной строкой здесь, посмотрев на снимки, — и это дешевле, чем
+     выбирать гарнитуру по названию вслепую.
+
+     Оговорка, чтобы роль не выглядела новшеством: хром и раньше рисовался
+     системным шрифтом. Он приезжал сокращением font: 14px/1.5 system-ui
+     на .ed-root, то есть был задан ровно в одном месте и не назывался
+     никак. Роль не вводит гарнитуру, а даёт ей имя. */
+  --ui-font: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /* Шкала кеглей, пять ступеней (design/tokens.css). Соответствие сырых
+     значений ступеням — таблица из плана, без вкусовщины: 10 и 11 в xs,
+     12 в s, 13 и 14 в m, 15..17 в l, 18 и выше в xl.
+
+     m равен 14, а НЕ 13, и это правка приёмщика 17.08.2026. Таблица «13
+     и 14 в m» в применении к базе хрома (она жила в сокращении
+     font: 14px/1.5, о котором план не знал) увела базу 14 -> 13, то есть
+     уменьшила ВЕСЬ текст редактора. Программа пяти сессий затеяна ради
+     читаемости, и уменьшать базу в ней — движение в обратную сторону.
+     Цена возврата измерена: содержимое правой колонки 2212 -> 2252 px,
+     плюс 1.8 %. Тринадцати пикселей в редакторе больше нет вовсе. */
+  --ui-type-xs: 11px;
+  --ui-type-s: 12px;
+  --ui-type-m: 14px;
+  --ui-type-l: 16px;
+  --ui-type-xl: 20px;
+
+  /* Скругления, три ступени. Соответствие — таблица из плана: 0..4px в s,
+     5..7px в m, 8px и выше в l. Значение 50% ступенью НЕ становится и
+     остаётся сырым: это круг, а не скругление, и пиксельная ступень на
+     его месте сделала бы из круга прямоугольник со скруглёнными углами. */
+  --ui-radius-s: 4px;
+  --ui-radius-m: 6px;
+  --ui-radius-l: 10px;
 }
 
 .ed-root {
@@ -124,7 +161,16 @@ export const EDITOR_STYLES = `
   overflow: hidden;
   background: var(--ui-surface-base);
   color: var(--ui-content-fg);
-  font: 14px/1.5 system-ui, sans-serif;
+  /* Разложено на отдельные свойства из сокращения font: 14px/1.5 system-ui.
+     Сокращение задавало кегль базы для всего хрома, а охрана кеглей ищет
+     font-size и такого кегля не видела: самое важное число файла было
+     единственным, которого проверка не касалась.
+
+     line-height остаётся числом 1.5 и своей шкалы пока не имеет —
+     см. отдельную заметку о ступенях --ui-lh-* в отчёте Сессии 45. */
+  font-family: var(--ui-font);
+  font-size: var(--ui-type-m);
+  line-height: 1.5;
 }
 
 /* Шапка обязана иметь ПОСТОЯННУЮ высоту.
@@ -227,7 +273,7 @@ export const EDITOR_STYLES = `
   gap: 4px;
   padding: 4px;
   border: 1px solid var(--ui-line);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-l);
   background: var(--ui-surface-raised);
   box-shadow: var(--ui-shadow-selected);
 }
@@ -236,7 +282,7 @@ export const EDITOR_STYLES = `
   width: 24px;
   height: 24px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-m);
   background: transparent;
   color: var(--ui-content-fg);
   font: inherit;
@@ -257,7 +303,7 @@ export const EDITOR_STYLES = `
 .ed-stage-zoom-value {
   height: 24px;
   border: 0;
-  border-radius: 5px;
+  border-radius: var(--ui-radius-m);
   background: transparent;
   color: var(--ui-content-fg);
   font: inherit;
@@ -322,7 +368,7 @@ export const EDITOR_STYLES = `
    для непустого выделения без общих полей стиля (задание Сессии 30):
    пустоты быть не должно, автор обязан понимать, почему ничего не предлагают. */
 .ed-propbar-hint {
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   color: var(--ui-content-fg-tertiary);
 }
 
@@ -418,7 +464,7 @@ export const EDITOR_STYLES = `
   align-items: center;
   justify-content: center;
   text-indent: 0;
-  font-size: 13px;
+  font-size: var(--ui-type-m);
 }
 
 .ed-propbar-field input,
@@ -463,7 +509,7 @@ export const EDITOR_STYLES = `
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: transparent;
   color: var(--ui-content-fg);
   cursor: pointer;
@@ -512,11 +558,11 @@ export const EDITOR_STYLES = `
   flex: 0 0 auto;
   padding: 4px 10px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -575,7 +621,7 @@ export const EDITOR_STYLES = `
   margin: -5px 0 0 -5px;
   box-sizing: border-box;
   border: 1px solid var(--ui-action-selected-line);
-  border-radius: 2px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-surface-panel);
   pointer-events: auto;
   touch-action: none;
@@ -605,18 +651,18 @@ export const EDITOR_STYLES = `
 
 .ed-actions { display: flex; gap: 8px; flex: 0 0 auto; margin-left: auto; }
 
-.ed-action {
+.ed-btn {
   padding: 4px 10px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   cursor: pointer;
   white-space: nowrap;
 }
-.ed-action:hover { border-color: var(--ui-action-selected-line); }
+.ed-btn:hover { border-color: var(--ui-action-selected-line); }
 
 /* Недоступная кнопка обязана ВЫГЛЯДЕТЬ недоступной.
    Здесь заданы и фон, и цвет, и cursor: pointer, поэтому браузерное
@@ -629,12 +675,12 @@ export const EDITOR_STYLES = `
    ВНИМАНИЕ: в этом файле нельзя ставить обратные кавычки даже в
    комментариях — весь EDITOR_STYLES это одна шаблонная строка, и они
    её обрывают. Наступил дважды за одну сессию. */
-.ed-action:disabled {
+.ed-btn:disabled {
   opacity: 0.4;
   cursor: default;
   border-color: var(--ui-line-disabled);
 }
-.ed-action:disabled:hover { border-color: var(--ui-line-disabled); }
+.ed-btn:disabled:hover { border-color: var(--ui-line-disabled); }
 
 /* Режим «смотреть как зритель, ответивший X».
    Тот же закон, что у выделения: панель не имеет права выдавливать кнопки
@@ -670,7 +716,7 @@ export const EDITOR_STYLES = `
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg);
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   padding: 2px 4px;
 }
 
@@ -759,7 +805,7 @@ export const EDITOR_STYLES = `
   width: 100%;
   min-width: 0;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-l);
   background: transparent;
   color: var(--ui-content-fg-tertiary);
   font: inherit;
@@ -786,7 +832,7 @@ export const EDITOR_STYLES = `
 }
 
 .ed-rail-glyph {
-  font-size: 18px;
+  font-size: var(--ui-type-xl);
   line-height: 1;
 }
 
@@ -796,7 +842,7 @@ export const EDITOR_STYLES = `
 .ed-rail-label {
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   line-height: 1.2;
 }
 
@@ -835,7 +881,7 @@ export const EDITOR_STYLES = `
 .ed-catalog-title {
   margin: 0;
   color: var(--ui-content-fg);
-  font-size: 15px;
+  font-size: var(--ui-type-l);
   font-weight: 700;
 }
 
@@ -850,7 +896,7 @@ export const EDITOR_STYLES = `
   flex: 0 0 auto;
   box-sizing: border-box;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg-secondary);
   font: inherit;
@@ -868,7 +914,7 @@ export const EDITOR_STYLES = `
 .ed-catalog-hint {
   margin: 6px 0 0;
   color: var(--ui-content-fg-secondary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 1.4;
 }
 
@@ -947,6 +993,29 @@ export const EDITOR_STYLES = `
   overflow-x: hidden;
 }
 
+/* Панель метки — ребёнок колонки на общих правах. Без этого правила у неё
+   действует умолчание flex: 0 1 auto, и она оказывается ЕДИНСТВЕННЫМ
+   сжимаемым ребёнком: все соседи объявлены 0 0 auto. Замерено 17.08.2026:
+   несжимаемым нужно 890 px, колонка на ноутбуке даёт 368, и всю нехватку
+   вычитали из неё одной — вычисленная height становилась 0px, видимыми
+   оставались 24 px обвязки при 1427 px содержимого (two-gates, окно
+   1280x800; на более широком окне замеряли 1576). Собственный
+   overflow: auto делал это молча.
+
+   Чиним здесь, а не в .ed-inspector, намеренно: панель по своему договору
+   места в раскладке не назначает, его назначает вставляющий. Селектор
+   с прямым потомком и по той же причине: класс .ed-inspector носит ещё
+   и панель «Объект» внутри каталога, и ей это правило не адресовано. */
+/* overflow: visible НЕ несущий — проверено сломом 17.08.2026: с ним одним,
+   без flex, оба теста зелёные. Оставлен намеренно и не как украшение:
+   базовое правило .ed-inspector объявляет overflow: auto, и если правило
+   ниже когда-нибудь потеряется, auto спрячет содержимое МОЛЧА, а visible
+   выпустит его наружу видимо. Выбор между тихим отказом и громким. */
+.ed-side > .ed-inspector {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 /* Кнопка сворачивания живёт ПЕРВЫМ ребёнком колонки, когда та развёрнута —
    тот же ряд, что .ed-catalog-head-row у каталога, но без отдельного
    заголовка: у правой колонки его никогда не было. */
@@ -970,11 +1039,11 @@ export const EDITOR_STYLES = `
 
 .ed-insert { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
 
-/* Группа кнопок шаблонов — свой заголовок, кнопки в тех же .ed-insert/.ed-action,
+/* Группа кнопок шаблонов — свой заголовок, кнопки в тех же .ed-insert/.ed-btn,
    что и у панели вставки фигур: колонка не должна заводить второй визуальный
    язык ради второго списка кнопок. */
 .ed-templates { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
-.ed-templates-label { font-size: 11px; color: var(--ui-content-fg-secondary); }
+.ed-templates-label { font-size: var(--ui-type-xs); color: var(--ui-content-fg-secondary); }
 
 .ed-delete-row {
   flex: 0 0 auto;
@@ -992,7 +1061,7 @@ export const EDITOR_STYLES = `
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ui-content-fg-secondary);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
 }
 
 .ed-elements {
@@ -1044,11 +1113,11 @@ export const EDITOR_STYLES = `
   gap: 6px;
   padding: 4px 8px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   cursor: pointer;
 }
 .ed-palette-swatch:hover { border-color: var(--ui-action-selected-line); }
@@ -1058,7 +1127,7 @@ export const EDITOR_STYLES = `
 .ed-palette-chip {
   width: 12px;
   height: 12px;
-  border-radius: 3px;
+  border-radius: var(--ui-radius-s);
   border: 1px solid var(--ui-line);
   margin-left: -4px;
 }
@@ -1087,11 +1156,11 @@ export const EDITOR_STYLES = `
   width: 100%;
   padding: 4px 6px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   text-align: left;
   cursor: pointer;
 }
@@ -1107,9 +1176,9 @@ export const EDITOR_STYLES = `
   min-width: 44px;
 }
 
-.ed-slide-transition { color: var(--ui-content-fg-secondary); font-size: 11px; }
+.ed-slide-transition { color: var(--ui-content-fg-secondary); font-size: var(--ui-type-xs); }
 
-.ed-elements-empty { margin: 0; color: var(--ui-content-fg-secondary); font-size: 12px; }
+.ed-elements-empty { margin: 0; color: var(--ui-content-fg-secondary); font-size: var(--ui-type-s); }
 
 .ed-elements-list {
   list-style: none;
@@ -1136,10 +1205,10 @@ export const EDITOR_STYLES = `
   flex: 0 0 auto;
   width: 22px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-surface-panel);
   color: var(--ui-content-fg-secondary);
-  font-size: 14px;
+  font-size: var(--ui-type-m);
   line-height: 1;
   cursor: pointer;
 }
@@ -1156,11 +1225,11 @@ export const EDITOR_STYLES = `
   min-width: 0;
   padding: 4px 6px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: transparent;
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   text-align: left;
   cursor: pointer;
 }
@@ -1169,7 +1238,7 @@ export const EDITOR_STYLES = `
 
 .ed-element-type {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--ui-content-fg-secondary);
@@ -1227,7 +1296,7 @@ export const EDITOR_STYLES = `
   background: var(--ui-surface-panel);
   border-bottom: 1px solid var(--ui-line);
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 18px;
 }
 
@@ -1248,7 +1317,7 @@ export const EDITOR_STYLES = `
 .ed-zone-view {
   padding: 1px 10px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: transparent;
   color: var(--ui-content-fg-secondary);
   font: inherit;
@@ -1293,18 +1362,18 @@ export const EDITOR_STYLES = `
 
 .ed-branches-fit {
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   padding: 4px 10px;
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   cursor: pointer;
 }
 
 .ed-branches-fit:hover { border-color: var(--ui-action-selected-line); }
 
 .ed-branches-zoom {
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   font-variant-numeric: tabular-nums;
   color: var(--ui-content-fg-tertiary);
 }
@@ -1312,18 +1381,18 @@ export const EDITOR_STYLES = `
 /* Вилка длительностей: у объяснения нет одного числа, ветки разной длины.
    Моноширинные цифры, чтобы вилка не дёргалась при смене значений. */
 .ed-branches-range {
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   font-variant-numeric: tabular-nums;
   color: var(--ui-content-fg-secondary);
 }
 
 .ed-branches-extract {
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   padding: 4px 10px;
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   cursor: pointer;
 }
 
@@ -1342,7 +1411,7 @@ export const EDITOR_STYLES = `
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   color: var(--ui-content-fg-tertiary);
 }
 
@@ -1409,7 +1478,7 @@ export const EDITOR_STYLES = `
    не только через отступ по иксу. */
 .ed-branch-row--nested {
   background: var(--ui-surface-raised);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
 }
 
 .ed-branch-name {
@@ -1431,7 +1500,7 @@ export const EDITOR_STYLES = `
   border: 0;
   background: transparent;
   color: var(--ui-content-fg-secondary);
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   line-height: 1;
   cursor: pointer;
 }
@@ -1439,7 +1508,7 @@ export const EDITOR_STYLES = `
 .ed-branch-collapse:hover { color: var(--ui-content-fg); }
 
 .ed-branch-title {
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   font-weight: 600;
   color: var(--ui-content-fg);
   overflow: hidden;
@@ -1449,7 +1518,7 @@ export const EDITOR_STYLES = `
 
 .ed-branch-duration {
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   font-variant-numeric: tabular-nums;
   color: var(--ui-content-fg-tertiary);
 }
@@ -1471,7 +1540,7 @@ export const EDITOR_STYLES = `
   top: 4px;
   bottom: 4px;
   display: flex;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   border: 1px solid var(--ui-line);
   overflow: hidden;
@@ -1496,10 +1565,10 @@ export const EDITOR_STYLES = `
    не попадёт» объясняет себя сам. */
 .ed-branch-orphan {
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   color: var(--ui-content-fg-tertiary);
   border: 1px dashed var(--ui-line-strong);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   padding: 0 4px;
 }
 
@@ -1511,7 +1580,7 @@ export const EDITOR_STYLES = `
   background: transparent;
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   text-align: left;
   cursor: pointer;
   overflow: hidden;
@@ -1527,7 +1596,7 @@ export const EDITOR_STYLES = `
   background: var(--ui-surface-panel);
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
 }
 
 .ed-branch-tail {
@@ -1537,7 +1606,7 @@ export const EDITOR_STYLES = `
   display: flex;
   align-items: center;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   color: var(--ui-content-fg-tertiary);
   white-space: nowrap;
 }
@@ -1579,11 +1648,11 @@ export const EDITOR_STYLES = `
   gap: 6px;
   padding: 2px 6px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: transparent;
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   cursor: pointer;
 }
 
@@ -1592,7 +1661,7 @@ export const EDITOR_STYLES = `
 }
 
 /* Погашенная кнопка обязана ВЫГЛЯДЕТЬ погашенной — тот же закон, что
-   у .ed-action:disabled выше. Гаснет она, когда панели есть что сообщить:
+   у .ed-btn:disabled выше. Гаснет она, когда панели есть что сообщить:
    свернуть ошибку или подтверждение замены нельзя. */
 .ed-audio-source-toggle:disabled {
   opacity: 0.4;
@@ -1601,7 +1670,7 @@ export const EDITOR_STYLES = `
 
 .ed-audio-current {
   color: var(--ui-content-fg-secondary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1757,11 +1826,11 @@ export const EDITOR_STYLES = `
   gap: 6px;
   padding: 2px 6px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: transparent;
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   cursor: pointer;
 }
 
@@ -1799,7 +1868,7 @@ export const EDITOR_STYLES = `
      в ноль, и место, ради которого min-height и стоит, не удержалось бы. */
   display: block;
   color: var(--ui-content-fg-secondary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 16px;
   min-height: 16px;
 }
@@ -1840,7 +1909,7 @@ export const EDITOR_STYLES = `
   margin: 0;
   box-sizing: border-box;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-panel);
   overflow: hidden;
   cursor: pointer;
@@ -1882,7 +1951,7 @@ export const EDITOR_STYLES = `
   padding: 2px 6px;
   background: var(--ui-surface-overlay);
   color: var(--ui-content-fg-secondary);
-  font-size: 10.5px;
+  font-size: var(--ui-type-xs);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
@@ -1896,7 +1965,7 @@ export const EDITOR_STYLES = `
   height: 4px;
   margin: 2px 4px 0;
   background: var(--ui-surface-panel);
-  border-radius: 2px;
+  border-radius: var(--ui-radius-s);
 }
 
 .ed-slide-strip-posthumb {
@@ -1904,7 +1973,7 @@ export const EDITOR_STYLES = `
   top: 0;
   bottom: 0;
   background: var(--ui-surface-placeholder);
-  border-radius: 2px;
+  border-radius: var(--ui-radius-s);
 }
 
 .ed-slide-strip-postick {
@@ -1914,7 +1983,7 @@ export const EDITOR_STYLES = `
   height: 8px;
   margin-left: -1px;
   background: var(--ui-action-primary-bg);
-  border-radius: 1px;
+  border-radius: var(--ui-radius-s);
 }
 
 /* Дорожка. position: relative держит абсолютную ручку тяги
@@ -1958,7 +2027,7 @@ export const EDITOR_STYLES = `
   height: 20px;
   flex: 0 0 auto;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
@@ -1969,7 +2038,7 @@ export const EDITOR_STYLES = `
 
 .ed-track-collapsed-name {
   color: var(--ui-content-fg-secondary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1994,7 +2063,7 @@ export const EDITOR_STYLES = `
   width: 34px;
   height: 34px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 8px;
+  border-radius: var(--ui-radius-l);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
@@ -2033,7 +2102,7 @@ export const EDITOR_STYLES = `
 .ed-workspace-readonly,
 .ed-workspace-error {
   padding: 8px 16px;
-  font-size: 13px;
+  font-size: var(--ui-type-m);
   line-height: 1.45;
   border-bottom: 1px solid var(--ui-line);
 }
@@ -2053,7 +2122,7 @@ export const EDITOR_STYLES = `
    а не обрезка: смысл здесь в числе, и обрезать его нельзя. */
 .ed-notice {
   color: var(--ui-feedback-positive);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 1.45;
   min-width: 0;
 }
@@ -2092,7 +2161,7 @@ export const EDITOR_STYLES = `
 }
 
 .ed-lane-head-title {
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   font-weight: 600;
   color: var(--ui-content-fg-secondary);
   white-space: nowrap;
@@ -2101,7 +2170,7 @@ export const EDITOR_STYLES = `
 }
 
 .ed-lane-head-note {
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   color: var(--ui-content-fg-tertiary);
   white-space: nowrap;
   overflow: hidden;
@@ -2175,7 +2244,7 @@ export const EDITOR_STYLES = `
   top: 2px;
   padding-left: 4px;
   border-left: 1px solid var(--ui-line-strong);
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   color: var(--ui-content-fg-tertiary);
   font-variant-numeric: tabular-nums;
   /* Подпись не должна ловить курсор: под ней перемотка. */
@@ -2197,14 +2266,36 @@ export const EDITOR_STYLES = `
 /* Кнопки добавления метки прижаты вправо: слева транспорт, справа правки. */
 .ed-add { margin-left: auto; display: flex; gap: 8px; flex: 0 0 auto; }
 
+/* Значок следует за строкой: размер от кегля, цвет от текста (ADR-034).
+   flex: 0 0 auto — значок не сжимается вместе с подписью. */
+.ed-icon { width: 1em; height: 1em; flex: 0 0 auto; }
+
 .ed-add-mark {
+  /* inline-flex, а не строчная раскладка, ИМЕННО из-за значка: строчный svg
+     садится на базовую линию и тянет высоту строки вниз, а высоту этой
+     кнопки трогать нельзя — раздел 8 track-zoom.md запрещает поднимать
+     высоту зоны дорожки хоть на пиксель, и высота зоны — общий ресурс
+     жестовых тестов (прилипание к направляющим). При align-items: center
+     высота строки остаётся за подписью: значок 1em = 12px меньше её
+     line-height 18px и в расчёт не входит.
+
+     Число 18, а не 16: line-height здесь наследуется от .ed-root безразмерной
+     полуторой, то есть равен 1.5 от СОБСТВЕННОГО кегля кнопки (12px). Стояло
+     16 — сгнило до Сессии 45 и там же поймано замером: кнопка 30px
+     (5+5 отступа, 18 строка, 1+1 рамка), а не 28. Проверено откатом
+     на inline-block — те же 30, значит значок высоту не менял.
+     Отступ даёт gap, а не пробел в разметке: во флексе пробел по краям
+     текстового узла схлопывается. */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 5px 10px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -2226,11 +2317,11 @@ export const EDITOR_STYLES = `
 .ed-zoom-step {
   padding: 5px 10px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 16px;
   cursor: pointer;
 }
@@ -2298,10 +2389,10 @@ export const EDITOR_STYLES = `
   padding: 0 2px;
   box-sizing: border-box;
   border: 1px solid var(--ui-action-selected-line);
-  border-radius: 3px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-action-selected-bg);
   color: var(--ui-content-fg);
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   line-height: 1;
   overflow: hidden;
   cursor: grab;
@@ -2335,7 +2426,7 @@ export const EDITOR_STYLES = `
   flex: 0 0 auto;
   width: 4px;
   align-self: stretch;
-  border-radius: 2px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-action-primary-bg);
   cursor: ew-resize;
 }
@@ -2346,10 +2437,10 @@ export const EDITOR_STYLES = `
   height: 14px;
   padding: 0;
   border: 0;
-  border-radius: 2px;
+  border-radius: var(--ui-radius-s);
   background: transparent;
   color: var(--ui-content-fg-secondary);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   line-height: 1;
   cursor: pointer;
 }
@@ -2368,10 +2459,10 @@ export const EDITOR_STYLES = `
   height: 18px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: transparent;
   color: var(--ui-content-fg-secondary);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   line-height: 1;
   cursor: grab;
   touch-action: none;
@@ -2401,7 +2492,7 @@ export const EDITOR_STYLES = `
   position: absolute;
   top: -4px;
   right: -3px;
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   font-weight: 700;
   line-height: 1;
   color: var(--ui-feedback-warn);
@@ -2415,14 +2506,14 @@ export const EDITOR_STYLES = `
   border-top: 1px solid var(--ui-line);
   background: var(--ui-feedback-warn-bg);
   color: var(--ui-feedback-warn-fg);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 1.4;
 }
 .ed-orphans-sign { color: var(--ui-feedback-warn); font-weight: 700; }
 .ed-orphans-next {
   padding: 1px 8px;
   border: 1px solid var(--ui-feedback-warn-line);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-feedback-warn-bg-strong);
   color: var(--ui-feedback-warn-fg);
   font: inherit;
@@ -2464,7 +2555,7 @@ export const EDITOR_STYLES = `
   height: 3px;
   padding: 0;
   border: 0;
-  border-radius: 2px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-mark-tail);
   font: inherit;
   cursor: pointer;
@@ -2488,7 +2579,7 @@ export const EDITOR_STYLES = `
   margin-left: -7px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-mark-tail);
   cursor: ew-resize;
   touch-action: none;
@@ -2526,7 +2617,7 @@ export const EDITOR_STYLES = `
   overflow-y: auto;
   border-top: 1px solid var(--ui-line);
   color: var(--ui-content-fg-tertiary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 20px;
   user-select: text;
 }
@@ -2534,7 +2625,7 @@ export const EDITOR_STYLES = `
 .ed-word-active {
   color: var(--ui-content-fg);
   background: var(--ui-surface-raised);
-  border-radius: 3px;
+  border-radius: var(--ui-radius-s);
 }
 
 /* Волна.
@@ -2573,12 +2664,60 @@ export const EDITOR_STYLES = `
 
 .ed-insp-title {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--ui-content-fg-secondary);
 }
+
+/* Складывающийся заголовок панели (ui/Section). Кнопка лежит ВНУТРИ
+   h2.ed-insp-title и не имеет права выглядеть иначе, чем выглядел
+   заголовок до неё: кегль, разрядка, прописные и цвет наследуются,
+   а собственная внешность кнопки (фон, рамка, поля, своя гарнитура
+   от системы) снимается. Ровно поэтому вид заголовков колонки
+   не поехал от того, что они стали нажимаемыми.
+
+   text-transform и letter-spacing перечислены явно, хотя оба наследуемые:
+   у button своя таблица стилей браузера, и полагаться на то, что она
+   их не перебьёт, значило бы проверять чужое умолчание глазами
+   на каждом движке. */
+.ed-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ed-section-toggle:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+/* Подпись занимает остаток строки, чтобы нажималась вся ширина заголовка,
+   а не только буквы: промах мимо узкой мишени автор читает как
+   «кнопка не работает», а не как «я не попал».
+
+   order: -1 ставит подпись ПЕРЕД стрелкой, то есть стрелка уходит к правому
+   краю. Правка приёмщика 17.08.2026 по замеру: стрелка в начале строки
+   выталкивала заголовок на 17 px внутрь (12 значок + 6 зазор), и в узкой
+   колонке появлялась ТРЕТЬЯ левая кромка — строки списка на 1035, чип слайда
+   на 1042, заголовок на 1052. До появления стрелки заголовок стоял на 1035
+   вместе со строками. Это возврат прежней кромки, а не новый приём.
+
+   На порядок чтения не влияет: у стрелки aria-hidden, читалке видна только
+   подпись, а order меняет лишь показ. */
+.ed-section-name { flex: 1 1 auto; min-width: 0; order: -1; }
 
 .ed-insp-body { display: grid; gap: 14px; }
 
@@ -2592,10 +2731,10 @@ export const EDITOR_STYLES = `
   padding: 10px 12px;
   border: 1px solid var(--ui-feedback-warn-line);
   border-left-width: 3px;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-l);
   background: var(--ui-feedback-warn-bg);
   color: var(--ui-feedback-warn-fg);
-  font-size: 13px;
+  font-size: var(--ui-type-m);
   line-height: 1.45;
 }
 
@@ -2604,7 +2743,7 @@ export const EDITOR_STYLES = `
 .ed-insp-hint {
   margin: 0;
   color: var(--ui-content-fg-secondary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   line-height: 1.45;
 }
 
@@ -2624,7 +2763,7 @@ export const EDITOR_STYLES = `
   min-width: 0;
 }
 
-.ed-insp-label { font-size: 11px; color: var(--ui-content-fg-secondary); }
+.ed-insp-label { font-size: var(--ui-type-xs); color: var(--ui-content-fg-secondary); }
 
 .ed-insp-input,
 .ed-insp-area {
@@ -2632,7 +2771,7 @@ export const EDITOR_STYLES = `
   width: 100%;
   padding: 5px 7px;
   border: 1px solid var(--ui-line);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-field-bg);
   color: var(--ui-content-fg);
   font: inherit;
@@ -2703,7 +2842,7 @@ export const EDITOR_STYLES = `
 
 .ed-insp-note {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   line-height: 1.4;
   color: var(--ui-content-fg-secondary);
 }
@@ -2746,11 +2885,11 @@ export const EDITOR_STYLES = `
   padding: 32px 4px 5px;
   overflow: hidden;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg-secondary);
   font: inherit;
-  font-size: 10px;
+  font-size: var(--ui-type-xs);
   text-align: center;
   cursor: pointer;
 }
@@ -2778,12 +2917,12 @@ export const EDITOR_STYLES = `
 .ed-direction-btn {
   padding: 4px 0;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-surface-raised);
   color: var(--ui-content-fg-secondary);
   font: inherit;
   /* Стрелка крупнее подписи плитки: она и есть всё содержимое кнопки. */
-  font-size: 14px;
+  font-size: var(--ui-type-m);
   line-height: 1;
   text-align: center;
   cursor: pointer;
@@ -2808,7 +2947,7 @@ export const EDITOR_STYLES = `
   left: 14px;
   right: 14px;
   height: 18px;
-  border-radius: 3px;
+  border-radius: var(--ui-radius-s);
 }
 
 .ed-transition-tile::before { background: var(--ui-content-fg-tertiary); }
@@ -2996,11 +3135,11 @@ export const EDITOR_STYLES = `
   white-space: nowrap;
   padding: 4px 8px;
   border: 1px solid var(--ui-line-strong);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-raised);
   color: inherit;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   text-align: left;
   cursor: pointer;
 }
@@ -3012,7 +3151,7 @@ export const EDITOR_STYLES = `
 .ed-graph-unreachable {
   flex: 0 0 auto;
   color: var(--ui-feedback-critical);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   white-space: nowrap;
 }
 
@@ -3048,14 +3187,14 @@ export const EDITOR_STYLES = `
   flex: 1 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
   color: var(--ui-feedback-positive);
 }
 
 .ed-graph-empty {
   margin: 0;
   color: var(--ui-content-fg-secondary);
-  font-size: 12px;
+  font-size: var(--ui-type-s);
 }
 
 .ed-graph-uncovered {
@@ -3082,14 +3221,14 @@ export const EDITOR_STYLES = `
   min-width: 0;
   padding: 6px 8px;
   border: 1px solid var(--ui-feedback-critical);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
 }
 
 .ed-graph-hole-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
   color: var(--ui-feedback-critical);
 }
 
@@ -3099,11 +3238,11 @@ export const EDITOR_STYLES = `
   min-width: 0;
   padding: 4px 6px;
   border: 1px solid var(--ui-line);
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: var(--ui-field-bg);
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--ui-type-s);
 }
 
 /* Меню правой кнопки над сценой (stage/ContextMenu.tsx).
@@ -3117,7 +3256,7 @@ export const EDITOR_STYLES = `
   min-width: 208px;
   padding: 4px;
   border: 1px solid var(--ui-line);
-  border-radius: 6px;
+  border-radius: var(--ui-radius-m);
   background: var(--ui-surface-overlay);
   /* Роль подставляется ЦЕЛИКОМ, без своих чисел перед ней.
      Было: box-shadow: 0 6px 20px var(--ui-shadow-selected) — а эта роль
@@ -3143,11 +3282,11 @@ export const EDITOR_STYLES = `
   width: 100%;
   padding: 6px 10px;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--ui-radius-s);
   background: transparent;
   color: var(--ui-content-fg);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--ui-type-m);
   text-align: left;
   cursor: pointer;
 }
@@ -3180,6 +3319,6 @@ export const EDITOR_STYLES = `
 .ed-ctxmenu-key {
   flex: 0 0 auto;
   color: var(--ui-content-fg-tertiary);
-  font-size: 11px;
+  font-size: var(--ui-type-xs);
 }
 `;

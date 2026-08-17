@@ -12,6 +12,7 @@
 import type { ReactElement } from 'react';
 
 import { SCENE_TEMPLATES } from '../state/templates.js';
+import { Button } from '../ui/index.js';
 
 export interface TemplatesPanelProps {
   onApply: (templateId: string) => void;
@@ -23,15 +24,13 @@ export function TemplatesPanel({ onApply }: TemplatesPanelProps): ReactElement {
       <span className="ed-templates-label">Шаблоны</span>
       <div className="ed-insert" role="group" aria-label="Добавить шаблон">
         {SCENE_TEMPLATES.map((template) => (
-          <button
+          <Button
             key={template.id}
-            type="button"
-            className="ed-action"
             data-testid={`template-${template.id}`}
             onClick={() => onApply(template.id)}
           >
             {template.label}
-          </button>
+          </Button>
         ))}
       </div>
     </div>

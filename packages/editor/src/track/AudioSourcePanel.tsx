@@ -28,6 +28,7 @@ import { getAudio, putAudio, type AudioSource } from '@player/player';
 import { replaceAudioConfirmMessage } from '../state/audio.js';
 import { describeRetarget, type RetargetReport } from '../state/retarget.js';
 import { transcribeAudio } from '../transcribe.js';
+import { Button } from '../ui/index.js';
 
 export interface AudioSourcePanelProps {
   readonly source: AudioSource;
@@ -307,56 +308,46 @@ export function AudioSourcePanel({
       <span className="ed-audio-current" data-testid="audio-current">{currentLabel}</span>
       {open ? (
         <>
-      <button
-        type="button"
-        className="ed-action"
+      <Button
         onClick={handlePick}
         disabled={upload.status === 'decoding'}
       >
         {upload.status === 'decoding' ? 'Загрузка…' : 'Загрузить озвучку'}
-      </button>
-      <button
-        type="button"
-        className="ed-action"
+      </Button>
+      <Button
         onClick={handleTranscribe}
         disabled={transcribe.status === 'loading'}
         data-testid="transcribe-button"
       >
         {transcribe.status === 'loading' ? 'Расшифровываю…' : 'Расшифровать'}
-      </button>
+      </Button>
 
       {upload.status === 'confirm' || upload.status === 'confirm-transcribing' || upload.status === 'confirm-error' ? (
         <span className="ed-audio-confirm" role="alertdialog" data-testid="audio-replace-confirm">
           <span className="ed-notice">
             «{upload.name}», {formatDuration(upload.duration)}. {replaceAudioConfirmMessage(wordMarkCount)}
           </span>
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             onClick={handleReplaceAndTranscribe}
             disabled={upload.status === 'confirm-transcribing'}
             data-testid="audio-replace-transcribe"
           >
             {upload.status === 'confirm-transcribing' ? 'Расшифровываю…' : 'Заменить озвучку и расшифровать'}
-          </button>
-          <button
-            type="button"
-            className="ed-action"
+          </Button>
+          <Button
             onClick={handleReplaceWithoutTranscript}
             disabled={upload.status === 'confirm-transcribing'}
             data-testid="audio-replace-without-transcript"
           >
             Заменить без расшифровки
-          </button>
-          <button
-            type="button"
-            className="ed-action"
+          </Button>
+          <Button
             onClick={handleCancel}
             disabled={upload.status === 'confirm-transcribing'}
             data-testid="audio-replace-confirm-no"
           >
             Отмена
-          </button>
+          </Button>
           {upload.status === 'confirm-error' ? (
             <span className="ed-failure" role="alert" data-testid="audio-replace-transcribe-error">
               Расшифровка не удалась, озвучка НЕ заменена: {upload.message}

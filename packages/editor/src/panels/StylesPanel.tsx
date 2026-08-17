@@ -27,6 +27,7 @@ import { freeId } from '../state/elements.js';
 import { styleUsage } from '../state/styleLink.js';
 import { listStyleSets, mergeStyleSet, saveStyleSet, type StyleSet } from '../state/styleStore.js';
 import { plural, STYLES } from '../plural.js';
+import { Button } from '../ui/index.js';
 
 export interface StylesPanelProps {
   /** Стили проекта, в порядке `project.styles`. */
@@ -159,15 +160,13 @@ export function StylesPanel({
             onChange={(event) => setName(event.target.value)}
           />
         </div>
-        <button
-          type="button"
-          className="ed-action"
+        <Button
           data-testid="style-save"
           disabled={!canSave}
           onClick={handleSave}
         >
           Сохранить вид как стиль
-        </button>
+        </Button>
         {selectedElement === undefined || selectedElementState === undefined ? (
           <p className="ed-insp-note">
             Выделите элемент, у которого есть вид на текущем слайде, чтобы сохранить его как стиль.
@@ -192,9 +191,7 @@ export function StylesPanel({
                   data-testid={`style-item-${style.id}`}
                   style={{ display: 'flex', alignItems: 'center', gap: '0.5em', marginBottom: '0.4em' }}
                 >
-                  <button
-                    type="button"
-                    className="ed-action"
+                  <Button
                     style={{ flex: 1, textAlign: 'left' }}
                     disabled={!applicable}
                     title={
@@ -205,15 +202,13 @@ export function StylesPanel({
                     onClick={() => onApply(style.id)}
                   >
                     {style.name} <span className="ed-insp-note">({style.type})</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="ed-action"
+                  </Button>
+                  <Button
                     data-testid={`style-remove-${style.id}`}
                     onClick={() => setPendingDeleteId(style.id)}
                   >
                     Удалить
-                  </button>
+                  </Button>
                 </div>
               );
             })}
@@ -237,15 +232,13 @@ export function StylesPanel({
             onChange={(event) => setSetName(event.target.value)}
           />
         </div>
-        <button
-          type="button"
-          className="ed-action"
+        <Button
           data-testid="styleset-save"
           disabled={sets === undefined || setName_.trim() === ''}
           onClick={handleSaveSet}
         >
           Сохранить набор
-        </button>
+        </Button>
         {saveError !== undefined ? (
           <p className="ed-insp-note" role="alert">Не удалось сохранить набор: {saveError}</p>
         ) : null}
@@ -268,14 +261,12 @@ export function StylesPanel({
                 <span style={{ flex: 1 }}>
                   {set.name} <span className="ed-insp-note">({plural(set.styles.length, STYLES)})</span>
                 </span>
-                <button
-                  type="button"
-                  className="ed-action"
+                <Button
                   data-testid={`styleset-take-${set.id}`}
                   onClick={() => handleTake(set)}
                 >
                   Взять
-                </button>
+                </Button>
               </div>
             ))}
           </div>
@@ -294,9 +285,7 @@ export function StylesPanel({
             на момент удаления, связь со стилем просто пропадёт.
           </p>
           <div style={{ display: 'flex', gap: '0.5em' }}>
-            <button
-              type="button"
-              className="ed-action"
+            <Button
               data-testid="style-delete-confirm"
               onClick={() => {
                 onDelete(pendingStyle.id);
@@ -304,15 +293,13 @@ export function StylesPanel({
               }}
             >
               Удалить
-            </button>
-            <button
-              type="button"
-              className="ed-action"
+            </Button>
+            <Button
               data-testid="style-delete-cancel"
               onClick={() => setPendingDeleteId(undefined)}
             >
               Отмена
-            </button>
+            </Button>
           </div>
         </div>
       ) : null}

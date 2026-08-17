@@ -19,6 +19,7 @@
 import type { ReactElement } from 'react';
 
 import { ELEMENT_LIBRARY, type LibraryCategory } from '../state/library.js';
+import { Button } from '../ui/index.js';
 
 export interface InsertPanelProps {
   onInsert: (itemId: string) => void;
@@ -30,15 +31,13 @@ export function InsertPanel({ onInsert, category }: InsertPanelProps): ReactElem
   return (
     <div className="ed-insert" role="group" aria-label="Добавить элемент">
       {items.map((item) => (
-        <button
+        <Button
           key={item.id}
-          type="button"
-          className="ed-action"
           data-testid={`insert-${item.id}`}
           onClick={() => onInsert(item.id)}
         >
           {item.label}
-        </button>
+        </Button>
       ))}
     </div>
   );

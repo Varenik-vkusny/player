@@ -45,6 +45,7 @@ import type { ReactElement } from 'react';
 import type { AlignKind, DistributeAxis, LayerMove } from '../state/arrange.js';
 import type { LengthOrPercent, StyleFieldDef, StyleFieldKey, StyleReadResult } from '../state/style.js';
 import { StyleFieldWidget } from '../panels/styleFieldWidget.js';
+import { AlignIcon, type Shape } from '../ui/index.js';
 
 export interface PropBarProps {
   /** Сколько элементов выделено: от этого зависит, какие кнопки живые. */
@@ -74,25 +75,6 @@ export interface PropBarProps {
   onOpenObject: () => void;
 }
 
-/**
- * Значок собирается из прямоугольников в поле 16×16.
- *
- * Своя мелкая графика, а не шрифт значков: шрифт — это внешний файл,
- * а плеер собирается без внешних загрузок (инвариант №9), и заводить
- * его ради двенадцати кнопок редактора значило бы держать два разных
- * правила для одного проекта.
- */
-type Shape = readonly [x: number, y: number, width: number, height: number];
-
-function Icon({ shapes }: { shapes: readonly Shape[] }): ReactElement {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      {shapes.map(([x, y, width, height], index) => (
-        <rect key={index} x={x} y={y} width={width} height={height} />
-      ))}
-    </svg>
-  );
-}
 
 /** Направляющая значка — тонкая полоса, показывающая, к чему равняем. */
 const RULE_V: Shape = [1, 1, 1, 14];
@@ -278,7 +260,7 @@ export function PropBar({
             title={label}
             onClick={() => onAlign(kind)}
           >
-            <Icon shapes={shapes} />
+            <AlignIcon shapes={shapes} />
           </button>
         ))}
 
@@ -295,7 +277,7 @@ export function PropBar({
             disabled={!canDistribute}
             onClick={() => onDistribute(axis)}
           >
-            <Icon shapes={shapes} />
+            <AlignIcon shapes={shapes} />
           </button>
         ))}
 
@@ -311,7 +293,7 @@ export function PropBar({
             title={label}
             onClick={() => onLayer(move)}
           >
-            <Icon shapes={shapes} />
+            <AlignIcon shapes={shapes} />
           </button>
         ))}
 
@@ -331,7 +313,7 @@ export function PropBar({
           disabled={!copyFormatEnabled}
           onClick={onCopyFormat}
         >
-          <Icon shapes={COPY_FORMAT_SHAPES} />
+          <AlignIcon shapes={COPY_FORMAT_SHAPES} />
         </button>
 
         <span className="ed-propbar-spacer" aria-hidden="true" />

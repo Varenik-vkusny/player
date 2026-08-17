@@ -51,6 +51,7 @@ import {
   ValidatedStringField,
   type Choice,
 } from './fields.js';
+import { Button } from '../ui/index.js';
 
 export type SelectedMarkData =
   | { readonly kind: 'gate'; readonly gate: Gate }
@@ -225,9 +226,9 @@ export function MarkPanel({
           onRetarget={onRetargetMark}
         />
         <div className="ed-insp-block">
-          <button type="button" className="ed-action" data-testid="mark-remove" onClick={onRemove}>
+          <Button data-testid="mark-remove" onClick={onRemove}>
             Удалить метку
-          </button>
+          </Button>
         </div>
       </div>
     </aside>
@@ -563,16 +564,14 @@ function StopKindEditor({ gate, config, onUpdate, onSplit, splitBlockedReason }:
             после этой точки станет отдельной главой, а на каждый вариант появится
             своя.
           </p>
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             data-testid="gate-split"
             disabled={splitBlockedReason !== undefined || onSplit === undefined}
             title={splitBlockedReason ?? 'Разделить повествование по этой развилке'}
             onClick={() => onSplit?.()}
           >
             Разделить повествование здесь
-          </button>
+          </Button>
           {splitBlockedReason !== undefined && (
             <p className="ed-insp-hint" data-testid="split-blocked">{splitBlockedReason}</p>
           )}
@@ -662,9 +661,7 @@ function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptions
               ))}
             </select>
 
-            <button
-              type="button"
-              className="ed-action"
+            <Button
               data-testid={`gate-option-remove-${index}`}
               disabled={config.options.length <= 2}
               title={
@@ -675,13 +672,13 @@ function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptions
               onClick={() => onUpdate(removeOption(gate, option.id))}
             >
               Удалить вариант
-            </button>
+            </Button>
           </div>
         );
       })}
-      <button type="button" className="ed-action" data-testid="gate-option-add" onClick={() => onUpdate(addOption(gate))}>
+      <Button data-testid="gate-option-add" onClick={() => onUpdate(addOption(gate))}>
         Добавить вариант
-      </button>
+      </Button>
     </div>
   );
 }

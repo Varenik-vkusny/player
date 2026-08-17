@@ -42,6 +42,7 @@ import { BubbleLane } from './BubbleLane.js';
 import type { SpanRange } from './spans.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
+import { Icon } from '../ui/index.js';
 import { canvasWidth, largestFittingZoom, zoomBlockedReason, zoomFits, ZOOM_STEPS, type ZoomStep } from './zoom.js';
 
 /** Разделитель между полосами — толщиной из `tiers.ts`, который её же и складывает. */
@@ -590,7 +591,7 @@ export function TrackView({
             // видит их так же, как подписи (product.md §2а).
             title="Остановка на этой секунде"
           >
-            ▮ остановка
+            <Icon name="square" /> остановка
           </button>
           {/* Метка — стык глав (`branches.md` §2). Отдельного значка у неё
               нет: граница между главами и есть метка, поэтому кнопка говорит
@@ -610,7 +611,7 @@ export function TrackView({
             onClick={onSplitHere}
             title={splitProblem ?? 'Разделить главу надвое в этой секунде'}
           >
-            ✂ разделить здесь
+            <Icon name="scissors" /> разделить здесь
           </button>
 
           {/* Переключатель полосы капли. Стоит В ТРАНСПОРТЕ, а не в голове

@@ -30,6 +30,7 @@ import {
 import type { Element, Slide, Style, Theme, Word } from '@player/core';
 import { ScenePreview, type Segment } from '@player/player';
 
+import { Button } from '../ui/index.js';
 import { markSeconds } from './marks.js';
 import { slideChangeSummary } from './slide-summary.js';
 
@@ -220,36 +221,30 @@ export function SlideStrip({
         </button>
         <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
         <div className="ed-actions">
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             data-testid="slide-duplicate"
             disabled={duplicateProblem !== undefined}
             onClick={onDuplicate}
           >
             Дублировать
-          </button>
-          <button type="button" className="ed-action" data-testid="slide-copy" onClick={onCopy}>
+          </Button>
+          <Button data-testid="slide-copy" onClick={onCopy}>
             Копировать
-          </button>
-          <button
-            type="button"
-            className="ed-action"
+          </Button>
+          <Button
             data-testid="slide-cut"
             disabled={cutProblem !== undefined}
             onClick={onCut}
           >
             Вырезать
-          </button>
-          <button
-            type="button"
-            className="ed-action"
+          </Button>
+          <Button
             data-testid="slide-paste"
             disabled={pasteProblem !== undefined}
             onClick={onPaste}
           >
             Вставить
-          </button>
+          </Button>
         </div>
       </div>
       {/* Своя строка, а не место в ряду кнопок, и рисуется ВСЕГДА — даже

@@ -195,7 +195,12 @@ test.describe('метки на дорожке', () => {
     // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
     // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
     // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: '▮ остановка', exact: true }).click();
+    //
+    // Имя без символа ▮ с Сессии 45: столбик был буквой из шрифта и попадал
+    // в доступное имя кнопки, то есть читалка произносила его вслух. Теперь
+    // это значок с aria-hidden (ADR-034), и имя кнопки — одно слово.
+    // Правка локатора, а не продукта: имя стало ЧИЩЕ, а не другим.
+    await page.getByRole('button', { name: 'остановка', exact: true }).click();
 
     const after = await gatesOf(page);
     expect(after).toHaveLength(before.length + 1);
@@ -241,7 +246,7 @@ test.describe('метки на дорожке', () => {
     // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
     // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
     // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: '▮ остановка', exact: true }).click();
+    await page.getByRole('button', { name: 'остановка', exact: true }).click();
 
     const after = await gatesOf(page);
     const added = after.find((gate) => !before.some((old) => old.id === gate.id));
@@ -267,7 +272,7 @@ test.describe('метки на дорожке', () => {
     // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
     // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
     // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: '▮ остановка', exact: true }).click();
+    await page.getByRole('button', { name: 'остановка', exact: true }).click();
 
     const after = await page.evaluate(
       () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,

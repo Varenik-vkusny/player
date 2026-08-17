@@ -20,6 +20,7 @@ import type { Slide, Word } from '@player/core';
 
 import { markSeconds } from '../track/marks.js';
 import { TRANSITION_INFO } from '../transitions.js';
+import { Button, Section } from '../ui/index.js';
 
 export interface SlidePanelProps {
   slides: readonly Slide[];
@@ -52,45 +53,44 @@ export function SlidePanel({
 }: SlidePanelProps): ReactElement {
   return (
     <section className="ed-slide-panel" aria-label="Слайды">
-      <h2 className="ed-insp-title">Слайды</h2>
-      <ul className="ed-slide-list">
-        {slides.map((slide) => {
-          const isCurrent = slide.id === currentSlideId;
-          // Правило «первый и единственный слайд не удаляются» живёт целиком
-          // в state/slides.ts (cutProblem) — здесь оно только предсказано
-          // ДО клика, одним источником с removeSlide и с кнопкой «Вырезать».
-          const canRemove = cutProblem(slide.id) === undefined;
-          return (
-            <li key={slide.id} className="ed-slide-row">
-              <button
-                type="button"
-                className={isCurrent ? 'ed-slide-button ed-slide-button-current' : 'ed-slide-button'}
-                aria-current={isCurrent ? 'true' : undefined}
-                data-testid={`slide-${slide.id}`}
-                onClick={() => onSelect(slide.id)}
-              >
-                <span className="ed-slide-time">{formatSeconds(markSeconds(slide.at, words))}</span>
-                <span className="ed-slide-transition">
-                  {TRANSITION_INFO[slide.transition].label}
-                </span>
-              </button>
-              <button
-                type="button"
-                className="ed-action"
-                data-testid={`slide-remove-${slide.id}`}
-                disabled={!canRemove}
-                title={canRemove ? 'Удалить слайд' : 'Нельзя удалить первый или единственный слайд'}
-                onClick={() => onRemove(slide.id)}
-              >
-                Удалить
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-      <button type="button" className="ed-action" data-testid="slide-add" onClick={onAdd}>
-        Добавить слайд
-      </button>
+      <Section title="Слайды">
+        <ul className="ed-slide-list">
+          {slides.map((slide) => {
+            const isCurrent = slide.id === currentSlideId;
+            // Правило «первый и единственный слайд не удаляются» живёт целиком
+            // в state/slides.ts (cutProblem) — здесь оно только предсказано
+            // ДО клика, одним источником с removeSlide и с кнопкой «Вырезать».
+            const canRemove = cutProblem(slide.id) === undefined;
+            return (
+              <li key={slide.id} className="ed-slide-row">
+                <button
+                  type="button"
+                  className={isCurrent ? 'ed-slide-button ed-slide-button-current' : 'ed-slide-button'}
+                  aria-current={isCurrent ? 'true' : undefined}
+                  data-testid={`slide-${slide.id}`}
+                  onClick={() => onSelect(slide.id)}
+                >
+                  <span className="ed-slide-time">{formatSeconds(markSeconds(slide.at, words))}</span>
+                  <span className="ed-slide-transition">
+                    {TRANSITION_INFO[slide.transition].label}
+                  </span>
+                </button>
+                <Button
+                  data-testid={`slide-remove-${slide.id}`}
+                  disabled={!canRemove}
+                  title={canRemove ? 'Удалить слайд' : 'Нельзя удалить первый или единственный слайд'}
+                  onClick={() => onRemove(slide.id)}
+                >
+                  Удалить
+                </Button>
+              </li>
+            );
+          })}
+        </ul>
+        <Button data-testid="slide-add" onClick={onAdd}>
+          Добавить слайд
+        </Button>
+      </Section>
     </section>
   );
 }

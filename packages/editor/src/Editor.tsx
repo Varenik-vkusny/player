@@ -49,6 +49,7 @@ import {
   type ChromeLayout,
 } from './chrome/layoutStore.js';
 import { Splitter } from './chrome/Splitter.js';
+import { Button } from './ui/index.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
@@ -2034,29 +2035,23 @@ export function Editor({
           {plural(segment.elements.length, ELEMENTS)} · {plural(segment.gates.length, GATES)}
         </span>
         <span className="ed-actions">
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             onClick={() => dispatch({ type: 'undo' })}
             disabled={!canUndoState(state)}
           >
             Отменить
-          </button>
-          <button
-            type="button"
-            className="ed-action"
+          </Button>
+          <Button
             onClick={() => dispatch({ type: 'redo' })}
             disabled={!canRedoState(state)}
           >
             Повторить
-          </button>
-          <button
-            type="button"
-            className="ed-action"
+          </Button>
+          <Button
             onClick={() => downloadProject(currentProject)}
           >
             Сохранить
-          </button>
+          </Button>
           {/* Открытие файла — пара к «Сохранить». Настоящий input прячется:
               его вид не поддаётся оформлению и не совпадает с соседями,
               а нажатие по нему делает кнопка. */}
@@ -2075,16 +2070,14 @@ export function Editor({
               if (file) void handleOpenFile(file);
             }}
           />
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             data-testid="open-file"
             disabled={!canWrite}
             title={canWrite ? undefined : 'Работа открыта в другой вкладке'}
             onClick={() => fileInputRef.current?.click()}
           >
             Открыть файл
-          </button>
+          </Button>
           {/* Импорт презентации. Тот же приём со спрятанным input, что и выше. */}
           <input
             ref={pptxInputRef}
@@ -2098,16 +2091,14 @@ export function Editor({
               if (file) void handleImportPptx(file);
             }}
           />
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             data-testid="import-pptx"
             disabled={!canWrite}
             title={canWrite ? 'Презентация из Canva, PowerPoint, Google Slides или Keynote' : 'Работа открыта в другой вкладке'}
             onClick={() => pptxInputRef.current?.click()}
           >
             Импорт презентации
-          </button>
+          </Button>
           {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
               Без него условные варианты ответа физически непроверяемы: редактор
               показывает автору все варианты, а зритель видит часть, и увидеть
@@ -2140,13 +2131,11 @@ export function Editor({
               ))}
             </span>
           ) : null}
-          <button
-            type="button"
-            className="ed-action"
+          <Button
             onClick={() => openInPlayer(currentProject, previewUrl)}
           >
             Открыть в плеере
-          </button>
+          </Button>
         </span>
         <span className="ed-selection" data-testid="selection-readout">
           {selectionReadout}
@@ -2364,14 +2353,12 @@ export function Editor({
               </button>
             </div>
             <div className="ed-delete-row">
-              <button
-                type="button"
-                className="ed-action"
+              <Button
                 onClick={handleDeleteSelected}
                 disabled={state.selectedIds.length === 0}
               >
                 Удалить
-              </button>
+              </Button>
             </div>
             {removalMessage ? (
               <span className="ed-notice" role="status" data-testid="removal-message">
