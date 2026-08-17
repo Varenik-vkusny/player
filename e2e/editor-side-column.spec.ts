@@ -89,3 +89,36 @@ test('низ панели метки достаётся прокруткой с�
     `низ панели на ${probe.low}..${probe.high} при колонке ${probe.sideTop}..${probe.sideBottom}`,
   ).toBe(true);
 });
+
+/**
+ * Складывающиеся секции (Задача 7).
+ *
+ * Задача 1 сняла последствие — панель метки больше не раздавлена, — но
+ * причина осталась: несжимаемым секциям правой колонки нужно 890 px, а на
+ * ноутбуке колонка даёт 368, и лишнее просто уезжает под прокрутку. Пока
+ * секции не складываются, автор листает колонку целиком.
+ *
+ * Меряем ВЫСОТУ СОДЕРЖИМОГО колонки, а не «исчезла ли секция с экрана»:
+ * спрятать можно и прокруткой, а нужно, чтобы сложенная секция не занимала
+ * высоту ВООБЩЕ. Разница видна только в scrollHeight.
+ */
+test('секции правой колонки складываются и колонка укорачивается', async ({ page }) => {
+  await openEditor(page, 'two-gates');
+  await page.locator('.ed-mark-gate').first().click();
+
+  const measure = async (): Promise<number> =>
+    page.evaluate(() => {
+      const side = document.querySelector('.ed-side');
+      if (!side) throw new Error('правая колонка не найдена');
+      return side.scrollHeight;
+    });
+
+  const before = await measure();
+  await page.getByRole('button', { name: 'Свернуть «Главы»' }).click();
+  const after = await measure();
+
+  // Положительный контроль: до сворачивания колонка ДЕЙСТВИТЕЛЬНО длинная.
+  expect(before, 'колонка коротка — сворачивать нечего').toBeGreaterThan(900);
+  // Собственно проверка: сложенная секция не занимает высоту.
+  expect(after, `было ${before}, стало ${after}`).toBeLessThan(before - 300);
+});

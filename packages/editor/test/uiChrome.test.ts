@@ -54,6 +54,17 @@ function chromeSources(): { path: string; text: string }[] {
   return out;
 }
 
+/** Сама библиотека ui/ — то, что chromeSources намеренно пропускает. */
+function libraryTsx(): { path: string; text: string }[] {
+  const dir = join(SRC, 'ui');
+  return readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.tsx'))
+    .map((entry) => ({
+      path: `ui/${entry.name}`,
+      text: readFileSync(join(dir, entry.name), 'utf8'),
+    }));
+}
+
 describe('хром редактора пользуется общей библиотекой ui/', () => {
   // Правило без охраны гниёт: CLAUDE.md запрещает плодить своё, и при
   // живом запрете написаны 84 кнопки (замер 17.08.2026).
@@ -115,8 +126,13 @@ describe('хром редактора пользуется общей библи
    * тогда, когда его ставят, а не заранее.
    */
   it('каждый контур из ICON_PATHS хотя бы раз использован', () => {
+    // Библиотека читается ЦЕЛИКОМ, а не одним Icon.tsx: значок, который
+    // ставит другой компонент библиотеки (стрелка у ui/Section), живее
+    // некуда, но одному Icon.tsx он не виден — и правило объявило бы
+    // мёртвым работающий значок. Ошибка перечисления, а не смысла:
+    // «мёртвый» здесь значит «нигде не поставлен», а ui/ — такое же «где-то».
     const used = chromeSources()
-      .concat([{ path: 'ui', text: readFileSync(join(SRC, 'ui/Icon.tsx'), 'utf8') }])
+      .concat(libraryTsx())
       .map((f) => f.text)
       .join('\n');
     const dead = Object.keys(ICON_PATHS).filter(

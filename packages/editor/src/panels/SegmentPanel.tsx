@@ -34,7 +34,7 @@ import {
   reachableFrom,
   uncoveredOutcomes,
 } from '../state/exits.js';
-import { Button } from '../ui/index.js';
+import { Button, Section } from '../ui/index.js';
 
 export interface SegmentPanelProps {
   readonly project: Project;
@@ -301,240 +301,240 @@ export function SegmentPanel({
 
   return (
     <section className="ed-segment-panel" aria-label="Главы">
-      <h2 className="ed-insp-title">Главы</h2>
-
-      <ul className="ed-segment-list">
-        {project.segments.map((segment) => {
-          const isCurrent = segment.id === currentSegmentId;
-          const isUnreachable = !reachable.has(segment.id);
-          return (
-            <li key={segment.id} className="ed-segment-row">
-              <button
-                type="button"
-                className={isCurrent ? 'ed-segment-button ed-segment-button-current' : 'ed-segment-button'}
-                aria-current={isCurrent ? 'true' : undefined}
-                data-testid={`segment-${segment.id}`}
-                // Название сегмента в списке обрезается многоточием, если не
-                // влезло: список имён это терпит (текущее имя целиком видно
-                // в заголовке «Правила выхода …»), но полное имя должно быть
-                // доступно наведением.
-                title={titleOf(segment)}
-                onClick={() => onSelectSegment(segment.id)}
-              >
-                {titleOf(segment)}
-              </button>
-              {isUnreachable ? (
-                <span className="ed-segment-unreachable" data-testid={`segment-unreachable-${segment.id}`}>
-                  недостижим
-                </span>
-              ) : null}
-              {empty.has(segment.id) ? (
-                <span className="ed-segment-unreachable" data-testid={`segment-empty-${segment.id}`}>
-                  пусто
-                </span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="ed-segment-actions">
-        <Button data-testid="segment-add" onClick={onAddSegment}>
-          Добавить главу
-        </Button>
-        <Button
-          data-testid="segment-remove"
-          disabled={currentSegmentId === project.entry}
-          onClick={() => onRemoveSegment(currentSegmentId)}
-        >
-          Удалить главу
-        </Button>
-        <Button
-          data-testid="segment-duplicate"
-          onClick={() => onDuplicateSegment(currentSegmentId)}
-        >
-          Сделать копию главы
-        </Button>
-      </div>
-
-      <h3 className="ed-insp-title">Правила выхода «{titleOf(currentSegment)}»</h3>
-      {currentSegment.exit.rules.length > 0 || currentSegment.exit.default !== null ? (
-        <ul className="ed-exit-rules">
-          {currentSegment.exit.rules.map((rule) => (
-            <li key={rule.id} className="ed-exit-rule-row">
-              <span className="ed-exit-rule-text">{ruleText(rule, project)}</span>
-              {/* Условия показаны и по отдельности: цепочка через И читается
-                  одной строкой, но снять из неё можно только конкретное. */}
-              {rule.when.length > 1 ? (
-                <ul className="ed-exit-conditions" data-testid={`exit-conditions-${rule.id}`}>
-                  {rule.when.map((condition, index) => (
-                    <li key={`${rule.id}:${index}`} className="ed-exit-condition">
-                      <span>{conditionText(condition, project)}</span>
-                      <Button
-                        data-testid={`exit-condition-remove-${rule.id}-${index}`}
-                        onClick={() => onRemoveCondition(rule.id, index)}
-                      >
-                        убрать
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <AddConditionForm
-                project={project}
-                ruleId={rule.id}
-                onAdd={onAddCondition}
-              />
-              <Button
-                data-testid={`exit-disconnect-${rule.id}`}
-                onClick={() => onDisconnect(rule.id)}
-              >
-                снять
-              </Button>
-            </li>
-          ))}
-          {currentSegment.exit.default !== null ? (
-            <li className="ed-exit-rule-row">
-              <span className="ed-exit-rule-text">
-                иначе → {titleOfId(project, currentSegment.exit.default)}
-              </span>
-            </li>
-          ) : null}
+      <Section title="Главы">
+        <ul className="ed-segment-list">
+          {project.segments.map((segment) => {
+            const isCurrent = segment.id === currentSegmentId;
+            const isUnreachable = !reachable.has(segment.id);
+            return (
+              <li key={segment.id} className="ed-segment-row">
+                <button
+                  type="button"
+                  className={isCurrent ? 'ed-segment-button ed-segment-button-current' : 'ed-segment-button'}
+                  aria-current={isCurrent ? 'true' : undefined}
+                  data-testid={`segment-${segment.id}`}
+                  // Название сегмента в списке обрезается многоточием, если не
+                  // влезло: список имён это терпит (текущее имя целиком видно
+                  // в заголовке «Правила выхода …»), но полное имя должно быть
+                  // доступно наведением.
+                  title={titleOf(segment)}
+                  onClick={() => onSelectSegment(segment.id)}
+                >
+                  {titleOf(segment)}
+                </button>
+                {isUnreachable ? (
+                  <span className="ed-segment-unreachable" data-testid={`segment-unreachable-${segment.id}`}>
+                    недостижим
+                  </span>
+                ) : null}
+                {empty.has(segment.id) ? (
+                  <span className="ed-segment-unreachable" data-testid={`segment-empty-${segment.id}`}>
+                    пусто
+                  </span>
+                ) : null}
+              </li>
+            );
+          })}
         </ul>
-      ) : (
-        <p className="ed-segment-empty">У этой главы нет правил перехода.</p>
-      )}
 
-      {/* Сравнение с числом на переменной, которая числом не бывает, схему
-          проходит: «счёт > 3» безупречно, даже когда «счёт» хранит слово.
-          Но условие не подойдёт ни при каком ответе, и ветка за ним
-          недостижима навсегда — при полностью валидном проекте. → ADR-019 */}
-      {dead.length > 0 ? (
-        <>
-          <h3 className="ed-insp-title">Условия, которые не сработают</h3>
-          <div className="ed-exit-uncovered" data-testid="dead-comparisons">
-            {dead.map((problem) => (
-              <div
-                key={`${problem.segmentId}:${
-                  problem.where.kind === 'rule'
-                    ? problem.where.ruleId
-                    : `${problem.where.gateId}:${problem.where.optionId}`
-                }:${problem.variable}`}
-                className="ed-exit-hole"
-              >
-                <span className="ed-exit-hole-text">
-                  «{titleOfId(project, problem.segmentId)}»:{' '}
-                  {problem.where.kind === 'rule'
-                    ? 'правило выхода'
-                    : `вариант ответа «${optionLabelAnywhere(project, problem.variable, problem.where.optionId)}»`}{' '}
-                  сравнивает «{problem.variable}» с числом, но ни один её вариант числом не является.
-                  Это условие не подойдёт никогда.
-                </span>
-              </div>
+        <div className="ed-segment-actions">
+          <Button data-testid="segment-add" onClick={onAddSegment}>
+            Добавить главу
+          </Button>
+          <Button
+            data-testid="segment-remove"
+            disabled={currentSegmentId === project.entry}
+            onClick={() => onRemoveSegment(currentSegmentId)}
+          >
+            Удалить главу
+          </Button>
+          <Button
+            data-testid="segment-duplicate"
+            onClick={() => onDuplicateSegment(currentSegmentId)}
+          >
+            Сделать копию главы
+          </Button>
+        </div>
+
+        <h3 className="ed-insp-title">Правила выхода «{titleOf(currentSegment)}»</h3>
+        {currentSegment.exit.rules.length > 0 || currentSegment.exit.default !== null ? (
+          <ul className="ed-exit-rules">
+            {currentSegment.exit.rules.map((rule) => (
+              <li key={rule.id} className="ed-exit-rule-row">
+                <span className="ed-exit-rule-text">{ruleText(rule, project)}</span>
+                {/* Условия показаны и по отдельности: цепочка через И читается
+                    одной строкой, но снять из неё можно только конкретное. */}
+                {rule.when.length > 1 ? (
+                  <ul className="ed-exit-conditions" data-testid={`exit-conditions-${rule.id}`}>
+                    {rule.when.map((condition, index) => (
+                      <li key={`${rule.id}:${index}`} className="ed-exit-condition">
+                        <span>{conditionText(condition, project)}</span>
+                        <Button
+                          data-testid={`exit-condition-remove-${rule.id}-${index}`}
+                          onClick={() => onRemoveCondition(rule.id, index)}
+                        >
+                          убрать
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <AddConditionForm
+                  project={project}
+                  ruleId={rule.id}
+                  onAdd={onAddCondition}
+                />
+                <Button
+                  data-testid={`exit-disconnect-${rule.id}`}
+                  onClick={() => onDisconnect(rule.id)}
+                >
+                  снять
+                </Button>
+              </li>
             ))}
-          </div>
-        </>
-      ) : null}
-
-      {/* Пустая ветка — незавершённое состояние, а не валидное
-          (product.md §2б [Р]). Ветка рождается пустой по построению разреза,
-          и наполнить её легко забыть: разрез рождает сразу несколько. */}
-      <h3 className="ed-insp-title">Пустые главы</h3>
-      <div className="ed-exit-uncovered" data-testid="empty-segments">
-        {empty.size === 0 ? (
-          <p className="ed-segment-empty">Во всех главах что-то есть.</p>
+            {currentSegment.exit.default !== null ? (
+              <li className="ed-exit-rule-row">
+                <span className="ed-exit-rule-text">
+                  иначе → {titleOfId(project, currentSegment.exit.default)}
+                </span>
+              </li>
+            ) : null}
+          </ul>
         ) : (
+          <p className="ed-segment-empty">У этой главы нет правил перехода.</p>
+        )}
+
+        {/* Сравнение с числом на переменной, которая числом не бывает, схему
+            проходит: «счёт > 3» безупречно, даже когда «счёт» хранит слово.
+            Но условие не подойдёт ни при каком ответе, и ветка за ним
+            недостижима навсегда — при полностью валидном проекте. → ADR-019 */}
+        {dead.length > 0 ? (
           <>
-            {project.segments
-              .filter((segment) => empty.has(segment.id))
-              .map((segment) => (
-                <div key={segment.id} className="ed-exit-hole">
+            <h3 className="ed-insp-title">Условия, которые не сработают</h3>
+            <div className="ed-exit-uncovered" data-testid="dead-comparisons">
+              {dead.map((problem) => (
+                <div
+                  key={`${problem.segmentId}:${
+                    problem.where.kind === 'rule'
+                      ? problem.where.ruleId
+                      : `${problem.where.gateId}:${problem.where.optionId}`
+                  }:${problem.variable}`}
+                  className="ed-exit-hole"
+                >
                   <span className="ed-exit-hole-text">
-                    «{titleOf(segment)}» — здесь пока ничего нет
+                    «{titleOfId(project, problem.segmentId)}»:{' '}
+                    {problem.where.kind === 'rule'
+                      ? 'правило выхода'
+                      : `вариант ответа «${optionLabelAnywhere(project, problem.variable, problem.where.optionId)}»`}{' '}
+                    сравнивает «{problem.variable}» с числом, но ни один её вариант числом не является.
+                    Это условие не подойдёт никогда.
                   </span>
                 </div>
               ))}
-            <p className="ed-segment-empty">
-              Пока такая глава есть, объяснение публиковать нельзя: зритель прошёл бы её
-              насквозь. Тишина не подходит как признак — тишину можно захотеть намеренно,
-              и тогда «пусто по ошибке» стало бы неотличимо от «пауза задумана».
-            </p>
-          </>
-        )}
-      </div>
-
-      <h3 className="ed-insp-title">Непокрыто</h3>
-      <div className="ed-exit-uncovered" data-testid="exit-uncovered">
-        {holes.length === 0 ? (
-          <p className="ed-segment-empty">Все варианты и исходы вопросов этой главы ведут куда-то.</p>
-        ) : (
-          holes.map((hole) => (
-            <div key={hole.variable} className="ed-exit-hole-group">
-              {hole.optionIds.map((optionId) => {
-                const key = `${hole.variable}-${optionId}`;
-                const label = optionLabel(currentSegment, hole.variable, optionId);
-                return (
-                  <div key={key} className="ed-exit-hole">
-                    <span className="ed-exit-hole-text">
-                      Переменная «{hole.variable}»: вариант «{label}» никуда не ведёт
-                    </span>
-                    <select
-                      className="ed-exit-select"
-                      data-testid={`exit-target-${hole.variable}-${optionId}`}
-                      value={targetFor(key)}
-                      onChange={(event) => setTargetFor(key, event.target.value)}
-                    >
-                      {project.segments.map((segment) => (
-                        <option key={segment.id} value={segment.id}>
-                          {titleOf(segment)}
-                          {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      data-testid={`exit-connect-${hole.variable}-${optionId}`}
-                      onClick={() =>
-                        onConnect([{ kind: 'equals', variable: hole.variable, value: optionId }], targetFor(key))
-                      }
-                    >
-                      Соединить
-                    </Button>
-                  </div>
-                );
-              })}
-              {hole.verdicts.map((verdict) => {
-                const key = `${hole.variable}-${verdict}`;
-                return (
-                  <div key={key} className="ed-exit-hole">
-                    <span className="ed-exit-hole-text">
-                      Переменная «{hole.variable}»: исход «{VERDICT_LABEL[verdict]}» никуда не ведёт
-                    </span>
-                    <select
-                      className="ed-exit-select"
-                      data-testid={`exit-target-${hole.variable}-${verdict}`}
-                      value={targetFor(key)}
-                      onChange={(event) => setTargetFor(key, event.target.value)}
-                    >
-                      {project.segments.map((segment) => (
-                        <option key={segment.id} value={segment.id}>
-                          {titleOf(segment)}
-                          {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      data-testid={`exit-connect-${hole.variable}-${verdict}`}
-                      onClick={() => onConnect([{ kind: verdict, variable: hole.variable }], targetFor(key))}
-                    >
-                      Соединить
-                    </Button>
-                  </div>
-                );
-              })}
             </div>
-          ))
-        )}
-      </div>
+          </>
+        ) : null}
+
+        {/* Пустая ветка — незавершённое состояние, а не валидное
+            (product.md §2б [Р]). Ветка рождается пустой по построению разреза,
+            и наполнить её легко забыть: разрез рождает сразу несколько. */}
+        <h3 className="ed-insp-title">Пустые главы</h3>
+        <div className="ed-exit-uncovered" data-testid="empty-segments">
+          {empty.size === 0 ? (
+            <p className="ed-segment-empty">Во всех главах что-то есть.</p>
+          ) : (
+            <>
+              {project.segments
+                .filter((segment) => empty.has(segment.id))
+                .map((segment) => (
+                  <div key={segment.id} className="ed-exit-hole">
+                    <span className="ed-exit-hole-text">
+                      «{titleOf(segment)}» — здесь пока ничего нет
+                    </span>
+                  </div>
+                ))}
+              <p className="ed-segment-empty">
+                Пока такая глава есть, объяснение публиковать нельзя: зритель прошёл бы её
+                насквозь. Тишина не подходит как признак — тишину можно захотеть намеренно,
+                и тогда «пусто по ошибке» стало бы неотличимо от «пауза задумана».
+              </p>
+            </>
+          )}
+        </div>
+
+        <h3 className="ed-insp-title">Непокрыто</h3>
+        <div className="ed-exit-uncovered" data-testid="exit-uncovered">
+          {holes.length === 0 ? (
+            <p className="ed-segment-empty">Все варианты и исходы вопросов этой главы ведут куда-то.</p>
+          ) : (
+            holes.map((hole) => (
+              <div key={hole.variable} className="ed-exit-hole-group">
+                {hole.optionIds.map((optionId) => {
+                  const key = `${hole.variable}-${optionId}`;
+                  const label = optionLabel(currentSegment, hole.variable, optionId);
+                  return (
+                    <div key={key} className="ed-exit-hole">
+                      <span className="ed-exit-hole-text">
+                        Переменная «{hole.variable}»: вариант «{label}» никуда не ведёт
+                      </span>
+                      <select
+                        className="ed-exit-select"
+                        data-testid={`exit-target-${hole.variable}-${optionId}`}
+                        value={targetFor(key)}
+                        onChange={(event) => setTargetFor(key, event.target.value)}
+                      >
+                        {project.segments.map((segment) => (
+                          <option key={segment.id} value={segment.id}>
+                            {titleOf(segment)}
+                            {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        data-testid={`exit-connect-${hole.variable}-${optionId}`}
+                        onClick={() =>
+                          onConnect([{ kind: 'equals', variable: hole.variable, value: optionId }], targetFor(key))
+                        }
+                      >
+                        Соединить
+                      </Button>
+                    </div>
+                  );
+                })}
+                {hole.verdicts.map((verdict) => {
+                  const key = `${hole.variable}-${verdict}`;
+                  return (
+                    <div key={key} className="ed-exit-hole">
+                      <span className="ed-exit-hole-text">
+                        Переменная «{hole.variable}»: исход «{VERDICT_LABEL[verdict]}» никуда не ведёт
+                      </span>
+                      <select
+                        className="ed-exit-select"
+                        data-testid={`exit-target-${hole.variable}-${verdict}`}
+                        value={targetFor(key)}
+                        onChange={(event) => setTargetFor(key, event.target.value)}
+                      >
+                        {project.segments.map((segment) => (
+                          <option key={segment.id} value={segment.id}>
+                            {titleOf(segment)}
+                            {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        data-testid={`exit-connect-${hole.variable}-${verdict}`}
+                        onClick={() => onConnect([{ kind: verdict, variable: hole.variable }], targetFor(key))}
+                      >
+                        Соединить
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </Section>
     </section>
   );
 }
