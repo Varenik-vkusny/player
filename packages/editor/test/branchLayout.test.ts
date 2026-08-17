@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { loadProject } from '@player/core';
 
 import { branchTree, type BranchLane } from '../src/state/branchTree.js';
-import { layoutLanes, NAME_WIDTH, ROW_HEIGHT, ROW_GAP } from '../src/track/branchLayout.js';
+import { ARC_HEADROOM, layoutLanes, NAME_WIDTH, ROW_HEIGHT, ROW_GAP } from '../src/track/branchLayout.js';
 
 /**
  * Раскладка дерева веток в координаты пространства (`design/branches.md` §5).
@@ -107,7 +107,13 @@ describe('layoutLanes', () => {
   });
 
   /**
-   * `y` строк идёт по номеру ВИДИМОЙ строки: 0, 68 (56+12), 136 (2×68).
+   * `y` строк идёт по номеру ВИДИМОЙ строки, СМЕЩЁННОМУ на запас сверху:
+   * 24, 92 (24+68), 160 (24+2×68). Шаг между строками — 68 (56+12).
+   *
+   * ЗАПАС `ARC_HEADROOM` появился 17.08.2026 и появился не из вкуса:
+   * без него дуге повтора из ПЕРВОЙ строки некуда было выгибаться вверх,
+   * и она пряталась за плитками. Видно это было только глазами в живом
+   * редакторе — разметка дуги в DOM присутствовала.
    *
    * Что сломает: подсчёт `y` по общему индексу в `lanes` вместо номера
    * среди видимых — при свёрнутых полосах числа разъедутся; здесь же,
@@ -115,23 +121,28 @@ describe('layoutLanes', () => {
    * Верно ли при любой реализации: нет — шаг ROW_HEIGHT+ROW_GAP это
    * конкретное число 68, а не любое приращение.
    */
-  it('y строк против литералов 0 / 68 / 136', () => {
+  it('y строк против литералов 24 / 92 / 160, шаг 68', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
-    expect(rowOf(layout.rows, 's-head').y).toBe(0);
-    expect(rowOf(layout.rows, 's-left').y).toBe(68);
-    expect(rowOf(layout.rows, 's-right').y).toBe(136);
+    expect(rowOf(layout.rows, 's-head').y).toBe(24);
+    expect(rowOf(layout.rows, 's-left').y).toBe(92);
+    expect(rowOf(layout.rows, 's-right').y).toBe(160);
     expect(ROW_HEIGHT + ROW_GAP).toBe(68);
+    // Запас сверху ОБЯЗАН быть положительным: на нуле дуга повтора первой
+    // строки снова уедет под плитки, и это не будет видно ни одному числу
+    // выше — только глазами.
+    expect(ARC_HEADROOM).toBeGreaterThan(0);
   });
 
   /**
    * Связка родитель→ребёнок: `x` = 100 (как startX ребёнка), `fromY` = низ
-   * строки родителя (56), `toY` = середина строки ребёнка (68+28=96).
+   * строки родителя (24+56=80), `toY` = середина строки ребёнка
+   * (92+28=120).
    *
    * Что сломает: перепутанные fromY/toY или взятие координаты не той строки.
    * Верно ли при любой реализации: нет — числа считаются от независимых
-   * литералов ROW_HEIGHT=56 и y=68.
+   * литералов ROW_HEIGHT=56, ARC_HEADROOM=24 и шага 68.
    */
   it('связки родитель-ребёнок: x/fromY/toY против литералов', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
@@ -139,7 +150,7 @@ describe('layoutLanes', () => {
 
     expect(layout.connectors).toHaveLength(2);
     const toLeft = layout.connectors.find((c) => c.toLaneId === 's-left');
-    expect(toLeft).toEqual({ fromLaneId: 's-head', toLaneId: 's-left', x: 100, fromY: 56, toY: 96 });
+    expect(toLeft).toEqual({ fromLaneId: 's-head', toLaneId: 's-left', x: 100, fromY: 80, toY: 120 });
   });
 
   /**
@@ -168,8 +179,8 @@ describe('layoutLanes', () => {
   /**
    * repeat.json: `s-b → s-a` дуга-повтор. `s-a` 2.904с, `s-b` 2.736с,
    * обе в одной (корневой) полосе. fromX — правый край s-b = (2.904+2.736)×40
-   * = 225.6, toX — левый край s-a = 0, обе точки на y=28 (единственная
-   * строка, ROW_HEIGHT/2).
+   * = 225.6, toX — левый край s-a = 0, обе точки на y=52 (единственная
+   * строка: ARC_HEADROOM 24 + ROW_HEIGHT/2 28).
    *
    * Что сломает: перепутанные from/to края плиток (например, взять левый
    * край s-b вместо правого) — число разошлось бы с 225.6.
@@ -187,8 +198,8 @@ describe('layoutLanes', () => {
     expect(arc.repeat).toBe(true);
     expect(arc.fromX).toBeCloseTo(225.6);
     expect(arc.toX).toBe(0);
-    expect(arc.fromY).toBe(28);
-    expect(arc.toY).toBe(28);
+    expect(arc.fromY).toBe(52);
+    expect(arc.toY).toBe(52);
   });
 
   /**
@@ -202,11 +213,13 @@ describe('layoutLanes', () => {
    * Верно ли при любой реализации: нет — числа зависят от конкретной
    * ширины подписи хвоста (константа TAIL_WIDTH), а не любого положительного запаса.
    */
-  it('bounds охватывает самый правый хвост, литералы -180/0/460/192', () => {
+  it('bounds охватывает самый правый хвост, литералы -180/0/460/216', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
-    expect(layout.bounds).toEqual({ x: -NAME_WIDTH, y: 0, width: 460, height: 192 });
+    // Высота выросла на ARC_HEADROOM: коробка по-прежнему начинается на нуле,
+    // но последняя строка сдвинута вниз вместе со всеми.
+    expect(layout.bounds).toEqual({ x: -NAME_WIDTH, y: 0, width: 460, height: 216 });
   });
 
   /**

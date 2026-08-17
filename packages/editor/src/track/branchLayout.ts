@@ -21,6 +21,21 @@ import { MIN_TILE_PX } from './chapters.js';
 export const PX_PER_SECOND = 40;
 export const ROW_HEIGHT = 56;
 export const ROW_GAP = 12;
+
+/**
+ * Запас сверху над первой строкой — под дугу повтора.
+ *
+ * Не косметика. Дуга повтора выгибается ВВЕРХ над строкой, из которой
+ * выходит, чтобы её нельзя было спутать с обычной ломаной вниз. У повтора
+ * из ПЕРВОЙ строки (фикстура `repeat`) выгибаться было некуда: вершина
+ * уходила выше полотна и срезалась, а прижатая к нулю дуга проходила
+ * прямо сквозь плитки и пряталась за ними. Замерено глазами 17.08.2026
+ * на живом редакторе: разметка дуги в DOM есть, на экране её нет.
+ *
+ * 24 px — чуть больше половины высоты плитки, этого хватает, чтобы вершина
+ * вышла над её верхним краем и дуга читалась как дуга.
+ */
+export const ARC_HEADROOM = 24;
 /** Ширина ярлыка с именем ветки и её длительностью, слева от первой плитки. */
 export const NAME_WIDTH = 180;
 /** Приблизительная ширина подписи хвоста — для вписывания вида, не для отрисовки. */
@@ -167,7 +182,7 @@ export function layoutLanes(lanes: readonly BranchLane[], collapsed: ReadonlySet
       name: lane.name,
       depth: lane.depth,
       seconds: lane.seconds,
-      y: visibleIndex * (ROW_HEIGHT + ROW_GAP),
+      y: ARC_HEADROOM + visibleIndex * (ROW_HEIGHT + ROW_GAP),
       startX,
       tiles,
       collapsed: collapsed.has(lane.id),
