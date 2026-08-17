@@ -58,6 +58,7 @@ import {
 } from '../state/style.js';
 import { isDetached, revertToStyle } from '../state/styleLink.js';
 import { StyleFieldWidget } from './styleFieldWidget.js';
+import { Button } from '../ui/index.js';
 
 /** Прозрачность — число от 0 до 1, как того требует ElementStateSchema. */
 const OPACITY: (value: number) => boolean = (value) => value >= 0 && value <= 1;
@@ -344,14 +345,12 @@ function StyleSection({
               <div className="ed-insp-note" data-testid={`style-detached-${field.key}`}>
                 Отличается от стиля «{linkedStyle.name}»
                 <br />
-                <button
-                  type="button"
-                  className="ed-action"
+                <Button
                   data-testid={`style-revert-${field.key}`}
                   onClick={() => revert(field.key)}
                 >
                   Вернуть как в стиле
-                </button>
+                </Button>
               </div>
             )}
           </div>

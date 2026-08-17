@@ -34,6 +34,7 @@ import {
   reachableFrom,
   uncoveredOutcomes,
 } from '../state/exits.js';
+import { Button } from '../ui/index.js';
 
 export interface SegmentPanelProps {
   readonly project: Project;
@@ -112,15 +113,13 @@ function AddConditionForm({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        className="ed-action"
+      <Button
         data-testid={`exit-condition-add-${ruleId}`}
         disabled={variables.length === 0}
         onClick={() => setOpen(true)}
       >
         + условие
-      </button>
+      </Button>
     );
   }
 
@@ -230,17 +229,15 @@ function AddConditionForm({
         </>
       ) : null}
 
-      <button
-        type="button"
-        className="ed-action"
+      <Button
         data-testid={`exit-condition-submit-${ruleId}`}
         onClick={submit}
       >
         Добавить
-      </button>
-      <button type="button" className="ed-action" onClick={() => setOpen(false)}>
+      </Button>
+      <Button onClick={() => setOpen(false)}>
         Отмена
-      </button>
+      </Button>
     </div>
   );
 }
@@ -342,26 +339,22 @@ export function SegmentPanel({
       </ul>
 
       <div className="ed-segment-actions">
-        <button type="button" className="ed-action" data-testid="segment-add" onClick={onAddSegment}>
+        <Button data-testid="segment-add" onClick={onAddSegment}>
           Добавить главу
-        </button>
-        <button
-          type="button"
-          className="ed-action"
+        </Button>
+        <Button
           data-testid="segment-remove"
           disabled={currentSegmentId === project.entry}
           onClick={() => onRemoveSegment(currentSegmentId)}
         >
           Удалить главу
-        </button>
-        <button
-          type="button"
-          className="ed-action"
+        </Button>
+        <Button
           data-testid="segment-duplicate"
           onClick={() => onDuplicateSegment(currentSegmentId)}
         >
           Сделать копию главы
-        </button>
+        </Button>
       </div>
 
       <h3 className="ed-insp-title">Правила выхода «{titleOf(currentSegment)}»</h3>
@@ -377,14 +370,12 @@ export function SegmentPanel({
                   {rule.when.map((condition, index) => (
                     <li key={`${rule.id}:${index}`} className="ed-exit-condition">
                       <span>{conditionText(condition, project)}</span>
-                      <button
-                        type="button"
-                        className="ed-action"
+                      <Button
                         data-testid={`exit-condition-remove-${rule.id}-${index}`}
                         onClick={() => onRemoveCondition(rule.id, index)}
                       >
                         убрать
-                      </button>
+                      </Button>
                     </li>
                   ))}
                 </ul>
@@ -394,14 +385,12 @@ export function SegmentPanel({
                 ruleId={rule.id}
                 onAdd={onAddCondition}
               />
-              <button
-                type="button"
-                className="ed-action"
+              <Button
                 data-testid={`exit-disconnect-${rule.id}`}
                 onClick={() => onDisconnect(rule.id)}
               >
                 снять
-              </button>
+              </Button>
             </li>
           ))}
           {currentSegment.exit.default !== null ? (
@@ -502,16 +491,14 @@ export function SegmentPanel({
                         </option>
                       ))}
                     </select>
-                    <button
-                      type="button"
-                      className="ed-action"
+                    <Button
                       data-testid={`exit-connect-${hole.variable}-${optionId}`}
                       onClick={() =>
                         onConnect([{ kind: 'equals', variable: hole.variable, value: optionId }], targetFor(key))
                       }
                     >
                       Соединить
-                    </button>
+                    </Button>
                   </div>
                 );
               })}
@@ -535,14 +522,12 @@ export function SegmentPanel({
                         </option>
                       ))}
                     </select>
-                    <button
-                      type="button"
-                      className="ed-action"
+                    <Button
                       data-testid={`exit-connect-${hole.variable}-${verdict}`}
                       onClick={() => onConnect([{ kind: verdict, variable: hole.variable }], targetFor(key))}
                     >
                       Соединить
-                    </button>
+                    </Button>
                   </div>
                 );
               })}

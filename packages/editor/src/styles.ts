@@ -651,7 +651,7 @@ export const EDITOR_STYLES = `
 
 .ed-actions { display: flex; gap: 8px; flex: 0 0 auto; margin-left: auto; }
 
-.ed-action {
+.ed-btn {
   padding: 4px 10px;
   border: 1px solid var(--ui-line-strong);
   border-radius: var(--ui-radius-m);
@@ -662,7 +662,7 @@ export const EDITOR_STYLES = `
   cursor: pointer;
   white-space: nowrap;
 }
-.ed-action:hover { border-color: var(--ui-action-selected-line); }
+.ed-btn:hover { border-color: var(--ui-action-selected-line); }
 
 /* Недоступная кнопка обязана ВЫГЛЯДЕТЬ недоступной.
    Здесь заданы и фон, и цвет, и cursor: pointer, поэтому браузерное
@@ -675,12 +675,12 @@ export const EDITOR_STYLES = `
    ВНИМАНИЕ: в этом файле нельзя ставить обратные кавычки даже в
    комментариях — весь EDITOR_STYLES это одна шаблонная строка, и они
    её обрывают. Наступил дважды за одну сессию. */
-.ed-action:disabled {
+.ed-btn:disabled {
   opacity: 0.4;
   cursor: default;
   border-color: var(--ui-line-disabled);
 }
-.ed-action:disabled:hover { border-color: var(--ui-line-disabled); }
+.ed-btn:disabled:hover { border-color: var(--ui-line-disabled); }
 
 /* Режим «смотреть как зритель, ответивший X».
    Тот же закон, что у выделения: панель не имеет права выдавливать кнопки
@@ -1039,7 +1039,7 @@ export const EDITOR_STYLES = `
 
 .ed-insert { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
 
-/* Группа кнопок шаблонов — свой заголовок, кнопки в тех же .ed-insert/.ed-action,
+/* Группа кнопок шаблонов — свой заголовок, кнопки в тех же .ed-insert/.ed-btn,
    что и у панели вставки фигур: колонка не должна заводить второй визуальный
    язык ради второго списка кнопок. */
 .ed-templates { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
@@ -1661,7 +1661,7 @@ export const EDITOR_STYLES = `
 }
 
 /* Погашенная кнопка обязана ВЫГЛЯДЕТЬ погашенной — тот же закон, что
-   у .ed-action:disabled выше. Гаснет она, когда панели есть что сообщить:
+   у .ed-btn:disabled выше. Гаснет она, когда панели есть что сообщить:
    свернуть ошибку или подтверждение замены нельзя. */
 .ed-audio-source-toggle:disabled {
   opacity: 0.4;
