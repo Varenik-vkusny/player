@@ -21,7 +21,6 @@ import type { Word } from '@player/core';
 
 import { plural, type PluralForms } from '../plural.js';
 import type { MarkKind } from '../state/project.js';
-import { splitAtTimeBlockedReason } from '../state/split.js';
 import { nextOrphan } from './marks.js';
 import { MarksLane, type Mark } from './MarksLane.js';
 import {
@@ -163,6 +162,14 @@ export interface TrackViewProps {
    */
   onSplitHere: () => void;
   /**
+   * Почему разрез сейчас невозможен. Считает ОДНА функция на весь редактор
+   * (`state/project.ts`, `splitHereProblem`), и та же, которой отказывает
+   * сам разрез — иначе кнопка и действие расходятся в промежутке между
+   * сменой главы и дозагрузкой её дорожки, и разрез бросает из редьюсера,
+   * снимая всё дерево React. Так и случилось 17.08.2026.
+   */
+  splitProblem: string | undefined;
+  /**
    * Сколько мест ссылаются на цвет темы, который не разрешится.
    *
    * Числом, а не списком: панель дорожки показывает СЧЁТЧИК, а разбор
@@ -225,6 +232,7 @@ export function TrackView({
   slideCount,
   onAddGate,
   onSplitHere,
+  splitProblem,
   colorOrphanCount = 0,
   onTransitionSecondsLive,
   onTransitionSecondsCommit,
@@ -424,10 +432,16 @@ export function TrackView({
   // считаются от уже пришедших данных (marks по kind, words.length), а не
   // заводят новых пропов. Пустой случай (0 остановок, нет расшифровки)
   // решён минимально: подпись просто показывает «0».
-  // Причина, по которой метку сюда не поставить, — ТОЙ ЖЕ функцией, которой
-  // отказывается сам разрез (`state/split.ts`). Повтори её здесь своими
-  // условиями — и однажды кнопка нажалась бы, а разрез упал.
-  const splitProblem = splitAtTimeBlockedReason(positionSeconds, durationSeconds);
+  // Причина, по которой метку сюда не поставить, приходит ПРОПОМ и считается
+  // снаружи — от того же проекта, от которого её считает сам разрез.
+  //
+  // Здесь она когда-то считалась на месте, и рядом стояло предупреждение
+  // «повтори её здесь своими условиями — и однажды кнопка нажалась бы,
+  // а разрез упал». Предупреждение оказалось верным наполовину: функция
+  // бралась ТА ЖЕ САМАЯ, а вот длительность ей давалась ДРУГАЯ — от дорожки
+  // (`durationSeconds`), а не от главы. Совпадать этим числам положено,
+  // но между сменой главы и дозагрузкой её дорожки они расходятся, и в этот
+  // промежуток кнопка была живой при невозможном разрезе.
 
   const laneCounts = {
     /**

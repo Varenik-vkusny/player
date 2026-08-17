@@ -83,7 +83,7 @@ import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupEle
 import { speechLossWarning, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
-import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, type MarkKind } from './state/project.js';
+import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, splitHereProblem, type MarkKind } from './state/project.js';
 import { colorOrphans } from './state/colorOrphans.js';
 import { paletteById } from './state/palettes.js';
 import { propbarStyleFields } from './state/propbar.js';
@@ -1576,10 +1576,25 @@ export function Editor({
     dispatch({ type: 'renameSegment', id, title });
   }, []);
 
+  /**
+   * Причина отказа считается ЗДЕСЬ и раздаётся обоим потребителям: кнопке,
+   * чтобы гаснуть, и обработчику, чтобы не звать невозможный разрез.
+   * Одна функция, один проект, одни аргументы — разойтись нечему.
+   */
+  const splitProblem = splitHereProblem(
+    currentProject, state.currentSegmentId, transport.positionSeconds,
+  );
+
   const handleSplitHere = useCallback(() => {
+    // Вторая проверка, а не «на всякий случай»: между отрисовкой кнопки
+    // и щелчком по ней проходит время, за которое автор мог переключить
+    // главу. Отказ здесь ТИХИЙ намеренно — кнопка в этот момент уже
+    // погашена и объясняет причину сама, а бросок из редьюсера снял бы
+    // весь редактор (17.08.2026, белый экран у владельца).
+    if (splitProblem !== undefined) return;
     dispatch({ type: 'splitAtTime', seconds: transport.positionSeconds });
     setSelectedMark(undefined);
-  }, [transport.positionSeconds]);
+  }, [transport.positionSeconds, splitProblem]);
 
   /**
    * Сколько меток сейчас привязано к слову — для текста подтверждения
@@ -2548,6 +2563,7 @@ export function Editor({
           slideCount={segment.slides.length}
           onAddGate={handleAddGate}
           onSplitHere={handleSplitHere}
+          splitProblem={splitProblem}
           colorOrphanCount={colorOrphanCount}
           onTransitionSecondsLive={handleTrackTransitionSecondsLive}
           onTransitionSecondsCommit={handleCommitHistory}

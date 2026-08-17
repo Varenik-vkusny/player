@@ -37,7 +37,7 @@ import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
-import { splitSegmentAtGate, splitSegmentAtTime } from './split.js';
+import { splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
 import { bakeStyle } from './styleLink.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
 
@@ -1370,6 +1370,37 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
  * собрать новый состав `project.segments` — работа стороны записи, узкой
  * дверцы, которую охраняет тест инвариантов.
  */
+/**
+ * Почему нельзя разрезать главу здесь. `undefined` — можно.
+ *
+ * ЕДИНСТВЕННЫЙ ИСТОЧНИК ПРАВДЫ на два вопроса, которые обязаны отвечать
+ * одинаково: «гасить ли кнопку» и «выполнять ли разрез». Раньше их было два,
+ * и они спрашивали РАЗНОЕ: кнопка — длительность у загруженной дорожки
+ * (`transport.durationSeconds`), разрез — длительность, объявленную
+ * в проекте (`segment.audio.duration`).
+ *
+ * В покое эти числа совпадают, потому что окно дорожке задаётся из проекта.
+ * Но МЕЖДУ сменой главы и дозагрузкой её дорожки транспорт ещё держит
+ * длительность ПРЕЖНЕЙ главы — и в этот промежуток кнопка жива, а разрез
+ * видит другую главу и бросает. Бросок из редьюсера React обрабатывает
+ * единственным способом: снимает всё дерево. Автор видит белый экран.
+ *
+ * Найдено владельцем 17.08.2026 нажатием «разделить здесь» — то есть
+ * на живом продукте, а не тестом.
+ */
+export function splitHereProblem(
+  project: Project,
+  segmentId: string,
+  seconds: number,
+): string | undefined {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  // Главы нет — состояние переходное (её только что удалили, а выделение
+  // ещё не переехало). Кнопке в этот момент положено быть погашенной,
+  // а не бросать: бросок здесь и есть тот самый белый экран.
+  if (!segment) return 'Глава не выбрана';
+  return splitAtTimeBlockedReason(seconds, segment.audio.duration);
+}
+
 export function splitAtTime(project: Project, segmentId: string, seconds: number): Project {
   const segment = requireSegment(project, segmentId);
   const { head, tail } = splitSegmentAtTime(segment, seconds, project.segments);
