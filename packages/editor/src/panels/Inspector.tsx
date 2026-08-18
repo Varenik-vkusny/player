@@ -41,13 +41,14 @@ import type { Element, ElementState, Style } from '@player/core';
 
 import {
   ANY_NUMBER,
+  Checkbox,
   INTEGER,
   MultilineField,
   NumberField,
   POSITIVE,
   ReadonlyField,
   StringField,
-} from './fields.js';
+} from '../ui/fields.js';
 import {
   getStyleValue,
   setStyleValue,
@@ -280,15 +281,12 @@ function ElementFields({
               onCommit={(opacity) => onStateChangeLive({ opacity })}
               onBlurCommit={onCommitHistory}
             />
-            <label className="ed-insp-label">
-              <input
-                type="checkbox"
-                data-testid="element-visible"
-                checked={state.visible}
-                onChange={(event) => onStateChange({ visible: event.target.checked })}
-              />{' '}
-              Видим на этом слайде
-            </label>
+            <Checkbox
+              label="Видим на этом слайде"
+              checked={state.visible}
+              onChange={(visible) => onStateChange({ visible })}
+              testId="element-visible"
+            />
           </div>
 
           <StyleSection

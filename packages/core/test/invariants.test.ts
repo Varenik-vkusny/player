@@ -362,3 +362,39 @@ describe('дверца: project.segments и project.entry читают в одн
     expect(offenders).toEqual([]);
   });
 });
+
+/**
+ * Имя скриншотного эталона — общий ресурс, и Playwright о столкновении
+ * НЕ ПРЕДУПРЕЖДАЕТ ни словом.
+ *
+ * Куплено 19.08.2026. Новый тест получил имя снимка, уже занятое соседним:
+ * два теста стали писать и читать ОДИН файл эталона, и симптом — «проходит
+ * в одиночку, падает в наборе» — оказался неотличим от утечки состояния
+ * между замерами. Первая гипотеза (localStorage) была неверной, под неё
+ * успели написать починку и завести долг; настоящая причина нашлась
+ * буквой «M» в выводе git status на файле, который считали новым.
+ *
+ * Проверка текстовая, как и остальные охранные: она читает исходники e2e,
+ * а не гоняет браузер.
+ */
+describe('скриншотные эталоны', () => {
+  it('имя каждого снимка занято ровно одним вызовом', () => {
+    const dir = join(process.cwd(), 'e2e');
+    const seen = new Map<string, string[]>();
+    for (const name of readdirSync(dir)) {
+      if (!name.endsWith('.spec.ts')) continue;
+      const text = readFileSync(join(dir, name), 'utf8');
+      for (const match of text.matchAll(/toHaveScreenshot\(\s*'([^']+)'/g)) {
+        const shot = match[1]!;
+        seen.set(shot, [...(seen.get(shot) ?? []), name]);
+      }
+    }
+    // Контроль на сам прибор: снимки вообще нашлись, и их не один.
+    expect(seen.size).toBeGreaterThan(3);
+
+    const collisions = [...seen.entries()]
+      .filter(([, files]) => files.length > 1)
+      .map(([shot, files]) => shot + ' -> ' + files.join(', '));
+    expect(collisions, 'один эталон на два теста').toEqual([]);
+  });
+});

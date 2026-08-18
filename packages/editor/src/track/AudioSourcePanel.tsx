@@ -21,7 +21,6 @@
 import {
   useCallback,
   useEffect,
-  useId,
   useRef,
   useState,
   type ChangeEvent,
@@ -37,6 +36,7 @@ import { describeRetarget, type RetargetReport } from '../state/retarget.js';
 import { secondsText } from '../timeText.js';
 import { transcribeAudio } from '../transcribe.js';
 import { Button } from '../ui/index.js';
+import { MultilineField } from '../ui/fields.js';
 
 export interface UseAudioSourceProps {
   readonly source: AudioSource;
@@ -527,30 +527,23 @@ interface SpeechFieldProps {
  * слово через пробел.
  */
 function SpeechField({ value, onCommit, onBlurCommit }: SpeechFieldProps): ReactElement {
-  const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
   const text = draft ?? value;
 
   return (
-    <div className="ed-insp-field ed-audio-speech">
-      <label className="ed-insp-label" htmlFor={id}>
-        Текст озвучки
-      </label>
-      <textarea
-        id={id}
-        className="ed-insp-area"
-        data-testid="speech-input"
-        spellCheck={false}
+    <div className="ed-audio-speech">
+      <MultilineField
+        label="Текст озвучки"
         value={text}
-        onChange={(event) => {
-          const next = event.target.value;
+        onCommit={(next) => {
           setDraft(next);
           onCommit(next);
         }}
-        onBlur={() => {
+        onBlurCommit={() => {
           setDraft(null);
           onBlurCommit();
         }}
+        testId="speech-input"
       />
       <p className="ed-insp-note">
         То, что вы произносите в этой главе. Расшифровка — это то, что услышала машина;
