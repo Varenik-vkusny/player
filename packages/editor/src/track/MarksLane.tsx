@@ -20,6 +20,7 @@ import {
 import type { MarkKind } from '../state/project.js';
 import type { MarkAnchor } from './marks.js';
 import { ratioToX } from './zoom.js';
+import { secondsText } from '../timeText.js';
 
 export interface Mark {
   readonly kind: MarkKind;
@@ -244,12 +245,16 @@ export function MarksLane({
               {/* Ручка на ЛЕВОМ конце хвоста — шире хвоста и вылезает
                   влево (Задача 5): при ×1 хвост сам по себе всего 7.2px,
                   непопадаемая мишень, ради этого и затевалась вся задача. */}
+              {/* Имя ручки называет метку ВРЕМЕНЕМ, а не ключом схемы:
+                  «node-1-slide-3» автор не заводил (Сессия 47, Задача 5).
+                  Имя для тех, кто ручку не видит, обязано указывать на то же,
+                  что видит зрячий, — а видно время. */}
               <button
                 type="button"
                 className="ed-mark-transition-handle"
                 data-testid={`mark-transition-${mark.id}`}
                 title="Потянуть — изменить длительность перехода"
-                aria-label={`Длительность перехода к метке «${mark.id}»`}
+                aria-label={`Длительность перехода к метке на ${secondsText(mark.seconds)}`}
                 style={{ left: `${tailLeft}px` }}
                 onPointerDown={(event) => handleTransitionDown(event, mark)}
                 onPointerMove={handleTransitionMove}

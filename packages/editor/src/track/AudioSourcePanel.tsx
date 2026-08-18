@@ -2,15 +2,21 @@
  * Своя озвучка сегмента: загрузка файла автора и расшифровка.
  *
  * Стоит рядом с TrackView (тот же модуль «дорожка») — то же место, где автор
- * уже ищет свойства звука: играть/пауза, часы, кнопка остановки. Компонент
- * держит асинхронный путь ФАЙЛА (чтение → декодирование → хранилище плеера)
- * и подтверждение замены, но саму правку проекта не делает — как и везде
+ * уже ищет свойства звука: играть/пауза, часы, кнопка остановки. Держит
+ * асинхронный путь ФАЙЛА (чтение → декодирование → хранилище плеера) и
+ * подтверждение замены, но саму правку проекта не делает — как и везде
  * в редакторе, её кладёт `Editor.tsx` через `dispatch`, получив готовые
  * `fileId`/`duration` или `words` через колбэки.
  *
- * Асинхронность и есть причина, по которой это отдельный компонент, а не
- * добавка в презентационный TrackView: декодирование, IndexedDB и сетевой
- * вызов расшифровки — не то, что TrackView обязан знать.
+ * Разделена на состояние и два вида (Сессия 47, «одна полоса вместо трёх»):
+ * состояние и обработчики живут в хуке `useAudioSource`, а рисуют его
+ * `AudioSourceHead` (кнопка складывания — одна строка ВСЕГДА, стоит в общей
+ * шапке нижней зоны рядом с крошками и лентой слайдов) и `AudioSourceBody`
+ * (всё остальное — подпись текущего файла, кнопки, подтверждения, текст
+ * озвучки; рисуется только когда панель раскрыта). Асинхронность — и есть
+ * причина, по которой это отдельный хук, а не добавка в презентационный
+ * TrackView: декодирование, IndexedDB и сетевой вызов расшифровки — не то,
+ * что TrackView обязан знать.
  */
 import {
   useCallback,
@@ -20,6 +26,7 @@ import {
   useState,
   type ChangeEvent,
   type ReactElement,
+  type RefObject,
 } from 'react';
 
 import type { Word } from '@player/core';
@@ -27,10 +34,11 @@ import { getAudio, putAudio, type AudioSource } from '@player/player';
 
 import { replaceAudioConfirmMessage } from '../state/audio.js';
 import { describeRetarget, type RetargetReport } from '../state/retarget.js';
+import { secondsText } from '../timeText.js';
 import { transcribeAudio } from '../transcribe.js';
 import { Button } from '../ui/index.js';
 
-export interface AudioSourcePanelProps {
+export interface UseAudioSourceProps {
   readonly source: AudioSource;
   /**
    * Сколько меток (слайды + гейты) сейчас привязано к слову — считает
@@ -46,7 +54,7 @@ export interface AudioSourcePanelProps {
   readonly onReplace: (fileId: string, durationSeconds: number) => void;
   /**
    * Автор выбрал «Заменить и расшифровать» — расшифровка НОВОГО файла уже
-   * получена (панель сама сходила за ней перед вызовом), и замена вместе
+   * получена (хук сам сходил за ней перед вызовом), и замена вместе
    * с переносом меток кладётся ОДНИМ действием: без этого между заменой
    * и расшифровкой был бы шаг, на котором старых слов для сопоставления
    * уже нет.
@@ -61,21 +69,10 @@ export interface AudioSourcePanelProps {
   /**
    * Отчёт о последнем переносе меток (`EditorState.lastRetarget`) —
    * `undefined`, если последняя замена была без расшифровки или переносить
-   * ещё не доводилось. Панель не хранит его сама: это состояние редактора,
+   * ещё не доводилось. Хук не хранит его сам: это состояние редактора,
    * а не локальный черновик формы.
    */
   readonly lastRetarget: RetargetReport | undefined;
-  /** Текст озвучки текущего куска. `''` — поля `speech` в проекте нет. */
-  readonly speech: string;
-  /**
-   * Живое событие уже идущего жеста набора текста — та же семантика
-   * `commit: false`, что и у числовых полей `Inspector.tsx` (см. её
-   * комментарий модуля): вызывается на КАЖДУЮ правку textarea, коммит-точку
-   * ставит `onCommitHistory` на потере фокуса.
-   */
-  readonly onSpeechChange: (text: string) => void;
-  /** Завершает жест, открытый `onSpeechChange` (потеря фокуса поля). */
-  readonly onCommitHistory: () => void;
 }
 
 /** Общие поля файла, ожидающего решения автора: заменить как — и с чем. */
@@ -89,9 +86,10 @@ type UploadState =
   | { readonly status: 'idle' }
   | { readonly status: 'decoding' }
   | ({ readonly status: 'confirm' } & PendingUpload)
-  // Автор нажал «Заменить и расшифровать»: панель сама зовёт расшифровку
-  // нового файла, прежде чем что-либо менять в проекте, — кнопки подтверждения
-  // остаются видны (заблокированные), чтобы не терять уже принятое решение.
+  // Автор нажал «Заменить и расшифровать»: хук сам зовёт расшифровку
+  // нового файла, прежде чем менять что-либо в проекте, — кнопки
+  // подтверждения остаются видны (заблокированные), чтобы не терять уже
+  // принятое решение.
   | ({ readonly status: 'confirm-transcribing' } & PendingUpload)
   // Расшифровка упала. Ошибка обязана остаться видимой и ГРОМКОЙ (CLAUDE.md;
   // product.md §4 запрещает тихий откат на «заменили без расшифровки») —
@@ -105,22 +103,94 @@ type TranscribeState =
   | { readonly status: 'loading' }
   | { readonly status: 'error'; readonly message: string };
 
-/** Секунды с одним знаком после запятой — тот же формат, что и у часов дорожки. */
-function formatDuration(seconds: number): string {
-  return `${seconds.toFixed(1)} с`;
+// Свой formatDuration (один знак) заменён общим `secondsText` (Сессия 47):
+// длительность файла — та же величина, что время слайда, и писаться обязана
+// так же. Прежний комментарий ссылался на «формат часов дорожки», хотя часы
+// пишут 00:01.5, а здесь выходило 1.5 с — то есть ссылка была неверна.
+
+/** Всё, что нужно обоим видам — голове и телу панели озвучки. */
+export interface AudioSourceState {
+  readonly inputRef: RefObject<HTMLInputElement | null>;
+  readonly upload: UploadState;
+  readonly transcribe: TranscribeState;
+  /**
+   * Настоящее человеческое имя файла автора, загруженное АСИНХРОННО из
+   * хранилища плеера (`getAudio`) — `undefined`, пока имя не пришло, или
+   * когда источник не «файл». Единственное место, которое ходит за этим
+   * именем: второй асинхронный запрос к тому же хранилищу завёл бы вторую
+   * правду об одном и том же имени (см. `soundLabel` в `Editor.tsx`).
+   */
+  readonly loadedName: string | undefined;
+  readonly handlePick: () => void;
+  readonly handleFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  readonly handleReplaceWithoutTranscript: () => void;
+  readonly handleReplaceAndTranscribe: () => void;
+  readonly handleCancel: () => void;
+  readonly handleTranscribe: () => void;
+  readonly currentLabel: string;
+  /**
+   * То же, что `currentLabel`, но ТОЛЬКО у немого сегмента; иначе
+   * `undefined`. Существует ради общей шапки нижней зоны, где место
+   * считано по пикселям.
+   *
+   * ПОЧЕМУ ИМЕННО НЕМОЙ СЛУЧАЙ, а не подпись целиком. Куплено регрессией
+   * 18.08.2026: сведение трёх полос в одну убрало `currentLabel` из
+   * постоянно видимой строки в тело панели, и вместе с ним пропало
+   * «без звука: 6 с» — единственное указание, что у сегмента озвучки нет.
+   * Автор при этом видит, что метки ставятся по секундам, а не по словам
+   * (инвариант №10), и не может понять почему. Тихая потеря сведения.
+   *
+   * Вернуть подпись ЦЕЛИКОМ нельзя, и это замер, а не осторожность:
+   * содержимое шапки — 1075 px из 1280, запас 205, а «файл на сервере:
+   * /audio/demo.mp3» занимает 194. Осталось бы 11 px, то есть шапка
+   * переполнялась бы на первом же длинном имени файла — ровно та беда,
+   * которой болеет полоса свойств.
+   *
+   * Асимметрия здесь не произвол: у сегмента СО звуком имя файла и так
+   * стоит на голове полосы «Звук», прямо над волной (`soundLabel`
+   * в `Editor.tsx`), и повторять его в шапке незачем. У немого сегмента
+   * повторять нечего — там надо СКАЗАТЬ.
+   */
+  readonly silentLabel: string | undefined;
+  readonly wordMarkCount: number;
+  readonly lastRetarget: RetargetReport | undefined;
+  /**
+   * Панель свёрнута ПО УМОЛЧАНИЮ (Сессия 34).
+   *
+   * Замер: в окне 1280x800 холсту доставалось 84 px из 800, а этой панели —
+   * 135. Автор рисует сцену, а видит одну её десятую. Озвучку же он заводит
+   * один раз на кусок, дальше панель просто занимает место.
+   *
+   * Состояние локальное и перезагрузку НЕ переживает — как у складывания
+   * дорожки (`TrackView.tsx`, решение владельца 06.08.2026: чтение хранилища
+   * может бросить, а глушить ошибку запрещено). Здесь это ничего не стоит
+   * именно потому, что значение по умолчанию — «свёрнута»: после перезагрузки
+   * состояние ровно то, что и было бы. Хранить нечего.
+   */
+  readonly collapsed: boolean;
+  readonly setCollapsed: (value: boolean) => void;
+  /**
+   * СВЕРНУТЬ МОЖНО ТОЛЬКО ТИШИНУ.
+   *
+   * Тело несёт не одни удобства: в нём живут подтверждение замены озвучки
+   * (`role="alertdialog"`), ошибка загрузки, ошибка расшифровки и отчёт
+   * о переносе меток. Спрятать их значило бы сделать неотличимыми от
+   * несуществующих — ровно тот способ провала, ради которого затеяна вся
+   * сессия. Поэтому пока панели есть что сказать, она открыта принудительно,
+   * а кнопка складывания ГАСНЕТ, оставаясь видимой.
+   */
+  readonly mustSpeak: boolean;
+  readonly open: boolean;
 }
 
-export function AudioSourcePanel({
+export function useAudioSource({
   source,
   wordMarkCount,
   onReplace,
   onReplaceWithTranscript,
   onWordsTranscribed,
   lastRetarget,
-  speech,
-  onSpeechChange,
-  onCommitHistory,
-}: AudioSourcePanelProps): ReactElement {
+}: UseAudioSourceProps): AudioSourceState {
   const inputRef = useRef<HTMLInputElement>(null);
   const [upload, setUpload] = useState<UploadState>({ status: 'idle' });
   const [transcribe, setTranscribe] = useState<TranscribeState>({ status: 'idle' });
@@ -192,7 +262,7 @@ export function AudioSourcePanel({
 
   // «Заменить без расшифровки» — сегодняшний путь: доступен и из «confirm»,
   // и из «confirm-error» (расшифровка упала, но отказ от неё остаётся
-  // законным выбором автора, не заглушкой, которую подставила бы панель сама).
+  // законным выбором автора, не заглушкой, которую подставил бы хук сам).
   const handleReplaceWithoutTranscript = useCallback(() => {
     if (upload.status !== 'confirm' && upload.status !== 'confirm-error') return;
     onReplace(upload.fileId, upload.duration);
@@ -249,37 +319,50 @@ export function AudioSourcePanel({
       ? `файл на сервере: ${source.url}`
       : `без звука: ${source.seconds} с`;
 
-  /**
-   * Панель свёрнута ПО УМОЛЧАНИЮ (Сессия 34).
-   *
-   * Замер: в окне 1280x800 холсту доставалось 84 px из 800, а этой панели —
-   * 135. Автор рисует сцену, а видит одну её десятую. Озвучку же он заводит
-   * один раз на кусок, дальше панель просто занимает место.
-   *
-   * Состояние локальное и перезагрузку НЕ переживает — как у складывания
-   * дорожки (`TrackView.tsx`, решение владельца 06.08.2026: чтение хранилища
-   * может бросить, а глушить ошибку запрещено). Здесь это ничего не стоит
-   * именно потому, что значение по умолчанию — «свёрнута»: после перезагрузки
-   * состояние ровно то, что и было бы. Хранить нечего.
-   */
   const [collapsed, setCollapsed] = useState(true);
 
-  /**
-   * СВЕРНУТЬ МОЖНО ТОЛЬКО ТИШИНУ.
-   *
-   * Панель несёт не одни удобства: в ней живут подтверждение замены озвучки
-   * (`role="alertdialog"`), ошибка загрузки, ошибка расшифровки и отчёт
-   * о переносе меток. Спрятать их значило бы сделать неотличимыми от
-   * несуществующих — ровно тот способ провала, ради которого затеяна вся
-   * сессия. Поэтому пока панели есть что сказать, она открыта принудительно,
-   * а кнопка складывания ГАСНЕТ, оставаясь видимой.
-   */
   const mustSpeak =
     upload.status !== 'idle' || transcribe.status === 'error' || Boolean(lastRetarget);
   const open = !collapsed || mustSpeak;
 
+  return {
+    inputRef,
+    upload,
+    transcribe,
+    loadedName,
+    handlePick,
+    handleFileChange,
+    handleReplaceWithoutTranscript,
+    handleReplaceAndTranscribe,
+    handleCancel,
+    handleTranscribe,
+    currentLabel,
+    silentLabel: source.kind === 'silent' ? currentLabel : undefined,
+    wordMarkCount,
+    lastRetarget,
+    collapsed,
+    setCollapsed,
+    mustSpeak,
+    open,
+  };
+}
+
+export interface AudioSourceHeadProps {
+  readonly state: AudioSourceState;
+}
+
+/**
+ * Голова панели озвучки: скрытый `<input type="file">` и кнопка складывания.
+ * БОЛЬШЕ НИЧЕГО — обязана остаться ровно в одну строку ВСЕГДА, потому что
+ * стоит рядом с крошками и переключателем видов в общей шапке нижней зоны
+ * (`Editor.tsx`, `.ed-zone-head`). Возвращает фрагмент, а не свой контейнер,
+ * тем же приёмом, что и `ui/Section`: встаёт на место среди соседей по
+ * строке, не заводя собственной раскладки.
+ */
+export function AudioSourceHead({ state }: AudioSourceHeadProps): ReactElement {
+  const { inputRef, handleFileChange, open, mustSpeak, setCollapsed, silentLabel } = state;
   return (
-    <div className={open ? 'ed-audio-source' : 'ed-audio-source ed-audio-source--collapsed'}>
+    <>
       <input
         ref={inputRef}
         type="file"
@@ -305,9 +388,55 @@ export function AudioSourcePanel({
       >
         <span aria-hidden="true">{open ? '▾' : '▸'}</span> Озвучка
       </button>
+      {/* Указание «озвучки нет» стоит в ПОСТОЯННО ВИДИМОЙ строке, а не
+          в теле панели: тело раскрывается щелчком, а автор должен понимать,
+          почему метки ставятся по секундам, ещё до того, как что-либо
+          откроет (инвариант №10). Регрессия 18.08.2026 — см. silentLabel. */}
+      {silentLabel === undefined ? null : (
+        <span className="ed-audio-silent" data-testid="audio-silent">{silentLabel}</span>
+      )}
+    </>
+  );
+}
+
+export interface AudioSourceBodyProps {
+  readonly state: AudioSourceState;
+  /** Текст озвучки текущего куска. `''` — поля `speech` в проекте нет. */
+  readonly speech: string;
+  /**
+   * Живое событие уже идущего жеста набора текста — та же семантика
+   * `commit: false`, что и у числовых полей `Inspector.tsx` (см. её
+   * комментарий модуля): вызывается на КАЖДУЮ правку textarea, коммит-точку
+   * ставит `onCommitHistory` на потере фокуса.
+   */
+  readonly onSpeechChange: (text: string) => void;
+  /** Завершает жест, открытый `onSpeechChange` (потеря фокуса поля). */
+  readonly onCommitHistory: () => void;
+}
+
+/**
+ * Тело панели озвучки: подпись текущего файла, кнопки, подтверждение замены,
+ * сообщения об ошибках, отчёт о переносе меток, текст озвучки. Рисуется
+ * только когда `state.open` — вызывающий (`Editor.tsx`) решает это сам,
+ * компонент ничего не прячет внутри себя.
+ */
+export function AudioSourceBody({ state, speech, onSpeechChange, onCommitHistory }: AudioSourceBodyProps): ReactElement {
+  const {
+    upload,
+    transcribe,
+    currentLabel,
+    wordMarkCount,
+    lastRetarget,
+    handlePick,
+    handleTranscribe,
+    handleReplaceAndTranscribe,
+    handleReplaceWithoutTranscript,
+    handleCancel,
+  } = state;
+
+  return (
+    <div className="ed-audio-source">
       <span className="ed-audio-current" data-testid="audio-current">{currentLabel}</span>
-      {open ? (
-        <>
       <Button
         onClick={handlePick}
         disabled={upload.status === 'decoding'}
@@ -325,7 +454,7 @@ export function AudioSourcePanel({
       {upload.status === 'confirm' || upload.status === 'confirm-transcribing' || upload.status === 'confirm-error' ? (
         <span className="ed-audio-confirm" role="alertdialog" data-testid="audio-replace-confirm">
           <span className="ed-notice">
-            «{upload.name}», {formatDuration(upload.duration)}. {replaceAudioConfirmMessage(wordMarkCount)}
+            «{upload.name}», {secondsText(upload.duration)}. {replaceAudioConfirmMessage(wordMarkCount)}
           </span>
           <Button
             onClick={handleReplaceAndTranscribe}
@@ -375,8 +504,6 @@ export function AudioSourcePanel({
       ) : null}
 
       <SpeechField value={speech} onCommit={onSpeechChange} onBlurCommit={onCommitHistory} />
-        </>
-      ) : null}
     </div>
   );
 }

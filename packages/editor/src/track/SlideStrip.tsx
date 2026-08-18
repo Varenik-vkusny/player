@@ -15,8 +15,19 @@
  *     отверг вариант с лупой ровно по этой причине, `planning.md` §14.11);
  *   — связь с дорожкой только по нажатию, наведение не двигает ничего.
  *
- * Дорожка (`TrackView`/`MarksLane`) этим компонентом не заменяется и не
+ * Дорожка (`TrackView`/`MarksLane`) этим модулем не заменяется и не
  * трогается: у ленты нет своего понятия времени, кроме подписи под ней.
+ *
+ * Разделена на три вида (Сессия 47, «одна полоса вместо трёх»):
+ * `SlideStripHead` — кнопка складывания, счётчик и кнопки буфера обмена,
+ * стоит в общей шапке нижней зоны (`Editor.tsx`, `.ed-zone-head`), ровно
+ * одна строка ВСЕГДА; `SlideStripNote` — строка причины под шапкой,
+ * рисуется ВСЕГДА, даже пустой; `SlideStripCards` — сами карточки
+ * и полоска положения, только когда лента раскрыта. Свёрнутость ленты
+ * живёт в `Editor.tsx` (`useState`, не в проекте — тот же приём и по той
+ * же причине, что у панели озвучки), потому что кнопка складывания стоит
+ * в шапке зоны, а карточки — отдельным блоком под дорожкой причины;
+ * без общего состояния наверху эти два места не смогли бы согласоваться.
  */
 import {
   useCallback,
@@ -33,22 +44,14 @@ import { ScenePreview, type Segment } from '@player/player';
 import { Button } from '../ui/index.js';
 import { markSeconds } from './marks.js';
 import { slideChangeSummary } from './slide-summary.js';
+import { secondsText } from '../timeText.js';
 
-export interface SlideStripProps {
-  /**
-   * Тема сцены. Миниатюра — тот же `ScenePreview`, что и большая сцена
-   * (инвариант №5), поэтому без темы карточки красились бы запасными
-   * значениями ссылок и расходились бы с холстом.
-   */
-  readonly theme: Theme;
-  readonly styles: readonly Style[];
+export interface SlideStripHeadProps {
   readonly slides: readonly Slide[];
   readonly words: readonly Word[];
-  readonly elements: readonly Element[];
   readonly currentSlideId: string;
-  readonly stageWidth: number;
-  readonly stageHeight: number;
-  readonly onSelectSlide: (id: string) => void;
+  readonly collapsed: boolean;
+  readonly onToggleCollapsed: () => void;
   readonly onDuplicate: () => void;
   readonly onCopy: () => void;
   readonly onCut: () => void;
@@ -71,6 +74,130 @@ export interface SlideStripProps {
   readonly pasteProblem: string | undefined;
 }
 
+/**
+ * Голова ленты: кнопка складывания, счётчик «N / M · сс с» и четыре кнопки
+ * буфера обмена. Возвращает фрагмент, не свой контейнер (тот же приём,
+ * что и у `ui/Section` и `AudioSourceHead`): встаёт на место среди соседей
+ * по строке общей шапки нижней зоны, не заводя собственной раскладки.
+ * Обязана остаться ровно в одну строку ВСЕГДА.
+ */
+export function SlideStripHead({
+  slides,
+  words,
+  currentSlideId,
+  collapsed,
+  onToggleCollapsed,
+  onDuplicate,
+  onCopy,
+  onCut,
+  onPaste,
+  cutProblem,
+  duplicateProblem,
+  pasteProblem,
+}: SlideStripHeadProps): ReactElement {
+  const currentIndex = slides.findIndex((slide) => slide.id === currentSlideId);
+  const currentSlide = currentIndex >= 0 ? slides[currentIndex] : undefined;
+  const counterText = currentSlide
+    ? `${currentIndex + 1} / ${slides.length} · ${secondsText(markSeconds(currentSlide.at, words))}`
+    : `– / ${slides.length}`;
+
+  return (
+    <>
+      {/* Кнопка складывания — текстовая, а не один значок, тем же приёмом
+          и по той же причине, что у панели озвучки: слово «Слайды» заодно
+          называет ленту, у которой своего заголовка не было вовсе. */}
+      <button
+        type="button"
+        className="ed-slide-strip-toggle"
+        data-testid="slide-strip-toggle"
+        aria-expanded={!collapsed}
+        onClick={onToggleCollapsed}
+      >
+        <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
+        <span>Слайды</span>
+      </button>
+      <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
+      <div className="ed-slide-strip-actions">
+        <Button
+          data-testid="slide-duplicate"
+          disabled={duplicateProblem !== undefined}
+          onClick={onDuplicate}
+        >
+          Дублировать
+        </Button>
+        <Button data-testid="slide-copy" onClick={onCopy}>
+          Копировать
+        </Button>
+        <Button
+          data-testid="slide-cut"
+          disabled={cutProblem !== undefined}
+          onClick={onCut}
+        >
+          Вырезать
+        </Button>
+        <Button
+          data-testid="slide-paste"
+          disabled={pasteProblem !== undefined}
+          onClick={onPaste}
+        >
+          Вставить
+        </Button>
+      </div>
+    </>
+  );
+}
+
+export interface SlideStripNoteProps {
+  readonly cutProblem: string | undefined;
+  readonly duplicateProblem: string | undefined;
+  readonly pasteProblem: string | undefined;
+}
+
+/**
+ * Строка причины под шапкой зоны — рисуется ВСЕГДА, даже пустой. Появляйся
+ * она только при наличии причины, высота головы менялась бы при каждой
+ * перемотке головки, и сцена под руками автора прыгала бы. `min-height`
+ * в стилях держит место.
+ *
+ * Свёрнутая лента отнимает МЕСТО, а не ВОЗМОЖНОСТИ: голова со счётчиком
+ * и кнопками буфера остаётся видна и при свёрнутых карточках — спрячь мы
+ * эту строку, автор видел бы погашенные кнопки без объяснения (`screens.md`
+ * §6).
+ */
+export function SlideStripNote({ cutProblem, duplicateProblem, pasteProblem }: SlideStripNoteProps): ReactElement {
+  // Одна строка на все причины разом: кнопки могут быть недоступны
+  // ОДНОВРЕМЕННО (головка на первом слайде + пустой буфер), и автор обязан
+  // увидеть обе, а не только последнюю посчитанную (wordAnchorProblem,
+  // track/marks.ts — тот же принцип: объяснить, а не погасить молча).
+  //
+  // Повторы убираются `Set`, и это не украшательство: при непустом буфере
+  // `duplicateProblem` и `pasteProblem` — ОДНА И ТА ЖЕ причина про место
+  // головки, и без свёртки автор читал бы «на этой секунде уже стоит слайд»
+  // дважды подряд.
+  const clipboardNote = [...new Set(
+    [cutProblem, duplicateProblem, pasteProblem].filter((problem): problem is string => problem !== undefined),
+  )].join(' · ');
+
+  return <span className="ed-slide-strip-note" data-testid="slide-clipboard-note">{clipboardNote}</span>;
+}
+
+export interface SlideStripCardsProps {
+  /**
+   * Тема сцены. Миниатюра — тот же `ScenePreview`, что и большая сцена
+   * (инвариант №5), поэтому без темы карточки красились бы запасными
+   * значениями ссылок и расходились бы с холстом.
+   */
+  readonly theme: Theme;
+  readonly styles: readonly Style[];
+  readonly slides: readonly Slide[];
+  readonly words: readonly Word[];
+  readonly elements: readonly Element[];
+  readonly currentSlideId: string;
+  readonly stageWidth: number;
+  readonly stageHeight: number;
+  readonly onSelectSlide: (id: string) => void;
+}
+
 /** Метрики прокрутки — то, из чего строится полоска положения под лентой. */
 interface ScrollMetrics {
   readonly scrollLeft: number;
@@ -82,44 +209,27 @@ interface ScrollMetrics {
 
 const EMPTY_METRICS: ScrollMetrics = { scrollLeft: 0, scrollWidth: 0, clientWidth: 0, pickCenter: undefined };
 
-export function SlideStrip({
+/**
+ * Карточки ленты и полоска положения. Рисуется только когда лента раскрыта —
+ * вызывающий (`Editor.tsx`) решает это сам, монтируя и размонтируя
+ * компонент, а не пряча его внутри `display: none`. Монтирование заново
+ * и есть момент, когда лента обязана прокрутиться к текущему слайду и
+ * измерить себя — тот же эффект, что раньше срабатывал на смену `collapsed`
+ * в общем компоненте.
+ */
+export function SlideStripCards({
+  theme,
+  styles,
   slides,
   words,
   elements,
   currentSlideId,
-  theme,
-  styles,
   stageWidth,
   stageHeight,
   onSelectSlide,
-  onDuplicate,
-  onCopy,
-  onCut,
-  onPaste,
-  cutProblem,
-  duplicateProblem,
-  pasteProblem,
-}: SlideStripProps): ReactElement {
+}: SlideStripCardsProps): ReactElement {
   const stripRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState<ScrollMetrics>(EMPTY_METRICS);
-
-  /**
-   * Свёрнута ли лента. По умолчанию ДА — решение владельца 15.08.2026,
-   * принятое по замеру, а не по вкусу.
-   *
-   * Замер (`spikes/run-bottom-zone.mjs`, 15.08.2026): нижняя зона занимала
-   * 436 px при ЛЮБОМ размере окна, из них лента — 153, больше всех. При этом
-   * те же слайды уже есть полосой «Слайды» внутри дорожки, то есть автор
-   * видел их дважды и платил за это высотой сцены: на 1440×900 сцена
-   * показывалась в 26 % натуральной величины.
-   *
-   * Состояние живёт ЗДЕСЬ, а не в проекте, и это закон, а не удобство
-   * (`tracks.md` §2): «скрыто в редакторе» и «скрыто для зрителя» — разные
-   * вещи, которые выглядят одинаково. Попади это в проект — автор свернул бы
-   * ленту себе, а пропала бы она у зрителя. Тот же приём и по той же причине
-   * у панели озвучки (`AudioSourcePanel.tsx`).
-   */
-  const [collapsed, setCollapsed] = useState(true);
 
   /**
    * Нажатие ведёт головку; головка (через `currentSlideId` снаружи) ведёт
@@ -160,24 +270,20 @@ export function SlideStrip({
     // measure() читает готовую позицию сразу; полоска догонит анимацию
     // прокрутки сама через onScroll ниже, кадр за кадром.
     measure();
-    // `collapsed` в зависимостях — не формальность линтера. Пока лента
-    // свёрнута, `stripRef.current` пуст и эффект выходит первой строкой;
-    // без пересчёта на разворачивании автор, работавший на двенадцатом
-    // слайде, увидел бы ленту, прокрученную на первый, — и молча, потому
-    // что `currentSlideId` при этом не менялся.
+    // Компонент монтируется заново на каждое раскрытие ленты (`Editor.tsx`
+    // рисует его только когда лента раскрыта), поэтому этот эффект и так
+    // отрабатывает на разворачивание — то же самое, что раньше давала
+    // `collapsed` в зависимостях, когда лента жила в одном компоненте
+    // с головой. Без этого автор, работавший на двенадцатом слайде, увидел
+    // бы ленту, прокрученную на первый, — и молча, потому что
+    // `currentSlideId` при этом не менялся.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentSlideId, collapsed]);
+  }, [currentSlideId]);
 
   const handleSelect = useCallback((id: string) => {
     selectedFromWithin.current = true;
     onSelectSlide(id);
   }, [onSelectSlide]);
-
-  const currentIndex = slides.findIndex((slide) => slide.id === currentSlideId);
-  const currentSlide = currentIndex >= 0 ? slides[currentIndex] : undefined;
-  const counterText = currentSlide
-    ? `${currentIndex + 1} / ${slides.length} · ${markSeconds(currentSlide.at, words).toFixed(2)} с`
-    : `– / ${slides.length}`;
 
   const total = Math.max(1, metrics.scrollWidth);
   const view = metrics.clientWidth;
@@ -188,77 +294,8 @@ export function SlideStrip({
     : 0;
   const pickPct = total > 0 && metrics.pickCenter !== undefined ? (metrics.pickCenter / total) * 100 : undefined;
 
-  // Одна строка на все причины разом: кнопки могут быть недоступны
-  // ОДНОВРЕМЕННО (головка на первом слайде + пустой буфер), и автор обязан
-  // увидеть обе, а не только последнюю посчитанную (wordAnchorProblem,
-  // track/marks.ts — тот же принцип: объяснить, а не погасить молча).
-  //
-  // Повторы убираются `Set`, и это не украшательство: при непустом буфере
-  // `duplicateProblem` и `pasteProblem` — ОДНА И ТА ЖЕ причина про место
-  // головки, и без свёртки автор читал бы «на этой секунде уже стоит слайд»
-  // дважды подряд.
-  const clipboardNote = [...new Set(
-    [cutProblem, duplicateProblem, pasteProblem].filter((problem): problem is string => problem !== undefined),
-  )].join(' · ');
-
   return (
-    <div className="ed-slide-strip-wrap">
-      <div className="ed-slide-strip-head">
-        {/* Кнопка складывания — текстовая, а не один значок, тем же приёмом
-            и по той же причине, что у панели озвучки: слово «Слайды» заодно
-            называет ленту, у которой своего заголовка не было вовсе.
-            Стоит ПЕРВОЙ, чтобы у свёрнутой ленты строка начиналась с имени,
-            а не со счётчика. */}
-        <button
-          type="button"
-          className="ed-slide-strip-toggle"
-          data-testid="slide-strip-toggle"
-          aria-expanded={!collapsed}
-          onClick={() => setCollapsed((was) => !was)}
-        >
-          <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
-          <span>Слайды</span>
-        </button>
-        <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
-        <div className="ed-actions">
-          <Button
-            data-testid="slide-duplicate"
-            disabled={duplicateProblem !== undefined}
-            onClick={onDuplicate}
-          >
-            Дублировать
-          </Button>
-          <Button data-testid="slide-copy" onClick={onCopy}>
-            Копировать
-          </Button>
-          <Button
-            data-testid="slide-cut"
-            disabled={cutProblem !== undefined}
-            onClick={onCut}
-          >
-            Вырезать
-          </Button>
-          <Button
-            data-testid="slide-paste"
-            disabled={pasteProblem !== undefined}
-            onClick={onPaste}
-          >
-            Вставить
-          </Button>
-        </div>
-      </div>
-      {/* Своя строка, а не место в ряду кнопок, и рисуется ВСЕГДА — даже
-          пустой. Появляйся она только при наличии причины, высота головы
-          менялась бы при каждой перемотке головки, и сцена под руками
-          автора прыгала бы. `min-height` в стилях держит место. */}
-      <span className="ed-slide-strip-note" data-testid="slide-clipboard-note">{clipboardNote}</span>
-      {/* Сворачиваются ТОЛЬКО картинки и полоска положения. Голова со
-          счётчиком, кнопками буфера и подписью-причиной остаётся: спрячь
-          мы подпись, автор видел бы погашенные кнопки без объяснения —
-          ровно то, что запрещает `screens.md` §6. Свёрнутая лента отнимает
-          место, а не возможности. */}
-      {collapsed ? null : (
-      <>
+    <div className="ed-slide-strip-cards">
       <div
         className="ed-slide-strip"
         data-testid="slide-strip"
@@ -287,8 +324,6 @@ export function SlideStrip({
           <div className="ed-slide-strip-postick" style={{ left: `${pickPct}%` }} />
         ) : null}
       </div>
-      </>
-      )}
     </div>
   );
 }

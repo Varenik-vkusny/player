@@ -19,6 +19,7 @@ import type {
   Element, ElementState, Segment, Slide, TimeRef, TransitionDirection, Word,
 } from '@player/core';
 
+import { secondsText } from '../timeText.js';
 import { prefixOf } from './duplicate.js';
 import { freeId } from './elements.js';
 
@@ -524,17 +525,23 @@ export function pasteProblem(segment: Segment, at: TimeRef): string | undefined 
   const newSeconds = seconds(at, words);
 
   if (newSeconds <= 0) {
-    return `Начало главы занято: первый слайд обязан стоять на нуле (получено ${newSeconds.toFixed(3)} с)`;
+    return `Начало главы занято: первый слайд обязан стоять на нуле (получено ${secondsText(newSeconds)})`;
   }
 
   const hit = slideOnMark(segment, newSeconds, words);
   if (hit) {
     const hitSeconds = resolveTimeRef(hit.at, words);
-    return `На этой секунде уже стоит слайд «${hit.id}» (${hitSeconds.toFixed(3)} с)`;
+    // Слайд назван ВРЕМЕНЕМ, а не ключом. Прежде здесь стояло
+    // «уже стоит слайд «node-1-slide-1»» — идентификатор из схемы,
+    // которого автор не заводил и не может сопоставить ни с чем на экране.
+    // Имени у слайда нет вовсе (схема: id, at, transition, states),
+    // а время есть, и оно же написано на его чипе и на метке дорожки —
+    // то есть автор по нему слайд НАЙДЁТ. Охраняется authorText.test.ts.
+    return `На ${secondsText(hitSeconds)} уже стоит слайд`;
   }
 
   if (newSeconds > segment.audio.duration) {
-    return `За длиной дорожки: ${newSeconds.toFixed(3)} с при длине дорожки ${segment.audio.duration} с`;
+    return `За длиной дорожки: ${secondsText(newSeconds)} при длине дорожки ${secondsText(segment.audio.duration)}`;
   }
 
   return undefined;

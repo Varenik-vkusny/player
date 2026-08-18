@@ -18,6 +18,7 @@ import type { ReactElement } from 'react';
 
 import type { Slide, Word } from '@player/core';
 
+import { secondsText } from '../timeText.js';
 import { markSeconds } from '../track/marks.js';
 import { TRANSITION_INFO } from '../transitions.js';
 import { Button, Section } from '../ui/index.js';
@@ -38,9 +39,9 @@ export interface SlidePanelProps {
   cutProblem: (slideId: string) => string | undefined;
 }
 
-function formatSeconds(seconds: number): string {
-  return `${seconds.toFixed(2)} с`;
-}
+// Свой formatSeconds здесь был; он заменён общим `secondsText` (Сессия 47,
+// «одинаковые случаи пишутся одинаково»). Вид не изменился ни на символ —
+// это и была та запись, к которой сведены остальные.
 
 export function SlidePanel({
   slides,
@@ -70,7 +71,7 @@ export function SlidePanel({
                   data-testid={`slide-${slide.id}`}
                   onClick={() => onSelect(slide.id)}
                 >
-                  <span className="ed-slide-time">{formatSeconds(markSeconds(slide.at, words))}</span>
+                  <span className="ed-slide-time">{secondsText(markSeconds(slide.at, words))}</span>
                   <span className="ed-slide-transition">
                     {TRANSITION_INFO[slide.transition].label}
                   </span>
