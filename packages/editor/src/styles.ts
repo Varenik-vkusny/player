@@ -41,16 +41,25 @@ export const EDITOR_STYLES = `
                  и неверна для Сессии 21: монтаж рисует и головку, и метки,
                  и хвост, и выражает их через уже решённые роли. */
 .ed-root {
-  --ui-surface-base: #ffffff;
+  /* ЗЕМЛЯ — самый нижний из трёх уровней поверхности. До переноса облика
+     она и --ui-surface-panel были ОДНИМ И ТЕМ ЖЕ белым, разделённым
+     волосяной линией: глубины не было, и экран читался как один лист
+     бумаги в линейку. Значение утверждено владельцем 18.08.2026. */
+  --ui-surface-base: #e9edf2;
   --ui-surface-panel: #ffffff;
   --ui-surface-raised: #f2f3f5;
   --ui-surface-overlay: #ffffff;
   --ui-surface-placeholder: #c9ced6;
   --ui-field-bg: #f2f3f5;
-  /* Поле вокруг сцены. Единственная роль, оставшаяся ТЁМНОЙ при светлом
-     хроме, и это не недоделка: её значение связано с preview.html
-     инвариантом №5 — см. .ed-stage-host ниже. */
-  --ui-surface-canvas: #07090c;
+  /* Поле вокруг сцены — то, что автор видит ВОКРУГ листа. Светлое.
+     Инвариантом №5 НЕ связано: за буквами сцены лежит не оно,
+     а --ui-scene-backdrop на самом листе. См. .ed-stage-canvas ниже. */
+  --ui-surface-canvas: #d8dee6;
+  /* Подложка САМОГО ЛИСТА. Единственная роль, связанная с preview.html
+     инвариантом №5, и потому единственная оставшаяся тёмной. Меняется
+     только вместе с #stage-host в apps/playground/preview.html.
+     См. .ed-stage-canvas ниже. */
+  --ui-scene-backdrop: #07090c;
 
   --ui-content-fg: #0e1318;
   --ui-content-fg-secondary: #5b6472;
@@ -102,6 +111,13 @@ export const EDITOR_STYLES = `
      его собственной границы. Кольцо означает выделение, а всплывшее меню
      ничего не выделяет. */
   --ui-shadow-overlay: 0 6px 20px #0e131826;
+  /* Тень ПАНЕЛИ-КАРТОЧКИ. Едва заметная намеренно: она отделяет белый
+     лист от земли, а не изображает высоту. Крупная тень на четырёх
+     панелях сразу превращает рабочее окно в набор всплывающих окон. */
+  --ui-shadow-panel: 0 1px 2px #0e131812, 0 1px 0 #0e13180a;
+  /* Тень САМОГО ЛИСТА СЦЕНЫ. Здесь наоборот крупная: лист один,
+     и он обязан читаться как лежащий НАД подложкой холста. */
+  --ui-shadow-sheet: 0 10px 30px #0e13182e, 0 2px 6px #0e131814;
   --ui-motion-fast: 0.18s;
   --ui-motion-base: 0.22s;
 
@@ -245,6 +261,8 @@ export const EDITOR_STYLES = `
    обведения и оверлея (они внутри и едут вместе с прокруткой). */
 .ed-stage-canvas {
   position: relative;
+  background-color: var(--ui-scene-backdrop);
+  box-shadow: var(--ui-shadow-sheet);
 }
 
 /* Строка под холстом, в которой живёт панель масштаба. Так же, как в Canva:
@@ -331,6 +349,47 @@ export const EDITOR_STYLES = `
 /* Колонка «полоса сверху, холст под ней». min-height: 0 обязателен, иначе
    содержимое не даёт грид-ячейке сжаться и дорожка уезжает за край окна —
    та же причина, что у .ed-main. */
+/* ЧЕТЫРЕ ЛИСТА СЕРЕДИНЫ — одним правилом, а не четырьмя похожими.
+   Правило одно намеренно: разойдись скругление или тень хотя бы на
+   единицу, разнобой заметит глаз, но не поймает ни один тест.
+   overflow: hidden обязателен вместе со скруглением — без него
+   содержимое рисуется поверх срезанного угла, и карточка выглядит
+   надколотой. */
+.ed-rail,
+.ed-catalog,
+.ed-stage-cell,
+.ed-side {
+  border-radius: var(--ui-radius-l);
+  box-shadow: var(--ui-shadow-panel);
+  overflow: hidden;
+}
+
+/* Боковые панели отступают и сверху-снизу, КОЛОНКА СЦЕНЫ — НЕТ, и это
+   не недоделка облика, а замер.
+
+   Первая попытка дала середине padding: 10px 5px, то есть отняла
+   у холста 20 px высоты. Прогон track-zone-budget и branches-zone-budget
+   показал: на окне 660 px с открытым видом «Ветки» холст падает
+   до 161 px при гарантированном полу 180 — до правки там был 181.
+   То есть у сцены по высоте оставался ОДИН пиксель запаса, и любой
+   вертикальный отступ съедает пол гарантии «автор не остаётся
+   без холста».
+
+   Ширина такой стеснённости не знает: по горизонтали 1fr сцены
+   отдаёт 10 px без последствий. Поэтому зазор взят только там,
+   где он есть, — и парение листа сцены даёт не поле вокруг колонки,
+   а собственный зазор холста (STAGE_GAP_X/Y) со светлой подложкой
+   и --ui-shadow-sheet. */
+.ed-rail,
+.ed-catalog,
+.ed-side {
+  margin: 10px 5px;
+}
+
+.ed-stage-cell {
+  margin: 0 5px;
+}
+
 .ed-stage-cell {
   display: flex;
   flex-direction: column;
@@ -800,6 +859,17 @@ export const EDITOR_STYLES = `
     minmax(0, var(--ed-right-w));
   min-height: 0;
   min-width: 0;
+  /* Просвет земли по краям середины. Половина зазора здесь, половина —
+     полями самих панелей ниже, поэтому у края окна выходит те же 10px,
+     что и между двумя панелями.
+
+     ПОЧЕМУ НЕ grid gap: при свёрнутом каталоге Editor.tsx обнуляет
+     --ed-catalog-w и --ed-catalog-splitter-w инлайном, но gap между
+     обнулёнными колонками остался бы на месте — 20 px пустой
+     полосы-призрака ровно там, где автор убрал панель. Поля панелей
+     такого следа не оставляют: свёрнутая панель не рендерится вовсе,
+     а её место занимает безымянный узел, у которого полей нет. */
+  padding: 0 5px;
   border-bottom: 1px solid var(--ui-line);
 }
 
@@ -815,7 +885,6 @@ export const EDITOR_STYLES = `
 .ed-rail {
   box-sizing: border-box;
   background: var(--ui-surface-panel);
-  border-right: 1px solid var(--ui-line);
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -881,7 +950,6 @@ export const EDITOR_STYLES = `
    и .ed-side, задокументирован там же). */
 .ed-catalog {
   background: var(--ui-surface-panel);
-  border-right: 1px solid var(--ui-line);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1011,7 +1079,6 @@ export const EDITOR_STYLES = `
   gap: 10px;
   padding: 12px 14px;
   background: var(--ui-surface-panel);
-  border-left: 1px solid var(--ui-line);
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
