@@ -1,0 +1,800 @@
+{
+  "blockA": {
+    "demo": {
+      "totalNodes": 470,
+      "edNodes": 435,
+      "vertical": [
+        {
+          "classes": [
+            "ed-audio-input"
+          ],
+          "tag": "INPUT",
+          "testid": "audio-file-input",
+          "id": null,
+          "clientHeight": 1,
+          "scrollHeight": 21,
+          "visiblePct": 4.8,
+          "overflowY": "clip",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-words-body"
+          ],
+          "tag": "P",
+          "testid": "track-words",
+          "id": null,
+          "clientHeight": 28,
+          "scrollHeight": 80,
+          "visiblePct": 35,
+          "overflowY": "auto",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-side"
+          ],
+          "tag": "ASIDE",
+          "testid": null,
+          "id": null,
+          "clientHeight": 364,
+          "scrollHeight": 954,
+          "visiblePct": 38.2,
+          "overflowY": "auto",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-slide-list"
+          ],
+          "tag": "UL",
+          "testid": null,
+          "id": null,
+          "clientHeight": 180,
+          "scrollHeight": 448,
+          "visiblePct": 40.2,
+          "overflowY": "auto",
+          "flex": "0 0 auto"
+        },
+        {
+          "classes": [
+            "ed-lane-head-title"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 13,
+          "scrollHeight": 17,
+          "visiblePct": 76.5,
+          "overflowY": "hidden",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-lane-head-note"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 13,
+          "scrollHeight": 17,
+          "visiblePct": 76.5,
+          "overflowY": "hidden",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-elements-list"
+          ],
+          "tag": "UL",
+          "testid": null,
+          "id": null,
+          "clientHeight": 180,
+          "scrollHeight": 208,
+          "visiblePct": 86.5,
+          "overflowY": "auto",
+          "flex": "0 0 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        }
+      ],
+      "horizontal": [
+        {
+          "classes": [
+            "ed-audio-input"
+          ],
+          "tag": "INPUT",
+          "testid": "audio-file-input",
+          "id": null,
+          "clientWidth": 1,
+          "scrollWidth": 176,
+          "visiblePct": 0.6,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": ""
+        },
+        {
+          "classes": [
+            "ed-muted"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 6,
+          "scrollWidth": 168,
+          "visiblePct": 3.6,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "7 элементов · 2 остановки"
+        },
+        {
+          "classes": [
+            "ed-selection"
+          ],
+          "tag": "SPAN",
+          "testid": "selection-readout",
+          "id": null,
+          "clientWidth": 5,
+          "scrollWidth": 131,
+          "visiblePct": 3.8,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "ничего не выделено"
+        },
+        {
+          "classes": [
+            "ed-element-summary"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 123,
+          "scrollWidth": 251,
+          "visiblePct": 49,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "Возобновление — с той же секунды. Перем…"
+        },
+        {
+          "classes": [
+            "ed-element-summary"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 133,
+          "scrollWidth": 239,
+          "visiblePct": 55.6,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "Звук замирает, картинка ждёт, и внимани…"
+        },
+        {
+          "classes": [
+            "ed-element-summary"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 135,
+          "scrollWidth": 214,
+          "visiblePct": 63.1,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "Объяснение, которое останавливается"
+        },
+        {
+          "classes": [
+            "ed-element-summary"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 123,
+          "scrollWidth": 162,
+          "visiblePct": 75.9,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "фигура, фон по теме: Плашка"
+        },
+        {
+          "classes": [
+            "ed-element-summary"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 112,
+          "scrollWidth": 116,
+          "visiblePct": 96.6,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "фигура, фон #e4572e"
+        }
+      ]
+    },
+    "probeControl": {
+      "injected": true,
+      "probeSeen": true,
+      "probeGoneNow": true
+    },
+    "two-gates": {
+      "totalNodes": 352,
+      "edNodes": 298,
+      "vertical": [
+        {
+          "classes": [
+            "ed-audio-input"
+          ],
+          "tag": "INPUT",
+          "testid": "audio-file-input",
+          "id": null,
+          "clientHeight": 1,
+          "scrollHeight": 21,
+          "visiblePct": 4.8,
+          "overflowY": "clip",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-side"
+          ],
+          "tag": "ASIDE",
+          "testid": null,
+          "id": null,
+          "clientHeight": 364,
+          "scrollHeight": 2220,
+          "visiblePct": 16.4,
+          "overflowY": "auto",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-lane-head-title"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 13,
+          "scrollHeight": 17,
+          "visiblePct": 76.5,
+          "overflowY": "hidden",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-lane-head-note"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 13,
+          "scrollHeight": 17,
+          "visiblePct": 76.5,
+          "overflowY": "hidden",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        },
+        {
+          "classes": [
+            "ed-rail-glyph"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientHeight": 20,
+          "scrollHeight": 23,
+          "visiblePct": 87,
+          "overflowY": "visible",
+          "flex": "0 1 auto"
+        }
+      ],
+      "horizontal": [
+        {
+          "classes": [
+            "ed-audio-input"
+          ],
+          "tag": "INPUT",
+          "testid": "audio-file-input",
+          "id": null,
+          "clientWidth": 1,
+          "scrollWidth": 176,
+          "visiblePct": 0.6,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": ""
+        },
+        {
+          "classes": [
+            "ed-selection"
+          ],
+          "tag": "SPAN",
+          "testid": "selection-readout",
+          "id": null,
+          "clientWidth": 45,
+          "scrollWidth": 131,
+          "visiblePct": 34.4,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "ничего не выделено"
+        },
+        {
+          "classes": [
+            "ed-muted"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 55,
+          "scrollWidth": 159,
+          "visiblePct": 34.6,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "2 элемента · 2 остановки"
+        },
+        {
+          "classes": [
+            "ed-element-summary"
+          ],
+          "tag": "SPAN",
+          "testid": null,
+          "id": null,
+          "clientWidth": 109,
+          "scrollWidth": 167,
+          "visiblePct": 65.3,
+          "textOverflow": "ellipsis",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "Что является часами проекта?"
+        },
+        {
+          "classes": [
+            "ed-insp-input"
+          ],
+          "tag": "INPUT",
+          "testid": null,
+          "id": "_r_3_",
+          "clientWidth": 200,
+          "scrollWidth": 209,
+          "visiblePct": 95.7,
+          "textOverflow": "clip",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": ""
+        },
+        {
+          "classes": [
+            "ed-lane-scroll"
+          ],
+          "tag": "DIV",
+          "testid": null,
+          "id": null,
+          "clientWidth": 1128,
+          "scrollWidth": 1167,
+          "visiblePct": 96.7,
+          "textOverflow": "clip",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "00:00.000:02.000:04.000:06.000:08.000:10.000:12.000:14.000:1"
+        },
+        {
+          "classes": [
+            "ed-lane-bodies"
+          ],
+          "tag": "DIV",
+          "testid": null,
+          "id": null,
+          "clientWidth": 1128,
+          "scrollWidth": 1167,
+          "visiblePct": 96.7,
+          "textOverflow": "clip",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "00:00.000:02.000:04.000:06.000:08.000:10.000:12.000:14.000:1"
+        },
+        {
+          "classes": [
+            "ed-ruler-body"
+          ],
+          "tag": "DIV",
+          "testid": "track-ruler",
+          "id": null,
+          "clientWidth": 1128,
+          "scrollWidth": 1167,
+          "visiblePct": 96.7,
+          "textOverflow": "clip",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "00:00.000:02.000:04.000:06.000:08.000:10.000:12.000:14.000:1"
+        },
+        {
+          "classes": [
+            "ed-ticks"
+          ],
+          "tag": "DIV",
+          "testid": null,
+          "id": null,
+          "clientWidth": 1128,
+          "scrollWidth": 1167,
+          "visiblePct": 96.7,
+          "textOverflow": "clip",
+          "hasTitle": false,
+          "hasAriaLabel": false,
+          "titleText": null,
+          "ariaLabelText": null,
+          "text": "00:00.000:02.000:04.000:06.000:08.000:10.000:12.000:14.000:1"
+        }
+      ]
+    }
+  },
+  "blockBDemo": [
+    {
+      "desc": "перейти на слайд node-1-slide-3 (там title видим)",
+      "ok": true,
+      "detail": "кнопка найдена=true"
+    },
+    {
+      "desc": "выделить элемент title",
+      "ok": true,
+      "detail": "selection-readout называет id=\"title\""
+    },
+    {
+      "desc": "подвинуть мышью на 60×40",
+      "ok": true,
+      "detail": "экран Δ60.0×40.0 при заказанных 60×40; проект Δ279.31×186.20999999999998"
+    },
+    {
+      "desc": "ресайз за se на 40×30 экранных px",
+      "ok": true,
+      "detail": "Δwidth=200.69000000000005, Δheight=139.57999999999998 в единицах проекта"
+    },
+    {
+      "desc": "поворот за rotate",
+      "ok": true,
+      "detail": "elementFromPoint(центр ручки)=\"ed-grip.ed-grip-rotate\", Δrotation=44.85°"
+    },
+    {
+      "desc": "добавить слайд",
+      "ok": true,
+      "detail": "слайдов было 15, стало 16"
+    },
+    {
+      "desc": "перезагрузка (?fixture=demo): содержимое сохранилось или откатилось к пристинной фикстуре?",
+      "ok": true,
+      "detail": "слайдов до reload=16, после=15 (ОТКАТИЛОСЬ к пристинной фикстуре — ожидаемо по коду editor.ts: «явная просьба сильнее сохранённого»); title на node-1-slide-3 после reload: x=140, y=130, width=1300, height=180, rotation=0"
+    }
+  ],
+  "blockBTwoGates": [
+    {
+      "desc": "щёлкнуть остановку",
+      "ok": true,
+      "detail": "mark-panel visible=true, .ed-mark-gate найдено 2"
+    },
+    {
+      "desc": "сделать развилкой (gate-split)",
+      "ok": true,
+      "detail": "сегментов было 1, стало 5"
+    },
+    {
+      "desc": "переключиться в «Ветки»",
+      "ok": true,
+      "detail": "branches-view visible=true"
+    },
+    {
+      "desc": "проехать по дереву (drag средней кнопкой)",
+      "ok": true,
+      "detail": "transform было \"scale(0.978873) translate(230.813px, 24.518px)\", стало \"scale(0.978873) translate(169.518px, -6.1295px)\""
+    },
+    {
+      "desc": "вернуться в «Дорожки»",
+      "ok": true,
+      "detail": ".ed-transport visible=true"
+    },
+    {
+      "desc": "перезагрузка (?fixture=two-gates): развилка сохранилась или откатилась?",
+      "ok": true,
+      "detail": "сегментов до reload=5, после=1 (ОТКАТИЛОСЬ к пристинной фикстуре — ожидаемо, «явная просьба сильнее сохранённого»)"
+    }
+  ],
+  "blockC": {
+    "C1": {
+      "handleExists": true,
+      "widthAfterMin": 260,
+      "widthAfterMax": 560,
+      "stageWidthBefore": 376,
+      "stageWidthAfterCollapse": 942,
+      "catalogGoneAfterCollapse": true,
+      "catalogGoneAfterReload": true,
+      "localStorageRaw": "{\"catalogCollapsed\":true,\"catalogWidth\":560,\"sideCollapsed\":false,\"sideWidth\":260}"
+    },
+    "C2": {
+      "controlHandleExists": true,
+      "rightHandleExists": true,
+      "widthAfterMin": 200,
+      "widthAfterMax": 420
+    },
+    "C3": {
+      "heightDefault": 306,
+      "heightAfterUp": 306,
+      "heightAfterDown": 106,
+      "collapsedVisible": true,
+      "heightSetInTracks": 224,
+      "setCollapsed": false,
+      "heightInBranches": 390,
+      "heightBackInTracks": 306,
+      "heightAfterReload": 306
+    },
+    "C4": {
+      "options": [
+        {
+          "value": "fit",
+          "label": "Вписать (21 %)"
+        },
+        {
+          "value": "0.1",
+          "label": "10 %"
+        },
+        {
+          "value": "0.25",
+          "label": "25 %"
+        },
+        {
+          "value": "0.5",
+          "label": "50 %"
+        },
+        {
+          "value": "0.75",
+          "label": "75 %"
+        },
+        {
+          "value": "1",
+          "label": "100 %"
+        },
+        {
+          "value": "1.25",
+          "label": "125 %"
+        },
+        {
+          "value": "2",
+          "label": "200 %"
+        },
+        {
+          "value": "3",
+          "label": "300 %"
+        }
+      ]
+    },
+    "C5": {
+      "zoomStart": "55 %",
+      "zoomMax": "400 %",
+      "zoomMin": "5 %"
+    },
+    "C6": {
+      "elementsBefore": "true",
+      "slidesBefore": "true",
+      "chaptersBefore": "true",
+      "elementsAfter": "false",
+      "slidesAfter": "false",
+      "chaptersAfter": "false",
+      "stripToggleBefore": "false",
+      "stripToggleAfter": "true",
+      "elementsAfterReload": "true",
+      "stripAfterReload": "false"
+    }
+  },
+  "blockD": {
+    "D1": {
+      "stripOpenControl": "true",
+      "gateCount": 2,
+      "markPanelMetrics": {
+        "clientHeight": 1427,
+        "scrollHeight": 1427
+      }
+    },
+    "D2": {
+      "collapsedControl": true,
+      "propbarMetrics": {
+        "clientWidth": 942,
+        "scrollWidth": 942,
+        "fieldCount": 5,
+        "fieldsFullyBeyondEdge": 0
+      }
+    },
+    "D3": {
+      "tracksControl": "true",
+      "heightTracks": 264,
+      "branchesControl": "true",
+      "heightBranches": 180
+    },
+    "D4": {
+      "before": 954,
+      "after": 364
+    }
+  },
+  "contextCount": 15,
+  "stepCount": 13,
+  "errors": []
+}

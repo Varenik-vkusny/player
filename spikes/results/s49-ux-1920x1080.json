@@ -1,0 +1,738 @@
+{
+  "contextsOpened": 13,
+  "stepsRun": 24,
+  "totalErrors": 0,
+  "blockA": {
+    "demo": {
+      "fixture": "demo",
+      "gateClick": null,
+      "scan": {
+        "total": 470,
+        "edCount": 435,
+        "vertical": [
+          {
+            "cls": "ed-audio-input",
+            "tag": "input",
+            "testid": "audio-file-input",
+            "id": null,
+            "clientHeight": 1,
+            "scrollHeight": 21,
+            "visiblePct": 4.8,
+            "overflowY": "clip",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-slide-list",
+            "tag": "ul",
+            "testid": null,
+            "id": null,
+            "clientHeight": 180,
+            "scrollHeight": 448,
+            "visiblePct": 40.2,
+            "overflowY": "auto",
+            "flex": "0 0 auto"
+          },
+          {
+            "cls": "ed-words-body",
+            "tag": "p",
+            "testid": "track-words",
+            "id": null,
+            "clientHeight": 28,
+            "scrollHeight": 60,
+            "visiblePct": 46.7,
+            "overflowY": "auto",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-side",
+            "tag": "aside",
+            "testid": null,
+            "id": null,
+            "clientHeight": 724,
+            "scrollHeight": 954,
+            "visiblePct": 75.9,
+            "overflowY": "auto",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-lane-head-title",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 13,
+            "scrollHeight": 17,
+            "visiblePct": 76.5,
+            "overflowY": "hidden",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-lane-head-note",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 13,
+            "scrollHeight": 17,
+            "visiblePct": 76.5,
+            "overflowY": "hidden",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-elements-list",
+            "tag": "ul",
+            "testid": null,
+            "id": null,
+            "clientHeight": 180,
+            "scrollHeight": 208,
+            "visiblePct": 86.5,
+            "overflowY": "auto",
+            "flex": "0 0 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          }
+        ],
+        "horizontal": [
+          {
+            "cls": "ed-audio-input",
+            "tag": "input",
+            "testid": "audio-file-input",
+            "id": null,
+            "clientWidth": 1,
+            "scrollWidth": 176,
+            "visiblePct": 0.6,
+            "overflowX": "clip",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-element-summary",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientWidth": 123,
+            "scrollWidth": 251,
+            "visiblePct": 49,
+            "overflowX": "hidden",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-element-summary",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientWidth": 133,
+            "scrollWidth": 239,
+            "visiblePct": 55.6,
+            "overflowX": "hidden",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-element-summary",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientWidth": 135,
+            "scrollWidth": 214,
+            "visiblePct": 63.1,
+            "overflowX": "hidden",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-element-summary",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientWidth": 123,
+            "scrollWidth": 162,
+            "visiblePct": 75.9,
+            "overflowX": "hidden",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-element-summary",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientWidth": 112,
+            "scrollWidth": 116,
+            "visiblePct": 96.6,
+            "overflowX": "hidden",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          }
+        ]
+      },
+      "control": null,
+      "errors": []
+    },
+    "twoGates": {
+      "fixture": "two-gates",
+      "gateClick": "ok: mark-panel появилась",
+      "scan": {
+        "total": 352,
+        "edCount": 298,
+        "vertical": [
+          {
+            "cls": "ed-audio-input",
+            "tag": "input",
+            "testid": "audio-file-input",
+            "id": null,
+            "clientHeight": 1,
+            "scrollHeight": 21,
+            "visiblePct": 4.8,
+            "overflowY": "clip",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-side",
+            "tag": "aside",
+            "testid": null,
+            "id": null,
+            "clientHeight": 724,
+            "scrollHeight": 2220,
+            "visiblePct": 32.6,
+            "overflowY": "auto",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-lane-head-title",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 13,
+            "scrollHeight": 17,
+            "visiblePct": 76.5,
+            "overflowY": "hidden",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-lane-head-note",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 13,
+            "scrollHeight": 17,
+            "visiblePct": 76.5,
+            "overflowY": "hidden",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          },
+          {
+            "cls": "ed-rail-glyph",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientHeight": 20,
+            "scrollHeight": 23,
+            "visiblePct": 87,
+            "overflowY": "visible",
+            "flex": "0 1 auto"
+          }
+        ],
+        "horizontal": [
+          {
+            "cls": "ed-audio-input",
+            "tag": "input",
+            "testid": "audio-file-input",
+            "id": null,
+            "clientWidth": 1,
+            "scrollWidth": 176,
+            "visiblePct": 0.6,
+            "overflowX": "clip",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-element-summary",
+            "tag": "span",
+            "testid": null,
+            "id": null,
+            "clientWidth": 109,
+            "scrollWidth": 167,
+            "visiblePct": 65.3,
+            "overflowX": "hidden",
+            "textOverflow": "ellipsis",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-insp-input",
+            "tag": "input",
+            "testid": null,
+            "id": "_r_3_",
+            "clientWidth": 200,
+            "scrollWidth": 209,
+            "visiblePct": 95.7,
+            "overflowX": "clip",
+            "textOverflow": "clip",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-lane-scroll",
+            "tag": "div",
+            "testid": null,
+            "id": null,
+            "clientWidth": 1768,
+            "scrollWidth": 1807,
+            "visiblePct": 97.8,
+            "overflowX": "auto",
+            "textOverflow": "clip",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-lane-bodies",
+            "tag": "div",
+            "testid": null,
+            "id": null,
+            "clientWidth": 1768,
+            "scrollWidth": 1807,
+            "visiblePct": 97.8,
+            "overflowX": "visible",
+            "textOverflow": "clip",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-ruler-body",
+            "tag": "div",
+            "testid": "track-ruler",
+            "id": null,
+            "clientWidth": 1768,
+            "scrollWidth": 1807,
+            "visiblePct": 97.8,
+            "overflowX": "visible",
+            "textOverflow": "clip",
+            "title": null,
+            "ariaLabel": null
+          },
+          {
+            "cls": "ed-ticks",
+            "tag": "div",
+            "testid": null,
+            "id": null,
+            "clientWidth": 1768,
+            "scrollWidth": 1807,
+            "visiblePct": 97.8,
+            "overflowX": "visible",
+            "textOverflow": "clip",
+            "title": null,
+            "ariaLabel": null
+          }
+        ]
+      },
+      "control": null,
+      "errors": []
+    }
+  },
+  "blockB": {
+    "demo": {
+      "fixture": "demo",
+      "steps": [
+        {
+          "name": "масштаб холста — читаем «как есть» (Вписать)",
+          "ok": true,
+          "detail": "zoom-select value=fit, фактический масштаб=0.5481481552124023",
+          "newErrors": []
+        },
+        {
+          "name": "перейти на слайд, где виден элемент кроме фона",
+          "ok": true,
+          "detail": "слайд node-1-slide-3, видны: [title]",
+          "newErrors": []
+        },
+        {
+          "name": "элементы фикстуры найдены и один выделен кликом",
+          "ok": true,
+          "detail": "ids=[bg, title, accent, lead, card, dot, footer], кликабельным оказался=title",
+          "newErrors": []
+        },
+        {
+          "name": "после клика видна ручка ресайза se",
+          "ok": true,
+          "detail": "data-grip=\"se\" виден=true",
+          "newErrors": []
+        },
+        {
+          "name": "подвинуть мышью на 60×40",
+          "ok": true,
+          "detail": "заказано 60×40, вышло 60.0×40.0 (масштаб холста 100%)",
+          "newErrors": []
+        },
+        {
+          "name": "изменить размер за data-grip=\"se\" на 40×30",
+          "ok": true,
+          "detail": "заказано +40×+30, вышло 40.0×30.0",
+          "newErrors": []
+        },
+        {
+          "name": "ручка rotate достижима (elementFromPoint)",
+          "ok": true,
+          "detail": "elementFromPoint в центре ручки отдал: rotate",
+          "newErrors": []
+        },
+        {
+          "name": "повернуть за ручку rotate",
+          "ok": true,
+          "detail": "угол 0.0° → 38.5° (Δ=38.5°)",
+          "newErrors": []
+        },
+        {
+          "name": "добавить слайд",
+          "ok": true,
+          "detail": "слайдов было 15, стало 16",
+          "newErrors": []
+        },
+        {
+          "name": "свернуть каталог (для проверки хром-персистентности)",
+          "ok": true,
+          "detail": ".ed-catalog отсутствует в DOM: true",
+          "newErrors": []
+        },
+        {
+          "name": "перезагрузить страницу",
+          "ok": true,
+          "detail": "reload завершён, data-ready=1",
+          "newErrors": []
+        },
+        {
+          "name": "слайд после перезагрузки (фикстура ?fixture= перечитывается заново — ОЖИДАЕМО не сохраняется)",
+          "ok": false,
+          "detail": "ожидали (если бы сохранялось) 16, реально после reload 15",
+          "newErrors": []
+        },
+        {
+          "name": "сворот каталога пережил перезагрузку (это отдельный канал — localStorage хрома, не проект)",
+          "ok": true,
+          "detail": ".ed-catalog отсутствует после reload: true",
+          "newErrors": []
+        }
+      ]
+    },
+    "gate": {
+      "fixture": "two-gates",
+      "steps": [
+        {
+          "name": "остановки фикстуры найдены",
+          "ok": true,
+          "detail": "ids=[gate-choice, gate-input]",
+          "newErrors": []
+        },
+        {
+          "name": "щёлкнуть остановку → панель метки",
+          "ok": true,
+          "detail": "mark-gate-gate-choice → mark-panel видна",
+          "newErrors": []
+        },
+        {
+          "name": "сменить тип остановки на «Развилка»",
+          "ok": true,
+          "detail": "значение после выбора: fork",
+          "newErrors": []
+        },
+        {
+          "name": "сделать развилкой",
+          "ok": true,
+          "detail": "сегментов было 1, стало 5",
+          "newErrors": []
+        },
+        {
+          "name": "переключиться в «Ветки»",
+          "ok": true,
+          "detail": "branches-view видна=true",
+          "newErrors": []
+        },
+        {
+          "name": "проехать по дереву (панорама средней кнопкой)",
+          "ok": true,
+          "detail": "жест средней кнопкой выполнен без исключения (см. errors для этого шага)",
+          "newErrors": []
+        },
+        {
+          "name": "масштаб дерева меняется колесом (Ctrl+wheel = zoom)",
+          "ok": true,
+          "detail": "масштаб дерева: 155 % → 400 %",
+          "newErrors": []
+        },
+        {
+          "name": "вернуться в «Дорожки»",
+          "ok": true,
+          "detail": "marks-lane видна=true",
+          "newErrors": []
+        },
+        {
+          "name": "перезагрузить страницу",
+          "ok": true,
+          "detail": "reload завершён",
+          "newErrors": []
+        },
+        {
+          "name": "развилка после перезагрузки (фикстура перечитывается заново — ОЖИДАЕМО)",
+          "ok": false,
+          "detail": "ожидали (если бы сохранялось) 5, реально 1",
+          "newErrors": []
+        },
+        {
+          "name": "вид после перезагрузки — снова «Дорожки» (bottomView не в localStorage, это ожидаемо)",
+          "ok": true,
+          "detail": "aria-pressed(view-tracks)=true",
+          "newErrors": []
+        }
+      ]
+    }
+  },
+  "blockC": {
+    "c1": {
+      "widthDefault": 350,
+      "splitterFound": true,
+      "widthAfterDragFarLeft": 260,
+      "widthAfterDragFarRight": 560,
+      "collapsedGoneFromDom": true,
+      "collapsedPersistedAfterReload": true
+    },
+    "c2": {
+      "controlMethodOnKnownSplitter": true,
+      "sideSplitterFound": true,
+      "sideSplitterBox": {
+        "x": 1654,
+        "y": 49,
+        "width": 6,
+        "height": 724
+      },
+      "collapseSideButtonFound": true
+    },
+    "c3": {
+      "heightDefault": 250,
+      "handleFound": true,
+      "heightAfterDragUpFar": 250,
+      "collapsedAfterDragDownFar": true,
+      "heightAfterDragDownFar": null,
+      "customDragDelta60": {
+        "before": 168,
+        "after": 226,
+        "delta": 58
+      },
+      "heightAfterReload": 250,
+      "separateHeights": {
+        "heightTracksBeforeSwitch": 250,
+        "branchesZoneHeight": 594,
+        "heightTracksAfterSwitchBack": 250
+      }
+    },
+    "c4": {
+      "options": [
+        {
+          "value": "fit",
+          "label": "Вписать (55 %)"
+        },
+        {
+          "value": "0.1",
+          "label": "10 %"
+        },
+        {
+          "value": "0.25",
+          "label": "25 %"
+        },
+        {
+          "value": "0.5",
+          "label": "50 %"
+        },
+        {
+          "value": "0.75",
+          "label": "75 %"
+        },
+        {
+          "value": "1",
+          "label": "100 %"
+        },
+        {
+          "value": "1.25",
+          "label": "125 %"
+        },
+        {
+          "value": "2",
+          "label": "200 %"
+        },
+        {
+          "value": "3",
+          "label": "300 %"
+        }
+      ],
+      "fitScaleAt1920x1080": 0.5481481552124023
+    },
+    "c5": {
+      "initial": "170 %",
+      "maxReached": "400 %",
+      "minReached": "5 %"
+    },
+    "c6": {
+      "sideScrollHeightDefault": 954,
+      "sideScrollHeightAfterCollapseElements": 766,
+      "elementsSectionExpandedAfterReload": "true",
+      "stripFound": true,
+      "stripExpandedInitially": "false",
+      "stripExpandedAfterToggleAndReload": "false"
+    }
+  },
+  "blockD": {
+    "d1": {
+      "stripExpanded": "true",
+      "clientHeight": 1427,
+      "scrollHeight": 1427,
+      "visiblePct": 100
+    },
+    "d2": {
+      "elementSelected": "title",
+      "allIds": [
+        "bg",
+        "title",
+        "accent",
+        "lead",
+        "card",
+        "dot",
+        "footer"
+      ],
+      "clientWidth": 1582,
+      "scrollWidth": 1582,
+      "fields": {
+        "total": 5,
+        "fullyOffscreen": 0
+      },
+      "scrollEndArrowVisible": false
+    },
+    "d3": {
+      "tracksHeight": 624,
+      "branchesHeight": 272,
+      "bothAtLeast180": true
+    }
+  }
+}
