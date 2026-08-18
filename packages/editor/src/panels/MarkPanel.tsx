@@ -37,20 +37,24 @@ import {
   setOptionLabel,
   setPrompt,
 } from '../state/gates.js';
+import type { OptionDestination } from '../state/conditionText.js';
 import { retargetMark, wordAnchorProblem } from '../track/marks.js';
 import {
   DIRECTION_INFO, DIRECTION_ORDER, TRANSITION_INFO, TRANSITION_ORDER,
 } from '../transitions.js';
 import {
   POSITIVE_INTEGER,
+  Checkbox,
   ChoiceField,
+  MultilineField,
   NumberField,
   RangeField,
   ReadonlyField,
+  Radio,
   StringField,
   ValidatedStringField,
   type Choice,
-} from './fields.js';
+} from '../ui/fields.js';
 import { Button } from '../ui/index.js';
 
 export type SelectedMarkData =
@@ -125,6 +129,23 @@ export interface MarkPanelProps {
    * в котором автор не понимает, что он сделал не так.
    */
   splitBlockedReason?: string | undefined;
+  /**
+   * Куда ведёт вариант ответа — готовым ответом на каждый `optionId`.
+   *
+   * Считается наверху (`Editor.tsx`, `optionDestination`), потому что ответ
+   * зависит от ПРОЕКТА целиком: правило выхода вправе смотреть на переменную,
+   * записанную гейтом другой главы. Панель проекта не видит и видеть не
+   * должна — она чисто презентационная (см. заголовок модуля).
+   */
+  destinationOf?: ((optionId: string) => OptionDestination) | undefined;
+  /**
+   * Завести главу под ответ и связать её с ним — одним шагом истории.
+   *
+   * Действие приезжает готовым сверху (`Editor.tsx`): собрать его здесь
+   * панель не может — ей не видно ни проекта, ни истории, и не должно быть
+   * видно (см. заголовок модуля).
+   */
+  onBranchFromOption?: ((optionId: string) => void) | undefined;
 }
 
 export function MarkPanel({
@@ -144,6 +165,8 @@ export function MarkPanel({
   onRemove,
   onSplitAtGate,
   splitBlockedReason,
+  destinationOf,
+  onBranchFromOption,
 }: MarkPanelProps): ReactElement {
   const containerRef = useRef<HTMLElement>(null);
   const markId = mark.kind === 'gate' ? mark.gate.id : mark.slide.id;
@@ -208,6 +231,8 @@ export function MarkPanel({
             variableProblemOf={variableProblemOf}
             onSplit={onSplitAtGate}
             splitBlockedReason={splitBlockedReason}
+            destinationOf={destinationOf}
+            onBranchFromOption={onBranchFromOption}
           />
         ) : (
           <SlideMarkPanel
@@ -414,6 +439,10 @@ interface GatePanelProps {
   variableProblemOf: (name: string) => string | undefined;
   onSplit?: (() => void) | undefined;
   splitBlockedReason?: string | undefined;
+  /** Куда ведёт вариант ответа — см. `ChoiceOptionsEditorProps`. */
+  destinationOf?: ((optionId: string) => OptionDestination) | undefined;
+  /** Завести главу под ответ и связать — см. `ChoiceOptionsEditorProps`. */
+  onBranchFromOption?: ((optionId: string) => void) | undefined;
 }
 
 function GatePanel({
@@ -424,6 +453,8 @@ function GatePanel({
   variableProblemOf,
   onSplit,
   splitBlockedReason,
+  destinationOf,
+  onBranchFromOption,
 }: GatePanelProps): ReactElement {
   // Память о вопросе при переключении вида (choice/input → continue → …) —
   // забота панели, а не state/gates.ts: модуль намеренно ничего не хранит
@@ -481,7 +512,14 @@ function GatePanel({
       )}
 
       {config.kind === 'choice' && (
-        <ChoiceOptionsEditor gate={gate} config={config} elements={elements} onUpdate={onUpdate} />
+        <ChoiceOptionsEditor
+          gate={gate}
+          config={config}
+          elements={elements}
+          onUpdate={onUpdate}
+          destinationOf={destinationOf}
+          onBranchFromOption={onBranchFromOption}
+        />
       )}
 
       {config.kind === 'input' && <InputAnswerEditor gate={gate} config={config} onUpdate={onUpdate} />}
@@ -586,12 +624,31 @@ interface ChoiceOptionsEditorProps {
   config: ChoiceConfig;
   elements: readonly Element[];
   onUpdate: (gate: Gate) => void;
+  /**
+   * Куда ведёт вариант. Считается наверху (`Editor.tsx`) функцией
+   * `optionDestination`: ей нужен ПРОЕКТ целиком — правило выхода вправе
+   * смотреть на переменную, записанную гейтом другой главы, — а сюда
+   * приезжает один гейт.
+   *
+   * `undefined` — назначение не считали (панель зовут из места, где проекта
+   * нет). Тогда строки просто нет: выдумывать за неё нечего.
+   */
+  destinationOf?: ((optionId: string) => OptionDestination) | undefined;
+  /**
+   * Завести главу под этот ответ и связать её с ним — одним действием.
+   *
+   * `undefined` — панель зовут оттуда, где проекта нет, и заводить главу
+   * не в чем. Тогда кнопки просто не будет.
+   */
+  onBranchFromOption?: ((optionId: string) => void) | undefined;
 }
 
 /** «Не привязан» — сохраняет вариант системной кнопкой (ADR-011). */
 const UNBOUND = '';
 
-function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptionsEditorProps): ReactElement {
+function ChoiceOptionsEditor({
+  gate, config, elements, onUpdate, destinationOf, onBranchFromOption,
+}: ChoiceOptionsEditorProps): ReactElement {
   return (
     <div className="ed-insp-block">
       <h3 className="ed-insp-title">Варианты ответа</h3>
@@ -604,6 +661,7 @@ function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptions
           config.options.filter((other) => other.id !== option.id).map((other) => other.id),
         );
         const boundElementId = elements.some((element) => element.id === option.id) ? option.id : UNBOUND;
+        const destination = destinationOf?.(option.id);
         const bindChoices: readonly Choice[] = [
           { value: UNBOUND, label: '— не привязан (системная кнопка) —' },
           ...elements
@@ -613,53 +671,79 @@ function ChoiceOptionsEditor({ gate, config, elements, onUpdate }: ChoiceOptions
 
         return (
           <div className="ed-insp-field" key={option.id} data-testid={`gate-option-${index}`}>
-            <label className="ed-insp-label" htmlFor={`gate-option-label-${index}`}>
-              Подпись варианта {index + 1}
-            </label>
-            <input
-              id={`gate-option-label-${index}`}
-              className="ed-insp-input"
-              type="text"
+            <StringField
+              label={`Подпись варианта ${index + 1}`}
               value={option.label}
-              data-testid={`gate-option-label-${index}`}
-              onChange={(event) => onUpdate(setOptionLabel(gate, option.id, event.target.value))}
+              onCommit={(value) => onUpdate(setOptionLabel(gate, option.id, value))}
+              testId={`gate-option-label-${index}`}
             />
+
+            {/* Куда ведёт ЭТОТ вариант — сразу под его подписью.
+
+                Секция «Правила выхода» остаётся полным видом и никуда
+                не девается: там правило заводят и правят. Здесь короткий
+                ответ на вопрос, который автор задаёт, глядя на вариант,
+                и ради которого сегодня ему пришлось бы держать связь
+                двух панелей в голове.
+
+                Устройство при этом не меняется ни на йоту: строка ЧИТАЕТ
+                уже принятое решение выхода главы (ADR-015), а не принимает
+                своё. Поля для ребра у остановки как не было, так и нет. */}
+            {destination ? (
+              <p
+                className={destination.via === 'none'
+                  ? 'ed-option-goto ed-option-goto--none'
+                  : 'ed-option-goto'}
+                data-testid={`gate-option-goto-${index}`}
+                data-via={destination.via}
+              >
+                {destination.text}
+              </p>
+            ) : null}
+
+            {/* «Завести ветку» — только у тупика.
+
+                Сегодня, чтобы ответ куда-то вёл, автор идёт в два места:
+                «Добавить главу» в правой колонке, потом «Правила выхода»
+                там же. Ни одно из двух не подсказано, и связь между ними
+                он держит в голове. Кнопка делает оба дела одним шагом
+                истории — Ctrl+Z отменяет их вместе, а не половину.
+
+                У варианта, который УЖЕ ведёт в главу, кнопки нет: предложить
+                завести вторую на тот же ответ значило бы предложить правило,
+                до которого рассказ никогда не дойдёт (правила читаются по
+                порядку, второе про тот же ответ мертво). */}
+            {destination?.via === 'none' && onBranchFromOption ? (
+              <Button
+                data-testid={`gate-option-branch-${index}`}
+                onClick={() => onBranchFromOption(option.id)}
+              >
+                Завести ветку под этот ответ
+              </Button>
+            ) : null}
 
             {/* У развилки верного ответа нет вовсе — показывать выбор
                 «правильного» значило бы вернуть на экран ровно ту ложь,
                 которую версия 4 убрала из данных. */}
             {config.correctId !== null && (
-              <label className="ed-insp-label">
-                <input
-                  type="radio"
-                  name={`gate-correct-${gate.id}`}
-                  data-testid={`gate-option-correct-${index}`}
-                  checked={option.id === config.correctId}
-                  onChange={() => onUpdate(setCorrect(gate, option.id))}
-                />{' '}
-                Правильный вариант
-              </label>
+              <Radio
+                label="Правильный вариант"
+                name={`gate-correct-${gate.id}`}
+                checked={option.id === config.correctId}
+                onSelect={() => onUpdate(setCorrect(gate, option.id))}
+                testId={`gate-option-correct-${index}`}
+              />
             )}
 
-            <label className="ed-insp-label" htmlFor={`gate-option-bind-${index}`}>
-              Элемент сцены, служащий этим вариантом
-            </label>
-            <select
-              id={`gate-option-bind-${index}`}
-              className="ed-insp-input"
-              data-testid={`gate-option-bind-${index}`}
+            <ChoiceField
+              label="Элемент сцены, служащий этим вариантом"
               value={boundElementId}
-              onChange={(event) => {
-                const elementId = event.target.value;
+              choices={bindChoices}
+              onCommit={(elementId) => {
                 if (elementId !== UNBOUND) onUpdate(bindOption(gate, option.id, elementId));
               }}
-            >
-              {bindChoices.map((choice) => (
-                <option key={choice.value} value={choice.value}>
-                  {choice.label}
-                </option>
-              ))}
-            </select>
+              testId={`gate-option-bind-${index}`}
+            />
 
             <Button
               data-testid={`gate-option-remove-${index}`}
@@ -716,28 +800,19 @@ function InputAnswerEditor({ gate, config, onUpdate }: InputAnswerEditorProps): 
   return (
     <div className="ed-insp-block">
       <h3 className="ed-insp-title">Ответ</h3>
-      <div className="ed-insp-field">
-        <label className="ed-insp-label" htmlFor="gate-accept">
-          Принимаемые ответы (по одному на строке)
-        </label>
-        <textarea
-          id="gate-accept"
-          className="ed-insp-area"
-          data-testid="gate-accept"
-          value={text}
-          onChange={(event) => setDraft(event.target.value)}
-          onBlur={commit}
-        />
-      </div>
-      <label className="ed-insp-label">
-        <input
-          type="checkbox"
-          data-testid="gate-case-sensitive"
-          checked={config.caseSensitive}
-          onChange={(event) => onUpdate(setCaseSensitive(gate, event.target.checked))}
-        />{' '}
-        Учитывать регистр
-      </label>
+      <MultilineField
+        label="Принимаемые ответы (по одному на строке)"
+        value={text}
+        onCommit={setDraft}
+        onBlurCommit={commit}
+        testId="gate-accept"
+      />
+      <Checkbox
+        label="Учитывать регистр"
+        checked={config.caseSensitive}
+        onChange={(checked) => onUpdate(setCaseSensitive(gate, checked))}
+        testId="gate-case-sensitive"
+      />
     </div>
   );
 }
@@ -752,15 +827,12 @@ function MaxAttemptsField({ gate, onUpdate }: MaxAttemptsFieldProps): ReactEleme
 
   return (
     <div className="ed-insp-field">
-      <label className="ed-insp-label">
-        <input
-          type="checkbox"
-          data-testid="gate-unlimited-attempts"
-          checked={unlimited}
-          onChange={(event) => onUpdate(setMaxAttempts(gate, event.target.checked ? null : 1))}
-        />{' '}
-        Без ограничения попыток
-      </label>
+      <Checkbox
+        label="Без ограничения попыток"
+        checked={unlimited}
+        onChange={(checked) => onUpdate(setMaxAttempts(gate, checked ? null : 1))}
+        testId="gate-unlimited-attempts"
+      />
       {!unlimited && (
         <NumberField
           label="Максимум попыток"

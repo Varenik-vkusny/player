@@ -163,7 +163,13 @@ import { Button, Icon, Section } from '../ui/index.js';
 нужны чаще всего:
 
 - кегли: `--ui-type-xs|s|m|l|xl` (база — `m`);
-- межстрочные: `--ui-lh-tight|normal|loose`;
+- межстрочных ролей НЕТ. `--ui-lh-tight|normal|loose` были обещаны здесь
+  и не заведены ни разу: `grep -o -- "--ui-[a-z0-9-]*:" packages/editor/src/styles.ts`
+  не даёт ни одной. Пиши `line-height` числом, как соседние правила.
+  Соблазн написать по этому списку стоил Сессии 51 одной правки: неизвестный
+  токен **проваливается МОЛЧА** — объявление отбрасывается целиком, ни ошибки,
+  ни предупреждения. `uiTokens` ловит только `var(--ui-X)`, которого нет
+  в `.ed-root`, — а тут его не было бы и в помине;
 - скругления: `--ui-radius-s|m|l`;
 - текст: `--ui-content-fg`, `--ui-content-fg-secondary`, `--ui-content-fg-tertiary`;
 - поверхности: `--ui-surface-base|panel|raised|overlay|canvas`;

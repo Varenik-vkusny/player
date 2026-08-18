@@ -10,7 +10,7 @@
  * Ключи ровно восьми утверждённых полей. Расширение набора — правка ADR-012
  * и `state/style.ts`, не тихое добавление второго виджета здесь.
  */
-import { useId, useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 import {
   ANY_NUMBER,
@@ -18,9 +18,8 @@ import {
   ReadonlyField,
   ColorField,
   ChoiceField,
-} from './fields.js';
+} from '../ui/fields.js';
 import type { LengthOrPercent, StyleFieldDef, StyleReadResult } from '../state/style.js';
-import { composeLengthOrPercent, parseStyleDraft } from './styleDraft.js';
 
 export interface StyleFieldWidgetProps {
   field: StyleFieldDef;
@@ -258,29 +257,27 @@ interface TokenFieldProps {
  * не привязан к одному `valueType` — см. комментарий у `tryToken`.
  */
 function TokenField({ field, token, fallback, onCommit }: TokenFieldProps): ReactElement {
-  const id = useId();
+  const swatch = field.valueType === 'color' ? (
+    <span
+      aria-hidden="true"
+      style={{
+        display: 'inline-block',
+        width: '1.2em',
+        height: '1.2em',
+        flexShrink: 0,
+        borderRadius: '3px',
+        background: fallback,
+      }}
+    />
+  ) : undefined;
 
   return (
     <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {field.label} (роль темы)
-      </label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5em' }}>
-        {field.valueType === 'color' && (
-          <span
-            aria-hidden="true"
-            style={{
-              display: 'inline-block',
-              width: '1.2em',
-              height: '1.2em',
-              flexShrink: 0,
-              borderRadius: '3px',
-              background: fallback,
-            }}
-          />
-        )}
-        <input id={id} className="ed-insp-input" type="text" value={token} readOnly />
-      </div>
+      <ReadonlyField
+        label={`${field.label} (роль темы)`}
+        value={token}
+        {...(swatch === undefined ? {} : { trailing: swatch })}
+      />
       <p className="ed-insp-note">Запасное значение (без темы): {fallback}</p>
       <button type="button" className="ed-insp-input" onClick={() => onCommit(fallback)}>
         Отвязать от темы
@@ -303,6 +300,12 @@ interface LengthOrPercentFieldProps {
   onCommitHistory: () => void;
 }
 
+/** Выбор единицы `LengthOrPercentField` — px или %, фиксированный список. */
+const UNIT_CHOICES = [
+  { value: 'px', label: 'px' },
+  { value: '%', label: '%' },
+] as const;
+
 /**
  * Число плюс единица (сейчас единственное такое поле — `border-radius`).
  *
@@ -310,11 +313,12 @@ interface LengthOrPercentFieldProps {
  * `50%` и `50px` значат разное), поэтому у неё отдельный переключатель,
  * а не текст с подставленным суффиксом, как у `length`.
  *
- * Число набирается тем же паттерном черновика, что и `NumberField` геометрии,
- * и тем же способом коммитит историю: `onLiveCommit` на каждую распознанную
- * цифру, `onCommitHistory` на потере фокуса. Единица меняется отдельным
- * `<select>` и коммитится сразу через `onCommit` — там нет промежуточных
- * состояний ввода, как у текста.
+ * Число — это `NumberField` библиотеки: тот же черновик и тот же способ
+ * коммитить историю (`onLiveCommit` на каждую распознанную цифру,
+ * `onCommitHistory` на потере фокуса — `onBlurCommit` у `NumberField`),
+ * только собирает результат в `LengthOrPercent` вместе с текущей единицей.
+ * Единица — `ChoiceField`, коммитится сразу через `onCommit`: там нет
+ * промежуточных состояний ввода, как у текста.
  */
 function LengthOrPercentField({
   label,
@@ -324,52 +328,22 @@ function LengthOrPercentField({
   onLiveCommit,
   onCommitHistory,
 }: LengthOrPercentFieldProps): ReactElement {
-  const amountId = useId();
-  const unitId = useId();
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const text = draft ?? (amountMissing ? '' : String(value.amount));
-  const parsedAmount = draft === null ? value.amount : parseStyleDraft(draft);
-  const invalid = draft !== null && parsedAmount === undefined;
-
   return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={amountId}>
-        {label}
-      </label>
-      <input
-        id={amountId}
-        className="ed-insp-input"
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        spellCheck={false}
-        value={text}
-        placeholder={amountMissing ? MIXED : undefined}
-        aria-invalid={invalid}
-        onChange={(event) => {
-          const next = event.target.value;
-          setDraft(next);
-          const composed = composeLengthOrPercent(next, value.unit);
-          if (composed) onLiveCommit(composed);
-        }}
-        onBlur={() => {
-          setDraft(null);
-          onCommitHistory();
-        }}
+    <>
+      <NumberField
+        label={label}
+        value={amountMissing ? undefined : value.amount}
+        accepts={ANY_NUMBER}
+        {...(amountMissing ? { placeholder: MIXED } : {})}
+        onCommit={(amount) => onLiveCommit({ amount, unit: value.unit })}
+        onBlurCommit={onCommitHistory}
       />
-      <label className="ed-insp-label" htmlFor={unitId}>
-        {label}: единица
-      </label>
-      <select
-        id={unitId}
-        className="ed-insp-input"
+      <ChoiceField
+        label={`${label}: единица`}
         value={value.unit}
-        onChange={(event) => onCommit({ amount: value.amount, unit: event.target.value as 'px' | '%' })}
-      >
-        <option value="px">px</option>
-        <option value="%">%</option>
-      </select>
-    </div>
+        choices={UNIT_CHOICES}
+        onCommit={(unit) => onCommit({ amount: value.amount, unit: unit as 'px' | '%' })}
+      />
+    </>
   );
 }

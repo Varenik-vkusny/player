@@ -96,8 +96,21 @@ export type StyleFieldKey =
   | 'background'
   | 'border-radius';
 
+/**
+ * Смысловая группа поля на полосе свойств. Перечень ЗАКРЫТЫЙ, а поле
+ * ОБЯЗАТЕЛЬНОЕ — и то и другое нарочно: полоса группируется разделителями
+ * по этому признаку, и девятое поле, заведённое без группы, встало бы
+ * в конец последней группы МОЛЧА. Тип заставляет выбрать, а не вспомнить.
+ *
+ * Разбиение утверждено владельцем 18.08.2026 словами «что за буквы ·
+ * как расставлены · где лежит».
+ */
+export type StyleFieldGroup = 'буквы' | 'расстановка' | 'плашка';
+
 export interface StyleFieldDef {
   readonly key: StyleFieldKey;
+  /** Смысловая группа — см. StyleFieldGroup. */
+  readonly group: StyleFieldGroup;
   /** Человеческое название по-русски — для панели, не для CSS. */
   readonly label: string;
   readonly valueType: StyleValueType;
@@ -161,6 +174,7 @@ const ALL_TYPES: readonly Element['type'][] = ELEMENT_TYPES;
 export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   {
     key: 'font-family',
+    group: 'буквы',
     label: 'Шрифт',
     valueType: 'choice',
     appliesTo: TEXT_ONLY,
@@ -173,6 +187,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'font-size',
+    group: 'буквы',
     label: 'Кегль',
     valueType: 'length',
     appliesTo: TEXT_ONLY,
@@ -180,6 +195,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'font-weight',
+    group: 'буквы',
     label: 'Насыщенность',
     valueType: 'choice',
     appliesTo: TEXT_ONLY,
@@ -194,6 +210,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'color',
+    group: 'буквы',
     label: 'Цвет',
     valueType: 'color',
     appliesTo: TEXT_ONLY,
@@ -201,6 +218,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'text-align',
+    group: 'расстановка',
     label: 'Выравнивание',
     valueType: 'choice',
     appliesTo: TEXT_ONLY,
@@ -214,6 +232,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'line-height',
+    group: 'расстановка',
     label: 'Межстрочный',
     valueType: 'number',
     appliesTo: TEXT_ONLY,
@@ -221,6 +240,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'background',
+    group: 'плашка',
     label: 'Фон',
     valueType: 'color',
     appliesTo: ALL_TYPES,
@@ -228,6 +248,7 @@ export const STYLE_FIELDS: readonly StyleFieldDef[] = [
   },
   {
     key: 'border-radius',
+    group: 'плашка',
     label: 'Скругление',
     valueType: 'length-or-percent',
     appliesTo: ALL_TYPES,

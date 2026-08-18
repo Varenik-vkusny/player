@@ -49,7 +49,7 @@ import {
   type ChromeLayout,
 } from './chrome/layoutStore.js';
 import { Splitter } from './chrome/Splitter.js';
-import { Button } from './ui/index.js';
+import { Button, ChoiceField } from './ui/index.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
@@ -82,7 +82,8 @@ import { durationRange } from './state/durationRange.js';
 import { extractBlockedReason } from './state/extractBranch.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupElements.js';
-import { speechLossWarning, splitBlockedReason } from './state/split.js';
+import { optionDestination } from './state/conditionText.js';
+import { speechLossWarning, splitAtTimeNotice, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, splitHereProblem, type MarkKind } from './state/project.js';
@@ -1608,6 +1609,13 @@ export function Editor({
     currentProject, state.currentSegmentId, transport.positionSeconds,
   );
 
+  /**
+   * Что автор прочитает после разреза. Состояние вида, как `removalMessage`
+   * и `speechSplitWarning`: считается ДО разреза, потому что после него
+   * исходной главы уже нет и считать не по чему.
+   */
+  const [splitNotice, setSplitNotice] = useState<string | undefined>(undefined);
+
   const handleSplitHere = useCallback(() => {
     // Вторая проверка, а не «на всякий случай»: между отрисовкой кнопки
     // и щелчком по ней проходит время, за которое автор мог переключить
@@ -1615,9 +1623,24 @@ export function Editor({
     // погашена и объясняет причину сама, а бросок из редьюсера снял бы
     // весь редактор (17.08.2026, белый экран у владельца).
     if (splitProblem !== undefined) return;
+    // Те же аргументы, что уйдут в разрез: `splitAtTime` зовёт
+    // `splitSegmentAtTime(segment, seconds, project.segments)`. Разойтись
+    // именам продолжения тут нечем — их считает одна и та же функция.
+    setSplitNotice(currentSegment
+      ? splitAtTimeNotice(currentSegment, currentProject.segments)
+      : undefined);
     dispatch({ type: 'splitAtTime', seconds: transport.positionSeconds });
     setSelectedMark(undefined);
-  }, [transport.positionSeconds, splitProblem]);
+  }, [transport.positionSeconds, splitProblem, currentSegment, currentProject]);
+
+  /**
+   * Строка держится до тех пор, пока автор не ушёл из главы, где резал.
+   * Переключился — событие перестало относиться к тому, что он видит,
+   * и строка обязана уйти, а не остаться подписью к чужой дорожке.
+   */
+  useEffect(() => {
+    setSplitNotice(undefined);
+  }, [state.currentSegmentId]);
 
   /**
    * Сколько меток сейчас привязано к слову — для текста подтверждения
@@ -2091,6 +2114,8 @@ export function Editor({
           {plural(segment.elements.length, ELEMENTS)} · {plural(segment.gates.length, GATES)}
         </span>
         <span className="ed-actions">
+          {/* ГРУППА 1 — история правок. */}
+          <span className="ed-actions-group">
           <Button
             onClick={() => dispatch({ type: 'undo' })}
             disabled={!canUndoState(state)}
@@ -2103,7 +2128,16 @@ export function Editor({
           >
             Повторить
           </Button>
+          </span>
+
+          {/* ГРУППА 2 — работа с файлом. «Сохранить» здесь единственная
+              главная кнопка редактора: владелец 18.08.2026 утвердил её
+              заполненной синей. Порядок внутри группы прежний — в макете
+              она стоит последней, но переставлять её значило бы менять
+              состав шапки, а он утверждён как узнаваемый. */}
+          <span className="ed-actions-group">
           <Button
+            kind="главная"
             onClick={() => downloadProject(currentProject)}
           >
             Сохранить
@@ -2155,6 +2189,10 @@ export function Editor({
           >
             Импорт презентации
           </Button>
+          </span>
+
+          {/* ГРУППА 3 — выход к зрителю. */}
+          <span className="ed-actions-group">
           {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
               Без него условные варианты ответа физически непроверяемы: редактор
               показывает автору все варианты, а зритель видит часть, и увидеть
@@ -2163,27 +2201,26 @@ export function Editor({
             <span className="ed-view-as" data-testid="view-as">
               <span className="ed-view-as-title">смотреть как ответивший</span>
               {viewAsVariables.map((variable) => (
-                <label key={variable.name} className="ed-view-as-item">
-                  {/* Имя переменной подписью, а не внутри каждого пункта:
-                      иначе селект растягивается по самому длинному пункту
-                      и выдавливает соседей из шапки. Проверено глазами. */}
-                  <span className="ed-view-as-name">{variable.name}</span>
-                  <select
-                    className="ed-view-as-select"
-                    data-testid={`view-as-${variable.name}`}
-                    value={viewAs[variable.name] ?? ''}
-                    onChange={(event) =>
-                      setViewAs((previous) => ({ ...previous, [variable.name]: event.target.value }))
-                    }
-                  >
-                    <option value="">не отвечал</option>
-                    {variable.options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                /* Имя переменной ПОДПИСЬЮ поля, а не пунктом внутри списка:
+                   иначе список растягивается по самому длинному пункту
+                   и выдавливает соседей из шапки. Проверено глазами.
+
+                   `ed-field--inline` спрямляет поле в строку: по умолчанию
+                   подпись стоит НАД органом, а в шапке строка одна. */
+                <ChoiceField
+                  key={variable.name}
+                  className="ed-field--inline ed-view-as-item"
+                  label={variable.name}
+                  testId={`view-as-${variable.name}`}
+                  value={viewAs[variable.name] ?? ''}
+                  choices={[
+                    { value: '', label: 'не отвечал' },
+                    ...variable.options.map((option) => ({ value: option.id, label: option.label })),
+                  ]}
+                  onCommit={(value) =>
+                    setViewAs((previous) => ({ ...previous, [variable.name]: value }))
+                  }
+                />
               ))}
             </span>
           ) : null}
@@ -2192,6 +2229,7 @@ export function Editor({
           >
             Открыть в плеере
           </Button>
+          </span>
         </span>
         <span className="ed-selection" data-testid="selection-readout">
           {selectionReadout}
@@ -2491,6 +2529,23 @@ export function Editor({
                 splitBlockedReason={markData.kind === 'gate'
                   ? splitBlockedReason(markData.gate, segment.words)
                   : undefined}
+                /* Куда ведёт вариант — читается ЗДЕСЬ, где виден проект
+                   целиком: правило выхода вправе смотреть на переменную,
+                   записанную гейтом другой главы. Панель проекта не видит. */
+                destinationOf={markData.kind === 'gate'
+                  ? (optionId) => optionDestination(
+                    currentProject, state.currentSegmentId, markData.gate.recordAs, optionId,
+                  )
+                  : undefined}
+                /* Одна отправка на оба дела — глава и правило в неё. Ctrl+Z
+                   обязан отменять их вместе: половина отката оставила бы
+                   главу, до которой не дойти. Довод и устройство — в разборе
+                   действия `branchFromOption` (state/project.ts). */
+                onBranchFromOption={markData.kind === 'gate'
+                  ? (optionId) => dispatch({
+                    type: 'branchFromOption', gateId: markData.gate.id, optionId,
+                  })
+                  : undefined}
               />
             ) : (
               // Ничего не выделено и метка не выбрана — свойств показывать
@@ -2640,6 +2695,7 @@ export function Editor({
           onAddGate={handleAddGate}
           onSplitHere={handleSplitHere}
           splitProblem={splitProblem}
+          splitNotice={splitNotice}
           colorOrphanCount={colorOrphanCount}
           onTransitionSecondsLive={handleTrackTransitionSecondsLive}
           onTransitionSecondsCommit={handleCommitHistory}

@@ -19,7 +19,7 @@
  * в проекте). `Editor.tsx` знает только про итог — готовый список стилей
  * для `dispatch({ type: 'addStyles', styles })` — а не про склад как таковой.
  */
-import { useEffect, useId, useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 
 import type { Element, ElementState, Segment, Style } from '@player/core';
 
@@ -27,7 +27,7 @@ import { freeId } from '../state/elements.js';
 import { styleUsage } from '../state/styleLink.js';
 import { listStyleSets, mergeStyleSet, saveStyleSet, type StyleSet } from '../state/styleStore.js';
 import { plural, STYLES } from '../plural.js';
-import { Button } from '../ui/index.js';
+import { Button, StringField } from '../ui/index.js';
 
 export interface StylesPanelProps {
   /** Стили проекта, в порядке `project.styles`. */
@@ -68,7 +68,6 @@ export function StylesPanel({
   onDelete,
   onTake,
 }: StylesPanelProps): ReactElement {
-  const nameId = useId();
   const [name, setName] = useState('');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | undefined>(undefined);
 
@@ -84,7 +83,6 @@ export function StylesPanel({
   // ------------------------------------------------------------------
   // Склад наборов стилей (ADR-029 §6).
   // ------------------------------------------------------------------
-  const setNameId = useId();
   const [setName_, setSetName] = useState('');
   const [sets, setSets] = useState<readonly StyleSet[] | undefined>(undefined); // undefined — ещё грузится
   const [setsError, setSetsError] = useState<string | undefined>(undefined);
@@ -145,21 +143,12 @@ export function StylesPanel({
       <h2 className="ed-insp-title">Стили</h2>
 
       <div className="ed-insp-block">
-        <div className="ed-insp-field">
-          <label className="ed-insp-label" htmlFor={nameId}>
-            Имя нового стиля
-          </label>
-          <input
-            id={nameId}
-            className="ed-insp-input"
-            type="text"
-            autoComplete="off"
-            spellCheck={false}
-            value={name}
-            disabled={selectedElement === undefined || selectedElementState === undefined}
-            onChange={(event) => setName(event.target.value)}
-          />
-        </div>
+        <StringField
+          label="Имя нового стиля"
+          value={name}
+          disabled={selectedElement === undefined || selectedElementState === undefined}
+          onCommit={setName}
+        />
         <Button
           data-testid="style-save"
           disabled={!canSave}
@@ -218,20 +207,7 @@ export function StylesPanel({
 
       <div className="ed-insp-block">
         <h3 className="ed-insp-title">Склад наборов</h3>
-        <div className="ed-insp-field">
-          <label className="ed-insp-label" htmlFor={setNameId}>
-            Имя набора
-          </label>
-          <input
-            id={setNameId}
-            className="ed-insp-input"
-            type="text"
-            autoComplete="off"
-            spellCheck={false}
-            value={setName_}
-            onChange={(event) => setSetName(event.target.value)}
-          />
-        </div>
+        <StringField label="Имя набора" value={setName_} onCommit={setSetName} />
         <Button
           data-testid="styleset-save"
           disabled={sets === undefined || setName_.trim() === ''}

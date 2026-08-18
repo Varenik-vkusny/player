@@ -24,13 +24,14 @@
  * событием, потеря фокуса поля закрывает жест через `onCommitHistory`
  * (`docs/design/theme-panel.md` §4, `state/editorHistory.ts: isLiveEvent`).
  */
-import { useId, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 
 import type { Theme } from '@player/core';
 
 import { tryColor } from '../state/style.js';
 import { PALETTES } from '../state/palettes.js';
 import { THEME_FIELDS, THEME_ROLES } from '../theme.js';
+import { ColorField, StringField } from '../ui/fields.js';
 
 export interface ThemePanelProps {
   theme: Theme;
@@ -55,33 +56,25 @@ interface ThemeRoleFieldProps {
 }
 
 /**
- * Одна роль темы. Не `ColorField`/`StringField` из `fields.tsx`: тем двум
- * неоткуда взять решение «показать цветом или строкой» — оно здесь зависит
- * от значения конкретной роли, а не фиксировано на уровне поля, и оба
- * готовых поля к тому же не закрывают живой жест по потере фокуса.
- * Разметка и классы (`ed-insp-field`/`ed-insp-label`/`ed-insp-input`) —
- * те же, что у `fields.tsx`, ради одного вида по всему редактору.
+ * Одна роль темы — рисуют её готовые `ColorField`/`StringField` из
+ * `fields.tsx` (у обоих есть `onBlurCommit`, закрывающий живой жест
+ * потерей фокуса, Сессия 51). Сама функция — только решение «показать
+ * цветом или строкой», зависящее от ЗНАЧЕНИЯ конкретной роли, а не
+ * фиксированное на уровне поля: этого решения в библиотечных полях
+ * нет и не может быть, оно принадлежит вызывающему коду.
  */
 function ThemeRoleField({ role, value, onChangeRole, onCommitHistory }: ThemeRoleFieldProps): ReactElement {
-  const id = useId();
   const spec = THEME_FIELDS[role];
   const hex = spec.kind === 'color' ? tryColor(value) : undefined;
 
   if (hex !== undefined) {
     return (
-      <div className="ed-insp-field">
-        <label className="ed-insp-label" htmlFor={id}>
-          {spec.label}
-        </label>
-        <input
-          id={id}
-          className="ed-insp-input"
-          type="color"
-          value={hex}
-          onChange={(event) => onChangeRole(role, event.target.value)}
-          onBlur={onCommitHistory}
-        />
-      </div>
+      <ColorField
+        label={spec.label}
+        value={hex}
+        onCommit={(next) => onChangeRole(role, next)}
+        onBlurCommit={onCommitHistory}
+      />
     );
   }
 
@@ -92,21 +85,12 @@ function ThemeRoleField({ role, value, onChangeRole, onCommitHistory }: ThemeRol
   const label = spec.kind === 'color' ? `${spec.label} (не #RRGGBB — показано строкой)` : spec.label;
 
   return (
-    <div className="ed-insp-field">
-      <label className="ed-insp-label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="ed-insp-input"
-        type="text"
-        autoComplete="off"
-        spellCheck={false}
-        value={value}
-        onChange={(event) => onChangeRole(role, event.target.value)}
-        onBlur={onCommitHistory}
-      />
-    </div>
+    <StringField
+      label={label}
+      value={value}
+      onCommit={(next) => onChangeRole(role, next)}
+      onBlurCommit={onCommitHistory}
+    />
   );
 }
 

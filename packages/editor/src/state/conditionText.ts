@@ -76,3 +76,93 @@ export function ruleText(rule: ExitRule, project: Project): string {
   const target = titleOfId(project, rule.goto);
   return `${rule.when.map((condition) => conditionText(condition, project)).join(' и ')} → ${target}`;
 }
+
+/**
+ * Куда ведёт ОДИН вариант ответа.
+ *
+ * Куплено 18.08.2026: владелец нажал «разделить здесь» и не понял, что
+ * получилось. Разбирая случай, приёмщик насчитал ЧЕТЫРЕ действия в четырёх
+ * местах, ни одно из которых не подсказано. Одно из четырёх — «развести
+ * ответы по главам»: варианты живут в панели остановки, а их назначение —
+ * в отдельной секции «Правила выхода», и связь между ними автор держит
+ * в голове.
+ *
+ * Это ПОКАЗ, а не устройство: модель не меняется. Остановка по-прежнему
+ * только записывает ответ и никуда не перекидывает, решение принимает выход
+ * главы (ADR-015). Здесь лишь читается уже принятое решение и называется
+ * словами автора.
+ *
+ * Второго перевода не заводится: заголовок главы берётся `titleOfId` —
+ * той же функцией, которой пользуется `ruleText` для секции «Правила
+ * выхода». Разъехаться двум показам одного факта нечем.
+ *
+ * Правила ищутся ПО ВСЕМУ ПРОЕКТУ, а `default` берётся у главы, которой
+ * принадлежит остановка. Довод у обоих один — не соврать: правило вправе
+ * смотреть на переменную, записанную гейтом другой главы (`optionLabelAnywhere`
+ * выше, долг §12.2), и, найдя его только у своей главы, мы объявили бы
+ * «никуда не ведёт» там, где рассказ идёт. А безусловный выход — свойство
+ * именно той главы, из которой рассказ уходит.
+ */
+export type OptionDestination =
+  /** Есть своё правило: этот ответ уводит вот сюда. */
+  | { readonly via: 'rule'; readonly targetId: string; readonly text: string }
+  /** Своего правила нет, но у главы есть безусловный выход. */
+  | { readonly via: 'default'; readonly targetId: string; readonly text: string }
+  /** Ответ участвует в правилах, но не как простое равенство: одним именем не назвать. */
+  | { readonly via: 'conditions'; readonly targetId: null; readonly text: string }
+  /** Выхода нет вовсе: рассказ на этом ответе кончается. */
+  | { readonly via: 'none'; readonly targetId: null; readonly text: string };
+
+export function optionDestination(
+  project: Project,
+  segmentId: string,
+  variable: string,
+  optionId: string,
+): OptionDestination {
+  const own = project.segments.find((candidate) => candidate.id === segmentId);
+
+  const mentions = (condition: Condition): boolean => condition.variable === variable;
+  const isThisOption = (condition: Condition): boolean =>
+    condition.kind === 'equals' && condition.variable === variable && condition.value === optionId;
+
+  const matching = project.segments.flatMap((segment) =>
+    segment.exit.rules.filter((rule) => rule.when.some(isThisOption)));
+
+  // Ровно одно правило и ровно из одного условия — единственный случай,
+  // когда назначение выражается одним именем главы. Всё прочее (два правила
+  // про один ответ, цепочка через «и») зависит ещё от чего-то, и назвать
+  // это одной главой значило бы соврать точнее, чем промолчать.
+  const plain = matching.filter((rule) => rule.when.length === 1);
+  if (matching.length === 1 && plain.length === 1) {
+    const targetId = plain[0]!.goto;
+    return { via: 'rule', targetId, text: `ведёт в «${titleOfId(project, targetId)}»` };
+  }
+  if (matching.length > 0) {
+    return {
+      via: 'conditions',
+      targetId: null,
+      text: 'зависит от условий — смотрите «Правила выхода»',
+    };
+  }
+
+  // Своего правила нет. Если у главы есть ДРУГИЕ правила про эту же
+  // переменную, ответ проваливается мимо них — куда именно, решает всё тот
+  // же выход, и честно назвать это можно только через «Правила выхода».
+  const others = own?.exit.rules.some((rule) => rule.when.some(mentions)) ?? false;
+  const fallback = own?.exit.default ?? null;
+
+  if (fallback !== null) {
+    const via = others ? 'conditions' : 'default';
+    const title = titleOfId(project, fallback);
+    return via === 'default'
+      ? { via: 'default', targetId: fallback, text: `пойдёт в «${title}», как и все остальные ответы` }
+      : { via: 'conditions', targetId: null, text: 'зависит от условий — смотрите «Правила выхода»' };
+  }
+
+  return {
+    via: 'none',
+    targetId: null,
+    text: 'никуда не ведёт: рассказ на этом ответе кончится',
+  };
+}
+

@@ -69,7 +69,7 @@
  * переполняться и по-прежнему обязана сообщать об этом (`ScrollStrip` ниже,
  * Сессия 46) — просто порог переполнения ниже, чем был.
  */
-import type { ReactElement } from 'react';
+import { Fragment, type ReactElement } from 'react';
 
 import type { LengthOrPercent, StyleFieldDef, StyleFieldKey, StyleReadResult } from '../state/style.js';
 import { StyleFieldWidget } from '../panels/styleFieldWidget.js';
@@ -122,17 +122,35 @@ export function PropBar({
         {styleFields.length === 0 ? (
           <span className="ed-propbar-hint">Общих свойств нет</span>
         ) : (
-          styleFields.map((field) => (
-            <div className="ed-propbar-field" key={field.key}>
-              <StyleFieldWidget
-                field={field}
-                read={styleValueOf(field.key)}
-                onCommit={(value) => onStyleCommit(field.key, value)}
-                onLiveCommit={(value) => onStyleLiveCommit(field.key, value)}
-                onCommitHistory={onStyleCommitHistory}
-              />
-            </div>
-          ))
+          styleFields.map((field, index) => {
+            /*
+              Разделитель ставится там, где МЕНЯЕТСЯ группа, а не через
+              заданное число полей: состав полосы зависит от того, что
+              выделено (у текста пять полей, у фигуры два, у нескольких
+              разнотипных — пересечение), и любое «каждое N-е» рассыпалось бы
+              на первом же другом выделении. Признак берётся из поля,
+              а не из порядкового номера.
+
+              Перед первым полем разделителя нет: он отделяет группы друг
+              от друга, а не открывает полосу.
+            */
+            const previous = index > 0 ? styleFields[index - 1] : undefined;
+            const startsNewGroup = previous !== undefined && previous.group !== field.group;
+            return (
+              <Fragment key={field.key}>
+                {startsNewGroup ? <span className="ed-propbar-sep" aria-hidden="true" /> : null}
+                <div className="ed-propbar-field">
+                  <StyleFieldWidget
+                    field={field}
+                    read={styleValueOf(field.key)}
+                    onCommit={(value) => onStyleCommit(field.key, value)}
+                    onLiveCommit={(value) => onStyleLiveCommit(field.key, value)}
+                    onCommitHistory={onStyleCommitHistory}
+                  />
+                </div>
+              </Fragment>
+            );
+          })
         )}
 
         {/* Кнопки расположения (выравнивание, раскладка, слои, «копировать

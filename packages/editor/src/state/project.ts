@@ -37,7 +37,7 @@ import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
-import { splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
+import { branches_title, splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
 import { bakeStyle } from './styleLink.js';
 import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
 
@@ -399,6 +399,18 @@ export type EditorAction =
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
   | { readonly type: 'connect'; readonly when: readonly Condition[]; readonly goto: string }
+  // «Завести ветку» прямо от варианта ответа (Сессия 51, задача Б3).
+  //
+  // ОДИН шаг истории на оба дела — заведение главы и правило выхода в неё, —
+  // ровно тем же доводом, что записан у `splitAtGate` ниже: разложить это
+  // на `addSegment` + `connect` значило бы отдать автору полусделанное
+  // состояние на промежуточном Ctrl+Z (глава есть, дойти до неё нельзя).
+  //
+  // Своей логики действие не заводит: и главу, и правило делают те же
+  // `exits.addSegment`/`exits.renameSegment`/`exits.connect`, которыми
+  // пользуются «Добавить главу» и «Правила выхода». Ново здесь только то,
+  // что они вызываются подряд и попадают в историю одним шагом.
+  | { readonly type: 'branchFromOption'; readonly gateId: string; readonly optionId: string }
   | { readonly type: 'addCondition'; readonly ruleId: string; readonly condition: Condition }
   | { readonly type: 'removeCondition'; readonly ruleId: string; readonly index: number }
   | { readonly type: 'disconnect'; readonly ruleId: string }
@@ -1213,6 +1225,46 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'connect': {
       const project = exits.connect(state.project, state.currentSegmentId, action.when, action.goto);
+      return { ...state, project };
+    }
+
+    case 'branchFromOption': {
+      const segment = currentSegment(state);
+      const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
+      if (!gate) {
+        throw new Error(`Остановки «${action.gateId}» нет в текущей главе: не от чего вести ветку`);
+      }
+      if (gate.config.kind !== 'choice') {
+        throw new Error(`Остановка «${action.gateId}» без вариантов: ветку вести не от чего`);
+      }
+      const index = gate.config.options.findIndex((option) => option.id === action.optionId);
+      if (index < 0) {
+        throw new Error(`Варианта «${action.optionId}» нет у остановки «${action.gateId}»`);
+      }
+
+      // Порядок обязателен: `connect` отказывается вести правило в главу,
+      // которой ещё нет в проекте, и делает это громко (exits.ts). Имя
+      // ставится между ними, потому что `addSegment` даёт главе имя по счёту,
+      // а нам нужна подпись варианта — тем же правилом, каким называет
+      // ветки разрез по развилке (`split.ts`, `branches_title`).
+      const { project: withSegment, segment: created } =
+        exits.addSegment(state.project, state.currentSegmentId);
+      const titled = exits.renameSegment(
+        withSegment, created.id, branches_title(gate, action.optionId, index),
+      );
+      const project = exits.connect(
+        titled,
+        state.currentSegmentId,
+        [{ kind: 'equals', variable: gate.recordAs, value: action.optionId }],
+        created.id,
+      );
+
+      // Автор ОСТАЁТСЯ на месте, в отличие от обычного `addSegment`.
+      // Он не просил перевести себя в новую главу — он размечал варианты
+      // остановки, и увести его отсюда значило бы закрыть панель, в которой
+      // он работает. Тот же довод, что у `splitAtGate` и `duplicateSegment`.
+      // Результат он видит немедленно: строка под вариантом меняется
+      // с «никуда не ведёт» на «ведёт в «…»».
       return { ...state, project };
     }
 

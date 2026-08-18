@@ -34,7 +34,7 @@ import {
   reachableFrom,
   uncoveredOutcomes,
 } from '../state/exits.js';
-import { Button, Section } from '../ui/index.js';
+import { Button, ChoiceField, Section, StringField, type Choice } from '../ui/index.js';
 
 export interface SegmentPanelProps {
   readonly project: Project;
@@ -81,6 +81,13 @@ const KIND_LABEL: Record<Condition['kind'], string> = {
   wrong: 'отвечен неверно',
   compare: 'сравнить с числом',
 };
+
+const OP_CHOICES: readonly Choice[] = [
+  { value: 'gt', label: '>' },
+  { value: 'gte', label: '≥' },
+  { value: 'lt', label: '<' },
+  { value: 'lte', label: '≤' },
+];
 
 /**
  * Форма добавления условия к правилу выхода.
@@ -142,83 +149,69 @@ function AddConditionForm({
     setOpen(false);
   };
 
+  const kindChoices: Choice[] = (Object.keys(KIND_LABEL) as Condition['kind'][])
+    // Вердикт о развилке невозможен, и предлагать его значило бы дать
+    // автору собрать правило, которое схема отклонит при сохранении.
+    .filter((candidate) =>
+      candidate === 'correct' || candidate === 'wrong'
+        // У развилки верного ответа нет, вердикт о ней невозможен, и
+        // предлагать его значило бы дать автору собрать правило, которое
+        // схема отклонит при сохранении.
+        ? !(source?.kind === 'choice' && source.correctId === null)
+        : true,
+    )
+    .map((candidate) => ({ value: candidate, label: KIND_LABEL[candidate] }));
+
   return (
     <div className="ed-exit-condition-form" data-testid={`exit-condition-form-${ruleId}`}>
-      <select
-        className="ed-insp-input"
-        data-testid={`exit-condition-variable-${ruleId}`}
+      <ChoiceField
+        label="Переменная"
+        testId={`exit-condition-variable-${ruleId}`}
         value={variable}
-        onChange={(event) => setVariable(event.target.value)}
-      >
-        {variables.map((candidate) => (
-          <option key={candidate.name} value={candidate.name}>
-            {candidate.name}
-          </option>
-        ))}
-      </select>
+        choices={variables.map((candidate) => ({ value: candidate.name, label: candidate.name }))}
+        onCommit={setVariable}
+      />
 
-      <select
-        className="ed-insp-input"
-        data-testid={`exit-condition-kind-${ruleId}`}
+      <ChoiceField
+        label="Вид условия"
+        testId={`exit-condition-kind-${ruleId}`}
         value={kind}
-        onChange={(event) => setKind(event.target.value as Condition['kind'])}
-      >
-        {(Object.keys(KIND_LABEL) as Condition['kind'][])
-          // Вердикт о развилке невозможен, и предлагать его значило бы дать
-          // автору собрать правило, которое схема отклонит при сохранении.
-          .filter((candidate) =>
-            candidate === 'correct' || candidate === 'wrong'
-              // У развилки верного ответа нет, вердикт о ней невозможен, и
-              // предлагать его значило бы дать автору собрать правило, которое
-              // схема отклонит при сохранении.
-              ? !(source?.kind === 'choice' && source.correctId === null)
-              : true,
-          )
-          .map((candidate) => (
-            <option key={candidate} value={candidate}>
-              {KIND_LABEL[candidate]}
-            </option>
-          ))}
-      </select>
+        choices={kindChoices}
+        onCommit={(next) => setKind(next as Condition['kind'])}
+      />
 
       {kind === 'equals' || kind === 'notEquals' ? (
         source && source.kind === 'choice' ? (
-          <select
-            className="ed-insp-input"
-            data-testid={`exit-condition-value-${ruleId}`}
+          <ChoiceField
+            label="Значение"
+            testId={`exit-condition-value-${ruleId}`}
             value={value !== '' ? value : (source.options[0]?.id ?? '')}
-            onChange={(event) => setValue(event.target.value)}
-          >
-            {source.options.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            choices={source.options.map((option) => ({ value: option.id, label: option.label }))}
+            onCommit={setValue}
+          />
         ) : (
-          <input
-            className="ed-insp-input"
-            type="text"
-            data-testid={`exit-condition-value-${ruleId}`}
+          <StringField
+            label="Значение"
+            testId={`exit-condition-value-${ruleId}`}
             value={value}
-            onChange={(event) => setValue(event.target.value)}
+            onCommit={setValue}
           />
         )
       ) : null}
 
       {kind === 'compare' ? (
         <>
-          <select
-            className="ed-insp-input"
-            data-testid={`exit-condition-op-${ruleId}`}
+          <ChoiceField
+            label="Сравнение"
+            testId={`exit-condition-op-${ruleId}`}
             value={op}
-            onChange={(event) => setOp(event.target.value as 'gt' | 'gte' | 'lt' | 'lte')}
-          >
-            <option value="gt">&gt;</option>
-            <option value="gte">≥</option>
-            <option value="lt">&lt;</option>
-            <option value="lte">≤</option>
-          </select>
+            choices={OP_CHOICES}
+            onCommit={(next) => setOp(next as 'gt' | 'gte' | 'lt' | 'lte')}
+          />
+          {/* НЕ переведено на NumberField — см. отчёт: смена type="number" на
+              текстовый ввод с раздельным draft/commit меняет клавиатурное
+              поведение органа (степпер, колесо мыши, посимвольный commit
+              вместо коммита по кнопке «Добавить»), а рули задачи это запрещают. */}
           <input
             className="ed-insp-input"
             type="number"
@@ -477,19 +470,16 @@ export function SegmentPanel({
                       <span className="ed-exit-hole-text">
                         Переменная «{hole.variable}»: вариант «{label}» никуда не ведёт
                       </span>
-                      <select
-                        className="ed-exit-select"
-                        data-testid={`exit-target-${hole.variable}-${optionId}`}
+                      <ChoiceField
+                        label="Целевая глава"
+                        testId={`exit-target-${hole.variable}-${optionId}`}
                         value={targetFor(key)}
-                        onChange={(event) => setTargetFor(key, event.target.value)}
-                      >
-                        {project.segments.map((segment) => (
-                          <option key={segment.id} value={segment.id}>
-                            {titleOf(segment)}
-                            {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
-                          </option>
-                        ))}
-                      </select>
+                        choices={project.segments.map((segment) => ({
+                          value: segment.id,
+                          label: titleOf(segment) + (repeatTargets.has(segment.id) ? ' (повтор)' : ''),
+                        }))}
+                        onCommit={(next) => setTargetFor(key, next)}
+                      />
                       <Button
                         data-testid={`exit-connect-${hole.variable}-${optionId}`}
                         onClick={() =>
@@ -508,19 +498,16 @@ export function SegmentPanel({
                       <span className="ed-exit-hole-text">
                         Переменная «{hole.variable}»: исход «{VERDICT_LABEL[verdict]}» никуда не ведёт
                       </span>
-                      <select
-                        className="ed-exit-select"
-                        data-testid={`exit-target-${hole.variable}-${verdict}`}
+                      <ChoiceField
+                        label="Целевая глава"
+                        testId={`exit-target-${hole.variable}-${verdict}`}
                         value={targetFor(key)}
-                        onChange={(event) => setTargetFor(key, event.target.value)}
-                      >
-                        {project.segments.map((segment) => (
-                          <option key={segment.id} value={segment.id}>
-                            {titleOf(segment)}
-                            {repeatTargets.has(segment.id) ? ' (повтор)' : ''}
-                          </option>
-                        ))}
-                      </select>
+                        choices={project.segments.map((segment) => ({
+                          value: segment.id,
+                          label: titleOf(segment) + (repeatTargets.has(segment.id) ? ' (повтор)' : ''),
+                        }))}
+                        onCommit={(next) => setTargetFor(key, next)}
+                      />
                       <Button
                         data-testid={`exit-connect-${hole.variable}-${verdict}`}
                         onClick={() => onConnect([{ kind: verdict, variable: hole.variable }], targetFor(key))}

@@ -303,6 +303,8 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
    */
   const canvasRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  /* Подложка листа — см. .ed-scene-backdrop в styles.ts. */
+  const backdropRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
   const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
   const gestureRef = useRef<Gesture | null>(null);
@@ -462,6 +464,32 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // внутри полотна той же округляющей формулой, а при увеличении отступы
     // выходят нулевыми и сцена занимает полотно целиком.
     preview.fit(size.width, size.height, scale);
+
+    /*
+      ПОДЛОЖКА ЛИСТА повторяет геометрию сцены, а НЕ вычисляет её заново.
+      Летербокс считает плеер (инвариант №5) и он же расставляет узел сцены;
+      вторая формула здесь разошлась бы с первой молча — на масштабе 1 обе
+      дают одно и то же, а расходятся только при вписывании.
+
+      Поэтому источник размера один — сам узел сцены, уже расставленный
+      плеером строкой выше. Читаем его коробку, а не повторяем расчёт.
+
+      Почему подложка НЕ на узле сцены: фон сцены принадлежит проекту,
+      а не хрому. Отдельный узел-сосед оставляет теме автора право
+      закрасить лист поверх, ничего у неё не отбирая.
+    */
+    const backdrop = backdropRef.current;
+    if (backdrop) {
+      const sceneBox = stageRef.current?.getBoundingClientRect();
+      const canvasBox = canvas.getBoundingClientRect();
+      if (sceneBox) {
+        backdrop.style.left = `${sceneBox.left - canvasBox.left}px`;
+        backdrop.style.top = `${sceneBox.top - canvasBox.top}px`;
+        backdrop.style.width = `${sceneBox.width}px`;
+        backdrop.style.height = `${sceneBox.height}px`;
+      }
+    }
+
     setShownScale(scale);
   }, [requireNodes, segment.stage]);
 
@@ -1509,6 +1537,12 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       <div className="ed-stage-scroll" data-testid="stage-scroll">
         <div className="ed-stage-canvas" ref={canvasRef}>
           {/*
+            Подложка листа. Стоит ПЕРЕД сценой, чтобы рисоваться под ней:
+            оба узла позиционированы, значит порядок рисования решает порядок
+            в DOM. Размер ей выставляет fit() по коробке самой сцены.
+          */}
+          <div className="ed-scene-backdrop" ref={backdropRef} aria-hidden="true" />
+          {/*
             Узел сцены. Опознаётся тестами по этой метке, а НЕ по положению
             в дереве: прежде они брали его как `.ed-stage-host > div`, и
             появление слоя прокрутки увело сцену на уровень глубже — три
@@ -1516,7 +1550,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
             ломается от любой правки разметки и врёт правдоподобно: узел
             находится, числа приходят, только чужие.
           */}
-          <div ref={stageRef} data-testid="stage-scene" />
+          <div ref={stageRef} className="ed-scene" data-testid="stage-scene" />
           {/*
             Рамка обведения — соседка сцены, а не её потомок: служебных узлов
             внутри сцены быть не должно, иначе они попадут в скриншотный паритет
