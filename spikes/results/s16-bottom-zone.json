@@ -10,7 +10,7 @@
           "w": 1280,
           "h": 800
         },
-        "gridRows": "49px 384px 367px",
+        "gridRows": "49px 445px 306px",
         "rootChildren": [
           {
             "cls": "ed-header",
@@ -27,9 +27,9 @@
           {
             "cls": "ed-main",
             "testid": null,
-            "outer": 384,
-            "height": 384,
-            "content": 383,
+            "outer": 445,
+            "height": 445,
+            "content": 444,
             "padding": 0,
             "border": 1,
             "margin": 0,
@@ -37,11 +37,11 @@
             "display": "grid"
           },
           {
-            "cls": "ed-track-column",
+            "cls": "ed-track-column ed-track-column--tracks",
             "testid": null,
-            "outer": 367,
-            "height": 367,
-            "content": 367,
+            "outer": 306,
+            "height": 306,
+            "content": 306,
             "padding": 0,
             "border": 0,
             "margin": 0,
@@ -52,9 +52,9 @@
         "stageHost": {
           "cls": "ed-stage-host",
           "testid": null,
-          "outer": 283,
-          "height": 283,
-          "content": 283,
+          "outer": 344,
+          "height": 344,
+          "content": 344,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -62,11 +62,11 @@
           "display": "block"
         },
         "column": {
-          "cls": "ed-track-column",
+          "cls": "ed-track-column ed-track-column--tracks",
           "testid": null,
-          "outer": 367,
-          "height": 367,
-          "content": 367,
+          "outer": 306,
+          "height": 306,
+          "content": 306,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -77,9 +77,9 @@
             {
               "cls": "ed-zone-head",
               "testid": null,
-              "outer": 29,
-              "height": 29,
-              "content": 22,
+              "outer": 35,
+              "height": 35,
+              "content": 28,
               "padding": 6,
               "border": 1,
               "margin": 0,
@@ -101,64 +101,6 @@
                   "depth": 2,
                   "children": []
                 },
-                {
-                  "cls": "ed-zone-views",
-                  "testid": null,
-                  "outer": 22,
-                  "height": 22,
-                  "content": 22,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 4,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-zone-view ed-zone-view--on",
-                      "testid": "view-tracks",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-zone-view",
-                      "testid": "view-branches",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-audio-source ed-audio-source--collapsed",
-              "testid": null,
-              "outer": 33,
-              "height": 33,
-              "content": 24,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 10,
-              "display": "flex",
-              "depth": 1,
-              "children": [
                 {
                   "cls": "ed-audio-input",
                   "testid": "audio-file-input",
@@ -203,8 +145,51 @@
                   ]
                 },
                 {
-                  "cls": "ed-audio-current",
-                  "testid": "audio-current",
+                  "cls": "ed-slide-strip-toggle",
+                  "testid": "slide-strip-toggle",
+                  "outer": 24,
+                  "height": 24,
+                  "content": 18,
+                  "padding": 4,
+                  "border": 2,
+                  "margin": 0,
+                  "rowGap": 6,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-slide-strip-counter",
+                  "testid": "strip-counter",
                   "outer": 18,
                   "height": 18,
                   "content": 18,
@@ -215,24 +200,9 @@
                   "display": "block",
                   "depth": 2,
                   "children": []
-                }
-              ]
-            },
-            {
-              "cls": "ed-slide-strip-wrap",
-              "testid": null,
-              "outer": 55,
-              "height": 55,
-              "content": 46,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 2,
-              "display": "flex",
-              "depth": 1,
-              "children": [
+                },
                 {
-                  "cls": "ed-slide-strip-head",
+                  "cls": "ed-slide-strip-actions",
                   "testid": null,
                   "outer": 28,
                   "height": 28,
@@ -240,59 +210,18 @@
                   "padding": 0,
                   "border": 0,
                   "margin": 0,
-                  "rowGap": 10,
+                  "rowGap": 8,
                   "display": "flex",
                   "depth": 2,
                   "children": [
                     {
-                      "cls": "ed-slide-strip-toggle",
-                      "testid": "slide-strip-toggle",
-                      "outer": 24,
-                      "height": 24,
+                      "cls": "ed-btn",
+                      "testid": "slide-duplicate",
+                      "outer": 28,
+                      "height": 28,
                       "content": 18,
-                      "padding": 4,
+                      "padding": 8,
                       "border": 2,
-                      "margin": 0,
-                      "rowGap": 6,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    },
-                    {
-                      "cls": "ed-slide-strip-counter",
-                      "testid": "strip-counter",
-                      "outer": 21,
-                      "height": 21,
-                      "content": 21,
-                      "padding": 0,
-                      "border": 0,
                       "margin": 0,
                       "rowGap": 0,
                       "display": "block",
@@ -300,89 +229,121 @@
                       "children": []
                     },
                     {
-                      "cls": "ed-actions",
-                      "testid": null,
+                      "cls": "ed-btn",
+                      "testid": "slide-copy",
                       "outer": 28,
                       "height": 28,
-                      "content": 28,
-                      "padding": 0,
-                      "border": 0,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
                       "margin": 0,
-                      "rowGap": 8,
-                      "display": "flex",
+                      "rowGap": 0,
+                      "display": "block",
                       "depth": 3,
-                      "children": [
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-duplicate",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-copy",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-cut",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-paste",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-cut",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-paste",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
                     }
                   ]
                 },
                 {
-                  "cls": "ed-slide-strip-note",
-                  "testid": "slide-clipboard-note",
-                  "outer": 16,
-                  "height": 16,
-                  "content": 16,
+                  "cls": "ed-zone-views",
+                  "testid": null,
+                  "outer": 22,
+                  "height": 22,
+                  "content": 22,
                   "padding": 0,
                   "border": 0,
                   "margin": 0,
-                  "rowGap": 0,
-                  "display": "block",
+                  "rowGap": 4,
+                  "display": "flex",
                   "depth": 2,
-                  "children": []
+                  "children": [
+                    {
+                      "cls": "ed-zone-view ed-zone-view--on",
+                      "testid": "view-tracks",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "view-branches",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "open-second-window",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
                 }
               ]
+            },
+            {
+              "cls": "ed-slide-strip-note",
+              "testid": "slide-clipboard-note",
+              "outer": 21,
+              "height": 21,
+              "content": 16,
+              "padding": 4,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 0,
+              "display": "block",
+              "depth": 1,
+              "children": []
             },
             {
               "cls": "ed-track",
@@ -554,8 +515,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         },
                         {
@@ -567,8 +528,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         }
                       ]
@@ -704,8 +665,8 @@
         }
       },
       "collapsedScale": {
-        "actual": 0.23240741093953451,
-        "expected": 0.2324074074074074,
+        "actual": 0.28020833333333334,
+        "expected": 0.28020833333333334,
         "converged": true
       },
       "expanded": {
@@ -713,7 +674,7 @@
           "w": 1280,
           "h": 800
         },
-        "gridRows": "49px 282px 469px",
+        "gridRows": "49px 310px 441px",
         "rootChildren": [
           {
             "cls": "ed-header",
@@ -730,9 +691,9 @@
           {
             "cls": "ed-main",
             "testid": null,
-            "outer": 282,
-            "height": 282,
-            "content": 281,
+            "outer": 310,
+            "height": 310,
+            "content": 309,
             "padding": 0,
             "border": 1,
             "margin": 0,
@@ -740,11 +701,11 @@
             "display": "grid"
           },
           {
-            "cls": "ed-track-column",
+            "cls": "ed-track-column ed-track-column--tracks",
             "testid": null,
-            "outer": 469,
-            "height": 469,
-            "content": 469,
+            "outer": 441,
+            "height": 441,
+            "content": 441,
             "padding": 0,
             "border": 0,
             "margin": 0,
@@ -755,9 +716,9 @@
         "stageHost": {
           "cls": "ed-stage-host",
           "testid": null,
-          "outer": 181,
-          "height": 181,
-          "content": 181,
+          "outer": 209,
+          "height": 209,
+          "content": 209,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -765,11 +726,11 @@
           "display": "block"
         },
         "column": {
-          "cls": "ed-track-column",
+          "cls": "ed-track-column ed-track-column--tracks",
           "testid": null,
-          "outer": 469,
-          "height": 469,
-          "content": 469,
+          "outer": 441,
+          "height": 441,
+          "content": 441,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -780,9 +741,9 @@
             {
               "cls": "ed-zone-head",
               "testid": null,
-              "outer": 29,
-              "height": 29,
-              "content": 22,
+              "outer": 35,
+              "height": 35,
+              "content": 28,
               "padding": 6,
               "border": 1,
               "margin": 0,
@@ -804,64 +765,6 @@
                   "depth": 2,
                   "children": []
                 },
-                {
-                  "cls": "ed-zone-views",
-                  "testid": null,
-                  "outer": 22,
-                  "height": 22,
-                  "content": 22,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 4,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-zone-view ed-zone-view--on",
-                      "testid": "view-tracks",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-zone-view",
-                      "testid": "view-branches",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-audio-source",
-              "testid": null,
-              "outer": 135,
-              "height": 135,
-              "content": 118,
-              "padding": 16,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 10,
-              "display": "flex",
-              "depth": 1,
-              "children": [
                 {
                   "cls": "ed-audio-input",
                   "testid": "audio-file-input",
@@ -906,6 +809,220 @@
                   ]
                 },
                 {
+                  "cls": "ed-slide-strip-toggle",
+                  "testid": "slide-strip-toggle",
+                  "outer": 24,
+                  "height": 24,
+                  "content": 18,
+                  "padding": 4,
+                  "border": 2,
+                  "margin": 0,
+                  "rowGap": 6,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-slide-strip-counter",
+                  "testid": "strip-counter",
+                  "outer": 18,
+                  "height": 18,
+                  "content": 18,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 0,
+                  "display": "block",
+                  "depth": 2,
+                  "children": []
+                },
+                {
+                  "cls": "ed-slide-strip-actions",
+                  "testid": null,
+                  "outer": 28,
+                  "height": 28,
+                  "content": 28,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 8,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-duplicate",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-copy",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-cut",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-paste",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-zone-views",
+                  "testid": null,
+                  "outer": 22,
+                  "height": 22,
+                  "content": 22,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 4,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "ed-zone-view ed-zone-view--on",
+                      "testid": "view-tracks",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "view-branches",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "open-second-window",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "cls": "ed-slide-strip-note",
+              "testid": "slide-clipboard-note",
+              "outer": 21,
+              "height": 21,
+              "content": 16,
+              "padding": 4,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 0,
+              "display": "block",
+              "depth": 1,
+              "children": []
+            },
+            {
+              "cls": "ed-audio-source",
+              "testid": null,
+              "outer": 135,
+              "height": 135,
+              "content": 118,
+              "padding": 16,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 10,
+              "display": "flex",
+              "depth": 1,
+              "children": [
+                {
                   "cls": "ed-audio-current",
                   "testid": "audio-current",
                   "outer": 18,
@@ -920,7 +1037,7 @@
                   "children": []
                 },
                 {
-                  "cls": "ed-action",
+                  "cls": "ed-btn",
                   "testid": null,
                   "outer": 28,
                   "height": 28,
@@ -934,7 +1051,7 @@
                   "children": []
                 },
                 {
-                  "cls": "ed-action",
+                  "cls": "ed-btn",
                   "testid": "transcribe-button",
                   "outer": 28,
                   "height": 28,
@@ -1003,172 +1120,6 @@
                       "children": []
                     }
                   ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-slide-strip-wrap",
-              "testid": null,
-              "outer": 55,
-              "height": 55,
-              "content": 46,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 2,
-              "display": "flex",
-              "depth": 1,
-              "children": [
-                {
-                  "cls": "ed-slide-strip-head",
-                  "testid": null,
-                  "outer": 28,
-                  "height": 28,
-                  "content": 28,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 10,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-slide-strip-toggle",
-                      "testid": "slide-strip-toggle",
-                      "outer": 24,
-                      "height": 24,
-                      "content": 18,
-                      "padding": 4,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 6,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    },
-                    {
-                      "cls": "ed-slide-strip-counter",
-                      "testid": "strip-counter",
-                      "outer": 21,
-                      "height": 21,
-                      "content": 21,
-                      "padding": 0,
-                      "border": 0,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-actions",
-                      "testid": null,
-                      "outer": 28,
-                      "height": 28,
-                      "content": 28,
-                      "padding": 0,
-                      "border": 0,
-                      "margin": 0,
-                      "rowGap": 8,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-duplicate",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-copy",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-cut",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-paste",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "cls": "ed-slide-strip-note",
-                  "testid": "slide-clipboard-note",
-                  "outer": 16,
-                  "height": 16,
-                  "content": 16,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 0,
-                  "display": "block",
-                  "depth": 2,
-                  "children": []
                 }
               ]
             },
@@ -1342,8 +1293,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         },
                         {
@@ -1355,8 +1306,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         }
                       ]
@@ -1492,8 +1443,8 @@
         }
       },
       "expandedScale": {
-        "actual": 0.13796297709147134,
-        "expected": 0.13796296296296295,
+        "actual": 0.1638888676961263,
+        "expected": 0.1638888888888889,
         "converged": true
       }
     },
@@ -1507,7 +1458,7 @@
           "w": 1440,
           "h": 900
         },
-        "gridRows": "49px 484px 367px",
+        "gridRows": "49px 545px 306px",
         "rootChildren": [
           {
             "cls": "ed-header",
@@ -1524,9 +1475,9 @@
           {
             "cls": "ed-main",
             "testid": null,
-            "outer": 484,
-            "height": 484,
-            "content": 483,
+            "outer": 545,
+            "height": 545,
+            "content": 544,
             "padding": 0,
             "border": 1,
             "margin": 0,
@@ -1534,11 +1485,11 @@
             "display": "grid"
           },
           {
-            "cls": "ed-track-column",
+            "cls": "ed-track-column ed-track-column--tracks",
             "testid": null,
-            "outer": 367,
-            "height": 367,
-            "content": 367,
+            "outer": 306,
+            "height": 306,
+            "content": 306,
             "padding": 0,
             "border": 0,
             "margin": 0,
@@ -1549,9 +1500,9 @@
         "stageHost": {
           "cls": "ed-stage-host",
           "testid": null,
-          "outer": 383,
-          "height": 383,
-          "content": 383,
+          "outer": 444,
+          "height": 444,
+          "content": 444,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -1559,11 +1510,11 @@
           "display": "block"
         },
         "column": {
-          "cls": "ed-track-column",
+          "cls": "ed-track-column ed-track-column--tracks",
           "testid": null,
-          "outer": 367,
-          "height": 367,
-          "content": 367,
+          "outer": 306,
+          "height": 306,
+          "content": 306,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -1574,9 +1525,9 @@
             {
               "cls": "ed-zone-head",
               "testid": null,
-              "outer": 29,
-              "height": 29,
-              "content": 22,
+              "outer": 35,
+              "height": 35,
+              "content": 28,
               "padding": 6,
               "border": 1,
               "margin": 0,
@@ -1598,64 +1549,6 @@
                   "depth": 2,
                   "children": []
                 },
-                {
-                  "cls": "ed-zone-views",
-                  "testid": null,
-                  "outer": 22,
-                  "height": 22,
-                  "content": 22,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 4,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-zone-view ed-zone-view--on",
-                      "testid": "view-tracks",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-zone-view",
-                      "testid": "view-branches",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-audio-source ed-audio-source--collapsed",
-              "testid": null,
-              "outer": 33,
-              "height": 33,
-              "content": 24,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 10,
-              "display": "flex",
-              "depth": 1,
-              "children": [
                 {
                   "cls": "ed-audio-input",
                   "testid": "audio-file-input",
@@ -1700,8 +1593,51 @@
                   ]
                 },
                 {
-                  "cls": "ed-audio-current",
-                  "testid": "audio-current",
+                  "cls": "ed-slide-strip-toggle",
+                  "testid": "slide-strip-toggle",
+                  "outer": 24,
+                  "height": 24,
+                  "content": 18,
+                  "padding": 4,
+                  "border": 2,
+                  "margin": 0,
+                  "rowGap": 6,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-slide-strip-counter",
+                  "testid": "strip-counter",
                   "outer": 18,
                   "height": 18,
                   "content": 18,
@@ -1712,24 +1648,9 @@
                   "display": "block",
                   "depth": 2,
                   "children": []
-                }
-              ]
-            },
-            {
-              "cls": "ed-slide-strip-wrap",
-              "testid": null,
-              "outer": 55,
-              "height": 55,
-              "content": 46,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 2,
-              "display": "flex",
-              "depth": 1,
-              "children": [
+                },
                 {
-                  "cls": "ed-slide-strip-head",
+                  "cls": "ed-slide-strip-actions",
                   "testid": null,
                   "outer": 28,
                   "height": 28,
@@ -1737,59 +1658,18 @@
                   "padding": 0,
                   "border": 0,
                   "margin": 0,
-                  "rowGap": 10,
+                  "rowGap": 8,
                   "display": "flex",
                   "depth": 2,
                   "children": [
                     {
-                      "cls": "ed-slide-strip-toggle",
-                      "testid": "slide-strip-toggle",
-                      "outer": 24,
-                      "height": 24,
+                      "cls": "ed-btn",
+                      "testid": "slide-duplicate",
+                      "outer": 28,
+                      "height": 28,
                       "content": 18,
-                      "padding": 4,
+                      "padding": 8,
                       "border": 2,
-                      "margin": 0,
-                      "rowGap": 6,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    },
-                    {
-                      "cls": "ed-slide-strip-counter",
-                      "testid": "strip-counter",
-                      "outer": 21,
-                      "height": 21,
-                      "content": 21,
-                      "padding": 0,
-                      "border": 0,
                       "margin": 0,
                       "rowGap": 0,
                       "display": "block",
@@ -1797,89 +1677,121 @@
                       "children": []
                     },
                     {
-                      "cls": "ed-actions",
-                      "testid": null,
+                      "cls": "ed-btn",
+                      "testid": "slide-copy",
                       "outer": 28,
                       "height": 28,
-                      "content": 28,
-                      "padding": 0,
-                      "border": 0,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
                       "margin": 0,
-                      "rowGap": 8,
-                      "display": "flex",
+                      "rowGap": 0,
+                      "display": "block",
                       "depth": 3,
-                      "children": [
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-duplicate",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-copy",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-cut",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-paste",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-cut",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-paste",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
                     }
                   ]
                 },
                 {
-                  "cls": "ed-slide-strip-note",
-                  "testid": "slide-clipboard-note",
-                  "outer": 16,
-                  "height": 16,
-                  "content": 16,
+                  "cls": "ed-zone-views",
+                  "testid": null,
+                  "outer": 22,
+                  "height": 22,
+                  "content": 22,
                   "padding": 0,
                   "border": 0,
                   "margin": 0,
-                  "rowGap": 0,
-                  "display": "block",
+                  "rowGap": 4,
+                  "display": "flex",
                   "depth": 2,
-                  "children": []
+                  "children": [
+                    {
+                      "cls": "ed-zone-view ed-zone-view--on",
+                      "testid": "view-tracks",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "view-branches",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "open-second-window",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
                 }
               ]
+            },
+            {
+              "cls": "ed-slide-strip-note",
+              "testid": "slide-clipboard-note",
+              "outer": 21,
+              "height": 21,
+              "content": 16,
+              "padding": 4,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 0,
+              "display": "block",
+              "depth": 1,
+              "children": []
             },
             {
               "cls": "ed-track",
@@ -2051,8 +1963,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         },
                         {
@@ -2064,8 +1976,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         }
                       ]
@@ -2201,8 +2113,8 @@
         }
       },
       "collapsedScale": {
-        "actual": 0.325,
-        "expected": 0.325,
+        "actual": 0.36354166666666665,
+        "expected": 0.36354166666666665,
         "converged": true
       },
       "expanded": {
@@ -2210,7 +2122,7 @@
           "w": 1440,
           "h": 900
         },
-        "gridRows": "49px 382px 469px",
+        "gridRows": "49px 410px 441px",
         "rootChildren": [
           {
             "cls": "ed-header",
@@ -2227,9 +2139,9 @@
           {
             "cls": "ed-main",
             "testid": null,
-            "outer": 382,
-            "height": 382,
-            "content": 381,
+            "outer": 410,
+            "height": 410,
+            "content": 409,
             "padding": 0,
             "border": 1,
             "margin": 0,
@@ -2237,11 +2149,11 @@
             "display": "grid"
           },
           {
-            "cls": "ed-track-column",
+            "cls": "ed-track-column ed-track-column--tracks",
             "testid": null,
-            "outer": 469,
-            "height": 469,
-            "content": 469,
+            "outer": 441,
+            "height": 441,
+            "content": 441,
             "padding": 0,
             "border": 0,
             "margin": 0,
@@ -2252,9 +2164,9 @@
         "stageHost": {
           "cls": "ed-stage-host",
           "testid": null,
-          "outer": 281,
-          "height": 281,
-          "content": 281,
+          "outer": 309,
+          "height": 309,
+          "content": 309,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -2262,11 +2174,11 @@
           "display": "block"
         },
         "column": {
-          "cls": "ed-track-column",
+          "cls": "ed-track-column ed-track-column--tracks",
           "testid": null,
-          "outer": 469,
-          "height": 469,
-          "content": 469,
+          "outer": 441,
+          "height": 441,
+          "content": 441,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -2277,9 +2189,9 @@
             {
               "cls": "ed-zone-head",
               "testid": null,
-              "outer": 29,
-              "height": 29,
-              "content": 22,
+              "outer": 35,
+              "height": 35,
+              "content": 28,
               "padding": 6,
               "border": 1,
               "margin": 0,
@@ -2301,64 +2213,6 @@
                   "depth": 2,
                   "children": []
                 },
-                {
-                  "cls": "ed-zone-views",
-                  "testid": null,
-                  "outer": 22,
-                  "height": 22,
-                  "content": 22,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 4,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-zone-view ed-zone-view--on",
-                      "testid": "view-tracks",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-zone-view",
-                      "testid": "view-branches",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-audio-source",
-              "testid": null,
-              "outer": 135,
-              "height": 135,
-              "content": 118,
-              "padding": 16,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 10,
-              "display": "flex",
-              "depth": 1,
-              "children": [
                 {
                   "cls": "ed-audio-input",
                   "testid": "audio-file-input",
@@ -2403,6 +2257,220 @@
                   ]
                 },
                 {
+                  "cls": "ed-slide-strip-toggle",
+                  "testid": "slide-strip-toggle",
+                  "outer": 24,
+                  "height": 24,
+                  "content": 18,
+                  "padding": 4,
+                  "border": 2,
+                  "margin": 0,
+                  "rowGap": 6,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-slide-strip-counter",
+                  "testid": "strip-counter",
+                  "outer": 18,
+                  "height": 18,
+                  "content": 18,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 0,
+                  "display": "block",
+                  "depth": 2,
+                  "children": []
+                },
+                {
+                  "cls": "ed-slide-strip-actions",
+                  "testid": null,
+                  "outer": 28,
+                  "height": 28,
+                  "content": 28,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 8,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-duplicate",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-copy",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-cut",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-paste",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-zone-views",
+                  "testid": null,
+                  "outer": 22,
+                  "height": 22,
+                  "content": 22,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 4,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "ed-zone-view ed-zone-view--on",
+                      "testid": "view-tracks",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "view-branches",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "open-second-window",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "cls": "ed-slide-strip-note",
+              "testid": "slide-clipboard-note",
+              "outer": 21,
+              "height": 21,
+              "content": 16,
+              "padding": 4,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 0,
+              "display": "block",
+              "depth": 1,
+              "children": []
+            },
+            {
+              "cls": "ed-audio-source",
+              "testid": null,
+              "outer": 135,
+              "height": 135,
+              "content": 118,
+              "padding": 16,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 10,
+              "display": "flex",
+              "depth": 1,
+              "children": [
+                {
                   "cls": "ed-audio-current",
                   "testid": "audio-current",
                   "outer": 18,
@@ -2417,7 +2485,7 @@
                   "children": []
                 },
                 {
-                  "cls": "ed-action",
+                  "cls": "ed-btn",
                   "testid": null,
                   "outer": 28,
                   "height": 28,
@@ -2431,7 +2499,7 @@
                   "children": []
                 },
                 {
-                  "cls": "ed-action",
+                  "cls": "ed-btn",
                   "testid": "transcribe-button",
                   "outer": 28,
                   "height": 28,
@@ -2500,172 +2568,6 @@
                       "children": []
                     }
                   ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-slide-strip-wrap",
-              "testid": null,
-              "outer": 55,
-              "height": 55,
-              "content": 46,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 2,
-              "display": "flex",
-              "depth": 1,
-              "children": [
-                {
-                  "cls": "ed-slide-strip-head",
-                  "testid": null,
-                  "outer": 28,
-                  "height": 28,
-                  "content": 28,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 10,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-slide-strip-toggle",
-                      "testid": "slide-strip-toggle",
-                      "outer": 24,
-                      "height": 24,
-                      "content": 18,
-                      "padding": 4,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 6,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    },
-                    {
-                      "cls": "ed-slide-strip-counter",
-                      "testid": "strip-counter",
-                      "outer": 21,
-                      "height": 21,
-                      "content": 21,
-                      "padding": 0,
-                      "border": 0,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-actions",
-                      "testid": null,
-                      "outer": 28,
-                      "height": 28,
-                      "content": 28,
-                      "padding": 0,
-                      "border": 0,
-                      "margin": 0,
-                      "rowGap": 8,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-duplicate",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-copy",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-cut",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-paste",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "cls": "ed-slide-strip-note",
-                  "testid": "slide-clipboard-note",
-                  "outer": 16,
-                  "height": 16,
-                  "content": 16,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 0,
-                  "display": "block",
-                  "depth": 2,
-                  "children": []
                 }
               ]
             },
@@ -2839,8 +2741,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         },
                         {
@@ -2852,8 +2754,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         }
                       ]
@@ -2989,8 +2891,8 @@
         }
       },
       "expandedScale": {
-        "actual": 0.23055553436279297,
-        "expected": 0.23055555555555557,
+        "actual": 0.25648148854573566,
+        "expected": 0.2564814814814815,
         "converged": true
       }
     },
@@ -3004,7 +2906,7 @@
           "w": 1920,
           "h": 1080
         },
-        "gridRows": "49px 664px 367px",
+        "gridRows": "49px 725px 306px",
         "rootChildren": [
           {
             "cls": "ed-header",
@@ -3021,9 +2923,9 @@
           {
             "cls": "ed-main",
             "testid": null,
-            "outer": 664,
-            "height": 664,
-            "content": 663,
+            "outer": 725,
+            "height": 725,
+            "content": 724,
             "padding": 0,
             "border": 1,
             "margin": 0,
@@ -3031,11 +2933,11 @@
             "display": "grid"
           },
           {
-            "cls": "ed-track-column",
+            "cls": "ed-track-column ed-track-column--tracks",
             "testid": null,
-            "outer": 367,
-            "height": 367,
-            "content": 367,
+            "outer": 306,
+            "height": 306,
+            "content": 306,
             "padding": 0,
             "border": 0,
             "margin": 0,
@@ -3046,9 +2948,9 @@
         "stageHost": {
           "cls": "ed-stage-host",
           "testid": null,
-          "outer": 563,
-          "height": 563,
-          "content": 563,
+          "outer": 624,
+          "height": 624,
+          "content": 624,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -3056,11 +2958,11 @@
           "display": "block"
         },
         "column": {
-          "cls": "ed-track-column",
+          "cls": "ed-track-column ed-track-column--tracks",
           "testid": null,
-          "outer": 367,
-          "height": 367,
-          "content": 367,
+          "outer": 306,
+          "height": 306,
+          "content": 306,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -3071,9 +2973,9 @@
             {
               "cls": "ed-zone-head",
               "testid": null,
-              "outer": 29,
-              "height": 29,
-              "content": 22,
+              "outer": 35,
+              "height": 35,
+              "content": 28,
               "padding": 6,
               "border": 1,
               "margin": 0,
@@ -3095,64 +2997,6 @@
                   "depth": 2,
                   "children": []
                 },
-                {
-                  "cls": "ed-zone-views",
-                  "testid": null,
-                  "outer": 22,
-                  "height": 22,
-                  "content": 22,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 4,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-zone-view ed-zone-view--on",
-                      "testid": "view-tracks",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-zone-view",
-                      "testid": "view-branches",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-audio-source ed-audio-source--collapsed",
-              "testid": null,
-              "outer": 33,
-              "height": 33,
-              "content": 24,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 10,
-              "display": "flex",
-              "depth": 1,
-              "children": [
                 {
                   "cls": "ed-audio-input",
                   "testid": "audio-file-input",
@@ -3197,8 +3041,51 @@
                   ]
                 },
                 {
-                  "cls": "ed-audio-current",
-                  "testid": "audio-current",
+                  "cls": "ed-slide-strip-toggle",
+                  "testid": "slide-strip-toggle",
+                  "outer": 24,
+                  "height": 24,
+                  "content": 18,
+                  "padding": 4,
+                  "border": 2,
+                  "margin": 0,
+                  "rowGap": 6,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-slide-strip-counter",
+                  "testid": "strip-counter",
                   "outer": 18,
                   "height": 18,
                   "content": 18,
@@ -3209,24 +3096,9 @@
                   "display": "block",
                   "depth": 2,
                   "children": []
-                }
-              ]
-            },
-            {
-              "cls": "ed-slide-strip-wrap",
-              "testid": null,
-              "outer": 55,
-              "height": 55,
-              "content": 46,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 2,
-              "display": "flex",
-              "depth": 1,
-              "children": [
+                },
                 {
-                  "cls": "ed-slide-strip-head",
+                  "cls": "ed-slide-strip-actions",
                   "testid": null,
                   "outer": 28,
                   "height": 28,
@@ -3234,59 +3106,18 @@
                   "padding": 0,
                   "border": 0,
                   "margin": 0,
-                  "rowGap": 10,
+                  "rowGap": 8,
                   "display": "flex",
                   "depth": 2,
                   "children": [
                     {
-                      "cls": "ed-slide-strip-toggle",
-                      "testid": "slide-strip-toggle",
-                      "outer": 24,
-                      "height": 24,
+                      "cls": "ed-btn",
+                      "testid": "slide-duplicate",
+                      "outer": 28,
+                      "height": 28,
                       "content": 18,
-                      "padding": 4,
+                      "padding": 8,
                       "border": 2,
-                      "margin": 0,
-                      "rowGap": 6,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    },
-                    {
-                      "cls": "ed-slide-strip-counter",
-                      "testid": "strip-counter",
-                      "outer": 21,
-                      "height": 21,
-                      "content": 21,
-                      "padding": 0,
-                      "border": 0,
                       "margin": 0,
                       "rowGap": 0,
                       "display": "block",
@@ -3294,89 +3125,121 @@
                       "children": []
                     },
                     {
-                      "cls": "ed-actions",
-                      "testid": null,
+                      "cls": "ed-btn",
+                      "testid": "slide-copy",
                       "outer": 28,
                       "height": 28,
-                      "content": 28,
-                      "padding": 0,
-                      "border": 0,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
                       "margin": 0,
-                      "rowGap": 8,
-                      "display": "flex",
+                      "rowGap": 0,
+                      "display": "block",
                       "depth": 3,
-                      "children": [
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-duplicate",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-copy",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-cut",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-paste",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-cut",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-paste",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
                     }
                   ]
                 },
                 {
-                  "cls": "ed-slide-strip-note",
-                  "testid": "slide-clipboard-note",
-                  "outer": 16,
-                  "height": 16,
-                  "content": 16,
+                  "cls": "ed-zone-views",
+                  "testid": null,
+                  "outer": 22,
+                  "height": 22,
+                  "content": 22,
                   "padding": 0,
                   "border": 0,
                   "margin": 0,
-                  "rowGap": 0,
-                  "display": "block",
+                  "rowGap": 4,
+                  "display": "flex",
                   "depth": 2,
-                  "children": []
+                  "children": [
+                    {
+                      "cls": "ed-zone-view ed-zone-view--on",
+                      "testid": "view-tracks",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "view-branches",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "open-second-window",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
                 }
               ]
+            },
+            {
+              "cls": "ed-slide-strip-note",
+              "testid": "slide-clipboard-note",
+              "outer": 21,
+              "height": 21,
+              "content": 16,
+              "padding": 4,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 0,
+              "display": "block",
+              "depth": 1,
+              "children": []
             },
             {
               "cls": "ed-track",
@@ -3548,8 +3411,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         },
                         {
@@ -3561,8 +3424,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         }
                       ]
@@ -3698,8 +3561,8 @@
         }
       },
       "collapsedScale": {
-        "actual": 0.49166666666666664,
-        "expected": 0.49166666666666664,
+        "actual": 0.5481481552124023,
+        "expected": 0.5481481481481482,
         "converged": true
       },
       "expanded": {
@@ -3707,7 +3570,7 @@
           "w": 1920,
           "h": 1080
         },
-        "gridRows": "49px 562px 469px",
+        "gridRows": "49px 590px 441px",
         "rootChildren": [
           {
             "cls": "ed-header",
@@ -3724,9 +3587,9 @@
           {
             "cls": "ed-main",
             "testid": null,
-            "outer": 562,
-            "height": 562,
-            "content": 561,
+            "outer": 590,
+            "height": 590,
+            "content": 589,
             "padding": 0,
             "border": 1,
             "margin": 0,
@@ -3734,11 +3597,11 @@
             "display": "grid"
           },
           {
-            "cls": "ed-track-column",
+            "cls": "ed-track-column ed-track-column--tracks",
             "testid": null,
-            "outer": 469,
-            "height": 469,
-            "content": 469,
+            "outer": 441,
+            "height": 441,
+            "content": 441,
             "padding": 0,
             "border": 0,
             "margin": 0,
@@ -3749,9 +3612,9 @@
         "stageHost": {
           "cls": "ed-stage-host",
           "testid": null,
-          "outer": 461,
-          "height": 461,
-          "content": 461,
+          "outer": 489,
+          "height": 489,
+          "content": 489,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -3759,11 +3622,11 @@
           "display": "block"
         },
         "column": {
-          "cls": "ed-track-column",
+          "cls": "ed-track-column ed-track-column--tracks",
           "testid": null,
-          "outer": 469,
-          "height": 469,
-          "content": 469,
+          "outer": 441,
+          "height": 441,
+          "content": 441,
           "padding": 0,
           "border": 0,
           "margin": 0,
@@ -3774,9 +3637,9 @@
             {
               "cls": "ed-zone-head",
               "testid": null,
-              "outer": 29,
-              "height": 29,
-              "content": 22,
+              "outer": 35,
+              "height": 35,
+              "content": 28,
               "padding": 6,
               "border": 1,
               "margin": 0,
@@ -3798,64 +3661,6 @@
                   "depth": 2,
                   "children": []
                 },
-                {
-                  "cls": "ed-zone-views",
-                  "testid": null,
-                  "outer": 22,
-                  "height": 22,
-                  "content": 22,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 4,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-zone-view ed-zone-view--on",
-                      "testid": "view-tracks",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-zone-view",
-                      "testid": "view-branches",
-                      "outer": 22,
-                      "height": 22,
-                      "content": 18,
-                      "padding": 2,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-audio-source",
-              "testid": null,
-              "outer": 135,
-              "height": 135,
-              "content": 118,
-              "padding": 16,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 10,
-              "display": "flex",
-              "depth": 1,
-              "children": [
                 {
                   "cls": "ed-audio-input",
                   "testid": "audio-file-input",
@@ -3900,6 +3705,220 @@
                   ]
                 },
                 {
+                  "cls": "ed-slide-strip-toggle",
+                  "testid": "slide-strip-toggle",
+                  "outer": 24,
+                  "height": 24,
+                  "content": 18,
+                  "padding": 4,
+                  "border": 2,
+                  "margin": 0,
+                  "rowGap": 6,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "span",
+                      "testid": null,
+                      "outer": 18,
+                      "height": 18,
+                      "content": 18,
+                      "padding": 0,
+                      "border": 0,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-slide-strip-counter",
+                  "testid": "strip-counter",
+                  "outer": 18,
+                  "height": 18,
+                  "content": 18,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 0,
+                  "display": "block",
+                  "depth": 2,
+                  "children": []
+                },
+                {
+                  "cls": "ed-slide-strip-actions",
+                  "testid": null,
+                  "outer": 28,
+                  "height": 28,
+                  "content": 28,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 8,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-duplicate",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-copy",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-cut",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-btn",
+                      "testid": "slide-paste",
+                      "outer": 28,
+                      "height": 28,
+                      "content": 18,
+                      "padding": 8,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                },
+                {
+                  "cls": "ed-zone-views",
+                  "testid": null,
+                  "outer": 22,
+                  "height": 22,
+                  "content": 22,
+                  "padding": 0,
+                  "border": 0,
+                  "margin": 0,
+                  "rowGap": 4,
+                  "display": "flex",
+                  "depth": 2,
+                  "children": [
+                    {
+                      "cls": "ed-zone-view ed-zone-view--on",
+                      "testid": "view-tracks",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "view-branches",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    },
+                    {
+                      "cls": "ed-zone-view",
+                      "testid": "open-second-window",
+                      "outer": 22,
+                      "height": 22,
+                      "content": 18,
+                      "padding": 2,
+                      "border": 2,
+                      "margin": 0,
+                      "rowGap": 0,
+                      "display": "block",
+                      "depth": 3,
+                      "children": []
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "cls": "ed-slide-strip-note",
+              "testid": "slide-clipboard-note",
+              "outer": 21,
+              "height": 21,
+              "content": 16,
+              "padding": 4,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 0,
+              "display": "block",
+              "depth": 1,
+              "children": []
+            },
+            {
+              "cls": "ed-audio-source",
+              "testid": null,
+              "outer": 135,
+              "height": 135,
+              "content": 118,
+              "padding": 16,
+              "border": 1,
+              "margin": 0,
+              "rowGap": 10,
+              "display": "flex",
+              "depth": 1,
+              "children": [
+                {
                   "cls": "ed-audio-current",
                   "testid": "audio-current",
                   "outer": 18,
@@ -3914,7 +3933,7 @@
                   "children": []
                 },
                 {
-                  "cls": "ed-action",
+                  "cls": "ed-btn",
                   "testid": null,
                   "outer": 28,
                   "height": 28,
@@ -3928,7 +3947,7 @@
                   "children": []
                 },
                 {
-                  "cls": "ed-action",
+                  "cls": "ed-btn",
                   "testid": "transcribe-button",
                   "outer": 28,
                   "height": 28,
@@ -3997,172 +4016,6 @@
                       "children": []
                     }
                   ]
-                }
-              ]
-            },
-            {
-              "cls": "ed-slide-strip-wrap",
-              "testid": null,
-              "outer": 55,
-              "height": 55,
-              "content": 46,
-              "padding": 8,
-              "border": 1,
-              "margin": 0,
-              "rowGap": 2,
-              "display": "flex",
-              "depth": 1,
-              "children": [
-                {
-                  "cls": "ed-slide-strip-head",
-                  "testid": null,
-                  "outer": 28,
-                  "height": 28,
-                  "content": 28,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 10,
-                  "display": "flex",
-                  "depth": 2,
-                  "children": [
-                    {
-                      "cls": "ed-slide-strip-toggle",
-                      "testid": "slide-strip-toggle",
-                      "outer": 24,
-                      "height": 24,
-                      "content": 18,
-                      "padding": 4,
-                      "border": 2,
-                      "margin": 0,
-                      "rowGap": 6,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "span",
-                          "testid": null,
-                          "outer": 18,
-                          "height": 18,
-                          "content": 18,
-                          "padding": 0,
-                          "border": 0,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    },
-                    {
-                      "cls": "ed-slide-strip-counter",
-                      "testid": "strip-counter",
-                      "outer": 21,
-                      "height": 21,
-                      "content": 21,
-                      "padding": 0,
-                      "border": 0,
-                      "margin": 0,
-                      "rowGap": 0,
-                      "display": "block",
-                      "depth": 3,
-                      "children": []
-                    },
-                    {
-                      "cls": "ed-actions",
-                      "testid": null,
-                      "outer": 28,
-                      "height": 28,
-                      "content": 28,
-                      "padding": 0,
-                      "border": 0,
-                      "margin": 0,
-                      "rowGap": 8,
-                      "display": "flex",
-                      "depth": 3,
-                      "children": [
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-duplicate",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-copy",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-cut",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        },
-                        {
-                          "cls": "ed-action",
-                          "testid": "slide-paste",
-                          "outer": 28,
-                          "height": 28,
-                          "content": 18,
-                          "padding": 8,
-                          "border": 2,
-                          "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
-                          "depth": 4
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "cls": "ed-slide-strip-note",
-                  "testid": "slide-clipboard-note",
-                  "outer": 16,
-                  "height": 16,
-                  "content": 16,
-                  "padding": 0,
-                  "border": 0,
-                  "margin": 0,
-                  "rowGap": 0,
-                  "display": "block",
-                  "depth": 2,
-                  "children": []
                 }
               ]
             },
@@ -4336,8 +4189,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         },
                         {
@@ -4349,8 +4202,8 @@
                           "padding": 10,
                           "border": 2,
                           "margin": 0,
-                          "rowGap": 0,
-                          "display": "block",
+                          "rowGap": 6,
+                          "display": "flex",
                           "depth": 4
                         }
                       ]
@@ -4486,8 +4339,8 @@
         }
       },
       "expandedScale": {
-        "actual": 0.3972222646077474,
-        "expected": 0.3972222222222222,
+        "actual": 0.42314815521240234,
+        "expected": 0.42314814814814816,
         "converged": true
       }
     }
