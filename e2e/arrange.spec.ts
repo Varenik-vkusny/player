@@ -112,6 +112,19 @@ async function selectAll(page: Page, ids: readonly string[]): Promise<void> {
   await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(ids.length);
 }
 
+/**
+ * Кнопки выравнивания/раскладки/слоёв (Сессия 48) переехали с полосы
+ * свойств в блок «Расположение» панели «Объект» — их testid остались
+ * прежними (`stage/organs.ts` — общий источник для полосы, панели «Объект»
+ * и контекстного меню), но добраться до них теперь можно только открыв
+ * панель кнопкой «Ещё…». Требует непустого выделения — сама дверь стоит
+ * на полосе, а полоса при пустом выделении не рисует тулбар вовсе.
+ */
+async function openObjectPanel(page: Page): Promise<void> {
+  await page.getByTestId('propbar-more').click();
+  await expect(page.getByTestId('inspector')).toBeVisible();
+}
+
 test.describe('направляющие и прилипание', () => {
   test('при перетаскивании появляется направляющая, и после отпускания её нет', async ({ page }) => {
     await openEditor(page, 'morph');
@@ -240,6 +253,8 @@ test.describe('полоска расположения', () => {
     await openEditor(page, 'transitions');
 
     await selectAll(page, ['stays', 'goes']);
+    // Кнопка «Разложить» — за дверью «Ещё…» (Сессия 48), см. openObjectPanel.
+    await openObjectPanel(page);
     // Между двумя элементами промежуток ровно один, равнять его нечему.
     await expect(page.getByTestId('distribute-y')).toBeDisabled();
 
@@ -250,6 +265,8 @@ test.describe('полоска расположения', () => {
   test('выравнивание по левому краю ставит троих в столбик', async ({ page }) => {
     await openEditor(page, 'transitions');
     await selectAll(page, ['stays', 'goes', 'caption']);
+    // Кнопка «Выровнять» — за дверью «Ещё…» (Сессия 48), см. openObjectPanel.
+    await openObjectPanel(page);
 
     await page.getByTestId('align-left').click();
 
@@ -270,6 +287,8 @@ test.describe('полоска расположения', () => {
     };
 
     await selectAll(page, ['stays', 'goes', 'caption']);
+    // Кнопка «Выровнять» — за дверью «Ещё…» (Сессия 48), см. openObjectPanel.
+    await openObjectPanel(page);
     await page.getByTestId('align-top').click();
     await expect.poll(() => stateOf(page, 'goes').then((s) => s.y)).toBe(before.stays);
 
@@ -285,6 +304,8 @@ test.describe('полоска расположения', () => {
   test('«разложить поровну» делает равными ПРОМЕЖУТКИ между краями', async ({ page }) => {
     await openEditor(page, 'transitions');
     await selectAll(page, ['stays', 'goes', 'caption']);
+    // Кнопка «Разложить» — за дверью «Ещё…» (Сессия 48), см. openObjectPanel.
+    await openObjectPanel(page);
 
     await page.getByTestId('distribute-y').click();
 
@@ -308,6 +329,8 @@ test.describe('полоска расположения', () => {
     expect(before.zIndex).toBeLessThan((await stateOf(page, 'caption')).zIndex);
 
     await clickElement(page, 'stays');
+    // Кнопка «На передний план» — за дверью «Ещё…» (Сессия 48), см. openObjectPanel.
+    await openObjectPanel(page);
     await page.getByTestId('layer-front').click();
 
     const after = await stateOf(page, 'stays');
@@ -328,6 +351,10 @@ test.describe('полоска расположения', () => {
     await openEditor(page, 'transitions');
 
     await selectAll(page, ['goes', 'caption']);
+    // Кнопки «Выровнять»/«На задний план» — за дверью «Ещё…» (Сессия 48),
+    // см. openObjectPanel. Панель, раз открытая, остаётся открытой при смене
+    // выделения ниже (panelId не зависит от того, что выделено).
+    await openObjectPanel(page);
     await page.getByTestId('align-left').click();
     await page.getByTestId('align-top').click();
     // Теперь оба начинаются в одной точке, goes целиком внутри полосы caption.

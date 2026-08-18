@@ -233,4 +233,49 @@ describe('branchTree', () => {
     expect(orphan.anchorIndex).toBe(-1);
     expect(orphan.anchorSeconds).toBe(0);
   });
+
+  /**
+   * branching.json: развилка `n-start` (гейт `gate-start`, варианты `opt-yes`
+   * «Да» / `opt-no` «Нет») ведёт в `n-yes` и `n-no` — обе новые, обе
+   * становятся дочерними полосами.
+   *
+   * Долг Сессии 43 (`branches.md` §5.1): автор видит, что рассказ расходится,
+   * но не видит ПРИ КАКОМ ОТВЕТЕ. `entryCondition` полосы — эта строка.
+   *
+   * Ожидаемое — подпись варианта ИЗ ФИКСТУРЫ («Да» / «Нет», как записано
+   * в `gate-start.config.options[].label`), а не вызов `conditionText` на
+   * том же условии: сравнение функции с собой самой было бы зелёным при
+   * любой реализации, включая ту, что вернула бы то же самое НЕВЕРНОЕ
+   * значение обоим вызовам.
+   *
+   * Что должно сломаться, чтобы тест покраснел: вернуть `null` вместо
+   * строки условия у дочерней полосы (или вернуть условие у КОРНЕВОЙ,
+   * которое взяться неоткуда — в неё не ведёт никакое правило).
+   * Верно ли при любой реализации: нет — «Да» и «Нет» проверяются раздельно
+   * и ВЗАИМНО ИСКЛЮЧАЮЩЕ (условие «да» не содержит «Нет» и наоборот), так
+   * что реализация, вернувшая одну и ту же строку обеим полосам, не пройдёт.
+   */
+  it('entryCondition: дочерняя полоса знает, при каком ответе рассказ уходит в неё', () => {
+    const project = loadFixture('branching.json');
+    const lanes = branchTree(project);
+
+    const root = laneOf(lanes, 'n-start');
+    expect(root.entryCondition, 'у корневой полосы нет входного условия — в неё не ведёт правило выхода').toBeNull();
+
+    const yes = laneOf(lanes, 'n-yes');
+    const no = laneOf(lanes, 'n-no');
+
+    expect(yes.entryCondition, 'у дочерней полосы «n-yes» условие входа не посчитано').not.toBeNull();
+    expect(no.entryCondition, 'у дочерней полосы «n-no» условие входа не посчитано').not.toBeNull();
+
+    // Подпись варианта — из фикстуры, третий источник (не код branchTree,
+    // не вызов conditionText отдельно от продукта).
+    expect(yes.entryCondition).toContain('Да');
+    expect(no.entryCondition).toContain('Нет');
+    // Взаимоисключение: реализация, вернувшая одну и ту же (или обе) строку
+    // каждой полосе, здесь бы покраснела.
+    expect(yes.entryCondition).not.toContain('Нет');
+    expect(no.entryCondition).not.toContain('Да');
+    expect(yes.entryCondition).not.toBe(no.entryCondition);
+  });
 });

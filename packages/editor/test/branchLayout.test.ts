@@ -98,6 +98,7 @@ describe('layoutLanes', () => {
       // Полоса достижимая: сироты — отдельный случай, и раскладке он
       // безразличен (она не знает, кто до полосы доходит, и знать не должна).
       orphan: false,
+      entryCondition: null,
     };
     const layout = layoutLanes([lane], NO_COLLAPSED);
     const row = rowOf(layout.rows, 'r');

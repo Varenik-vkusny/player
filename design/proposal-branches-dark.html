@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Редактор — облик, вид «Ветки»</title>
+<style>
+/* ВАРИАНТ 2, 18.08.2026. Изменения против варианта 1:
+   1) полоса свойств ЗАПОЛНЕНА, как в Canva — выделен текст;
+   2) нижняя зона ТЁМНАЯ и перестроена. */
+:root {
+  --ui-surface-ground: #e9edf2;
+  --ui-surface-panel:  #ffffff;
+  --ui-surface-raised: #f2f4f7;
+  --ui-surface-canvas: #d8dee6;
+  --ui-content-fg: #0e1318;
+  --ui-content-fg-secondary: #5b6472;
+  --ui-content-fg-tertiary: #838b99;
+  --ui-line: #e3e6ea;
+  --ui-line-strong: #c9ced6;
+  --ui-action-primary-bg: #2f6fe0;
+  --ui-action-primary-fg: #ffffff;
+  --ui-action-selected-bg: #e8f0ff;
+  --ui-action-selected-line: #4c8dff;
+  --ui-shadow-panel: 0 1px 2px #0e131812, 0 1px 0 #0e13180a;
+  --ui-shadow-sheet: 0 10px 30px #0e13182e, 0 2px 6px #0e131814;
+  --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ui-type-xs: 11px; --ui-type-s: 12px; --ui-type-m: 14px; --ui-type-l: 16px;
+  --ui-radius-s: 4px; --ui-radius-m: 6px; --ui-radius-l: 10px;
+
+  /* Набор значений ТЕХ ЖЕ ролей для тёмной зоны. Тот же приём, которым
+     в проекте уже сделана тема сцены: имена не меняются, меняются значения. */
+  --z-ground: #1b2027;
+  --z-gutter: #232a33;
+  --z-lane:   #1e242c;
+  --z-sound:  #222b36;
+  --z-line:   #303945;
+  --z-fg:     #e7ecf3;
+  --z-fg2:    #9aa7b8;
+  --z-fg3:    #6d7889;
+  --z-wave:   #86b4f5;
+  --z-head:   #ffffff;
+  --z-gate:   #5b9dff;
+  --z-stop:   #34d399;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: var(--ui-font); font-size: var(--ui-type-m);
+  line-height: 1.45; color: var(--ui-content-fg); background: var(--ui-surface-ground);
+  display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+
+.top { display: flex; align-items: center; gap: 18px; padding: 8px 14px;
+  background: var(--ui-surface-panel); border-bottom: 1px solid var(--ui-line); }
+.top .name { font-size: var(--ui-type-l); font-weight: 620; letter-spacing: -0.01em; }
+.top .meta { color: var(--ui-content-fg-tertiary); font-size: var(--ui-type-s); }
+.grp { display: flex; align-items: center; gap: 6px; }
+.spacer { flex: 1; }
+
+.btn { font: inherit; font-size: var(--ui-type-s); padding: 5px 11px;
+  border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-m);
+  background: var(--ui-surface-panel); color: var(--ui-content-fg); cursor: pointer; }
+.btn--quiet { border-color: transparent; color: var(--ui-content-fg-secondary); }
+.btn--primary { background: var(--ui-action-primary-bg);
+  border-color: var(--ui-action-primary-bg); color: var(--ui-action-primary-fg);
+  font-weight: 560; }
+.btn[disabled] { color: var(--ui-content-fg-tertiary); border-color: var(--ui-line); }
+
+.main { display: grid; grid-template-columns: 74px 300px 1fr 268px; gap: 10px;
+  padding: 10px; min-height: 0; }
+.panel { background: var(--ui-surface-panel); border-radius: var(--ui-radius-l);
+  box-shadow: var(--ui-shadow-panel); min-height: 0; }
+
+.rail { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.rail button { display: grid; gap: 3px; justify-items: center; padding: 9px 4px;
+  border: 0; background: none; border-radius: var(--ui-radius-m); cursor: pointer;
+  font: inherit; font-size: var(--ui-type-xs); color: var(--ui-content-fg-secondary); }
+.rail button[aria-pressed="true"] { background: var(--ui-action-selected-bg);
+  color: var(--ui-action-primary-bg); font-weight: 560; }
+.rail svg { width: 18px; height: 18px; }
+
+.catalog { padding: 14px; display: grid; align-content: start; gap: 10px; }
+.h { font-size: var(--ui-type-xs); font-weight: 640; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ui-content-fg-tertiary); margin: 0; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { aspect-ratio: 4/3; border: 1px solid var(--ui-line); border-radius: var(--ui-radius-m);
+  background: var(--ui-surface-raised); display: grid; place-items: end center;
+  padding: 8px; font-size: var(--ui-type-xs); color: var(--ui-content-fg-secondary);
+  cursor: pointer; position: relative; overflow: hidden; }
+.tile .prev { position: absolute; inset: 8px 8px 26px; background: #fff;
+  border: 1px solid var(--ui-line); border-radius: 3px; display: grid;
+  align-content: center; gap: 4px; padding: 7px; }
+.tile .prev i { display: block; height: 4px; border-radius: 2px; background: #cfd6df; }
+.tile .prev i.b { height: 6px; background: #9fb0c4; width: 70%; }
+
+/* ── ПОЛОСА СВОЙСТВ: заполнена, как в Canva ───────────────────────────── */
+.stagewrap { display: grid; grid-template-rows: auto 1fr auto; min-height: 0;
+  background: var(--ui-surface-canvas); border-radius: var(--ui-radius-l);
+  overflow: hidden; box-shadow: var(--ui-shadow-panel); }
+.propbar { display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  background: var(--ui-surface-panel); border-bottom: 1px solid var(--ui-line); }
+.sel { display: inline-flex; align-items: center; gap: 6px; font-size: var(--ui-type-s);
+  color: var(--ui-content-fg-secondary); padding-right: 4px; }
+.sel b { color: var(--ui-content-fg); font-weight: 560; }
+.pdiv { width: 1px; align-self: stretch; background: var(--ui-line); margin: 0 4px; }
+.field { display: inline-flex; align-items: center; gap: 6px; height: 28px;
+  padding: 0 9px; border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius-m); background: var(--ui-surface-panel);
+  font-size: var(--ui-type-s); cursor: pointer; }
+.step { display: inline-flex; align-items: center; height: 28px;
+  border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-m);
+  overflow: hidden; }
+.step button { width: 26px; height: 26px; border: 0; background: none; cursor: pointer;
+  font: inherit; color: var(--ui-content-fg-secondary); }
+.step span { min-width: 30px; text-align: center; font-size: var(--ui-type-s);
+  font-variant-numeric: tabular-nums; }
+.ib { width: 28px; height: 28px; display: grid; place-items: center; cursor: pointer;
+  border: 1px solid transparent; border-radius: var(--ui-radius-m);
+  background: none; font: inherit; font-size: var(--ui-type-s);
+  color: var(--ui-content-fg); }
+.ib:hover { background: var(--ui-surface-raised); }
+.ib[aria-pressed="true"] { background: var(--ui-action-selected-bg);
+  border-color: var(--ui-action-selected-line); color: var(--ui-action-primary-bg); }
+.ib svg { width: 15px; height: 15px; }
+.swatch { width: 28px; height: 28px; border-radius: var(--ui-radius-m);
+  border: 1px solid var(--ui-line-strong); background: #e4572e; cursor: pointer; }
+
+.stagefit { display: grid; place-items: center; min-height: 0; padding: 16px 22px; }
+.sheet { width: min(100%, 600px); aspect-ratio: 16/9; background: #101820;
+  border-radius: var(--ui-radius-s); box-shadow: var(--ui-shadow-sheet);
+  display: grid; place-items: center; position: relative; }
+.sheet span { color: #fff; font-size: 25px; font-weight: 640;
+  outline: 2px solid var(--ui-action-selected-line); outline-offset: 9px;
+  border-radius: 2px; }
+.zoom { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 10px; }
+
+.side { padding: 12px; display: grid; align-content: start; gap: 16px; }
+.sec { display: grid; gap: 7px; }
+.row { display: flex; align-items: baseline; gap: 8px; padding: 5px 7px;
+  border-radius: var(--ui-radius-s); font-size: var(--ui-type-s); }
+.kind { font-size: var(--ui-type-xs); color: var(--ui-content-fg-tertiary);
+  letter-spacing: .05em; width: 46px; flex: 0 0 auto; }
+.row .nm { font-weight: 560; }
+.row .rest { color: var(--ui-content-fg-secondary); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.row--cur { background: var(--ui-action-selected-bg);
+  box-shadow: inset 0 0 0 1px var(--ui-action-selected-line); }
+.chip { display: flex; align-items: center; gap: 8px; padding: 5px 9px;
+  border: 1px solid var(--ui-line); border-radius: var(--ui-radius-m);
+  font-size: var(--ui-type-s); background: var(--ui-surface-panel); }
+.chip--cur { border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg); }
+.chip .t { font-variant-numeric: tabular-nums; font-weight: 560; }
+.chip .k { color: var(--ui-content-fg-secondary); font-size: var(--ui-type-xs); }
+.chap { padding: 6px 9px; border-radius: var(--ui-radius-m);
+  font-size: var(--ui-type-s); background: var(--ui-surface-raised); }
+.chap--cur { background: var(--ui-action-selected-bg); font-weight: 560;
+  box-shadow: inset 0 0 0 1px var(--ui-action-selected-line); }
+
+/* ── НИЖНЯЯ ЗОНА: ТЁМНАЯ ──────────────────────────────────────────────── */
+.zone { background: var(--z-ground); color: var(--z-fg); }
+.zonehead { display: flex; align-items: center; gap: 16px; padding: 8px 12px;
+  border-bottom: 1px solid var(--z-line); font-size: var(--ui-type-s); }
+.crumb { color: var(--z-fg2); }
+.crumb b { color: var(--z-fg); font-weight: 560; }
+.zbtn { font: inherit; font-size: var(--ui-type-s); padding: 4px 10px;
+  border: 1px solid var(--z-line); border-radius: var(--ui-radius-m);
+  background: transparent; color: var(--z-fg2); cursor: pointer; }
+.zbtn:hover { background: #2a323d; color: var(--z-fg); }
+.zbtn--on { background: #2f6fe0; border-color: #2f6fe0; color: #fff; font-weight: 560; }
+.transport { display: flex; align-items: center; gap: 10px; padding: 9px 12px; }
+.play { width: 32px; height: 32px; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--z-fg); color: var(--z-ground); display: grid; place-items: center; }
+.clock { font-variant-numeric: tabular-nums; font-size: var(--ui-type-s);
+  color: var(--z-fg2); }
+.clock b { color: var(--z-fg); font-weight: 560; }
+.speeds { display: inline-flex; gap: 3px; margin-left: 6px; }
+.speeds .zbtn { padding: 3px 8px; font-size: var(--ui-type-xs); }
+.reason { padding: 5px 12px; font-size: var(--ui-type-xs); color: var(--z-fg3);
+  border-top: 1px solid var(--z-line); }
+
+.lanes { display: grid; grid-template-columns: 140px 1fr; position: relative; }
+.ruler { grid-column: 2; display: flex; height: 22px; border-bottom: 1px solid var(--z-line); }
+.rulerpad { grid-column: 1; border-bottom: 1px solid var(--z-line);
+  background: var(--z-gutter); }
+.ruler span { flex: 1; border-left: 1px solid var(--z-line); padding: 3px 0 0 6px;
+  font-size: var(--ui-type-xs); color: var(--z-fg3);
+  font-variant-numeric: tabular-nums; }
+.lane { display: contents; }
+.lane .lbl { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--z-line);
+  background: var(--z-gutter); font-size: var(--ui-type-xs); }
+.lane .lbl b { font-size: var(--ui-type-s); font-weight: 560; color: var(--z-fg); }
+.lane .lbl i { font-style: normal; font-variant-numeric: tabular-nums; color: var(--z-fg3); }
+.lane .body { border-bottom: 1px solid var(--z-line); background: var(--z-lane);
+  position: relative; }
+.lane--sound .body { background: var(--z-sound); }
+.wave { display: block; width: 100%; height: 52px; }
+.marks { height: 26px; position: relative; }
+.di { position: absolute; top: 7px; width: 12px; height: 12px; background: var(--z-gate);
+  transform: rotate(45deg); border-radius: 2px; }
+.dibar { position: absolute; top: 12px; height: 3px; border-radius: 2px;
+  background: #3f6ea8; }
+.sq { position: absolute; top: 7px; width: 12px; height: 12px; border-radius: 2px;
+  background: var(--z-stop); }
+.words { padding: 6px 10px; font-size: var(--ui-type-xs); color: var(--z-fg2);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.head { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--z-head);
+  left: 140px; margin-left: 22%; pointer-events: none; }
+.head::before { content: ""; position: absolute; top: 0; left: -5px; width: 12px;
+  height: 12px; background: var(--z-head); border-radius: 2px; }
+
+/* ── ВИД «ВЕТКИ»: та же тёмная зона, другое содержимое ────────────────── */
+.btools { display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border-bottom: 1px solid var(--z-line); font-size: var(--ui-type-s);
+  color: var(--z-fg2); }
+.btools b { color: var(--z-fg); font-weight: 560; }
+.board { position: relative; height: 268px; overflow: hidden;
+  background:
+    radial-gradient(circle at 1px 1px, #2b3440 1px, transparent 0) 0 0/22px 22px;
+}
+.lanelbl { position: absolute; font-size: var(--ui-type-xs); color: var(--z-fg2);
+  letter-spacing: .04em; }
+.lanelbl b { color: var(--z-fg); font-size: var(--ui-type-s); font-weight: 560;
+  display: block; }
+.node { position: absolute; padding: 9px 12px; border-radius: var(--ui-radius-m);
+  background: #2a323d; border: 1px solid #3a4552; color: var(--z-fg);
+  font-size: var(--ui-type-s); white-space: nowrap; }
+.node--cur { border-color: #5b9dff; background: #23334a;
+  box-shadow: 0 0 0 1px #5b9dff55; }
+.node--end { background: transparent; border-style: dashed; color: var(--z-fg3); }
+.node small { display: block; font-size: var(--ui-type-xs); color: var(--z-fg3);
+  margin-top: 2px; }
+.wire { position: absolute; height: 2px; background: #46525f; }
+.wire::after { content: ""; position: absolute; right: -1px; top: -3px;
+  border: 4px solid transparent; border-left-color: #46525f; }
+.cond { position: absolute; font-size: var(--ui-type-xs); color: var(--z-fg2);
+  background: var(--z-ground); padding: 1px 6px; border-radius: 9px;
+  border: 1px solid var(--z-line); }
+.arc { position: absolute; border: 2px dashed #46525f; border-bottom: 0;
+  border-radius: 60px 60px 0 0; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <span class="name">Повтор куска</span>
+  <span class="meta">2 элемента · 1 остановка</span>
+  <div class="spacer"></div>
+  <div class="grp">
+    <button class="btn btn--quiet" disabled>Отменить</button>
+    <button class="btn btn--quiet" disabled>Повторить</button>
+  </div>
+  <div class="grp">
+    <button class="btn">Открыть файл</button>
+    <button class="btn">Импорт презентации</button>
+    <button class="btn btn--primary">Сохранить</button>
+  </div>
+  <div class="grp"><button class="btn">Открыть в плеере</button></div>
+</header>
+
+<div class="main">
+  <nav class="panel rail">
+    <button aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Шаблоны</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 9-9 9-9-9z"/></svg>Фигуры</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6V4h16v2M12 4v16M9 20h6"/></svg>Текст</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 010 18z" fill="currentColor" stroke="none"/></svg>Тема</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>Стили</button>
+  </nav>
+
+  <aside class="panel catalog">
+    <h2 class="h">Шаблоны слайда</h2>
+    <div class="tiles">
+      <div class="tile"><div class="prev"><i class="b"></i></div>Заголовок</div>
+      <div class="tile"><div class="prev"><i class="b"></i><i></i><i></i></div>Заголовок и текст</div>
+      <div class="tile"><div class="prev"><i></i><i></i><i></i><i></i></div>Две колонки</div>
+      <div class="tile"><div class="prev"><i></i><i></i><i></i></div>Список пунктов</div>
+      <div class="tile"><div class="prev"><i class="b"></i><i></i><i></i></div>Вопрос с вариантами</div>
+    </div>
+  </aside>
+
+  <section class="stagewrap">
+    <div class="propbar">
+      <span class="sel">Текст · <b>Кусок А</b></span>
+      <span class="pdiv"></span>
+      <button class="field">Georgia (с засечками) <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></button>
+      <span class="step"><button>−</button><span>64</span><button>+</button></span>
+      <button class="ib" aria-pressed="true"><b>Ж</b></button>
+      <button class="ib"><i>К</i></button>
+      <button class="ib"><u>Ч</u></button>
+      <button class="swatch"></button>
+      <span class="pdiv"></span>
+      <button class="ib" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h10M4 18h16"/></svg></button>
+      <button class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M7 12h10M4 18h16"/></svg></button>
+      <button class="ib"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M10 12h10M4 18h16"/></svg></button>
+      <span class="pdiv"></span>
+      <button class="field">Слои <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"/></svg></button>
+      <button class="field">Ещё…</button>
+    </div>
+    <div class="stagefit"><div class="sheet"><span>Кусок А</span></div></div>
+    <div class="zoom">
+      <button class="btn">−</button><button class="btn">Вписать · 44 %</button><button class="btn">+</button>
+    </div>
+  </section>
+
+  <aside class="panel side">
+    <div class="sec">
+      <h2 class="h">Элементы</h2>
+      <div class="row row--cur"><span class="kind">ТЕКСТ</span><span class="nm">Кусок А</span></div>
+      <div class="row"><span class="kind">ФИГУРА</span><span class="rest">фон по теме: Плашка</span></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Слайды</h2>
+      <div class="chip chip--cur"><span class="t">0.00 с</span><span class="k">Срез</span></div>
+      <div class="chip"><span class="t">1.45 с</span><span class="k">Морфинг</span></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Главы</h2>
+      <div class="chap chap--cur">Кусок А: молчащая внутри остановка</div>
+      <div class="chap">Кусок B: виновная остановка</div>
+      <div class="chap">Конец объяснения</div>
+    </div>
+  </aside>
+</div>
+
+<section class="zone">
+  <div class="zonehead">
+    <span class="crumb">Основная › <b>Выбор</b></span>
+    <div class="spacer"></div>
+    <button class="zbtn">Дорожки</button>
+    <button class="zbtn zbtn--on">Ветки</button>
+    <button class="zbtn">Второе окно</button>
+  </div>
+
+  <div class="btools">
+    <button class="zbtn">Показать всё</button>
+    <span>52 %</span>
+    <span>Длительность <b>от 0:51 до 0:53</b></span>
+    <div class="spacer"></div>
+    <button class="zbtn">Вынести в ветку</button>
+  </div>
+
+  <div class="board">
+    <div class="lanelbl" style="left:16px; top:74px"><b>Основная</b>0:49</div>
+    <div class="node node--cur" style="left:150px; top:66px">Выбор<small>0:49 · остановка на 0:38</small></div>
+    <div class="wire" style="left:330px; top:80px; width:120px"></div>
+    <div class="cond" style="left:352px; top:56px">если «да»</div>
+    <div class="node" style="left:470px; top:36px">Концовка: да<small>0:01</small></div>
+    <div class="wire" style="left:330px; top:112px; width:120px"></div>
+    <div class="cond" style="left:352px; top:120px">если «нет»</div>
+    <div class="node" style="left:470px; top:104px">Концовка: нет<small>0:02</small></div>
+    <div class="wire" style="left:610px; top:50px; width:70px"></div>
+    <div class="node node--end" style="left:700px; top:38px">конец</div>
+    <div class="wire" style="left:614px; top:118px; width:66px"></div>
+    <div class="node node--end" style="left:700px; top:106px">конец</div>
+    <div class="arc" style="left:200px; top:20px; width:280px; height:46px"></div>
+    <div class="cond" style="left:300px; top:8px">повтор куска</div>
+    <div class="lanelbl" style="left:16px; top:186px"><b>Конец объяснения</b>0:03</div>
+    <div class="node" style="left:150px; top:178px">Конец объяснения<small>0:03</small></div>
+    <div class="wire" style="left:330px; top:192px; width:70px"></div>
+    <div class="node node--end" style="left:420px; top:180px">конец</div>
+  </div>
+</section>
+
+<script>
+  const g = document.getElementById('w');
+  if (!g) { /* в виде «Ветки» волны нет */ } else {
+  let d = '';
+  for (let i = 0; i < 480; i++) {
+    const x = i * 2.08;
+    const env = Math.sin(i / 22) * 0.5 + 0.5;
+    const h = Math.max(2, (Math.sin(i * 1.7) * 0.5 + 0.5) * env * 42);
+    d += 'M' + x.toFixed(1) + ' ' + (26 - h / 2).toFixed(1) + 'h1.25v' + h.toFixed(1) + 'h-1.25z';
+  }
+  g.innerHTML = '<path d="' + d + '"/>'; }
+</script>
+</body>
+</html>

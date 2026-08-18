@@ -58,7 +58,14 @@ import {
 } from '../state/style.js';
 import { isDetached, revertToStyle } from '../state/styleLink.js';
 import { StyleFieldWidget } from './styleFieldWidget.js';
-import { Button } from '../ui/index.js';
+import { Button, AlignIcon } from '../ui/index.js';
+import type { AlignKind, DistributeAxis, LayerMove } from '../state/arrange.js';
+import {
+  ALIGN_BUTTONS,
+  DISTRIBUTE_BUTTONS,
+  LAYER_BUTTONS,
+  COPY_FORMAT_SHAPES,
+} from '../stage/organs.js';
 
 /** Прозрачность — число от 0 до 1, как того требует ElementStateSchema. */
 const OPACITY: (value: number) => boolean = (value) => value >= 0 && value <= 1;
@@ -83,19 +90,86 @@ export interface InspectorProps {
   onStateChangeLive: (patch: Partial<ElementState>) => void;
   /** Завершает жест, открытый через `onStateChangeLive` (потеря фокуса поля). */
   onCommitHistory: () => void;
+
+  /**
+   * Сколько элементов выделено — управляет блоком «Расположение» (Сессия 48).
+   * Он показывается НЕЗАВИСИМО от `element`/`state` выше: при нескольких
+   * выделенных `element` законно `undefined` (см. комментарий модуля
+   * `Editor.tsx`, `soleSelectedId`) — полей одного элемента показать нечего,
+   * но выровнять, разложить или переместить по слоям пачку по-прежнему
+   * можно, и раньше это делала полоса свойств именно по счёту выделенных,
+   * а не по наличию единственного элемента.
+   */
+  selectedCount: number;
+  onAlign: (kind: AlignKind) => void;
+  onDistribute: (axis: DistributeAxis) => void;
+  onLayer: (move: LayerMove) => void;
+  /**
+   * «Копировать форматирование» (docs/design/styles.md §5) — не «кисть»,
+   * слово в интерфейс не идёт (натура снята в Canva 14.08.2026, там пункт
+   * называется ровно так). Живо только при ОДНОМ выделенном с видом на этом
+   * слайде — снимать формат с пачки или «ниоткуда» нечем.
+   */
+  copyFormatEnabled: boolean;
+  /** Формат уже «в руке» — кнопка обязана выглядеть нажатой. */
+  copyFormatArmed: boolean;
+  onCopyFormat: () => void;
 }
 
 export function Inspector(props: InspectorProps): ReactElement {
-  const { element, state, styles, onContentChange, onStateChange, onStateChangeLive, onCommitHistory } = props;
+  const {
+    element,
+    state,
+    styles,
+    onContentChange,
+    onStateChange,
+    onStateChangeLive,
+    onCommitHistory,
+    selectedCount,
+    onAlign,
+    onDistribute,
+    onLayer,
+    copyFormatEnabled,
+    copyFormatArmed,
+    onCopyFormat,
+  } = props;
 
   return (
     <aside className="ed-inspector" data-testid="inspector">
       <h2 className="ed-insp-title">Свойства</h2>
+      {selectedCount > 0 && (
+        <ArrangeBlock
+          selectedCount={selectedCount}
+          onAlign={onAlign}
+          onDistribute={onDistribute}
+          onLayer={onLayer}
+          copyFormatEnabled={copyFormatEnabled}
+          copyFormatArmed={copyFormatArmed}
+          onCopyFormat={onCopyFormat}
+        />
+      )}
       {element === undefined ? (
-        <p className="ed-insp-empty" data-testid="inspector-empty">
-          Ничего не выделено
-          <span className="ed-muted">Выберите элемент на сцене, чтобы править его свойства.</span>
-        </p>
+        /*
+         * ДВА РАЗНЫХ СЛУЧАЯ, А НЕ ОДИН (Сессия 48). `element` пуст и когда
+         * не выделено ничего, и когда выделено НЕСКОЛЬКО: полей одного
+         * элемента показать нечего, но выделение есть, и блок «Расположение»
+         * выше живой. Один текст на оба случая давал бы «Ничего не выделено»
+         * ровно там, где рядом стоят работающие кнопки над выделенной пачкой,
+         * — панель врала бы автору о том, что он сам только что сделал.
+         */
+        selectedCount > 1 ? (
+          <p className="ed-insp-empty" data-testid="inspector-many">
+            Выделено несколько
+            <span className="ed-muted">
+              Свойства правятся у одного элемента. Расположением пачки можно управлять выше.
+            </span>
+          </p>
+        ) : (
+          <p className="ed-insp-empty" data-testid="inspector-empty">
+            Ничего не выделено
+            <span className="ed-muted">Выберите элемент на сцене, чтобы править его свойства.</span>
+          </p>
+        )
       ) : (
         // key по идентификатору: при смене выделения поля пересоздаются.
         // Иначе недописанный черновик («-», «1.») пережил бы переход
@@ -363,3 +437,135 @@ function StyleSection({
 // StyleFieldWidget и её вспомогательные TokenField/LengthOrPercentField
 // переехали в panels/styleFieldWidget.tsx (Сессия 30) — полоса свойств
 // над холстом (stage/PropBar.tsx) зовёт ровно тот же виджет, а не второй.
+
+interface ArrangeBlockProps {
+  selectedCount: number;
+  onAlign: (kind: AlignKind) => void;
+  onDistribute: (axis: DistributeAxis) => void;
+  onLayer: (move: LayerMove) => void;
+  copyFormatEnabled: boolean;
+  copyFormatArmed: boolean;
+  onCopyFormat: () => void;
+}
+
+/**
+ * «Расположение»: выравнивание объектов на холсте, раскладка, слои
+ * и «копировать форматирование» — органы, до Сессии 48 жившие на полосе
+ * свойств над холстом (`stage/PropBar.tsx`). Решение владельца 18.08.2026:
+ * полоса при окне 1280 с открытым каталогом не помещает даже пять полей
+ * стиля (673 px при доступных 586) — органы сняты с неё совсем и встали
+ * здесь, за дверью «Ещё…».
+ *
+ * Константы `ALIGN_BUTTONS`, `DISTRIBUTE_BUTTONS`, `LAYER_BUTTONS`,
+ * `COPY_FORMAT_SHAPES` берутся из `stage/organs.ts` БЕЗ ИЗМЕНЕНИЙ — те же
+ * подписи и `data-testid`, что были на полосе (и что зовёт меню правой
+ * кнопки холста, `Editor.tsx`, `contextMenuItems`). Второй список с другими
+ * словами для одного и того же хода — ровно та болезнь, которая дважды
+ * дала на одном экране две подписи «Фон» (Сессия 30, CLAUDE.md).
+ *
+ * Кнопки — те же `.ed-propbar-btn`/`.ed-propbar-sep`, что и на полосе:
+ * готовая роль (28×28, скругление, погашенное и нажатое состояние) уже
+ * объявлена в styles.ts, а не сырые значения здесь. Оборачивающий
+ * `.ed-insp-organs` даёт им течь на новую строку — панель не такая узкая,
+ * как полоса, но и не бесконечная, а переносить закон «кнопка не сжимается»
+ * (см. комментарий styles.ts у .ed-propbar-btn) в CSS-flex-wrap можно и без
+ * ScrollStrip: сжатия тут не будет, будет перенос.
+ *
+ * Гашение сохраняет причину в `title` — те же тексты, что раньше стояли
+ * на полосе: распределение живо от трёх выделенных, копирование формата —
+ * от `copyFormatEnabled` (см. её комментарий в InspectorProps выше).
+ * Выравнивание и слои на кнопке никогда не гаснут (полоса их тоже не
+ * гасила — гашение хода по слою есть только в контекстном меню, у которого
+ * для этого есть точный список через `layerPatches`, недоступный отсюда
+ * без второго источника истины).
+ */
+function ArrangeBlock({
+  selectedCount,
+  onAlign,
+  onDistribute,
+  onLayer,
+  copyFormatEnabled,
+  copyFormatArmed,
+  onCopyFormat,
+}: ArrangeBlockProps): ReactElement {
+  /**
+   * Раскладка требует трёх: между двумя элементами промежуток ровно один,
+   * и равнять его нечему. Тот же порог, что раньше был в PropBar.tsx —
+   * формула переехала СЮДА целиком, а не скопирована: после Сессии 48
+   * PropBar.tsx кнопку «Разложить» больше не рисует и порог ему не нужен.
+   */
+  const canDistribute = selectedCount >= 3;
+
+  return (
+    <div className="ed-insp-block">
+      <h3 className="ed-insp-title">Расположение</h3>
+      <div className="ed-insp-organs">
+        {ALIGN_BUTTONS.map(({ kind, label, testId, shapes }) => (
+          <button
+            key={kind}
+            type="button"
+            className="ed-propbar-btn"
+            data-testid={testId}
+            aria-label={label}
+            title={label}
+            onClick={() => onAlign(kind)}
+          >
+            <AlignIcon shapes={shapes} />
+          </button>
+        ))}
+
+        <span className="ed-propbar-sep" aria-hidden="true" />
+
+        {DISTRIBUTE_BUTTONS.map(({ axis, label, testId, shapes }) => (
+          <button
+            key={axis}
+            type="button"
+            className="ed-propbar-btn"
+            data-testid={testId}
+            aria-label={label}
+            title={canDistribute ? label : `${label} — нужно выделить хотя бы три`}
+            disabled={!canDistribute}
+            onClick={() => onDistribute(axis)}
+          >
+            <AlignIcon shapes={shapes} />
+          </button>
+        ))}
+
+        <span className="ed-propbar-sep" aria-hidden="true" />
+
+        {LAYER_BUTTONS.map(({ move, label, testId, shapes }) => (
+          <button
+            key={move}
+            type="button"
+            className="ed-propbar-btn"
+            data-testid={testId}
+            aria-label={label}
+            title={label}
+            onClick={() => onLayer(move)}
+          >
+            <AlignIcon shapes={shapes} />
+          </button>
+        ))}
+
+        <span className="ed-propbar-sep" aria-hidden="true" />
+
+        <button
+          type="button"
+          className="ed-propbar-btn"
+          data-testid="copy-format"
+          aria-label="Копировать форматирование"
+          aria-pressed={copyFormatArmed}
+          title={
+            copyFormatEnabled
+              ? 'Копировать форматирование (Ctrl+Alt+C)'
+              : 'Копировать форматирование — нужно выделить один элемент с видом на этом слайде'
+          }
+          disabled={!copyFormatEnabled}
+          onClick={onCopyFormat}
+        >
+          <AlignIcon shapes={COPY_FORMAT_SHAPES} />
+        </button>
+      </div>
+    </div>
+  );
+}

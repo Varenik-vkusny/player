@@ -11,6 +11,7 @@
  */
 import type { Project, Segment } from '@player/core';
 
+import { conditionText } from './conditionText.js';
 import { type ChapterTile, leadsBack } from './exits.js';
 
 /**
@@ -59,6 +60,18 @@ export interface BranchLane {
    * при обходе, а не выставляется заново.
    */
   readonly orphan: boolean;
+  /**
+   * При каком ответе рассказ уходит в эту полосу (долг Сессии 43,
+   * `branches.md` §5.1: автор видит, что рассказ расходится, но не видит
+   * при каком ответе). `null` у корневой полосы и у сирот — туда не ведёт
+   * ни одно правило выхода, значит и условия входа у них нет.
+   *
+   * Строка — ТА ЖЕ, что показывает панель «Главы» у правила выхода: берётся
+   * из `conditionText` (`conditionText.ts`), а не переводится заново. Вторая
+   * копия перевода условия расходится с первой молча — так уже случалось
+   * со списком типов элементов.
+   */
+  readonly entryCondition: string | null;
 }
 
 /** Плитка главы — та же форма, что кладёт в цепочку `branchChapters` (`exits.ts`). */
@@ -151,6 +164,7 @@ export function branchTree(project: Project): readonly BranchLane[] {
     anchorIndex: number,
     anchorSeconds: number,
     orphan: boolean,
+    entryCondition: string | null,
   ): { lane: BranchLane; descendants: readonly BranchLane[] } {
     const laneId = startId;
     const chapters: ChapterTile[] = [];
@@ -215,7 +229,14 @@ export function branchTree(project: Project): readonly BranchLane[] {
           });
           continue;
         }
-        const built = buildLane(target, depth + 1, laneId, forkIndex, forkSeconds, orphan);
+        // Строка условия — ТОЛЬКО из этого правила: список `rule.when`
+        // соединён через И, ровно как читает его `ruleText` в панели «Главы».
+        // Собирается здесь и сразу, а не отдельным проходом по дереву:
+        // у `buildLane` на входе уже есть ровно то правило, что привело сюда,
+        // а искать его заново по `laneId`/`anchorIndex` значило бы завести
+        // второй способ той же арифметики.
+        const entryCondition = rule.when.map((condition) => conditionText(condition, project)).join(' и ');
+        const built = buildLane(target, depth + 1, laneId, forkIndex, forkSeconds, orphan, entryCondition);
         children.push(built.lane);
         descendants.push(built.lane, ...built.descendants);
       }
@@ -261,11 +282,12 @@ export function branchTree(project: Project): readonly BranchLane[] {
       tail,
       links,
       orphan,
+      entryCondition,
     };
     return { lane, descendants };
   }
 
-  const root = buildLane(project.entry, 0, null, -1, 0, false);
+  const root = buildLane(project.entry, 0, null, -1, 0, false, null);
   const reachable = [root.lane, ...root.descendants];
 
   // Второй проход: главы, не занявшие места ни в одной достижимой полосе.
@@ -276,7 +298,7 @@ export function branchTree(project: Project): readonly BranchLane[] {
   const orphans: BranchLane[] = [];
   for (const segment of project.segments) {
     if (placed.has(segment.id)) continue;
-    const built = buildLane(segment.id, 0, null, -1, 0, true);
+    const built = buildLane(segment.id, 0, null, -1, 0, true, null);
     orphans.push(built.lane, ...built.descendants);
   }
 

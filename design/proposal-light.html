@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Редактор — предложение облика</title>
+<style>
+/* ПРЕДЛОЖЕНИЕ ОБЛИКА, 18.08.2026. Имена ролей — те же, что в
+   packages/editor/src/styles.ts, поэтому перенос в продукт это правка
+   ЗНАЧЕНИЙ и нескольких правил, а не переписывание. */
+:root {
+  /* Три уровня поверхности вместо одного. Сегодня surface-base
+     и surface-panel ОБА #ffffff, и потому глубины нет вовсе. */
+  --ui-surface-ground: #e9edf2;   /* НОВАЯ роль: земля под панелями */
+  --ui-surface-panel:  #ffffff;
+  --ui-surface-raised: #f2f4f7;
+  /* Подложка холста светлая, лист ПЛАВАЕТ над ней. Сегодня #07090c —
+     тёмная сцена стоит на почти чёрном и не отделяется. */
+  --ui-surface-canvas: #d8dee6;
+
+  --ui-content-fg:           #0e1318;
+  --ui-content-fg-secondary: #5b6472;
+  --ui-content-fg-tertiary:  #838b99;
+
+  --ui-line: #e3e6ea;
+  --ui-line-strong: #c9ced6;
+
+  --ui-action-primary-bg: #2f6fe0;
+  --ui-action-primary-fg: #ffffff;
+  --ui-action-selected-bg: #e8f0ff;
+  --ui-action-selected-line: #4c8dff;
+  --ui-mark-gate: #2f6fe0;
+  --ui-feedback-positive: #12a05f;
+
+  --ui-shadow-panel: 0 1px 2px #0e131812, 0 1px 0 #0e13180a;
+  --ui-shadow-sheet: 0 8px 24px #0e131826, 0 2px 6px #0e131814;
+
+  --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ui-type-xs: 11px; --ui-type-s: 12px; --ui-type-m: 14px; --ui-type-l: 16px;
+  --ui-radius-s: 4px; --ui-radius-m: 6px; --ui-radius-l: 10px;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font-family: var(--ui-font); font-size: var(--ui-type-m);
+  line-height: 1.45; color: var(--ui-content-fg);
+  background: var(--ui-surface-ground);
+  display: grid; grid-template-rows: auto 1fr auto; height: 100vh;
+}
+
+/* ── ШАПКА: три группы, разделённые пространством, а не линиями ───────── */
+.top { display: flex; align-items: center; gap: 18px; padding: 8px 14px;
+  background: var(--ui-surface-panel); border-bottom: 1px solid var(--ui-line); }
+.top .name { font-size: var(--ui-type-l); font-weight: 620; letter-spacing: -0.01em; }
+.top .meta { color: var(--ui-content-fg-tertiary); font-size: var(--ui-type-s); }
+.grp { display: flex; align-items: center; gap: 6px; }
+.spacer { flex: 1; }
+
+.btn { font: inherit; font-size: var(--ui-type-s); padding: 5px 11px;
+  border: 1px solid var(--ui-line-strong); border-radius: var(--ui-radius-m);
+  background: var(--ui-surface-panel); color: var(--ui-content-fg); cursor: pointer; }
+.btn:hover { background: var(--ui-surface-raised); }
+.btn--quiet { border-color: transparent; color: var(--ui-content-fg-secondary); }
+.btn--primary { background: var(--ui-action-primary-bg);
+  border-color: var(--ui-action-primary-bg);
+  color: var(--ui-action-primary-fg); font-weight: 560; }
+.btn[disabled] { color: var(--ui-content-fg-tertiary); border-color: var(--ui-line);
+  background: var(--ui-surface-panel); cursor: default; }
+
+/* ── СЕРЕДИНА ─────────────────────────────────────────────────────────── */
+.main { display: grid; grid-template-columns: 74px 300px 1fr 268px; gap: 10px;
+  padding: 10px; min-height: 0; }
+.panel { background: var(--ui-surface-panel); border-radius: var(--ui-radius-l);
+  box-shadow: var(--ui-shadow-panel); min-height: 0; }
+
+.rail { display: flex; flex-direction: column; gap: 2px; padding: 6px; }
+.rail button { display: grid; gap: 3px; justify-items: center; padding: 9px 4px;
+  border: 0; background: none; border-radius: var(--ui-radius-m); cursor: pointer;
+  font: inherit; font-size: var(--ui-type-xs); color: var(--ui-content-fg-secondary); }
+.rail button:hover { background: var(--ui-surface-raised); }
+.rail button[aria-pressed="true"] { background: var(--ui-action-selected-bg);
+  color: var(--ui-action-primary-bg); font-weight: 560; }
+.rail svg { width: 18px; height: 18px; }
+
+.catalog { padding: 14px; display: grid; align-content: start; gap: 10px; }
+.h { font-size: var(--ui-type-xs); font-weight: 640; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ui-content-fg-tertiary); margin: 0; }
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tile { aspect-ratio: 4/3; border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius-m); background: var(--ui-surface-raised);
+  display: grid; place-items: center; text-align: center; padding: 6px;
+  font-size: var(--ui-type-s); color: var(--ui-content-fg-secondary); cursor: pointer; }
+.tile:hover { border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg); }
+
+/* Холст: серая подложка, лист плавает над ней с тенью. */
+.stagewrap { display: grid; grid-template-rows: auto 1fr auto; min-height: 0;
+  background: var(--ui-surface-canvas); border-radius: var(--ui-radius-l);
+  overflow: hidden; box-shadow: var(--ui-shadow-panel); }
+.propbar { display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  background: var(--ui-surface-panel); border-bottom: 1px solid var(--ui-line); }
+.sel { font-size: var(--ui-type-s); color: var(--ui-content-fg-secondary); }
+.stagefit { display: grid; place-items: center; min-height: 0; padding: 18px 24px; }
+.sheet { width: min(100%, 640px); aspect-ratio: 16/9; background: #101820;
+  border-radius: var(--ui-radius-s); box-shadow: var(--ui-shadow-sheet);
+  display: grid; place-items: center; color: #fff; font-size: 26px; font-weight: 640; }
+.zoom { display: flex; justify-content: flex-end; gap: 6px; padding: 8px 10px; }
+
+.side { padding: 12px; display: grid; align-content: start; gap: 16px; }
+.sec { display: grid; gap: 7px; }
+.row { display: flex; align-items: baseline; gap: 8px; padding: 5px 7px;
+  border-radius: var(--ui-radius-s); font-size: var(--ui-type-s); }
+.row:hover { background: var(--ui-surface-raised); }
+.kind { font-size: var(--ui-type-xs); color: var(--ui-content-fg-tertiary);
+  letter-spacing: .05em; width: 46px; flex: 0 0 auto; }
+.row .nm { font-weight: 560; }
+.row .rest { color: var(--ui-content-fg-secondary); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.chip { display: flex; align-items: center; gap: 8px; padding: 5px 9px;
+  border: 1px solid var(--ui-line); border-radius: var(--ui-radius-m);
+  font-size: var(--ui-type-s); background: var(--ui-surface-panel); }
+.chip--cur { border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg); }
+.chip .t { font-variant-numeric: tabular-nums; font-weight: 560; }
+.chip .k { color: var(--ui-content-fg-secondary); font-size: var(--ui-type-xs); }
+.chap { padding: 6px 9px; border-radius: var(--ui-radius-m);
+  font-size: var(--ui-type-s); background: var(--ui-surface-raised); }
+.chap--cur { background: var(--ui-action-selected-bg); font-weight: 560;
+  box-shadow: inset 0 0 0 1px var(--ui-action-selected-line); }
+
+/* ── НИЖНЯЯ ЗОНА: полосы читаются как полосы ──────────────────────────── */
+.zone { background: var(--ui-surface-panel); border-top: 1px solid var(--ui-line); }
+.zonehead { display: flex; align-items: center; gap: 16px; padding: 7px 12px;
+  border-bottom: 1px solid var(--ui-line); font-size: var(--ui-type-s); }
+.crumb { color: var(--ui-content-fg-secondary); }
+.crumb b { color: var(--ui-content-fg); font-weight: 560; }
+.reason { padding: 5px 12px; font-size: var(--ui-type-xs);
+  color: var(--ui-content-fg-secondary); background: var(--ui-surface-raised); }
+.transport { display: flex; align-items: center; gap: 10px; padding: 8px 12px; }
+.play { width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid var(--ui-line-strong); background: var(--ui-surface-panel);
+  display: grid; place-items: center; cursor: pointer; }
+.clock { font-variant-numeric: tabular-nums; font-size: var(--ui-type-s);
+  color: var(--ui-content-fg-secondary); }
+
+.lanes { display: grid; grid-template-columns: 136px 1fr; }
+.lane { display: contents; }
+.lane .lbl { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px; padding: 8px 10px; border-top: 1px solid var(--ui-line);
+  background: var(--ui-surface-raised); font-size: var(--ui-type-xs); }
+.lane .lbl b { font-size: var(--ui-type-s); font-weight: 560;
+  color: var(--ui-content-fg); }
+.lane .lbl i { font-style: normal; font-variant-numeric: tabular-nums;
+  color: var(--ui-content-fg-tertiary); }
+.lane .body { border-top: 1px solid var(--ui-line); position: relative; padding: 6px 0; }
+.lane--sound .body { background: #f6f8fb; }
+.wave { display: block; width: 100%; height: 44px; }
+.marks { height: 22px; position: relative; }
+.di { position: absolute; top: 5px; width: 11px; height: 11px;
+  background: var(--ui-mark-gate); transform: rotate(45deg); border-radius: 2px; }
+.sq { position: absolute; top: 5px; width: 11px; height: 11px; border-radius: 2px;
+  background: var(--ui-feedback-positive); }
+.words { padding: 4px 10px; font-size: var(--ui-type-xs);
+  color: var(--ui-content-fg-secondary); white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <span class="name">Повтор куска</span>
+  <span class="meta">2 элемента · 1 остановка</span>
+  <div class="spacer"></div>
+  <div class="grp">
+    <button class="btn btn--quiet" disabled>Отменить</button>
+    <button class="btn btn--quiet" disabled>Повторить</button>
+  </div>
+  <div class="grp">
+    <button class="btn">Открыть файл</button>
+    <button class="btn">Импорт презентации</button>
+    <button class="btn btn--primary">Сохранить</button>
+  </div>
+  <div class="grp">
+    <button class="btn">Открыть в плеере</button>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="panel rail">
+    <button aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>Шаблоны</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l9 9-9 9-9-9z"/></svg>Фигуры</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6V4h16v2M12 4v16M9 20h6"/></svg>Текст</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 010 18z" fill="currentColor" stroke="none"/></svg>Тема</button>
+    <button><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg>Стили</button>
+  </nav>
+
+  <aside class="panel catalog">
+    <h2 class="h">Шаблоны слайда</h2>
+    <div class="tiles">
+      <div class="tile">Заголовок</div>
+      <div class="tile">Заголовок и текст</div>
+      <div class="tile">Две колонки</div>
+      <div class="tile">Список пунктов</div>
+      <div class="tile">Вопрос с вариантами</div>
+    </div>
+  </aside>
+
+  <section class="stagewrap">
+    <div class="propbar">
+      <span class="sel">Ничего не выделено — выберите элемент на сцене</span>
+    </div>
+    <div class="stagefit"><div class="sheet">Кусок А</div></div>
+    <div class="zoom">
+      <button class="btn">−</button>
+      <button class="btn">Вписать · 44 %</button>
+      <button class="btn">+</button>
+    </div>
+  </section>
+
+  <aside class="panel side">
+    <div class="sec">
+      <h2 class="h">Элементы</h2>
+      <div class="row"><span class="kind">ТЕКСТ</span><span class="nm">Кусок А</span></div>
+      <div class="row"><span class="kind">ФИГУРА</span><span class="rest">фон по теме: Плашка</span></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Слайды</h2>
+      <div class="chip chip--cur"><span class="t">0.00 с</span><span class="k">Срез</span></div>
+      <div class="chip"><span class="t">1.45 с</span><span class="k">Морфинг</span></div>
+    </div>
+    <div class="sec">
+      <h2 class="h">Главы</h2>
+      <div class="chap chap--cur">Кусок А: молчащая внутри остановка</div>
+      <div class="chap">Кусок B: виновная остановка</div>
+      <div class="chap">Конец объяснения</div>
+    </div>
+  </aside>
+</div>
+
+<section class="zone">
+  <div class="zonehead">
+    <span class="crumb">Основная › <b>Кусок А: молчащая внутри остановка</b></span>
+    <span class="crumb">Озвучка · ask.mp3</span>
+    <span class="crumb">Слайды 1 / 1</span>
+    <div class="spacer"></div>
+    <button class="btn">Дорожки</button>
+    <button class="btn btn--quiet">Ветки</button>
+    <button class="btn btn--quiet">Второе окно</button>
+  </div>
+  <div class="reason">Единственный слайд вырезать нельзя: главе нечего будет показывать</div>
+  <div class="transport">
+    <button class="play"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
+    <span class="clock">00:00.0 / 00:02.9</span>
+    <div class="spacer"></div>
+    <button class="btn">Поставить остановку</button>
+    <button class="btn btn--quiet">Разделить здесь</button>
+  </div>
+  <div class="lanes">
+    <div class="lane lane--sound">
+      <div class="lbl"><b>Звук</b><i>ask.mp3</i></div>
+      <div class="body"><svg class="wave" viewBox="0 0 1000 44" preserveAspectRatio="none"><g id="w" fill="#7286a0"></g></svg></div>
+    </div>
+    <div class="lane">
+      <div class="lbl"><b>Слайды</b><i>1</i></div>
+      <div class="body"><div class="marks"><span class="di" style="left:3%"></span></div></div>
+    </div>
+    <div class="lane">
+      <div class="lbl"><b>Остановки</b><i>1</i></div>
+      <div class="body"><div class="marks"><span class="sq" style="left:46%"></span></div></div>
+    </div>
+    <div class="lane">
+      <div class="lbl"><b>Расшифровка</b><i>—</i></div>
+      <div class="body"><div class="words">Расшифровки нет — метки этой главы ставятся по секундам</div></div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Волна нарисована здесь только ради макета: в продукте её рисует Waveform.
+  const g = document.getElementById('w');
+  let d = '';
+  for (let i = 0; i < 480; i++) {
+    const x = i * 2.08;
+    const env = Math.sin(i / 24) * 0.5 + 0.5;
+    const h = Math.max(1.5, (Math.sin(i * 1.7) * 0.5 + 0.5) * env * 34);
+    d += 'M' + x.toFixed(1) + ' ' + (22 - h / 2).toFixed(1) + 'h1.2v' + h.toFixed(1) + 'h-1.2z';
+  }
+  g.innerHTML = '<path d="' + d + '"/>';
+</script>
+</body>
+</html>
