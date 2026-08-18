@@ -92,6 +92,9 @@ test.describe('копировать форматирование', () => {
     await page.getByTestId('element-row-title').click();
     await expect(page.getByTestId('selection-readout')).toContainText('title');
 
+    // «Копировать форматирование» уехало с полосы в блок «Расположение»
+    // панели «Объект» (Сессия 48) — дверь та же, что у остальных органов.
+    await page.getByTestId('propbar-more').click();
     const copyFormat = page.getByTestId('copy-format');
     await copyFormat.click();
     await expect(copyFormat).toHaveAttribute('aria-pressed', 'true');
@@ -127,6 +130,11 @@ test.describe('копировать форматирование', () => {
     await page.getByTestId('insert-text').click();
     await expect(page.getByTestId('selection-readout')).toContainText('text-1');
 
+    // «Копировать форматирование» уехало с полосы в блок «Расположение»
+    // панели «Объект» (Сессия 48) — дверь та же, что у остальных органов.
+    // Панель, раз открытая, остаётся открытой и ниже — второй клик по
+    // «Ещё…» на строке ~150 нужен уже не для неё, а работает так же.
+    await page.getByTestId('propbar-more').click();
     const copyFormat = page.getByTestId('copy-format');
     await copyFormat.click();
     await expect(copyFormat).toHaveAttribute('aria-pressed', 'true');
@@ -171,6 +179,9 @@ test.describe('копировать форматирование', () => {
 
     // Источник — title (text). Цель первого щелчка — plate-1 (shape).
     await page.getByTestId('element-row-title').click();
+    // «Копировать форматирование» уехало с полосы в блок «Расположение»
+    // панели «Объект» (Сессия 48) — дверь та же, что у остальных органов.
+    await page.getByTestId('propbar-more').click();
     const copyFormat = page.getByTestId('copy-format');
     await copyFormat.click();
 

@@ -62,7 +62,8 @@ import { StylesPanel } from './panels/StylesPanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
 import { ContextMenu, type MenuItem } from './stage/ContextMenu.js';
-import { LAYER_BUTTONS, PropBar } from './stage/PropBar.js';
+import { PropBar } from './stage/PropBar.js';
+import { LAYER_BUTTONS } from './stage/organs.js';
 import { type Box, childBoxInGroup, childBoxInScene } from './stage/geometry.js';
 import {
   align,
@@ -2299,6 +2300,16 @@ export function Editor({
                   if (selected) handleElementStateChangeLive(selected.id, patch);
                 }}
                 onCommitHistory={handleCommitHistory}
+                // Блок «Расположение» (Сессия 48) — те же обработчики,
+                // что раньше шли в PropBar, проведённые сюда без второй
+                // реализации хода (см. комментарий ArrangeBlock в Inspector.tsx).
+                selectedCount={state.selectedIds.length}
+                onAlign={handleAlign}
+                onDistribute={handleDistribute}
+                onLayer={handleLayer}
+                copyFormatEnabled={selected !== undefined && selectedState !== undefined}
+                copyFormatArmed={copyFormat !== undefined}
+                onCopyFormat={handleCopyFormat}
               />
             )}
           </CatalogPanel>
@@ -2335,12 +2346,6 @@ export function Editor({
           onStyleCommit={handlePropbarStyleCommit}
           onStyleLiveCommit={handlePropbarStyleLive}
           onStyleCommitHistory={handleCommitHistory}
-          onAlign={handleAlign}
-          onDistribute={handleDistribute}
-          onLayer={handleLayer}
-          copyFormatEnabled={selected !== undefined && selectedState !== undefined}
-          copyFormatArmed={copyFormat !== undefined}
-          onCopyFormat={handleCopyFormat}
           onOpenObject={() => handleSelectCategory('object')}
         />
         <StageView

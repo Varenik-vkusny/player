@@ -156,6 +156,19 @@ export function BranchesView({
   );
 
   /**
+   * При каком ответе рассказ уходит в эту ветку (`branches.md` §5.1, долг
+   * Сессии 43). Строка уже посчитана в `branchTree.ts` — `conditionText`
+   * зовётся ровно один раз на весь редактор, здесь только достаётся по id
+   * полосы. `LaneRow` из `branchLayout.ts` этого поля не несёт: раскладке
+   * оно безразлично (не влияет ни на один икс/игрек), а заводить его там
+   * значило бы протащить смысл через чистую арифметику без всякой нужды.
+   */
+  const entryConditions = useMemo(
+    () => new Map(lanes.map((lane) => [lane.id, lane.entryCondition] as const)),
+    [lanes],
+  );
+
+  /**
    * Щелчок по плитке: показать главу на холсте и выделить её одну.
    * Shift-щелчок: растянуть выделение по ЭТОЙ ЖЕ полосе от прежнего края
    * до нажатой плитки. Через полосы выделение не тянется — ветка обязана
@@ -424,8 +437,52 @@ export function BranchesView({
                     {row.collapsed ? '▸' : '▾'}
                   </button>
                 ) : null}
-                <span className="ed-branch-title">{row.name}</span>
-                <span className="ed-branch-duration">{formatDuration(row.seconds)}</span>
+                {/*
+                  Имя и метаданные в СВОЁМ столбце (`ed-branch-name-body`), а не
+                  прямо в `ed-branch-name` рядом с кнопкой сворачивания и меткой
+                  сироты, — по двум причинам разом:
+
+                  1) `title` (задача A, Сессия 48): NAME_WIDTH = 180 обрезает
+                     длинные имена (`overflow: hidden` в styles.ts), и без
+                     атрибута полное имя нигде не читалось — у плиток глав
+                     `title` есть с Сессии 43, а у ярлыка ветки не было. Ветка
+                     переименовывается тем же двойным щелчком по плитке первой
+                     главы, так что длинное имя — обычная работа автора, а не
+                     редкость.
+
+                  2) Условие входа (задача B, долг Сессии 43, `branches.md`
+                     §5.1) легло БЫ строкой вправо от длительности в ОДНОЙ
+                     строке с именем — но у ряда и так впритык: имя, длительность
+                     и метка сироты уже делят 180 px без запаса. Ещё одна строка
+                     враспор дала бы горизонтальный переполнение ПОВЕРХ первой
+                     плитки ветки, а не аккуратную обрезку — контейнер
+                     `ed-branch-name` не обрезает переполнение (`overflow`
+                     не задан), обрезает только текст внутри `ed-branch-title`.
+                     Поэтому условие — ВТОРОЙ строкой под именем, как длительность
+                     нарисована под именем ветки в самом `branches.md` §5.2:
+                     «Основная / 8:02» — двумя строками, а не одной.
+                */}
+                <div className="ed-branch-name-body">
+                  <span
+                    className="ed-branch-title"
+                    data-testid={`branch-title-${row.laneId}`}
+                    title={row.name}
+                  >
+                    {row.name}
+                  </span>
+                  <span className="ed-branch-meta">
+                    <span className="ed-branch-duration">{formatDuration(row.seconds)}</span>
+                    {entryConditions.get(row.laneId) != null ? (
+                      <span
+                        className="ed-branch-condition"
+                        data-testid={`branch-condition-${row.laneId}`}
+                        title={entryConditions.get(row.laneId)!}
+                      >
+                        {entryConditions.get(row.laneId)}
+                      </span>
+                    ) : null}
+                  </span>
+                </div>
                 {orphans.has(row.laneId) ? (
                   <span
                     className="ed-branch-orphan"
