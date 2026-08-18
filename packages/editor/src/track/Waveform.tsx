@@ -21,10 +21,23 @@ import { useLayoutEffect, useRef, type ReactElement } from 'react';
 
 import { peakToBar, type Peak } from './peaks.js';
 
-/** Ещё не проигранная волна. Приглушённый цвет редактора. */
-const WAVE_COLOR = '#7d8fa5';
-/** Проигранная часть. Тот же акцент, что у рамки выделения и ручек. */
-const PLAYED_COLOR = '#4c8dff';
+/**
+ * Цвет волны берётся ИЗ РОЛЕЙ, объявленных на самой канве (.ed-waveform
+ * в styles.ts), а не из констант этого модуля — ими он и был, и это была
+ * вторая точка правды о цвете: перекраска зоны в тёмное оставила бы волну
+ * прежней, потому что CSS до канвы не достаёт.
+ *
+ * Пустое значение — это НЕ «роль не нужна», а «роль не объявлена»: канва
+ * молча оставила бы прежний fillStyle, то есть волна нарисовалась бы не тем
+ * цветом и никто бы не узнал. Поэтому пусто — исключение, а не умолчание.
+ */
+function roleColor(canvas: HTMLCanvasElement, name: string): string {
+  const value = getComputedStyle(canvas).getPropertyValue(name).trim();
+  if (value === '') {
+    throw new Error(`Waveform: цветовая роль ${name} не объявлена на канве`);
+  }
+  return value;
+}
 
 export interface WaveformProps {
   /**
@@ -56,8 +69,8 @@ export function Waveform({
   peaks,
   width,
   height,
-  color = WAVE_COLOR,
-  playedColor = PLAYED_COLOR,
+  color,
+  playedColor,
   progress = 0,
 }: WaveformProps): ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -138,7 +151,7 @@ export function Waveform({
       }
     }
 
-    ctx.fillStyle = color;
+    ctx.fillStyle = color ?? roleColor(canvas, '--wave');
     ctx.fill(wave);
 
     // Проигранное — та же волна, обрезанная по головке. Обрезка, а не выбор
@@ -153,7 +166,7 @@ export function Waveform({
       ctx.beginPath();
       ctx.rect(0, 0, playedWidth, height);
       ctx.clip();
-      ctx.fillStyle = playedColor;
+      ctx.fillStyle = playedColor ?? roleColor(canvas, '--wave-played');
       ctx.fill(wave);
       ctx.restore();
     }

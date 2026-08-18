@@ -2091,6 +2091,8 @@ export function Editor({
           {plural(segment.elements.length, ELEMENTS)} · {plural(segment.gates.length, GATES)}
         </span>
         <span className="ed-actions">
+          {/* ГРУППА 1 — история правок. */}
+          <span className="ed-actions-group">
           <Button
             onClick={() => dispatch({ type: 'undo' })}
             disabled={!canUndoState(state)}
@@ -2103,7 +2105,16 @@ export function Editor({
           >
             Повторить
           </Button>
+          </span>
+
+          {/* ГРУППА 2 — работа с файлом. «Сохранить» здесь единственная
+              главная кнопка редактора: владелец 18.08.2026 утвердил её
+              заполненной синей. Порядок внутри группы прежний — в макете
+              она стоит последней, но переставлять её значило бы менять
+              состав шапки, а он утверждён как узнаваемый. */}
+          <span className="ed-actions-group">
           <Button
+            kind="главная"
             onClick={() => downloadProject(currentProject)}
           >
             Сохранить
@@ -2155,6 +2166,10 @@ export function Editor({
           >
             Импорт презентации
           </Button>
+          </span>
+
+          {/* ГРУППА 3 — выход к зрителю. */}
+          <span className="ed-actions-group">
           {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
               Без него условные варианты ответа физически непроверяемы: редактор
               показывает автору все варианты, а зритель видит часть, и увидеть
@@ -2192,6 +2207,7 @@ export function Editor({
           >
             Открыть в плеере
           </Button>
+          </span>
         </span>
         <span className="ed-selection" data-testid="selection-readout">
           {selectionReadout}
