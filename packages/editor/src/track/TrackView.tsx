@@ -42,6 +42,7 @@ import { BubbleLane } from './BubbleLane.js';
 import type { SpanRange } from './spans.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
+import { clockText } from '../timeText.js';
 import { Icon } from '../ui/index.js';
 import { canvasWidth, largestFittingZoom, zoomBlockedReason, zoomFits, ZOOM_STEPS, type ZoomStep } from './zoom.js';
 
@@ -205,13 +206,9 @@ export interface TrackViewProps {
   onRemoveSpan: (index: number) => void;
 }
 
-/** Секунды в вид 01:23.4 — так короче и читается быстрее голых секунд. */
-function formatTime(seconds: number): string {
-  const safe = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
-  const minutes = Math.floor(safe / 60);
-  const rest = safe - minutes * 60;
-  return `${String(minutes).padStart(2, '0')}:${rest.toFixed(1).padStart(4, '0')}`;
-}
+// Свой formatTime переехал в общий `clockText` (Сессия 47) вместе
+// с защитой от нечисловой позиции: часы транспорта и подписи линейки —
+// один случай, и запись у него одна.
 
 /** Шаг делений линейки: столько секунд, чтобы подписи не слипались. */
 function tickStep(duration: number, width: number): number {
@@ -523,7 +520,7 @@ export function TrackView({
             {soundLabel}
           </span>
           <code className="ed-clock" data-testid="track-clock">
-            {formatTime(positionSeconds)} / {formatTime(durationSeconds)}
+            {clockText(positionSeconds)} / {clockText(durationSeconds)}
           </code>
         </div>
       ) : (
@@ -539,7 +536,7 @@ export function TrackView({
           {isPlaying ? '❚❚' : '▶'}
         </button>
         <code className="ed-clock" data-testid="track-clock">
-          {formatTime(positionSeconds)} / {formatTime(durationSeconds)}
+          {clockText(positionSeconds)} / {clockText(durationSeconds)}
         </code>
         {failure ? (
           // Причина показывается дословно. Пустая волна вместо неё
@@ -799,7 +796,7 @@ export function TrackView({
                     <div className="ed-ticks" aria-hidden="true">
                       {ticks.map((t) => (
                         <span key={t} className="ed-tick" style={{ left: `${(t / durationSeconds) * 100}%` }}>
-                          {formatTime(t)}
+                          {clockText(t)}
                         </span>
                       ))}
                     </div>

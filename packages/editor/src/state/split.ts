@@ -30,6 +30,7 @@ import {
 } from '@player/core';
 
 import { freeId } from './elements.js';
+import { secondsText } from '../timeText.js';
 
 /** Ветка развилки: какой вариант ответа в неё ведёт и как её назвать. */
 export interface SplitBranch {
@@ -407,7 +408,7 @@ export function splitAtTimeBlockedReason(
   if (tailSeconds < MIN_TAIL_SECONDS) {
     // Не «строго больше нуля»: глава длиной в микросекунды — не глава,
     // а мусор, который зритель не услышит, зато прыгать в него можно будет.
-    return `Метка в самом конце главы: после неё остаётся ${tailSeconds.toFixed(2)} с,`
+    return `Метка в самом конце главы: после неё остаётся ${secondsText(tailSeconds)},`
       + ' вторая глава была бы пустой';
   }
   return undefined;

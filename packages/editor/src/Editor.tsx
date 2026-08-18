@@ -106,12 +106,13 @@ import { saveWork } from './state/workspace.js';
 import { importPptxFile, PPTX_ACCEPT } from './import/openPptx.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
-import { AudioSourcePanel } from './track/AudioSourcePanel.js';
+import { AudioSourceBody, AudioSourceHead, useAudioSource } from './track/AudioSourcePanel.js';
+import { gateName, secondsText } from './timeText.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { SpanRange } from './track/spans.js';
 import type { Mark } from './track/MarksLane.js';
 import { BranchesView } from './track/BranchesView.js';
-import { SlideStrip } from './track/SlideStrip.js';
+import { SlideStripCards, SlideStripHead, SlideStripNote } from './track/SlideStrip.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
 
@@ -293,23 +294,6 @@ export function Editor({
   );
 
   const transport = useTransport(segment.source, segment.duration, gateSeconds, segment.offset);
-
-  /**
-   * Имя звука в голове полосы `sound` дорожки (каркас, задача 2.1).
-   *
-   * Настоящее человеческое имя файла грузится АСИНХРОННО из хранилища
-   * плеера, и делает это уже `AudioSourcePanel` (`getAudio(source.fileId)`)
-   * — тот компонент менять нельзя (закрытый список задачи), а второй
-   * асинхронный запрос к тому же хранилищу отсюда завёл бы вторую правду
-   * об одном и том же имени. Здесь — тот же запасной вид, что `AudioSourcePanel`
-   * сама показывает ДО того, как асинхронное имя пришло: идентификатор
-   * файла или URL, не выдуманное «красивое» имя.
-   */
-  const soundLabel = segment.source.kind === 'file'
-    ? segment.source.fileId
-    : segment.source.kind === 'url'
-      ? segment.source.url
-      : 'без звука';
 
   // Ровно одно, а не «первое из списка»: показать свойства первого при трёх
   // выделенных значит соврать автору о том, что он сейчас правит.
@@ -702,6 +686,16 @@ export function Editor({
   const slidePasteProblem = state.slideClipboard === undefined
     ? 'Буфер пуст: сначала скопируйте или вырежьте слайд'
     : slideSpotProblem;
+
+  /**
+   * Почему «Вырезать» недоступна для слайда ПОД ГОЛОВКОЙ — общий сигнал для
+   * `SlideStripHead` (гасит кнопку) и `SlideStripNote` (объясняет причину),
+   * которые с Сессии 47 стоят в разных местах дерева и обязаны показывать
+   * одно и то же. Дальше по файлу `slideCutProblem` вызывается ещё раз
+   * с ДРУГИМ id — на конкретной метке в MarkPanel, — там пересчёт нужен
+   * по-настоящему, здесь нет.
+   */
+  const currentSlideCutProblem = slideCutProblem(currentSegment, state.currentSlideId);
 
   /**
    * Позиция, замороженная на время жеста.
@@ -1303,7 +1297,15 @@ export function Editor({
       gapSeconds: 0,
       // Подсказка автору при наведении: словами продукта, а не схемы.
       // Развилка от вопроса отличается отсутствием верного ответа.
-      title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} «${gate.id}»`,
+      //
+      // ОСТАНОВКА НАЗЫВАЕТСЯ СВОИМ ВОПРОСОМ, а не ключом. Прежде здесь
+      // стояло «Остановка «gate-choice»» — идентификатор схемы, которого
+      // автор не заводил. Поля `title` у гейта нет вовсе (схема: id, at,
+      // config, onWrong, maxAttempts, recordAs), но человеческий текст
+      // у него ЕСТЬ: это `prompt` — вопрос, который автор сам и написал,
+      // а у «Дальше» — надпись на кнопке. Запасной вид — время метки:
+      // оно же стоит на дорожке, и по нему остановку видно.
+      title: `${gate.config.kind === 'choice' && gate.config.correctId === null ? 'Развилка' : 'Остановка'} ${gateName(gate, markSeconds(gate.at, segment.words))}`,
     }));
 
     const fromSlides = segment.slides.slice(1).map((slide, offset): Mark => {
@@ -1323,9 +1325,14 @@ export function Editor({
         // ниже, но для КАЖДОГО слайда: ручка тянет ту метку, на которой
         // начался жест, а не обязательно выбранную.
         gapSeconds: slideSeconds[index]! - slideSeconds[index - 1]!,
+        // СЛАЙД НАЗЫВАЕТСЯ ВРЕМЕНЕМ, а не ключом. Прежде стояло
+        // «Слайд «node-1-slide-1»» — ключ схемы. Имени у слайда нет
+        // (схема: id, at, transition, transitionSeconds, states), а время
+        // есть, и оно же написано на его чипе в правой колонке и под
+        // самой меткой: по нему автор слайд и найдёт.
         title: slide.transition === 'cut'
-          ? `Слайд «${slide.id}»: ${info.label.toLowerCase()}, без движения`
-          : `Слайд «${slide.id}»: ${info.label.toLowerCase()}, движение ${morphSeconds.toFixed(2)} с до метки`,
+          ? `Слайд на ${secondsText(slideSeconds[index]!)}: ${info.label.toLowerCase()}, без движения`
+          : `Слайд на ${secondsText(slideSeconds[index]!)}: ${info.label.toLowerCase()}, движение ${secondsText(morphSeconds)} до метки`,
       };
     });
     return [...fromGates, ...fromSlides];
@@ -1493,6 +1500,20 @@ export function Editor({
   const [bottomView, setBottomView] = useState<'tracks' | 'branches'>('tracks');
 
   /**
+   * Свёрнута ли лента слайдов. По умолчанию ДА (Сессия 41, решение владельца
+   * 15.08.2026 по замеру: лента отнимала у сцены 98 px). Живёт здесь, а не
+   * в `SlideStrip.tsx` (до Сессии 47 жила там): голова ленты (кнопка,
+   * счётчик, кнопки буфера) стоит в общей шапке нижней зоны — `SlideStripHead`
+   * — а карточки — отдельным блоком под строкой причины — `SlideStripCards`.
+   * Двум разным компонентам, стоящим в разных местах дерева, состояние
+   * общее взять неоткуда, кроме как сверху. Тот же приём и по той же
+   * причине, что у складывания панели озвучки (`AudioSourcePanel.tsx`,
+   * `useAudioSource`): «скрыто в редакторе» и «скрыто для зрителя» — разные
+   * вещи, и в проект это состояние не попадает никогда.
+   */
+  const [slidesCollapsed, setSlidesCollapsed] = useState(true);
+
+  /**
    * Дерево веток целиком — то, из чего вид «Ветки» строит полосы и плитки
    * (Сессия 43: вид показывает не только основную ветку, а всё дерево).
    *
@@ -1636,6 +1657,40 @@ export function Editor({
   const handleSpeechChange = useCallback((text: string) => {
     dispatch({ type: 'setSpeech', text, commit: false });
   }, []);
+
+  /**
+   * Состояние и обработчики панели озвучки (`AudioSourceHead`/`AudioSourceBody`,
+   * `track/AudioSourcePanel.tsx`). Хук вызывается здесь, а не внутри одного
+   * из двух видов, потому что оба вида — голова в шапке зоны и тело над
+   * дорожкой — стоят в разных местах дерева и обязаны видеть ОДНО и то же
+   * состояние (открыта ли панель, что грузится, что подтверждается).
+   */
+  const audioSource = useAudioSource({
+    source: segment.source,
+    wordMarkCount: audioWordMarkCount,
+    onReplace: handleReplaceAudio,
+    onReplaceWithTranscript: handleReplaceAudioWithTranscript,
+    onWordsTranscribed: handleWordsTranscribed,
+    lastRetarget: state.lastRetarget,
+  });
+
+  /**
+   * Имя звука в голове полосы `sound` дорожки (каркас, задача 2.1).
+   *
+   * Настоящее человеческое имя файла грузится АСИНХРОННО из хранилища
+   * плеера, и делает это `useAudioSource` (`getAudio(source.fileId)`) —
+   * второй асинхронный запрос к тому же хранилищу отсюда завёл бы вторую
+   * правду об одном и том же имени. До Сессии 47 это было ограничением:
+   * имя жило внутри `AudioSourcePanel` и не было видно снаружи, поэтому
+   * здесь стоял запасной вид (`fileId`) даже когда человеческое имя уже
+   * было известно. Теперь хук вызывается в `Editor.tsx` и отдаёт готовое
+   * `loadedName` — второй правды больше нет, имя приходит из одного места.
+   */
+  const soundLabel = segment.source.kind === 'file'
+    ? (audioSource.loadedName ?? segment.source.fileId)
+    : segment.source.kind === 'url'
+      ? segment.source.url
+      : 'без звука';
 
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
   // на каждый рендер и пересобирал сцену по десять раз в секунду.
@@ -2445,10 +2500,15 @@ export function Editor({
 
       {/* Обёрнуты вместе: .ed-root — грид с тремя строками (auto 1fr auto),
           и третья строка обязана остаться ОДНИМ ребёнком, иначе разметка
-          требует четвёртой строки. AudioSourcePanel стоит над дорожкой —
-          то же место, где автор уже ищет свойства звука (играть/пауза,
-          часы, кнопка остановки живут в её собственной шапке чуть ниже). */}
-      <div className="ed-track-column">
+          требует четвёртой строки. */}
+      {/* Вид дописан классом, потому что потолок высоты зоны (styles.ts,
+          --ed-zone-budget-offset) относится ТОЛЬКО к «Дорожкам». В «Ветках»
+          зону разрешено растягивать — «там не рисуют на холсте»
+          (`branches.md` §3), и её высоту задаёт своё правило (55vh
+          у .ed-branches-space). Один потолок на оба вида ужал бы дерево
+          веток на 34 px, то есть починил бы «Дорожки» за счёт вида,
+          которого эта задача не касается. */}
+      <div className={bottomView === 'branches' ? 'ed-track-column ed-track-column--branches' : 'ed-track-column ed-track-column--tracks'}>
         {/* Переключатель видов нижней зоны (`branches.md` §3, решение
             владельца 13.08.2026). Две кнопки, а не вкладки: их две
             и больше не будет.
@@ -2457,11 +2517,38 @@ export function Editor({
             удобство: выбрав главу в «Ветках», автор сразу видит её
             картинку. Полноэкранный режим карты отвергнут именно потому,
             что этого дать не мог. Поэтому переключается только СОДЕРЖИМОЕ
-            зоны, а раскладка выше не трогается вовсе. */}
+            зоны, а раскладка выше не трогается вовсе.
+
+            Три полосы-заголовка (крошки, «Озвучка», «Слайды») сведены
+            в ОДНУ строку (Сессия 47): 117 из 367 px зоны по умолчанию
+            уходило на три головы, прежде чем автор видел хоть секунду
+            дорожки. Головы озвучки и слайдов — `AudioSourceHead`
+            и `SlideStripHead` — встают в общий ряд с крошками и
+            переключателем видов только в виде «Дорожки»: в «Ветках»
+            им предмета нет вовсе, и вид «Ветки» этим не трогается. */}
         <div className="ed-zone-head">
           <span className="ed-zone-crumbs" data-testid="zone-crumbs">
             Основная › {currentSegment.title || currentSegment.id}
           </span>
+          {bottomView === 'tracks' ? (
+            <>
+              <AudioSourceHead state={audioSource} />
+              <SlideStripHead
+                slides={segment.slides}
+                words={segment.words}
+                currentSlideId={state.currentSlideId}
+                collapsed={slidesCollapsed}
+                onToggleCollapsed={() => setSlidesCollapsed((was) => !was)}
+                onDuplicate={handleDuplicateSlide}
+                onCopy={handleCopySlide}
+                onCut={handleCutSlide}
+                onPaste={handlePasteSlide}
+                cutProblem={currentSlideCutProblem}
+                duplicateProblem={slideSpotProblem}
+                pasteProblem={slidePasteProblem}
+              />
+            </>
+          ) : null}
           <span className="ed-zone-views">
             <button
               type="button"
@@ -2509,35 +2596,32 @@ export function Editor({
           />
         ) : (
         <>
-        <AudioSourcePanel
-          source={segment.source}
-          wordMarkCount={audioWordMarkCount}
-          onReplace={handleReplaceAudio}
-          onReplaceWithTranscript={handleReplaceAudioWithTranscript}
-          onWordsTranscribed={handleWordsTranscribed}
-          lastRetarget={state.lastRetarget}
-          speech={currentSegment.speech ?? ''}
-          onSpeechChange={handleSpeechChange}
-          onCommitHistory={handleCommitHistory}
-        />
-        <SlideStrip
-          theme={segment.theme}
-          styles={segment.styles}
-          slides={segment.slides}
-          words={segment.words}
-          elements={segment.elements}
-          currentSlideId={state.currentSlideId}
-          stageWidth={segment.stage.width}
-          stageHeight={segment.stage.height}
-          onSelectSlide={handleSelectSlide}
-          onDuplicate={handleDuplicateSlide}
-          onCopy={handleCopySlide}
-          onCut={handleCutSlide}
-          onPaste={handlePasteSlide}
-          cutProblem={slideCutProblem(currentSegment, state.currentSlideId)}
+        <SlideStripNote
+          cutProblem={currentSlideCutProblem}
           duplicateProblem={slideSpotProblem}
           pasteProblem={slidePasteProblem}
         />
+        {audioSource.open ? (
+          <AudioSourceBody
+            state={audioSource}
+            speech={currentSegment.speech ?? ''}
+            onSpeechChange={handleSpeechChange}
+            onCommitHistory={handleCommitHistory}
+          />
+        ) : null}
+        {!slidesCollapsed ? (
+          <SlideStripCards
+            theme={segment.theme}
+            styles={segment.styles}
+            slides={segment.slides}
+            words={segment.words}
+            elements={segment.elements}
+            currentSlideId={state.currentSlideId}
+            stageWidth={segment.stage.width}
+            stageHeight={segment.stage.height}
+            onSelectSlide={handleSelectSlide}
+          />
+        ) : null}
         <TrackView
           transport={transport}
           soundLabel={soundLabel}
