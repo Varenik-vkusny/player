@@ -1619,14 +1619,6 @@ export const EDITOR_STYLES = `
   line-height: 1.4;
 }
 
-.ed-delete-row {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  min-width: 0;
-}
-
 /* Сообщение о каскадном удалении не имеет права раздвинуть панель шире
    отведённой колонки — тот же закон, что и у .ed-failure на дорожке. */
 .ed-delete-msg {
