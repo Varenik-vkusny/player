@@ -45,7 +45,9 @@ export const SIDE_SPINE_WIDTH_PX = 40;
 /** Ширины взяты с натуры текущей раскладки (`.ed-main` в styles.ts). */
 export const DEFAULT_CHROME_LAYOUT: ChromeLayout = {
   catalogCollapsed: false,
-  catalogWidth: 350,
+  // 361 — ширина панели каталога живой Канвы (замер 20.08.2026).
+  // Было 350, снятое с нашего прототипа design/shell.css.
+  catalogWidth: 361,
   sideCollapsed: false,
   sideWidth: 260,
 };

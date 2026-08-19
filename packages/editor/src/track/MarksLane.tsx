@@ -264,7 +264,7 @@ export function MarksLane({
             </Fragment>
           );
         })}
-      {marks.map((mark) => {
+      {marks.map((mark, index) => {
         const isSelected = selected?.kind === mark.kind && selected.id === mark.id;
         return (
           <button
@@ -278,7 +278,33 @@ export function MarksLane({
             ]
               .filter(Boolean)
               .join(' ')}
-            style={{ left: `${ratioToX(mark.seconds / durationSeconds, canvasWidthPx)}px` }}
+            /*
+              ПОРЯДОК НАЛОЖЕНИЯ: РАННЯЯ МЕТКА ВЫШЕ ПОЗДНЕЙ.
+
+              Соседние метки перекрываются — механизма разведения у дорожки
+              нет (см. docs/debt.md). Замер 20.08.2026 на фикстуре demo:
+              при окне 1920 семь перекрывающихся пар, при 1280 восемь.
+
+              При естественном порядке DOM поздняя метка ложится поверх
+              ранней и накрывает ЕЁ ЦЕНТР: `elementFromPoint` в центре
+              `slide-2` отдавал `slide-3`, и выбрать раннюю метку было
+              нельзя вовсе — ни автору, ни тесту.
+
+              Обратный порядок это чинит по построению. Метка шириной 18
+              и перекрытие в 8: центр ранней лежит левее левого края поздней,
+              а центр поздней — правее правого края ранней. Значит при верхней
+              РАННЕЙ свободны центры обеих, а при верхней поздней — только её.
+
+              Перекрытие больше половины ширины (9 px) так не лечится,
+              и это честно записано долгом: там нужно настоящее разведение.
+
+              Выделенная метка поднимается над всеми: она единственная,
+              чью рамку автор обязан видеть целиком.
+            */
+            style={{
+              left: `${ratioToX(mark.seconds / durationSeconds, canvasWidthPx)}px`,
+              zIndex: isSelected ? marks.length + 1 : marks.length - index,
+            }}
             data-testid={`mark-${mark.kind}-${mark.id}`}
             data-anchor={mark.anchor}
             title={mark.title}
