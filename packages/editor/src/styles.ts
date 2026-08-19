@@ -218,7 +218,12 @@ export const EDITOR_STYLES = `
   --ui-type-s: 12px;
   --ui-type-m: 14px;
   --ui-type-l: 16px;
-  --ui-type-xl: 20px;
+  /* Ступени xl не стало в Сессии 52 вместе с её единственным носителем:
+     .ed-rail-glyph рисовал значок рельса СИМВОЛОМ ИЗ ШРИФТА и кегль ему
+     был нужен как букве. Значки рельса переведены на контуры (ADR-034),
+     у контура размер идёт от 1em строки, и представителей у ступени
+     не осталось ни одного. Объявленная роль без применения запрещена
+     и ловится uiTokens: набор на будущее гниёт молча. */
 
   /* Скругления, три ступени. Соответствие — таблица из плана: 0..4px в s,
      5..7px в m, 8px и выше в l. Значение 50% ступенью НЕ становится и
@@ -1185,11 +1190,6 @@ export const EDITOR_STYLES = `
   background: var(--ui-action-selected-bg);
   border-color: var(--ui-action-selected-line);
   color: var(--ui-content-fg);
-}
-
-.ed-rail-glyph {
-  font-size: var(--ui-type-xl);
-  line-height: 1;
 }
 
 /* overflow-wrap: anywhere, а не nowrap — тот же приём, что у

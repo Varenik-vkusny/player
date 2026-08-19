@@ -5,14 +5,22 @@
  * перебором этого массива, а не литералами в JSX. Так пополнение каталога
  * (шестая категория, другая подпись) требует правки только этого файла.
  */
+import type { IconName } from '../ui/index.js';
 
 /** Одна категория рельса: что показывает и как подписана кнопка. */
 export interface CatalogCategory {
   readonly id: CategoryId;
   /** Русская подпись кнопки и головы панели. */
   readonly label: string;
-  /** Один символ-значок кнопки — своей мелкой графики каталог не заводит, см. `PropBar.tsx`. */
-  readonly glyph: string;
+  /**
+   * Контур значка кнопки — имя из закрытого перечня `ui/icons.ts` (Lucide,
+   * ADR-034). До Сессии 52 здесь был `glyph: string`, один символ шрифта
+   * (▦ ◇ T ◐ ✦ ↑): буква системного шрифта, размер и толщина которой не
+   * подчиняются ничему, а на машине без глифа остаётся пустой прямоугольник
+   * молча, без ошибки. Контур рисует сам редактор — и выглядит одинаково
+   * везде.
+   */
+  readonly icon: IconName;
   /** Пояснение одной фразой, показывается в голове панели под заголовком. */
   readonly hint: string;
 }
@@ -31,12 +39,12 @@ export type CategoryId = 'templates' | 'shapes' | 'text' | 'theme' | 'styles' | 
  */
 export type PanelId = CategoryId | 'object';
 
-/** Каталог категорий рельса. Подписи и значки заданы владельцем в промпте Сессии 30. */
+/** Каталог категорий рельса. Подписи заданы владельцем в промпте Сессии 30, значки — Сессии 52. */
 export const CATALOG_CATEGORIES: readonly CatalogCategory[] = [
-  { id: 'templates', label: 'Шаблоны', glyph: '▦', hint: 'Готовые заготовки слайда' },
-  { id: 'shapes', label: 'Фигуры', glyph: '◇', hint: 'Фигуры для сцены' },
-  { id: 'text', label: 'Текст', glyph: 'T', hint: 'Текстовые заготовки' },
-  { id: 'theme', label: 'Тема', glyph: '◐', hint: 'Цвета и стиль объяснения' },
-  { id: 'styles', label: 'Стили', glyph: '✦', hint: 'Именованные наборы свойств вида' },
-  { id: 'own', label: 'Своё', glyph: '↑', hint: 'Загруженное автором' },
+  { id: 'templates', label: 'Шаблоны', icon: 'layout-template', hint: 'Готовые заготовки слайда' },
+  { id: 'shapes', label: 'Фигуры', icon: 'shapes', hint: 'Фигуры для сцены' },
+  { id: 'text', label: 'Текст', icon: 'type', hint: 'Текстовые заготовки' },
+  { id: 'theme', label: 'Тема', icon: 'palette', hint: 'Цвета и стиль объяснения' },
+  { id: 'styles', label: 'Стили', icon: 'sparkles', hint: 'Именованные наборы свойств вида' },
+  { id: 'own', label: 'Своё', icon: 'upload', hint: 'Загруженное автором' },
 ];
