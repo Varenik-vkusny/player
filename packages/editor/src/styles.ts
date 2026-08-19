@@ -1399,13 +1399,113 @@ export const EDITOR_STYLES = `
   min-width: 0;
 }
 
-.ed-insert { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 6px; }
+/* ================= СЕТКА ПЛИТОК КАТАЛОГА =================
+   Снято с натуры 19.08.2026, замер getBoundingClientRect в живой Канве,
+   docs/research/2026-08-19-anatomy-canva-capcut.md.
 
-/* Группа кнопок шаблонов — свой заголовок, кнопки в тех же .ed-insert/.ed-btn,
-   что и у панели вставки фигур: колонка не должна заводить второй визуальный
-   язык ради второго списка кнопок. */
-.ed-templates { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
-.ed-templates-label { font-size: var(--ui-type-xs); color: var(--ui-content-fg-secondary); }
+   У Канвы одна ширина колонки содержимого (313) и ОДИН зазор (8) на все
+   сетки панели, а число колонок выводится из формы содержимого:
+     - показываешь раскладку слайда -> плитка 16:9, ДВЕ колонки;
+     - показываешь вид объекта      -> плитка 1:1,  ТРИ колонки.
+   Обе сходятся в 313 арифметически: 152.5*2+8 и 99*3+8*2.
+
+   Тот же зазор 8 подтверждён вторым, независимым каналом: design/shell.css
+   от 05.08.2026 писался по документации Канвы по раскладке и порознь дал
+   .gallery = repeat(2, 1fr) и .gallery__cell = aspect-ratio 16/9.
+
+   Колонки заданы модификатором, а не числом в разметке: сетка обязана
+   оставаться свойством ВИДА содержимого, а не решением вызывающего. */
+.ed-tile-grid {
+  flex: 0 0 auto;
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ed-tile-grid--wide { grid-template-columns: repeat(2, 1fr); }
+.ed-tile-grid--compact { grid-template-columns: repeat(3, 1fr); }
+
+/* Плитка — кнопка, а не div с обработчиком: она вставляет на сцену, то есть
+   действие, и обязана доставаться с клавиатуры и называться вслух. */
+.ed-tile {
+  appearance: none;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+/* Рисунок плитки. overflow: hidden обязателен: содержимое рисуется по
+   координатам сцены и без обрезки вылезло бы за рамку. */
+.ed-tile-art {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  background: var(--ui-surface-raised);
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius-m);
+  transition: border-color var(--ui-motion-fast);
+}
+.ed-tile-art--wide { aspect-ratio: 16 / 9; }
+.ed-tile-art--square { aspect-ratio: 1 / 1; }
+
+/* Наведение красит рамку, а не заливает плитку: заливка спорила бы с самим
+   рисунком раскладки, который внутри. Приём взят из design/shell.css
+   (.gallery__cell:hover), туда он попал из документации Канвы. */
+.ed-tile:hover .ed-tile-art { border-color: var(--ui-line-strong); }
+
+/* Выбранное показано ЦВЕТОМ и рамкой, а не плашкой — так у обоих продуктов
+   натуры: Канва красит выбранный пункт фиолетовым, КапКут яркой белой
+   против приглушённой. Замерено, см. таблицу совпадений в анатомии. */
+.ed-tile[aria-pressed='true'] .ed-tile-art {
+  border-color: var(--ui-action-selected-line);
+  background: var(--ui-action-selected-bg);
+}
+.ed-tile[aria-pressed='true'] .ed-tile-label { color: var(--ui-content-fg); }
+
+/* Фокус живёт на самой кнопке, а не на рисунке: рисунок обрезан
+   overflow: hidden, и кольцо на нём срезало бы себе половину. */
+.ed-tile:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+  border-radius: var(--ui-radius-s);
+}
+
+/* Подпись под рисунком, по центру — раскладка пункта у обоих продуктов.
+   overflow-wrap: anywhere по той же причине, что у .ed-rail-label: длинная
+   подпись обязана переноситься, а не раздвигать колонку сетки. */
+.ed-tile-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--ui-type-xs);
+  line-height: 1.3;
+}
+
+/* Пустое состояние. Образца с натуры у него НЕТ: у живого пользователя
+   Канвы все разделы каталога непусты, и поймать его не удалось. Это
+   записано в анатомии как "не замерено", а не как "у них такого нет". */
+.ed-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  text-align: center;
+  padding: 24px 16px;
+  color: var(--ui-content-fg-tertiary);
+  font-size: var(--ui-type-s);
+  line-height: 1.4;
+}
 
 .ed-delete-row {
   flex: 0 0 auto;
