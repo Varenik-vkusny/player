@@ -27,7 +27,7 @@ import { freeId } from '../state/elements.js';
 import { styleUsage } from '../state/styleLink.js';
 import { listStyleSets, mergeStyleSet, saveStyleSet, type StyleSet } from '../state/styleStore.js';
 import { plural, STYLES } from '../plural.js';
-import { Button, StringField } from '../ui/index.js';
+import { Button, EmptyState, StringField } from '../ui/index.js';
 
 export interface StylesPanelProps {
   /** Стили проекта, в порядке `project.styles`. */
@@ -165,7 +165,10 @@ export function StylesPanel({
 
       <div className="ed-insp-block">
         {styles.length === 0 ? (
-          <p className="ed-insp-note">Стилей в проекте пока нет.</p>
+          <EmptyState
+            title="Стилей в проекте пока нет."
+            hint="Выделите элемент, сохраните его вид как стиль — и он появится здесь."
+          />
         ) : (
           <div role="list" aria-label="Стили проекта">
             {styles.map((style) => {
@@ -224,7 +227,10 @@ export function StylesPanel({
         ) : sets === undefined ? (
           <p className="ed-insp-note">Загрузка склада…</p>
         ) : sets.length === 0 ? (
-          <p className="ed-insp-note">На складе пока нет наборов.</p>
+          <EmptyState
+            title="На складе пока нет наборов."
+            hint="Сохранённый набор ложится на склад и виден другим проектам."
+          />
         ) : (
           <div role="list" aria-label="Наборы стилей на складе">
             {sets.map((set) => (
