@@ -51,7 +51,7 @@ test.describe('три уровня поверхности', () => {
     }
   });
 
-  test('земля ВИДНА: между панелями и вокруг них есть просвет', async ({ page }) => {
+  test('земля ВИДНА вокруг листа сцены', async ({ page }) => {
     await openEditor(page);
 
     const gaps = await page.evaluate((panels) => {
@@ -83,16 +83,61 @@ test.describe('три уровня поверхности', () => {
         aboveStage: Math.round(stage.r.top - main.top),
         leftInset: Math.round(left.r.left - main.left),
         rightInset: Math.round(main.right - right.r.right),
+        // Просвет земли по бокам ЛИСТА СЦЕНЫ — там, где глубина несёт смысл.
+        // Мерится от соседней колонны, а не от края окна: у окна колонны
+        // теперь стоят впритык, и отступ от него был бы всегда нулевым.
+        stageInsetLeft: Math.round(
+          stage.r.left -
+            Math.max(
+              ...rects.filter((x) => x.r.right <= stage.r.left + 1).map((x) => x.r.right),
+            ),
+        ),
+        stageInsetRight: Math.round(
+          Math.min(
+            ...rects.filter((x) => x.r.left >= stage.r.right - 1).map((x) => x.r.left),
+          ) - stage.r.right,
+        ),
         between,
         top,
       };
     }, PANELS);
 
-    expect(gaps.above, `над боковыми панелями земли не видно: ${gaps.above} px`).toBeGreaterThan(0);
-    expect(gaps.leftInset, `слева земли не видно: ${gaps.leftInset} px`).toBeGreaterThan(0);
-    expect(gaps.rightInset, `справа земли не видно: ${gaps.rightInset} px`).toBeGreaterThan(0);
+    /*
+     * СЕССИЯ 53 ПЕРЕПИСАЛА ЭТИ ОЖИДАНИЯ, и это не подгонка под зелень.
+     *
+     * Владелец посмотрел готовый каталог и сказал: «выглядит всё ещё
+     * не как в Канве». Разбор показал, что расходились не плитки, а корпус:
+     * рейка и каталог были нарисованы ПАРЯЩИМИ КАРТОЧКАМИ с зазором 10 px
+     * и скруглением, тогда как у натуры это КОЛОННЫ впритык — панель Канвы
+     * стоит на x = 72 при ширине рейки 72, то есть зазор ровно ноль.
+     *
+     * Прежние ожидания («между панелями есть просвет») закрепляли ровно
+     * то, на что пожаловался владелец: зелёный тест защищал дефект как
+     * требование. Поэтому здесь меняется МЕХАНИЗМ, а не намерение.
+     * Намерение прежнее и проверяется по-прежнему: три уровня поверхности
+     * обязаны быть различимы. Только различает их теперь линия между
+     * колоннами и просвет вокруг листа сцены, а не воздух вокруг каждой.
+     *
+     * Земля осталась видимой там, где она несёт смысл, — вокруг листа
+     * сцены: холст обязан читаться как лист на столе.
+     */
+    expect(
+      gaps.stageInsetLeft,
+      `слева от листа сцены земли не видно: ${gaps.stageInsetLeft} px`,
+    ).toBeGreaterThan(0);
+    expect(
+      gaps.stageInsetRight,
+      `справа от листа сцены земли не видно: ${gaps.stageInsetRight} px`,
+    ).toBeGreaterThan(0);
+
+    // А колонны обязаны стоять ВПРИТЫК — это и есть натура. Ноль, а не
+    // «больше нуля»: любой зазор здесь возвращает вид парящих карточек.
     for (const b of gaps.between) {
-      expect(b.gap, `панели сомкнулись встык: ${b.pair} = ${b.gap} px`).toBeGreaterThan(0);
+      if (b.pair.includes('.ed-stage-cell')) continue;
+      expect(
+        b.gap,
+        `между колоннами появился зазор — вернулся вид карточек: ${b.pair} = ${b.gap} px`,
+      ).toBe(0);
     }
 
     /**
@@ -114,7 +159,20 @@ test.describe('три уровня поверхности', () => {
     ).toBe(0);
   });
 
-  test('панели — карточки: у них есть скругление и тень', async ({ page }) => {
+  /**
+   * Лист сцены остаётся карточкой, а колонны — колоннами.
+   *
+   * Переписано Сессией 53 вместе с тестом выше и по той же причине:
+   * прежнее ожидание «у ВСЕХ четырёх есть скругление и тень» закрепляло
+   * вид парящих карточек, на который пожаловался владелец.
+   *
+   * Guard не ослаблен, а перенацелен. Колонны у нас все светлые — ровно
+   * как у натуры, — и если убрать линию между ними, две белые колонны
+   * сольются в одно белое поле, а НИ ОДИН тест на цвет этого не заметит:
+   * цвета-то верные. Поэтому здесь меряется наличие видимой границы
+   * у каждой колонны и сохранность карточного вида у листа сцены.
+   */
+  test('лист сцены — карточка, колонны разделены линией', async ({ page }) => {
     await openEditor(page);
 
     const looks = await page.evaluate((panels) => {
@@ -122,17 +180,39 @@ test.describe('три уровня поверхности', () => {
         const el = document.querySelector(sel);
         if (!el) throw new Error(`нет узла ${sel}`);
         const cs = getComputedStyle(el);
+        // Ширина той границы, которой колонна отделена от соседа.
+        const sideWidths = [
+          Number.parseFloat(cs.borderLeftWidth),
+          Number.parseFloat(cs.borderRightWidth),
+        ];
+        const sideColors = [cs.borderLeftColor, cs.borderRightColor];
         return {
           sel,
           radius: Number.parseFloat(cs.borderTopLeftRadius),
           shadow: cs.boxShadow,
+          maxSideBorder: Math.max(...sideWidths),
+          sideColors,
         };
       });
     }, PANELS);
 
+    const stage = looks.find((l) => l.sel === '.ed-stage-cell')!;
+    expect(stage.radius, 'лист сцены перестал быть карточкой: нет скругления').toBeGreaterThan(0);
+    expect(stage.shadow, 'лист сцены перестал быть карточкой: нет тени').not.toBe('none');
+
     for (const l of looks) {
-      expect(l.radius, `у ${l.sel} нет скругления`).toBeGreaterThan(0);
-      expect(l.shadow, `у ${l.sel} нет тени`).not.toBe('none');
+      if (l.sel === '.ed-stage-cell') continue;
+      expect(
+        l.maxSideBorder,
+        `у колонны ${l.sel} нет боковой линии — она сольётся с соседней колонной`,
+      ).toBeGreaterThan(0);
+      // Линия нулевой прозрачности — это отсутствие линии, и цвет тут
+      // проверяется отдельно от ширины: объявить ширину и оставить
+      // прозрачный цвет значит пройти проверку ширины впустую.
+      expect(
+        l.sideColors.some((c) => c !== 'rgba(0, 0, 0, 0)'),
+        `у колонны ${l.sel} боковая линия прозрачна`,
+      ).toBe(true);
     }
   });
 });

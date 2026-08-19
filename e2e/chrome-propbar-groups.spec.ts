@@ -94,4 +94,70 @@ test.describe('полоса свойств сгруппирована', () => {
       `внутри группы «буквы» стоит разделитель перед «${labels[colorIndex]}»`,
     ).not.toBe('sep');
   });
+
+  /**
+   * Пустая полоса говорит, что делать (Сессия 53).
+   *
+   * До этой задачи пустое выделение рисовало голый `span.ed-propbar-hint`
+   * с текстом «Выделите элементы, чтобы выровнять и разложить» — он называл
+   * только органы расположения, уехавшие за дверь в Сессии 48, и молчал
+   * про то, что теперь на полосе (поля стиля). Задача заменяет его на общий
+   * `EmptyState` (`ui/EmptyState.tsx`) с заголовком и подсказкой.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: вернуть голый
+   * `span.ed-propbar-hint` вместо `EmptyState` — тогда `.ed-empty` в строке
+   * пропадёт вовсе.
+   */
+  test('пустая полоса говорит, что делать', async ({ page }) => {
+    await page.goto('/editor.html?fixture=demo', { waitUntil: 'load' });
+    await expect(page.locator('[data-testid="stage-scene"]')).toBeVisible();
+
+    const empty = page.locator('.ed-propbar-row .ed-empty');
+    await expect(empty, 'пустого состояния полосы нет в DOM').toBeVisible();
+
+    const texts = await empty.evaluate((el) =>
+      Array.from(el.querySelectorAll('span')).map((s) => (s.textContent ?? '').trim()),
+    );
+    const [title, hint] = texts;
+    expect(title, `заголовок пуст: ${JSON.stringify(texts)}`).toBeTruthy();
+    expect(hint, `подсказка пуста: ${JSON.stringify(texts)}`).toBeTruthy();
+  });
+
+  /**
+   * Дверь названа так же, как панель, в которую ведёт (Сессия 53).
+   *
+   * Кнопка «Ещё…» переименована в «Объект»: дверь ведёт в панель, чей
+   * заголовок по умолчанию — «Объект» (`Editor.tsx`,
+   * `title={currentCatalogCategory?.label ?? 'Объект'}`, категория 'object'
+   * не входит в `CATALOG_CATEGORIES`). Назвать дверь «Расположение» значило
+   * бы соврать: за ней лежит не только блок «Расположение», а полный список
+   * свойств объекта.
+   *
+   * ЭТО НЕСУЩИЙ ТЕСТ — построен на ДВУХ РАЗНЫХ ИСТОЧНИКАХ: подпись кнопки
+   * берётся с самой кнопки, заголовок панели — из открытой ПОСЛЕ нажатия
+   * панели каталога (`.ed-catalog-title` внутри `[data-testid="catalog"]`).
+   * Ни один текст не вписан в тест литералом для сравнения с самим собой —
+   * оба взяты из реального DOM.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: вернуть подпись «Ещё…»
+   * кнопке (или любую другую, отличную от заголовка открытой панели).
+   */
+  test('дверь названа так же, как панель, в которую ведёт', async ({ page }) => {
+    await openWithTextSelected(page);
+
+    const door = page.getByTestId('propbar-more');
+    const doorLabel = (await door.textContent())?.trim() ?? '';
+    expect(doorLabel, 'у двери нет подписи').toBeTruthy();
+
+    await door.click();
+    const panelTitle = page.locator('[data-testid="catalog"] .ed-catalog-title');
+    await expect(panelTitle, 'открытая дверью панель не найдена').toBeVisible();
+    const openedTitle = (await panelTitle.textContent())?.trim() ?? '';
+    expect(openedTitle, 'у открытой панели нет заголовка').toBeTruthy();
+
+    expect(
+      doorLabel,
+      `подпись двери «${doorLabel}» не совпадает с заголовком открытой панели «${openedTitle}»`,
+    ).toBe(openedTitle);
+  });
 });

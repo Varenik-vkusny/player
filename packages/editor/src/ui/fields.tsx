@@ -24,6 +24,8 @@
  */
 import { useId, useState, type KeyboardEvent, type ReactElement, type ReactNode } from 'react';
 
+import { Icon } from './Icon.js';
+
 /** Что считать пригодным для отправки наружу. Разбор уже отсеял всё, что не число. */
 export type Accepts = (value: number) => boolean;
 
@@ -605,24 +607,29 @@ export function ChoiceField({
 
   return (
     <Field label={label} htmlFor={id} className={className}>
-      <select
-        id={id}
-        data-testid={testId}
-        className="ed-insp-input"
-        value={value}
-        onChange={(event) => onCommit(event.target.value)}
-      >
-        {placeholder === undefined ? null : (
-          <option value="" disabled>
-            {placeholder}
-          </option>
-        )}
-        {choices.map((choice) => (
-          <option key={choice.value} value={choice.value}>
-            {choice.label}
-          </option>
-        ))}
-      </select>
+      <span className="ed-select-wrap">
+        <select
+          id={id}
+          data-testid={testId}
+          className="ed-insp-input"
+          value={value}
+          onChange={(event) => onCommit(event.target.value)}
+        >
+          {placeholder === undefined ? null : (
+            <option value="" disabled>
+              {placeholder}
+            </option>
+          )}
+          {choices.map((choice) => (
+            <option key={choice.value} value={choice.value}>
+              {choice.label}
+            </option>
+          ))}
+        </select>
+        <span className="ed-select-chevron">
+          <Icon name="chevron-down" />
+        </span>
+      </span>
     </Field>
   );
 }

@@ -9,9 +9,9 @@
  * Строки — настоящие `<button>`: обход Tab работает без своей машинерии,
  * а порядок обхода совпадает с тем, что автор видит глазами (по zIndex).
  */
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
-import { Section } from '../ui/index.js';
+import { IconButton, Icon, Section } from '../ui/index.js';
 
 import type { ElementRow } from './elementRows.js';
 
@@ -23,6 +23,12 @@ export interface ElementListProps {
   onPutOnSlide: (id: string) => void;
   /** Убрать с текущего слайда, НЕ удаляя из части — парное к предыдущему. */
   onRemoveFromSlide: (id: string) => void;
+  /**
+   * Действие заголовка секции «Элементы» — кнопка «Удалить» выделенное,
+   * стоит в одной строке с названием списка, на который действует.
+   * Обработчик и disabled собирает Editor.tsx: список только показывает.
+   */
+  headerAction?: ReactNode;
 }
 
 export function ElementList({
@@ -31,10 +37,11 @@ export function ElementList({
   onSelect,
   onPutOnSlide,
   onRemoveFromSlide,
+  headerAction,
 }: ElementListProps): ReactElement {
   return (
     <div className="ed-elements" aria-label="Элементы сцены">
-      <Section title="Элементы">
+      <Section title="Элементы" action={headerAction}>
         {rows.length === 0 ? (
           <p className="ed-elements-empty">Сцена пуста</p>
         ) : (
@@ -97,20 +104,19 @@ export function ElementList({
                   остальных слайдах. Удаление насовсем — другая кнопка,
                   в панели свойств, и это различие держится намеренно.
                 */}
-                <button
-                  type="button"
+                <IconButton
                   className="ed-element-on-slide"
-                  data-testid={`element-slide-toggle-${row.id}`}
-                  title={row.onSlide ? 'Убрать с этого слайда' : 'Поместить на этот слайд'}
-                  aria-label={
+                  testId={`element-slide-toggle-${row.id}`}
+                  hint={row.onSlide ? 'Убрать с этого слайда' : 'Поместить на этот слайд'}
+                  label={
                     row.onSlide
                       ? `Убрать «${row.id}» с этого слайда`
                       : `Поместить «${row.id}» на этот слайд`
                   }
                   onClick={() => (row.onSlide ? onRemoveFromSlide(row.id) : onPutOnSlide(row.id))}
                 >
-                  {row.onSlide ? '−' : '+'}
-                </button>
+                  <Icon name={row.onSlide ? 'minus' : 'plus'} />
+                </IconButton>
               </li>
             ))}
           </ul>
