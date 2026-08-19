@@ -12,6 +12,8 @@
  * а рисунок, разобранный по именам, сделал бы каждую новую запись правкой
  * кода — то есть отменил бы это правило молча.
  */
+import { libraryItem } from '../state/library.js';
+import type { SceneTemplate } from '../state/templates.js';
 import type { ThumbShape } from '../ui/index.js';
 
 type Style = Readonly<Record<string, string | number>>;
@@ -76,4 +78,30 @@ export function objectShape(
     // масштаба скруглённый угол занял бы всю фигуру.
     radius: typeof radius === 'number' ? radius * scale : radius,
   };
+}
+
+/**
+ * Схема заготовки: её элементы, разложенные по сцене.
+ *
+ * `dx`/`dy` заготовки — смещение ЦЕНТРА элемента от центра сцены (см.
+ * `state/templates.ts`), поэтому левый верхний угол считается тем же
+ * выражением, что и в `applyTemplate`. Разойтись они не могут: разойдись
+ * они — плитка показывала бы не то, что кладётся.
+ */
+export function templateShapes(template: SceneTemplate, stage: { width: number; height: number }): ThumbShape[] {
+  return template.elements.map((te) => {
+    const item = libraryItem(te.item);
+    const width = te.width ?? item.width;
+    const height = te.height ?? item.height;
+    const style = { ...item.style, ...te.style };
+    return {
+      x: stage.width / 2 + te.dx - width / 2,
+      y: stage.height / 2 + te.dy - height / 2,
+      width,
+      height,
+      fill: fillOf(style),
+      tone: toneOf(style),
+      radius: radiusOf(style),
+    };
+  });
 }
