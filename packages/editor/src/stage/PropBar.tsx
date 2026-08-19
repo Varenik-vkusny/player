@@ -28,9 +28,10 @@
  *
  * Общее у обоих — обстановка под курсором меняется между двумя кликами
  * одного жеста. Постоянная высота строки убирает причину, а не симптом.
- * Высота — 56px (design/index.html, замер каркаса), а не прежние 38px:
- * полю стиля нужна подпись над значением, кнопкам расположения — нет,
- * и оба ряда делят одну строку постоянной высоты.
+ * Высота — 48px (19.08.2026), до этого 56, до этого 38. Средний шаг был
+ * взят под подпись над значением; замер показал, что подписей на экране нет
+ * вовсе (1x1, clip-path: inset(50%)), поэтому высота приведена к тому, что
+ * на строке действительно стоит: орган 28 плюс поля 8 и 8.
  *
  * Подписи кнопок расположения разведены с инспектором намеренно. У выключки
  * текста (`state/style.ts`) уже есть «По левому краю», и одинаковая подпись
@@ -83,7 +84,7 @@ import { Fragment, type ReactElement } from 'react';
 
 import type { LengthOrPercent, StyleFieldDef, StyleFieldKey, StyleReadResult } from '../state/style.js';
 import { StyleFieldWidget } from '../panels/styleFieldWidget.js';
-import { EmptyState, ScrollStrip } from '../ui/index.js';
+import { ScrollStrip } from '../ui/index.js';
 
 export interface PropBarProps {
   /** Сколько элементов выделено: от этого зависит, какие кнопки живые. */
@@ -102,10 +103,18 @@ export interface PropBarProps {
    * «копировать форматирование» — см. шапку модуля).
    */
   onOpenObject: () => void;
+  /**
+   * Показания выделения: что сейчас выделено и какая у него геометрия.
+   * Переехали сюда из правого верхнего угла шапки 19.08.2026 — там они
+   * занимали место главного действия и повторяли текст пустого состояния
+   * этой же полосы. Подробности в комментарии на месте выноса (Editor.tsx).
+   */
+  selectionReadout: string;
 }
 
 export function PropBar({
   selectedCount,
+  selectionReadout,
   styleFields,
   styleValueOf,
   onStyleCommit,
@@ -119,23 +128,33 @@ export function PropBar({
   // же не монтируется вовсе — тот же приём, что был у прежнего ArrangeBar:
   // не «спрятан», а не существует в DOM, пока нечем его наполнить.
   //
-  // Пустое состояние — общий EmptyState (styles.ts, правило
-  // `.ed-propbar-row .ed-empty` снимает его отступы под строку 56px), а не
-  // голый `ed-propbar-hint`: прежний текст называл только органы
-  // расположения, уехавшие за дверь в Сессии 48, и молчал про вид элемента.
+  // Пустое состояние с 19.08.2026 — строка показаний плюс короткая подсказка,
+  // а не EmptyState: заголовок «Ничего не выделено» стоял одновременно здесь
+  // и в правом верхнем углу шапки, то есть одна мысль печаталась дважды
+  // на одном экране. Показания переехали сюда и говорят её один раз.
   if (selectedCount === 0) {
     return (
       <div className="ed-propbar-row">
-        <EmptyState
-          title="Ничего не выделено"
-          hint="Выберите элемент на холсте, чтобы менять его вид"
-        />
+        {/* Заголовок пустого состояния БОЛЬШЕ НЕ ПИШЕТСЯ отдельно: его роль
+            играет сама строка показаний, которая в этом случае и говорит
+            «ничего не выделено». Раньше на экране стояли обе фразы сразу —
+            эта и такая же в правом верхнем углу шапки. */}
+        <span className="ed-selection" data-testid="selection-readout">
+          {selectionReadout}
+        </span>
+        {/* Не EmptyState: у него заголовок обязателен (и это верно — молчащая
+            пустая панель читается как поломка), а здесь заголовок уже сказан
+            строкой слева. Второй раз то же самое печатать незачем. */}
+        <span className="ed-propbar-hint">Выберите элемент на холсте</span>
       </div>
     );
   }
 
   return (
     <div className="ed-propbar-row">
+      <span className="ed-selection" data-testid="selection-readout">
+        {selectionReadout}
+      </span>
       <ScrollStrip className="ed-propbar" role="toolbar" label="Свойства объекта" testId="propbar">
         {styleFields.length === 0 ? (
           <span className="ed-propbar-hint">Общих свойств нет</span>

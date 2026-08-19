@@ -96,31 +96,65 @@ test.describe('полоса свойств сгруппирована', () => {
   });
 
   /**
-   * Пустая полоса говорит, что делать (Сессия 53).
+   * Пустая полоса говорит, что делать — и говорит ВИДИМО.
    *
-   * До этой задачи пустое выделение рисовало голый `span.ed-propbar-hint`
-   * с текстом «Выделите элементы, чтобы выровнять и разложить» — он называл
-   * только органы расположения, уехавшие за дверь в Сессии 48, и молчал
-   * про то, что теперь на полосе (поля стиля). Задача заменяет его на общий
-   * `EmptyState` (`ui/EmptyState.tsx`) с заголовком и подсказкой.
+   * История. Сессия 53 заменила голый `span.ed-propbar-hint` на общий
+   * `EmptyState`, и тест проверял наличие узла `.ed-empty`. 19.08.2026
+   * показания выделения переехали в эту же строку из правого верхнего угла
+   * шапки, где они дублировали заголовок пустого состояния слово в слово,
+   * и `EmptyState` отсюда убран: заголовок теперь говорит сама строка
+   * показаний, а подсказка стоит рядом.
    *
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: вернуть голый
-   * `span.ed-propbar-hint` вместо `EmptyState` — тогда `.ed-empty` в строке
-   * пропадёт вовсе.
+   * Тест переписан с ИМЕНИ КЛАССА на то, что видит автор. Проверка вида
+   * `.ed-empty` была тестом реализации: она осталась бы зелёной, если бы
+   * узел присутствовал, но был раздавлен до нуля, — а этот проект уже
+   * покупал ровно такой дефект дважды (подписи полей полосы существуют
+   * в DOM и имеют размер 1x1 с clip-path, то есть на экране их нет).
+   * Поэтому здесь спрашивается не «есть ли узел», а «есть ли на экране
+   * непустой текст размером больше нуля».
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ:
+   *   1) убрать подсказку — останется одна строка вместо двух;
+   *   2) убрать показания — пропадёт слово «выделено»;
+   *   3) спрятать любую из них шириной, высотой или clip-path — узлы
+   *      останутся в DOM, и проверка на текст прошла бы, а эта не пройдёт.
    */
   test('пустая полоса говорит, что делать', async ({ page }) => {
     await page.goto('/editor.html?fixture=demo', { waitUntil: 'load' });
     await expect(page.locator('[data-testid="stage-scene"]')).toBeVisible();
 
-    const empty = page.locator('.ed-propbar-row .ed-empty');
-    await expect(empty, 'пустого состояния полосы нет в DOM').toBeVisible();
+    const seen = await page.evaluate(() => {
+      const row = document.querySelector('.ed-propbar-row');
+      if (row === null) return null;
+      return Array.from(row.children)
+        .map((el) => {
+          const r = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          return {
+            text: (el.textContent ?? '').trim(),
+            w: Math.round(r.width),
+            h: Math.round(r.height),
+            clipped: cs.clipPath !== 'none',
+          };
+        })
+        .filter((o) => o.text !== '');
+    });
 
-    const texts = await empty.evaluate((el) =>
-      Array.from(el.querySelectorAll('span')).map((s) => (s.textContent ?? '').trim()),
-    );
-    const [title, hint] = texts;
-    expect(title, `заголовок пуст: ${JSON.stringify(texts)}`).toBeTruthy();
-    expect(hint, `подсказка пуста: ${JSON.stringify(texts)}`).toBeTruthy();
+    expect(seen, 'строки полосы свойств нет в DOM').not.toBeNull();
+    expect(
+      seen!.length,
+      `пустая полоса молчит или говорит одно: ${JSON.stringify(seen)}`,
+    ).toBeGreaterThanOrEqual(2);
+
+    for (const part of seen!) {
+      expect(part.w, `текст «${part.text}» раздавлен по ширине`).toBeGreaterThan(20);
+      expect(part.h, `текст «${part.text}» раздавлен по высоте`).toBeGreaterThan(8);
+      expect(part.clipped, `текст «${part.text}» обрезан clip-path`).toBe(false);
+    }
+
+    const all = seen!.map((o) => o.text).join(' ');
+    expect(all, `полоса не говорит о состоянии выделения: ${all}`).toContain('выделено');
+    expect(all, `полоса не говорит, что делать: ${all}`).toContain('Выберите');
   });
 
   /**

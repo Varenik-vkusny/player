@@ -34,7 +34,6 @@ import { findSegment } from '@player/core';
 import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext, type KeyIntent } from './keyboard.js';
-import { ELEMENTS, GATES, plural } from './plural.js';
 import { CATALOG_CATEGORIES, type PanelId } from './chrome/catalog.js';
 import { CatalogPanel } from './chrome/CatalogPanel.js';
 import { CatalogRail } from './chrome/CatalogRail.js';
@@ -49,7 +48,7 @@ import {
   type ChromeLayout,
 } from './chrome/layoutStore.js';
 import { Splitter } from './chrome/Splitter.js';
-import { Button, ChoiceField, Icon } from './ui/index.js';
+import { Button, ChoiceField, Icon, IconButton } from './ui/index.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
@@ -313,13 +312,22 @@ export function Editor({
    */
   const selectedState = selected === undefined ? undefined : currentSlide.states[selected.id];
 
+  /**
+   * Показания выделения. С 19.08.2026 живут в полосе свойств, а не в правом
+   * верхнем углу шапки (см. комментарий на месте выноса).
+   *
+   * Размер и поворот из строки УБРАНЫ. Не ради краткости: они напечатаны
+   * тут же рядом полями самой полосы и панели «Объект», а строка при этом
+   * съедала около 220 px у полосы, которой места не хватает и без неё
+   * (замер Сессии 48: полям нужно 673 при доступных 586). Положение
+   * оставлено — его полоса полями не показывает.
+   */
   const selectionReadout =
     selected === undefined
       ? 'ничего не выделено'
       : selectedState === undefined
         ? `${selected.id}: нет на этом слайде`
-        : `${selected.id}: ${selectedState.x} × ${selectedState.y}, `
-          + `${selectedState.width}×${selectedState.height}, ${selectedState.rotation}°`;
+        : `${selected.id}: ${selectedState.x} × ${selectedState.y}`;
 
   // Выделение метки на дорожке — состояние вида, а не проекта: в файл оно
   // не попадает и переписку интерфейса переживать не обязано (как и раньше).
@@ -2110,34 +2118,54 @@ export function Editor({
     <div className="ed-root">
       <header className="ed-header">
         <strong className="ed-title">{currentProject.meta.title}</strong>
-        <span className="ed-muted">
-          {plural(segment.elements.length, ELEMENTS)} · {plural(segment.gates.length, GATES)}
-        </span>
+        {/* СЧЁТЧИК «7 элементов · 2 остановки» УБРАН из шапки 19.08.2026.
+            Он не терялся: те же числа сказаны на экране ещё дважды —
+            элементы перечислены списком, остановки посчитаны на голове
+            полосы дорожки. Прежний комментарий бюджета шапки называл его
+            первым кандидатом на вылет ровно по этой причине. Убран не ради
+            места, а потому что повтор третьим шрифтом читается как новая
+            величина, а не как та же самая. */}
         <span className="ed-actions">
-          {/* ГРУППА 1 — история правок. */}
+          {/* ГРУППА 1 — история правок, ЗНАЧКАМИ.
+              Словами она занимала 196 px на двоих, и при окне 1280 имени
+              работы оставалось 69 px: шапка показывала «Демо:...». Огрызок
+              хуже отсутствия — это в проекте записано измерением, и здесь
+              он появился ровно из-за переноса облика (кегль вырос с 12
+              до натурных 14). У обеих натур история правок — значки.
+              Подпись не потеряна: она в aria-label и в подсказке. */}
           <span className="ed-actions-group">
-          <Button
+          <IconButton
+            label="Отменить"
             onClick={() => dispatch({ type: 'undo' })}
             disabled={!canUndoState(state)}
+            reason="Отменять нечего"
           >
-            Отменить
-          </Button>
-          <Button
+            <Icon name="undo" />
+          </IconButton>
+          <IconButton
+            label="Повторить"
             onClick={() => dispatch({ type: 'redo' })}
             disabled={!canRedoState(state)}
+            reason="Повторять нечего"
           >
-            Повторить
-          </Button>
+            <Icon name="redo" />
+          </IconButton>
           </span>
 
-          {/* ГРУППА 2 — работа с файлом. «Сохранить» здесь единственная
-              главная кнопка редактора: владелец 18.08.2026 утвердил её
-              заполненной синей. Порядок внутри группы прежний — в макете
-              она стоит последней, но переставлять её значило бы менять
-              состав шапки, а он утверждён как узнаваемый. */}
+          {/* ГРУППА 2 — работа с файлом.
+
+              «Сохранить» БОЛЬШЕ НЕ ГЛАВНАЯ (было утверждено 18.08.2026,
+              переоткрыто владельцем 19.08.2026 при переносе облика с натуры).
+              Причина не вкусовая: у обеих натур — Канвы и КапКута — залитая
+              кнопка стоит в ПРАВОМ ВЕРХНЕМ УГЛУ и означает «отдать работу
+              зрителю» («Поделиться», «Export»). Залитая кнопка в середине
+              ряда не читается как главная: заливка среди пяти соседей
+              работает, а положение — нет.
+
+              Наш точный аналог «Поделиться» — «Открыть в плеере»: это конец
+              работы автора. Он и стал главным, см. группу 3. */}
           <span className="ed-actions-group">
           <Button
-            kind="главная"
             onClick={() => downloadProject(currentProject)}
           >
             Сохранить
@@ -2199,7 +2227,6 @@ export function Editor({
               эту часть автору больше негде. */}
           {viewAsVariables.length > 0 ? (
             <span className="ed-view-as" data-testid="view-as">
-              <span className="ed-view-as-title">смотреть как ответивший</span>
               {viewAsVariables.map((variable) => (
                 /* Имя переменной ПОДПИСЬЮ поля, а не пунктом внутри списка:
                    иначе список растягивается по самому длинному пункту
@@ -2210,7 +2237,19 @@ export function Editor({
                 <ChoiceField
                   key={variable.name}
                   className="ed-field--inline ed-view-as-item"
-                  label={variable.name}
+                  /* Подпись — человеческая, а не ключ схемы.
+
+                     Было `variable.name`, то есть `recordAs` остановки:
+                     на видном месте шапки стояло «gate-choice». Автор
+                     такого имени не задавал и прочитать его не может.
+
+                     Одна остановка — подпись «Зритель»: различать нечего,
+                     и короткое слово говорит о назначении органа больше,
+                     чем текст вопроса. Несколько — подписью становится сам
+                     вопрос: тогда различать НАДО, и никакое общее слово
+                     этого не сделает. Полный вопрос стоит подсказкой
+                     в обоих случаях. */
+                  label={viewAsVariables.length === 1 ? 'Зритель' : variable.prompt || variable.name}
                   testId={`view-as-${variable.name}`}
                   value={viewAs[variable.name] ?? ''}
                   choices={[
@@ -2224,16 +2263,30 @@ export function Editor({
               ))}
             </span>
           ) : null}
+          {/* ГЛАВНОЕ ДЕЙСТВИЕ, правый верхний угол. См. группу 2 о том,
+              почему оно переехало сюда с «Сохранить». */}
           <Button
+            kind="главная"
             onClick={() => openInPlayer(currentProject, previewUrl)}
           >
             Открыть в плеере
           </Button>
           </span>
         </span>
-        <span className="ed-selection" data-testid="selection-readout">
-          {selectionReadout}
-        </span>
+        {/* СТРОКА ВЫДЕЛЕНИЯ УЕХАЛА В ПОЛОСУ СВОЙСТВ (stage/PropBar.tsx).
+            Она занимала правый верхний угол — самое заметное место окна,
+            где у обеих натур стоит главное действие, — и печатала там
+            «ничего не выделено». Хуже того, ровно то же самое было
+            напечатано вторым текстом в полосе над холстом: «Ничего
+            не выделено. Выберите элемент на холсте». Одна мысль дважды
+            на одном экране — тот самый случай, который проект уже покупал
+            («две панели рядом дают две одинаковые подписи»).
+
+            Узел не спрятан и не удалён: он ПЕРЕЕХАЛ вместе со своим
+            data-testid туда, где показания выделения и должны читаться —
+            в полосу свойств этого самого выделения. Прятать его классом
+            было бы прямым повторением дефекта «подписи полей невидимы»:
+            двадцать e2e остались бы зелёными при пустом месте на экране. */}
       </header>
 
       {/* Полосы про слот работы — отдельной строкой ПОД шапкой, а не внутри
@@ -2385,6 +2438,7 @@ export function Editor({
         <div className="ed-stage-cell">
         <PropBar
           selectedCount={state.selectedIds.length}
+          selectionReadout={selectionReadout}
           styleFields={propbarFields}
           styleValueOf={propbarStyleValueOf}
           onStyleCommit={handlePropbarStyleCommit}

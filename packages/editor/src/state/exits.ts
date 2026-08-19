@@ -549,6 +549,21 @@ export function emptySegments(project: Project): readonly Segment[] {
 /** Переменная объяснения: что про неё можно спросить и чем она бывает. */
 export interface AnswerVariable {
   readonly name: string;
+  /**
+   * Вопрос остановки — человеческий текст, который зритель видит на экране
+   * («Что является часами проекта?»). Донесён сюда 20.08.2026, потому что
+   * шапка редактора показывала автору `name`, то есть ИМЯ ПЕРЕМЕННОЙ
+   * («gate-choice»): ключ из файла проекта на видном месте интерфейса.
+   *
+   * Это ровно тот дефект, который проект однажды уже чинил в другом месте
+   * (Editor.tsx: «остановка называется своим вопросом, а не ключом»);
+   * здесь он держался тем, что человеческого текста в этот тип просто
+   * не доносили, и починить его на месте показа было физически нечем.
+   *
+   * У остановки вида `continue` вопроса нет — там пустая строка, и
+   * вызывающий обязан иметь запасную подпись.
+   */
+  readonly prompt: string;
   readonly kind: 'choice' | 'input' | 'continue';
   readonly options: readonly { readonly id: string; readonly label: string }[];
   /** id верного варианта, либо null у развилки: у неё верного ответа нет. */
@@ -572,6 +587,7 @@ export function answerVariables(project: Project): readonly AnswerVariable[] {
       const config = gate.config;
       found.push({
         name: gate.recordAs,
+        prompt: 'prompt' in config ? config.prompt : '',
         kind: config.kind,
         options: config.kind === 'choice'
           ? config.options.map((option) => ({ id: option.id, label: option.label }))
