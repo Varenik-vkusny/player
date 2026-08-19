@@ -107,14 +107,19 @@ export function addSlide(segment: Segment, afterSlideId: string, at: TimeRef): S
  */
 export function cutProblem(segment: Segment, slideId: string): string | undefined {
   if (segment.slides.length <= 1) {
-    return 'Единственный слайд вырезать нельзя: главе нечего будет показывать';
+    return 'Единственный слайд вырезать нельзя: главе нечего показывать';
   }
   const index = slideIndex(segment, slideId);
   if (index < 0) {
     throw new Error(`Слайда «${slideId}» нет в сегменте «${segment.id}»`);
   }
   if (index === 0) {
-    return 'Первый слайд вырезать нельзя: он обязан стоять на нуле — это стартовый вид главы';
+    // Формулировка укорочена 20.08.2026 вместе с соседними: три причины
+    // выводятся в нижней зоне ОДНОЙ строкой через точку-разделитель, и
+    // прежние длинноты не влезали в её ширину. Строка переносилась
+    // на вторую и забирала 16 px у холста — измерено, а не предположено.
+    // Смысл сохранён: первый слайд держит начало главы.
+    return 'Первый слайд вырезать нельзя: он держит начало главы';
   }
   return undefined;
 }
@@ -525,7 +530,7 @@ export function pasteProblem(segment: Segment, at: TimeRef): string | undefined 
   const newSeconds = seconds(at, words);
 
   if (newSeconds <= 0) {
-    return `Начало главы занято: первый слайд обязан стоять на нуле (получено ${secondsText(newSeconds)})`;
+    return `Начало главы занято: первый слайд стоит на нуле (получено ${secondsText(newSeconds)})`;
   }
 
   const hit = slideOnMark(segment, newSeconds, words);
