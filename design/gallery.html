@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Составные части хрома редактора</title>
+
+<!--
+  ВИТРИНА, НЕ ПРОДУКТ.
+
+  Открывается двойным щелчком: ни сервера, ни сборки, ни модулей —
+  нарочно, как и у design/index.html. В `pnpm check` не входит,
+  packages/ не трогает.
+
+  Показывает составные части хрома каталога: сетку плиток, саму плитку
+  и её состояния, пустое состояние. CSS этих частей (.ed-tile-grid,
+  .ed-tile, .ed-tile-art, .ed-tile-label, .ed-empty) скопирован
+  ДОСЛОВНО из packages/editor/src/styles.ts, блок
+  «СЕТКА ПЛИТОК КАТАЛОГА» — ничего не переписано и не «улучшено»:
+  витрина существует, чтобы показывать то, что в продукте, а разойтись
+  с ним не имеет права.
+
+  Числа (313px колонка, зазор 8px, 2/3 колонки, 16:9 и 1:1) сняты
+  замером с живой Канвы 19.08.2026, docs/research/2026-08-19-anatomy-canva-capcut.md.
+
+  Роли var(--ui-*) идут из design/tokens.css. Четырёх ролей там нет —
+  объявлены ниже теми же значениями, что в styles.ts (строки 217-229),
+  а не подобраны на глаз: неизвестная роль проваливается МОЛЧА,
+  браузер отбрасывает объявление целиком без ошибки и предупреждения.
+-->
+
+<link rel="stylesheet" href="tokens.css">
+
+<style>
+  /* ================= МОСТ РОЛЕЙ =================
+     packages/editor/src/styles.ts, строки 217-229. design/tokens.css
+     их не объявляет вовсе — без этого моста плитки ниже стали бы
+     чёрными молча, а витрина выглядела бы «так и задумано». */
+  :root {
+    --ui-type-xs: 11px;
+    --ui-type-s: 12px;
+    --ui-radius-s: 4px;
+    --ui-radius-m: 6px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ui-surface-panel);
+    color: var(--ui-content-fg);
+    font-family: system-ui, sans-serif;
+  }
+
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: var(--u4) var(--u3) var(--u8);
+  }
+
+  .page > h1 {
+    font: var(--weight-bold) var(--type-xl) / var(--lh-xl) var(--font-ui);
+    margin: 0 0 var(--u);
+  }
+  .page > .lead {
+    margin: 0 0 var(--u6);
+    color: var(--ui-content-fg-secondary);
+    font-size: var(--type-md);
+    line-height: var(--lh-md);
+    max-width: 640px;
+  }
+
+  .block {
+    margin-top: var(--u8);
+    padding-top: var(--u4);
+    border-top: 1px solid var(--ui-line);
+  }
+  .block:first-of-type { margin-top: 0; padding-top: 0; border-top: 0; }
+
+  .block > h2 {
+    font: var(--weight-bold) var(--type-lg) / var(--lh-lg) var(--font-ui);
+    margin: 0 0 var(--u-half);
+  }
+  .block > .hint {
+    margin: 0 0 var(--u3);
+    color: var(--ui-content-fg-secondary);
+    font-size: var(--type-sm);
+    line-height: var(--lh-sm);
+    max-width: 640px;
+  }
+
+  /* Контейнер сетки. 313px — настоящая ширина колонки содержимого
+     Канвы: без него плитки разъезжаются шире, чем бывают в продукте,
+     и витрина показывает не тот размер. */
+  .frame { width: 313px; }
+
+  /* Ряд для показа СОСТОЯНИЙ плитки — витринная раскладка, не сетка
+     каталога, поэтому свой класс, а не .ed-tile-grid--compact. */
+  .state-row {
+    display: flex;
+    gap: var(--u2);
+  }
+  /* 99px — та же ширина, что даёт .ed-tile-grid--compact на .frame:
+     (313 - 2*8) / 3. Взято отсюда, а не с потолка. */
+  .state-row .state-item { width: 99px; }
+  /* Пояснение под рядом состояний. Отдельным абзацем, а не подписью плитки:
+     подпись у плитки всегда короткая, и абзац в ней показал бы компонент
+     делающим то, чего он в продукте не делает. */
+  .note {
+    margin: var(--u2) 0 0;
+    max-width: 62ch;
+    font-size: var(--type-sm);
+    line-height: var(--lh-md);
+    color: var(--ui-content-fg-secondary);
+  }
+  .state-item > .cap {
+    display: block;
+    margin-top: var(--u);
+    font-size: var(--type-sm);
+    line-height: var(--lh-sm);
+    color: var(--ui-content-fg-secondary);
+    text-align: center;
+  }
+
+  /* Показ фокуса СТАТИЧНОЙ картинкой: :focus-visible нельзя поставить
+     на неживую страницу без скрипта, поэтому те же объявления, что
+     у .ed-tile:focus-visible в styles.ts, лежат на классе. */
+  .is-focus.ed-tile {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+    border-radius: var(--ui-radius-s);
+  }
+
+  .empty-demo { width: 313px; }
+
+  table.numbers {
+    border-collapse: collapse;
+    font-size: var(--type-sm);
+    line-height: var(--lh-sm);
+  }
+  table.numbers th,
+  table.numbers td {
+    border: 1px solid var(--ui-line);
+    padding: var(--u-half) var(--u);
+    text-align: left;
+  }
+  table.numbers th {
+    color: var(--ui-content-fg-secondary);
+    font-weight: var(--weight-medium);
+  }
+  .block > .source {
+    margin: var(--u2) 0 0;
+    color: var(--ui-content-fg-tertiary);
+    font-size: var(--type-xs);
+    line-height: var(--lh-xs);
+    max-width: 640px;
+  }
+
+  /* ================= СЕТКА ПЛИТОК КАТАЛОГА =================
+     Снято с натуры 19.08.2026, замер getBoundingClientRect в живой Канве,
+     docs/research/2026-08-19-anatomy-canva-capcut.md.
+
+     У Канвы одна ширина колонки содержимого (313) и ОДИН зазор (8) на все
+     сетки панели, а число колонок выводится из формы содержимого:
+       - показываешь раскладку слайда -> плитка 16:9, ДВЕ колонки;
+       - показываешь вид объекта      -> плитка 1:1,  ТРИ колонки.
+     Обе сходятся в 313 арифметически: 152.5*2+8 и 99*3+8*2.
+
+     Тот же зазор 8 подтверждён вторым, независимым каналом: design/shell.css
+     от 05.08.2026 писался по документации Канвы по раскладке и порознь дал
+     .gallery = repeat(2, 1fr) и .gallery__cell = aspect-ratio 16/9.
+
+     Колонки заданы модификатором, а не числом в разметке: сетка обязана
+     оставаться свойством ВИДА содержимого, а не решением вызывающего. */
+  .ed-tile-grid {
+    flex: 0 0 auto;
+    display: grid;
+    gap: 8px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .ed-tile-grid--wide { grid-template-columns: repeat(2, 1fr); }
+  .ed-tile-grid--compact { grid-template-columns: repeat(3, 1fr); }
+
+  /* Плитка — кнопка, а не div с обработчиком: она вставляет на сцену, то есть
+     действие, и обязана доставаться с клавиатуры и называться вслух. */
+  .ed-tile {
+    appearance: none;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--ui-content-fg-secondary);
+    font: inherit;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  /* Рисунок плитки. overflow: hidden обязателен: содержимое рисуется по
+     координатам сцены и без обрезки вылезло бы за рамку. */
+  .ed-tile-art {
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    background: var(--ui-surface-raised);
+    border: 1px solid var(--ui-line);
+    border-radius: var(--ui-radius-m);
+    transition: border-color var(--ui-motion-fast);
+  }
+  .ed-tile-art--wide { aspect-ratio: 16 / 9; }
+  .ed-tile-art--square { aspect-ratio: 1 / 1; }
+
+  /* Наведение красит рамку, а не заливает плитку: заливка спорила бы с самим
+     рисунком раскладки, который внутри. Приём взят из design/shell.css
+     (.gallery__cell:hover), туда он попал из документации Канвы. */
+  .ed-tile:hover .ed-tile-art { border-color: var(--ui-line-strong); }
+
+  /* Выбранное показано ЦВЕТОМ и рамкой, а не плашкой — так у обоих продуктов
+     натуры: Канва красит выбранный пункт фиолетовым, КапКут яркой белой
+     против приглушённой. Замерено, см. таблицу совпадений в анатомии. */
+  .ed-tile[aria-pressed='true'] .ed-tile-art {
+    border-color: var(--ui-action-selected-line);
+    background: var(--ui-action-selected-bg);
+  }
+  .ed-tile[aria-pressed='true'] .ed-tile-label { color: var(--ui-content-fg); }
+
+  /* Фокус живёт на самой кнопке, а не на рисунке: рисунок обрезан
+     overflow: hidden, и кольцо на нём срезало бы себе половину. */
+  .ed-tile:focus-visible {
+    outline: 2px solid var(--ui-focus);
+    outline-offset: 2px;
+    border-radius: var(--ui-radius-s);
+  }
+
+  /* Подпись под рисунком, по центру — раскладка пункта у обоих продуктов.
+     overflow-wrap: anywhere по той же причине, что у .ed-rail-label: длинная
+     подпись обязана переноситься, а не раздвигать колонку сетки. */
+  .ed-tile-label {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--ui-type-xs);
+    line-height: 1.3;
+  }
+
+  /* Пустое состояние. Образца с натуры у него НЕТ: у живого пользователя
+     Канвы все разделы каталога непусты, и поймать его не удалось. Это
+     записано в анатомии как "не замерено", а не как "у них такого нет". */
+  .ed-empty {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+    text-align: center;
+    padding: 24px 16px;
+    color: var(--ui-content-fg-tertiary);
+    font-size: var(--ui-type-s);
+    line-height: 1.4;
+  }
+</style>
+
+<body>
+<div class="page">
+
+  <h1>Составные части хрома редактора</h1>
+  <p class="lead">
+    Не отдельная страница со своим стилем, а витрина того, что уже стоит
+    в панелях каталога: сетка плиток, сама плитка, её состояния и то, что
+    показывается, когда каталог пуст. CSS взят из продукта дословно —
+    если здесь что-то выглядит иначе, чем в редакторе, витрина ошибается,
+    а не редактор.
+  </p>
+
+  <!-- ================= СЕТКА РАСКЛАДОК ================= -->
+  <section class="block">
+    <h2>Сетка раскладок</h2>
+    <p class="hint">
+      <code>.ed-tile-grid--wide</code> — каталог «Шаблоны»: плитка 16:9,
+      две колонки. Рисунок внутри показывает не абстрактный узор,
+      а форму будущего слайда.
+    </p>
+    <div class="frame">
+      <div class="ed-tile-grid ed-tile-grid--wide" role="group" aria-label="Раскладки">
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--wide">
+            <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="510" y="480" width="900" height="120" rx="12" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Заголовок по центру</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--wide">
+            <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="360" y="300" width="1200" height="130" rx="10" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="360" y="500" width="1200" height="46" rx="8" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="360" y="580" width="1050" height="46" rx="8" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="360" y="660" width="870" height="46" rx="8" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Заголовок и текст</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--wide">
+            <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="160" y="160" width="760" height="760" rx="16" fill="currentColor" fill-opacity="0.28"/>
+              <rect x="1000" y="160" width="760" height="760" rx="16" fill="currentColor" fill-opacity="0.28"/>
+              <rect x="220" y="260" width="620" height="60" rx="8" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="220" y="360" width="500" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="220" y="430" width="560" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="1060" y="260" width="620" height="60" rx="8" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="1060" y="360" width="500" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="1060" y="430" width="560" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Две колонки</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--wide">
+            <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="360" y="220" width="640" height="70" rx="10" fill="currentColor" fill-opacity="0.8"/>
+              <circle cx="400" cy="470" r="18" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="450" y="450" width="1000" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+              <circle cx="400" cy="590" r="18" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="450" y="570" width="900" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+              <circle cx="400" cy="710" r="18" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="450" y="690" width="960" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Список из трёх строк</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--wide">
+            <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="360" y="180" width="1200" height="90" rx="10" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="360" y="500" width="560" height="220" rx="16" fill="currentColor" fill-opacity="0.28"/>
+              <rect x="1000" y="500" width="560" height="220" rx="16" fill="currentColor" fill-opacity="0.28"/>
+              <rect x="420" y="590" width="440" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="1060" y="590" width="440" height="40" rx="6" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Вопрос и два варианта</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--wide">
+            <svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" width="100%" height="100%"></svg>
+          </span>
+          <span class="ed-tile-label">Пустая</span>
+        </button>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= СЕТКА ОБЪЕКТОВ ================= -->
+  <section class="block">
+    <h2>Сетка объектов</h2>
+    <p class="hint">
+      <code>.ed-tile-grid--compact</code> — каталоги «Фигуры» и «Текст»:
+      плитка 1:1, три колонки, та же колонка содержимого и тот же зазор,
+      что у сетки раскладок. У Канвы колонка 313px, у нас 308 — каталог уже
+      на 5px, потому что он 340, а не 361.
+    </p>
+    <div class="frame">
+      <div class="ed-tile-grid ed-tile-grid--compact" role="group" aria-label="Объекты">
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="12" y="30" width="76" height="14" rx="3" fill="currentColor" fill-opacity="0.8"/>
+              <rect x="12" y="52" width="60" height="14" rx="3" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Текст</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="20" y="20" width="60" height="60" rx="12" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Фигура со скруглением</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <ellipse cx="50" cy="50" rx="35" ry="35" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Круг</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="10" y="47" width="80" height="6" rx="3" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Линия</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <rect x="15" y="15" width="70" height="70" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="1.1"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Рамка</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <path d="M40,18 L26,18 L26,82 L40,82" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="4"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Скобка</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <path d="M15,50 L70,50 M52,32 L70,50 L52,68" fill="none" stroke="currentColor" stroke-opacity="0.8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Стрелка</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <polygon points="50,18 84,80 16,80" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Треугольник</span>
+        </button>
+
+        <button type="button" class="ed-tile">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <polygon points="50,14 86,50 50,86 14,50" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Ромб</span>
+        </button>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= СОСТОЯНИЯ ПЛИТКИ ================= -->
+  <section class="block">
+    <h2>Состояния плитки</h2>
+    <p class="hint">
+      Плитка — <code>&lt;button class="ed-tile"&gt;</code>, а не
+      <code>div</code> с обработчиком: она кладёт что-то на сцену, то есть
+      совершает действие, и обязана доставаться с клавиатуры.
+    </p>
+    <div class="frame state-row">
+
+      <div class="state-item">
+        <button type="button" class="ed-tile" aria-pressed="false">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <ellipse cx="50" cy="50" rx="35" ry="35" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Круг</span>
+        </button>
+        <span class="cap">Обычная</span>
+      </div>
+
+      <div class="state-item">
+        <button type="button" class="ed-tile" aria-pressed="true">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <ellipse cx="50" cy="50" rx="35" ry="35" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Круг</span>
+        </button>
+        <span class="cap">Выбранная (<code>aria-pressed="true"</code>)</span>
+      </div>
+
+      <div class="state-item">
+        <button type="button" class="ed-tile is-focus" aria-pressed="false">
+          <span class="ed-tile-art ed-tile-art--square">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" width="100%" height="100%">
+              <ellipse cx="50" cy="50" rx="35" ry="35" fill="currentColor" fill-opacity="0.8"/>
+            </svg>
+          </span>
+          <span class="ed-tile-label">Круг</span>
+        </button>
+        <span class="cap">В фокусе</span>
+      </div>
+
+    </div>
+    <p class="note">Третья плитка — показ статикой: класс <code>.is-focus</code>
+      повторяет объявления <code>:focus-visible</code> дословно, потому что живой
+      фокус на неживой странице не поставить. В продукте это правило включается
+      только с клавиатуры.</p>
+  </section>
+
+  <!-- ================= ПУСТОЕ СОСТОЯНИЕ ================= -->
+  <section class="block">
+    <h2>Пустое состояние</h2>
+    <p class="hint">
+      <code>.ed-empty</code> — заглушка раздела каталога без единой карточки.
+      Образца с натуры нет: у живого пользователя Канвы все разделы каталога
+      оказались непустыми, поймать пустой не удалось — это записано как
+      «не замерено», а не как «у них такого нет».
+    </p>
+    <div class="empty-demo">
+      <div class="ed-empty">
+        <span><strong>Здесь пока пусто</strong></span>
+        <span>В этом разделе каталога ещё нет ни одной карточки.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ОТКУДА ЧИСЛА ================= -->
+  <section class="block">
+    <h2>Откуда числа</h2>
+    <p class="hint">Три числа, которыми держится обе сетки плиток.</p>
+    <table class="numbers">
+      <thead>
+        <tr><th></th><th>Раскладки</th><th>Объекты</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Колонок</td><td>2</td><td>3</td></tr>
+        <tr><td>Зазор</td><td colspan="2">8 px</td></tr>
+        <tr><td>Форма плитки</td><td>16:9</td><td>1:1</td></tr>
+      </tbody>
+    </table>
+    <p class="source">
+      Снято замером с живой Канвы 19.08.2026, подробности —
+      docs/research/2026-08-19-anatomy-canva-capcut.md.
+    </p>
+  </section>
+
+</div>
+</body>
+</html>
