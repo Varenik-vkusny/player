@@ -54,6 +54,37 @@ function chromeSources(): { path: string; text: string }[] {
   return out;
 }
 
+/**
+ * Файлы ДАННЫХ пакета (`.ts`), где значок назван полем, а не литералом в JSX.
+ *
+ * Заведено в Сессии 52. До неё рельс каталога рисовал значки символами из
+ * шрифта, и все имена значков жили литералами прямо в разметке — `.tsx`
+ * хватало. Рельс переведён на контуры, а имя значка уехало в
+ * `chrome/catalog.ts` рядом с подписью и пояснением: пополнение каталога
+ * обязано трогать один файл данных.
+ *
+ * Без этого сборщика охрана «каждый контур использован» объявила бы мёртвыми
+ * шесть контуров, которые рисует каждая кнопка рельса, — она ищет имена
+ * ТЕКСТОМ, а `.ts` не читала вовсе. Дыру успели заткнуть комментарием
+ * с перечислением имён, то есть зелень держалась на ПРОЗЕ, а не на
+ * применении: удаление комментария красило бы прогон, а удаление настоящего
+ * применения — нет. Такую зелень объяснить нельзя, и потому её здесь нет.
+ */
+function dataSources(): { path: string; text: string }[] {
+  const out: { path: string; text: string }[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.name.endsWith('.ts')) {
+        out.push({ path: full.slice(SRC.length + 1), text: readFileSync(full, 'utf8') });
+      }
+    }
+  };
+  walk(SRC);
+  return out;
+}
+
 /** Сама библиотека ui/ — то, что chromeSources намеренно пропускает. */
 function libraryTsx(): { path: string; text: string }[] {
   const dir = join(SRC, 'ui');
@@ -133,6 +164,7 @@ describe('хром редактора пользуется общей библи
     // «мёртвый» здесь значит «нигде не поставлен», а ui/ — такое же «где-то».
     const used = chromeSources()
       .concat(libraryTsx())
+      .concat(dataSources())
       .map((f) => f.text)
       .join('\n');
     const dead = Object.keys(ICON_PATHS).filter(

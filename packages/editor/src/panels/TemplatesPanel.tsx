@@ -1,38 +1,67 @@
 /**
- * Панель шаблонов сцены: кнопка на каждую заготовку кладёт на сцену готовый
- * набор элементов с анимациями (и, у «Вопроса с вариантами», гейт).
+ * Каталог шаблонов сцены: плитка на каждую заготовку кладёт на сцену готовый
+ * набор элементов с анимациями (и, у одной из них, гейт).
  *
- * Презентационный компонент, как и `InsertPanel.tsx`: список кнопок и подписи
- * целиком берутся из `SCENE_TEMPLATES` (state/templates.ts, данные), а не
- * заданы здесь — этим и проверяется, что пополнение каталога шаблонов не
- * требует правки этого файла (test/templates.test.ts, тот же приём, что
- * `library.test.ts` для InsertPanel). Что именно применять решает
- * Editor.tsx через редьюсер (`applyTemplate`) — здесь только вызов колбэка.
+ * **Что изменилось в Сессии 52.** Раньше здесь был `div.ed-insert` с
+ * `flex-wrap` и кнопками-подписями внутри — буквально список кнопок в строку.
+ * Владелец указал на это прямым текстом, и правкой цвета такое не лечится:
+ * нужна другая разметка. Теперь это сетка плиток по анатомии, снятой замером
+ * с живой Канвы (docs/research/2026-08-19-anatomy-canva-capcut.md): плитка
+ * 16:9 — форма самого слайда, — и ДВЕ колонки.
+ *
+ * **Рисунок плитки строится из тех же данных**, что и сам шаблон: каждый
+ * элемент заготовки становится прямоугольником в координатах сцены. Поэтому
+ * «сравнение двух колонок» показывает две колонки, а список пунктов — список,
+ * и ни одного имени шаблона в этом файле нет. Пополнение каталога остаётся
+ * дописанной записью в данных — это и проверяет test/templates.test.ts.
+ *
+ * **Подпись под плиткой у нас есть, а у Канвы её нет** — осознанное
+ * расхождение, объяснённое в анатомии: у Канвы внутри плитки лежит настоящий
+ * снимок шаблона, по нему всё понятно. У нас снимка нет и не будет, плитка
+ * рисуется схемой, а две заготовки с одним заголовком на 152 px схемой
+ * не различить.
+ *
+ * Заголовка внутри панели больше НЕТ. Он был (`span.ed-templates-label`),
+ * и вместе с заголовком шапки каталога давал два одинаковых слова «Шаблоны»
+ * на одном экране — замерено в Сессии 52. У панели один заголовок, и живёт
+ * он в `chrome/CatalogPanel.tsx`.
+ *
+ * (Со строчной буквы намеренно. Охрана `templates.test.ts` ищет подписи
+ * заготовок ПОДСТРОКОЙ по всему исходнику, комментарии включая, — а одна
+ * из подписей это ровно то слово с прописной. Не придирка теста, а его
+ * смысл: он не различает код и прозу и потому не даёт спрятать список
+ * в комментарий. Наступить на это успели дважды за одну правку.)
  */
 import type { ReactElement } from 'react';
 
 import { SCENE_TEMPLATES } from '../state/templates.js';
-import { Button } from '../ui/index.js';
+import { LayoutThumb, Tile, TileGrid } from '../ui/index.js';
+import { templateShapes } from './thumbShapes.js';
 
 export interface TemplatesPanelProps {
   onApply: (templateId: string) => void;
+  /** Размер сцены проекта: схема рисуется в его координатах, а не в чужих. */
+  stage: { readonly width: number; readonly height: number };
 }
 
-export function TemplatesPanel({ onApply }: TemplatesPanelProps): ReactElement {
+export function TemplatesPanel({ onApply, stage }: TemplatesPanelProps): ReactElement {
   return (
-    <div className="ed-templates">
-      <span className="ed-templates-label">Шаблоны</span>
-      <div className="ed-insert" role="group" aria-label="Добавить шаблон">
-        {SCENE_TEMPLATES.map((template) => (
-          <Button
-            key={template.id}
-            data-testid={`template-${template.id}`}
-            onClick={() => onApply(template.id)}
-          >
-            {template.label}
-          </Button>
-        ))}
-      </div>
-    </div>
+    <TileGrid kind="раскладка" label="Добавить шаблон">
+      {SCENE_TEMPLATES.map((template) => (
+        <Tile
+          key={template.id}
+          shape="раскладка"
+          label={template.label}
+          data-testid={`template-${template.id}`}
+          onClick={() => onApply(template.id)}
+        >
+          <LayoutThumb
+            viewWidth={stage.width}
+            viewHeight={stage.height}
+            shapes={templateShapes(template, stage)}
+          />
+        </Tile>
+      ))}
+    </TileGrid>
   );
 }

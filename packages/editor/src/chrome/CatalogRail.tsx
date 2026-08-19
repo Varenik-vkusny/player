@@ -5,9 +5,14 @@
  * `CATALOG_CATEGORIES` (catalog.ts, данные), а не заданы здесь. Тем же
  * приёмом, каким `InsertPanel.tsx` защищён тестом `library.test.ts`
  * («пополнение каталога не требует правок в React») — списка подписей
- * в этой разметке нет и не будет.
+ * в этой разметке нет и не будет. Значок берётся оттуда же, полем `icon`:
+ * до Сессии 52 он рисовался символом из шрифта, что запрещено ADR-034 —
+ * на машине без глифа от такого значка остаётся пустой прямоугольник,
+ * молча.
  */
 import type { ReactElement } from 'react';
+
+import { Icon } from '../ui/index.js';
 
 import { CATALOG_CATEGORIES } from './catalog.js';
 import type { PanelId } from './catalog.js';
@@ -21,7 +26,7 @@ export interface CatalogRailProps {
 export function CatalogRail({ current, onSelect }: CatalogRailProps): ReactElement {
   return (
     <nav className="ed-rail" aria-label="Каталоги">
-      {CATALOG_CATEGORIES.map(({ id, label, glyph }) => (
+      {CATALOG_CATEGORIES.map(({ id, label, icon }) => (
         <button
           key={id}
           type="button"
@@ -31,9 +36,7 @@ export function CatalogRail({ current, onSelect }: CatalogRailProps): ReactEleme
           title={label}
           onClick={() => onSelect(id)}
         >
-          <span className="ed-rail-glyph" aria-hidden="true">
-            {glyph}
-          </span>
+          <Icon name={icon} />
           <span className="ed-rail-label">{label}</span>
         </button>
       ))}

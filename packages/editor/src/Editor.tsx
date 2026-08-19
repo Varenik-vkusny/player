@@ -2293,7 +2293,13 @@ export function Editor({
             onCollapse={handleToggleCatalogCollapsed}
           >
             {panelId === 'templates' ? (
-              <TemplatesPanel onApply={handleApplyTemplate} />
+              <TemplatesPanel
+                onApply={handleApplyTemplate}
+                // Схема на плитке рисуется в координатах СЦЕНЫ ПРОЕКТА, а не
+                // в своих: у проекта 4:3 схема, нарисованная в 16:9, показала
+                // бы не ту раскладку, которая ляжет.
+                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
+              />
             ) : panelId === 'shapes' ? (
               <InsertPanel onInsert={handleInsert} category="shape" />
             ) : panelId === 'text' ? (

@@ -1,25 +1,31 @@
 /**
- * Панель вставки: кнопка на каждую заготовку кладёт новый элемент сцены.
+ * Каталог заготовок элементов: плитка на каждую кладёт новый элемент сцены.
  *
- * Презентационный компонент — список кнопок и их подписи целиком берутся
- * из `ELEMENT_LIBRARY` (state/library.ts, данные), а не заданы здесь: этим
- * и проверяется, что пополнение библиотеки не требует правки этого файла
- * (library.test.ts). Что именно создавать и куда класть решает Editor.tsx
- * через `createElement`/`libraryItem` (state/elements.ts, state/library.ts)
- * и редьюсер. Здесь только вызов колбэка по клику, как того требует ADR-010.
+ * **Что изменилось в Сессии 52.** Был `div.ed-insert` с `flex-wrap` и
+ * кнопками-подписями; стал сеткой плиток по анатомии, снятой замером с живой
+ * Канвы (docs/research/2026-08-19-anatomy-canva-capcut.md). Форма плитки
+ * здесь ДРУГАЯ, чем у шаблонов, и это не разнобой, а то же правило натуры:
+ * у Канвы одна ширина колонки и один зазор на все сетки панели, а число
+ * колонок выводится из формы содержимого. Раскладка слайда — 16:9 и две
+ * колонки; отдельный объект — 1:1 и три колонки с подписью.
  *
- * `category` делит каталог между тремя панелями каталога («Фигуры», «Текст»,
- * «Своё») без единого упоминания конкретной заготовки в этом файле — фильтр
- * читает поле `category` из данных, а не список id/label в разметке.
- * Обязательный пропс: у каждого вызова с Сессии 30 есть своя категория
- * (chrome/catalog.ts), и показ «всех заготовок сразу» больше не бывает
- * законным состоянием — это была временная заглушка, пока Editor.tsx не был
- * разведён на три панели.
+ * **Рисунок плитки выводится из полей самой заготовки** — её пропорций,
+ * заливки и скругления (`panels/thumbShapes.ts`). Поэтому круг выглядит
+ * кругом, линия — линией, а рамка — контуром, и при этом ни одного имени
+ * заготовки в этом файле нет: пополнение библиотеки остаётся дописанной
+ * записью в данных, что и проверяет test/library.test.ts.
+ *
+ * `category` делит каталог между тремя панелями без единого упоминания
+ * конкретной заготовки: фильтр читает поле из данных.
  */
 import type { ReactElement } from 'react';
 
 import { ELEMENT_LIBRARY, type LibraryCategory } from '../state/library.js';
-import { Button } from '../ui/index.js';
+import { LayoutThumb, Tile, TileGrid } from '../ui/index.js';
+import { objectShape } from './thumbShapes.js';
+
+/** Поле, в котором рисуется схема одной заготовки. Квадрат — плитка объекта 1:1. */
+const FIELD = 100;
 
 export interface InsertPanelProps {
   onInsert: (itemId: string) => void;
@@ -29,16 +35,18 @@ export interface InsertPanelProps {
 export function InsertPanel({ onInsert, category }: InsertPanelProps): ReactElement {
   const items = ELEMENT_LIBRARY.filter((item) => item.category === category);
   return (
-    <div className="ed-insert" role="group" aria-label="Добавить элемент">
+    <TileGrid kind="объект" label="Добавить элемент">
       {items.map((item) => (
-        <Button
+        <Tile
           key={item.id}
+          shape="объект"
+          label={item.label}
           data-testid={`insert-${item.id}`}
           onClick={() => onInsert(item.id)}
         >
-          {item.label}
-        </Button>
+          <LayoutThumb viewWidth={FIELD} viewHeight={FIELD} shapes={[objectShape(item, FIELD)]} />
+        </Tile>
       ))}
-    </div>
+    </TileGrid>
   );
 }
