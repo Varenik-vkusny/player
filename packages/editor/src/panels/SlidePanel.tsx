@@ -21,7 +21,7 @@ import type { Slide, Word } from '@player/core';
 import { secondsText } from '../timeText.js';
 import { markSeconds } from '../track/marks.js';
 import { TRANSITION_INFO } from '../transitions.js';
-import { Button, Section } from '../ui/index.js';
+import { Button, Icon, IconButton, Section } from '../ui/index.js';
 
 export interface SlidePanelProps {
   slides: readonly Slide[];
@@ -76,14 +76,15 @@ export function SlidePanel({
                     {TRANSITION_INFO[slide.transition].label}
                   </span>
                 </button>
-                <Button
-                  data-testid={`slide-remove-${slide.id}`}
+                <IconButton
+                  testId={`slide-remove-${slide.id}`}
                   disabled={!canRemove}
-                  title={canRemove ? 'Удалить слайд' : 'Нельзя удалить первый или единственный слайд'}
+                  label="Удалить слайд"
+                  reason="Нельзя удалить первый или единственный слайд"
                   onClick={() => onRemove(slide.id)}
                 >
-                  Удалить
-                </Button>
+                  <Icon name="trash" />
+                </IconButton>
               </li>
             );
           })}

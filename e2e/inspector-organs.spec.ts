@@ -1,0 +1,94 @@
+/**
+ * Органы «Расположения» панели «Объект» после перевода на `ui/IconButton`
+ * (Сессия 53): выравнивание, раскладка, слои и «копировать форматирование»
+ * рисуются одним компонентом библиотеки вместо тринадцати самодельных
+ * `<button className="ed-propbar-btn">`.
+ *
+ * Единственная поведенческая проверка, которую перевод облика обязан не
+ * тронуть: погашенная кнопка «Разложить» ОБЯЗАНА остаться видимой и назвать
+ * причину — так уже устроен `Button` (см. ui/Button.tsx), и `IconButton`
+ * обязан повторить приём, а не спрятать погашенную кнопку молча.
+ *
+ * Проверка «вызвался ли onDistribute» была бы зелёной при полностью
+ * перекрытой кнопке — в этом проекте так уже находили дефект наложения
+ * (полоса свойств поверх кнопок ответа гейта, CLAUDE.md). Поэтому здесь
+ * смотрим на видимую кнопку и на то, что реально отвечает на клик
+ * в её координатах (`elementFromPoint`, тот же приём, что
+ * в editor-propbar-more.spec.ts), а не на факт вызова обработчика.
+ */
+import { expect, test, type Page } from '@playwright/test';
+
+async function openEditor(page: Page, fixture: string): Promise<void> {
+  await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
+  await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
+    timeout: 30_000,
+  });
+}
+
+/**
+ * Клик по элементу НА СЦЕНЕ. Shift зажимается КЛАВИАТУРОЙ: у `mouse.click`
+ * полей модификаторов нет вовсе, и лишний ключ в опциях выбрасывается молча
+ * (тот же приём, что в arrange.spec.ts и propbar-mixed.spec.ts).
+ */
+async function clickElement(page: Page, id: string, shift = false): Promise<void> {
+  const center = await page.evaluate((elementId) => {
+    const node = document.querySelector<HTMLElement>(`[data-id="${elementId}"]`);
+    if (!node) throw new Error(`нет узла ${elementId}`);
+    const rect = node.getBoundingClientRect();
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+  }, id);
+  if (shift) await page.keyboard.down('Shift');
+  await page.mouse.click(center.x, center.y);
+  if (shift) await page.keyboard.up('Shift');
+}
+
+/**
+ * Кнопки «Расположения» переехали с полосы свойств за дверь «Объект»
+ * (Сессия 48) — тот же путь, что используют arrange.spec.ts
+ * и editor-propbar-more.spec.ts.
+ */
+async function openObjectPanel(page: Page): Promise<void> {
+  await page.getByTestId('propbar-more').click();
+  await expect(page.getByTestId('inspector')).toBeVisible();
+}
+
+test('погашенная кнопка «Разложить» видна и называет причину', async ({ page }) => {
+  await openEditor(page, 'morph');
+
+  // Фикстура morph показывает на первом слайде ровно двух: mover и leaver.
+  // Раскладка требует трёх (между двумя элементами промежуток ровно один,
+  // и равнять его нечему) — двух выделенных достаточно, чтобы кнопка
+  // была погашена, и это ровно тот случай, который проверяет задача.
+  await clickElement(page, 'mover');
+  await clickElement(page, 'leaver', true);
+  await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
+
+  await openObjectPanel(page);
+
+  const distribute = page.getByTestId('distribute-x');
+
+  // Положительный контроль: кнопка вообще есть и её ВИДНО — а не «нашлась
+  // в DOM, но раздавлена/скрыта». toBeVisible() — тот геометрический смысл,
+  // а не факт присутствия узла.
+  await expect(distribute, 'кнопка «Разложить по горизонтали» не видна').toBeVisible();
+
+  // Погашена — то самое состояние, которое проверяет задача.
+  await expect(distribute).toBeDisabled();
+
+  // title называет причину, а не молчит и не показывает голый label —
+  // тот же текст, что раньше стоял на полосе свойств (stage/organs.ts,
+  // сохранён дословно при переводе на IconButton).
+  await expect(distribute).toHaveAttribute(
+    'title',
+    'Разложить поровну по горизонтали — нужно выделить хотя бы три',
+  );
+
+  // Кнопка не просто "visible" по CSS — она реально ДОСТИЖИМА в своих
+  // экранных координатах, а не перекрыта соседним узлом молча.
+  const hit = await distribute.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { coveredBy: at === el || el.contains(at) ? null : (at?.className ?? '(ничего)') };
+  });
+  expect(hit.coveredBy, `«Разложить по горизонтали» накрыта другим узлом: ${hit.coveredBy}`).toBeNull();
+});

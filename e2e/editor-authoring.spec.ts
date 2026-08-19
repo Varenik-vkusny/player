@@ -180,11 +180,11 @@ test.describe('список элементов', () => {
 test.describe('удаление', () => {
   test('кнопка удаления недоступна, пока ничего не выделено', async ({ page }) => {
     await openEditor(page, 'demo');
-    // Область `.ed-delete-row` — кнопка удаления ЭЛЕМЕНТА (Editor.tsx), а не
-    // одна из кнопок удаления СЛАЙДА панели `SlidePanel` (`data-testid=
-    // "slide-remove-*"`), которых теперь по одной на каждый слайд и у
-    // которых тот же текст «Удалить». Без скоупа локатор ловил бы все сразу.
-    await expect(page.locator('.ed-delete-row').getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
+    // Кнопка удаления ЭЛЕМЕНТА (заголовок «Элементы», Section action) — не
+    // спутать с кнопками удаления СЛАЙДА панели `SlidePanel`: те теперь
+    // значки с именем «Удалить слайд» (Сессия 53), и exact-совпадение на
+    // «Удалить» само по себе однозначно ловит только эту кнопку.
+    await expect(page.getByRole('button', { name: 'Удалить', exact: true })).toBeDisabled();
   });
 
   test('удаление элемента с анимациями сообщает о каскаде и оставляет проект, который грузится', async ({
@@ -195,7 +195,7 @@ test.describe('удаление', () => {
     await page.getByTestId('element-row-dot').click();
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
 
-    await page.locator('.ed-delete-row').getByRole('button', { name: 'Удалить', exact: true }).click();
+    await page.getByRole('button', { name: 'Удалить', exact: true }).click();
 
     // Каскад считается в слайдах, а не в кью: кью в схеме v3 нет (ADR-015),
     // а удаление снимает состояние элемента с каждого слайда, где оно было.

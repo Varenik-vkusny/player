@@ -34,10 +34,18 @@ import { Icon } from './Icon.js';
 export function Section({
   title,
   defaultOpen = true,
+  action,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
+  /**
+   * Действие заголовка секции, например «Удалить» для списка ниже.
+   * Стоит РЯДОМ со складывающей кнопкой, а не внутри неё: кнопка в кнопке
+   * недопустима браузером (вложенную не нажать), и дерево доступности
+   * вышло бы неверным.
+   */
+  action?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const [open, setOpen] = useState(defaultOpen);
@@ -58,6 +66,7 @@ export function Section({
           <Icon name={open ? 'chevron-down' : 'chevron-right'} />
           <span className="ed-section-name">{title}</span>
         </button>
+        {action === undefined ? null : <span className="ed-section-action">{action}</span>}
       </h2>
       {open ? children : null}
     </>

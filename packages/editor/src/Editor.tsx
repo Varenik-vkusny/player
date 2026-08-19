@@ -49,7 +49,7 @@ import {
   type ChromeLayout,
 } from './chrome/layoutStore.js';
 import { Splitter } from './chrome/Splitter.js';
-import { Button, ChoiceField } from './ui/index.js';
+import { Button, ChoiceField, Icon } from './ui/index.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
@@ -2439,7 +2439,7 @@ export function Editor({
               aria-label="Развернуть правую колонку"
               onClick={handleToggleSideCollapsed}
             >
-              <span aria-hidden="true">‹</span>
+              <Icon name="chevron-left" />
             </button>
           </div>
         ) : (
@@ -2453,16 +2453,8 @@ export function Editor({
                 aria-label="Свернуть правую колонку"
                 onClick={handleToggleSideCollapsed}
               >
-                <span aria-hidden="true">›</span>
+                <Icon name="chevron-right" />
               </button>
-            </div>
-            <div className="ed-delete-row">
-              <Button
-                onClick={handleDeleteSelected}
-                disabled={state.selectedIds.length === 0}
-              >
-                Удалить
-              </Button>
             </div>
             {removalMessage ? (
               <span className="ed-notice" role="status" data-testid="removal-message">
@@ -2480,6 +2472,14 @@ export function Editor({
               onSelect={handleSelect}
               onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
               onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
+              headerAction={
+                <Button
+                  onClick={handleDeleteSelected}
+                  disabled={state.selectedIds.length === 0}
+                >
+                  Удалить
+                </Button>
+              }
             />
             <SlidePanel
               slides={segment.slides}

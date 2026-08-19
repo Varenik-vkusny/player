@@ -5,6 +5,7 @@
  * направление зависимостей editor → player → core (инвариант №6).
  */
 export { Button, type ButtonKind } from './Button.js';
+export { IconButton } from './IconButton.js';
 export { Icon } from './Icon.js';
 export { Section } from './Section.js';
 export { ScrollStrip } from './ScrollStrip.js';

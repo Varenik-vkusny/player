@@ -59,7 +59,7 @@ import {
 } from '../state/style.js';
 import { isDetached, revertToStyle } from '../state/styleLink.js';
 import { StyleFieldWidget } from './styleFieldWidget.js';
-import { Button, AlignIcon } from '../ui/index.js';
+import { Button, IconButton, AlignIcon, Section } from '../ui/index.js';
 import type { AlignKind, DistributeAxis, LayerMove } from '../state/arrange.js';
 import {
   ALIGN_BUTTONS,
@@ -137,55 +137,56 @@ export function Inspector(props: InspectorProps): ReactElement {
 
   return (
     <aside className="ed-inspector" data-testid="inspector">
-      <h2 className="ed-insp-title">Свойства</h2>
-      {selectedCount > 0 && (
-        <ArrangeBlock
-          selectedCount={selectedCount}
-          onAlign={onAlign}
-          onDistribute={onDistribute}
-          onLayer={onLayer}
-          copyFormatEnabled={copyFormatEnabled}
-          copyFormatArmed={copyFormatArmed}
-          onCopyFormat={onCopyFormat}
-        />
-      )}
-      {element === undefined ? (
-        /*
-         * ДВА РАЗНЫХ СЛУЧАЯ, А НЕ ОДИН (Сессия 48). `element` пуст и когда
-         * не выделено ничего, и когда выделено НЕСКОЛЬКО: полей одного
-         * элемента показать нечего, но выделение есть, и блок «Расположение»
-         * выше живой. Один текст на оба случая давал бы «Ничего не выделено»
-         * ровно там, где рядом стоят работающие кнопки над выделенной пачкой,
-         * — панель врала бы автору о том, что он сам только что сделал.
-         */
-        selectedCount > 1 ? (
-          <p className="ed-insp-empty" data-testid="inspector-many">
-            Выделено несколько
-            <span className="ed-muted">
-              Свойства правятся у одного элемента. Расположением пачки можно управлять выше.
-            </span>
-          </p>
+      <Section title="Свойства">
+        {selectedCount > 0 && (
+          <ArrangeBlock
+            selectedCount={selectedCount}
+            onAlign={onAlign}
+            onDistribute={onDistribute}
+            onLayer={onLayer}
+            copyFormatEnabled={copyFormatEnabled}
+            copyFormatArmed={copyFormatArmed}
+            onCopyFormat={onCopyFormat}
+          />
+        )}
+        {element === undefined ? (
+          /*
+           * ДВА РАЗНЫХ СЛУЧАЯ, А НЕ ОДИН (Сессия 48). `element` пуст и когда
+           * не выделено ничего, и когда выделено НЕСКОЛЬКО: полей одного
+           * элемента показать нечего, но выделение есть, и блок «Расположение»
+           * выше живой. Один текст на оба случая давал бы «Ничего не выделено»
+           * ровно там, где рядом стоят работающие кнопки над выделенной пачкой,
+           * — панель врала бы автору о том, что он сам только что сделал.
+           */
+          selectedCount > 1 ? (
+            <p className="ed-insp-empty" data-testid="inspector-many">
+              Выделено несколько
+              <span className="ed-muted">
+                Свойства правятся у одного элемента. Расположением пачки можно управлять выше.
+              </span>
+            </p>
+          ) : (
+            <p className="ed-insp-empty" data-testid="inspector-empty">
+              Ничего не выделено
+              <span className="ed-muted">Выберите элемент на сцене, чтобы править его свойства.</span>
+            </p>
+          )
         ) : (
-          <p className="ed-insp-empty" data-testid="inspector-empty">
-            Ничего не выделено
-            <span className="ed-muted">Выберите элемент на сцене, чтобы править его свойства.</span>
-          </p>
-        )
-      ) : (
-        // key по идентификатору: при смене выделения поля пересоздаются.
-        // Иначе недописанный черновик («-», «1.») пережил бы переход
-        // на другой элемент и был бы отправлен уже ему.
-        <ElementFields
-          key={element.id}
-          element={element}
-          state={state}
-          styles={styles}
-          onContentChange={onContentChange}
-          onStateChange={onStateChange}
-          onStateChangeLive={onStateChangeLive}
-          onCommitHistory={onCommitHistory}
-        />
-      )}
+          // key по идентификатору: при смене выделения поля пересоздаются.
+          // Иначе недописанный черновик («-», «1.») пережил бы переход
+          // на другой элемент и был бы отправлен уже ему.
+          <ElementFields
+            key={element.id}
+            element={element}
+            state={state}
+            styles={styles}
+            onContentChange={onContentChange}
+            onStateChange={onStateChange}
+            onStateChangeLive={onStateChangeLive}
+            onCommitHistory={onCommitHistory}
+          />
+        )}
+      </Section>
     </aside>
   );
 }
@@ -401,33 +402,34 @@ function StyleSection({
 
   return (
     <div className="ed-insp-block">
-      <h3 className="ed-insp-title">Вид</h3>
-      {fields.map((field) => {
-        const detached = linkedStyle !== undefined && isDetached(state, linkedStyle, field.key);
-        return (
-          <div key={field.key}>
-            <StyleFieldWidget
-              field={field}
-              read={getStyleValue(state.style, field.key)}
-              onCommit={(value) => commit(field.key, value)}
-              onLiveCommit={(value) => commitLive(field.key, value)}
-              onCommitHistory={onCommitHistory}
-            />
-            {detached && linkedStyle !== undefined && (
-              <div className="ed-insp-note" data-testid={`style-detached-${field.key}`}>
-                Отличается от стиля «{linkedStyle.name}»
-                <br />
-                <Button
-                  data-testid={`style-revert-${field.key}`}
-                  onClick={() => revert(field.key)}
-                >
-                  Вернуть как в стиле
-                </Button>
-              </div>
-            )}
-          </div>
-        );
-      })}
+      <Section title="Вид">
+        {fields.map((field) => {
+          const detached = linkedStyle !== undefined && isDetached(state, linkedStyle, field.key);
+          return (
+            <div key={field.key}>
+              <StyleFieldWidget
+                field={field}
+                read={getStyleValue(state.style, field.key)}
+                onCommit={(value) => commit(field.key, value)}
+                onLiveCommit={(value) => commitLive(field.key, value)}
+                onCommitHistory={onCommitHistory}
+              />
+              {detached && linkedStyle !== undefined && (
+                <div className="ed-insp-note" data-testid={`style-detached-${field.key}`}>
+                  Отличается от стиля «{linkedStyle.name}»
+                  <br />
+                  <Button
+                    data-testid={`style-revert-${field.key}`}
+                    onClick={() => revert(field.key)}
+                  >
+                    Вернуть как в стиле
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </Section>
     </div>
   );
 }
@@ -461,13 +463,14 @@ interface ArrangeBlockProps {
  * словами для одного и того же хода — ровно та болезнь, которая дважды
  * дала на одном экране две подписи «Фон» (Сессия 30, CLAUDE.md).
  *
- * Кнопки — те же `.ed-propbar-btn`/`.ed-propbar-sep`, что и на полосе:
- * готовая роль (28×28, скругление, погашенное и нажатое состояние) уже
- * объявлена в styles.ts, а не сырые значения здесь. Оборачивающий
- * `.ed-insp-organs` даёт им течь на новую строку — панель не такая узкая,
- * как полоса, но и не бесконечная, а переносить закон «кнопка не сжимается»
- * (см. комментарий styles.ts у .ed-propbar-btn) в CSS-flex-wrap можно и без
- * ScrollStrip: сжатия тут не будет, будет перенос.
+ * Кнопки — `ui/IconButton` (Сессия 53), та же роль значка-кнопки, что и на
+ * полосе (готовые 28×28, скругление, погашенное и нажатое состояние уже
+ * объявлены в styles.ts, а не сырые значения здесь), плюс `.ed-propbar-sep`
+ * между группами. Оборачивающий `.ed-insp-organs` даёт им течь на новую
+ * строку — панель не такая узкая, как полоса, но и не бесконечная, а
+ * переносить закон «кнопка не сжимается» (см. комментарий styles.ts у роли
+ * значка-кнопки) в CSS-flex-wrap можно и без ScrollStrip: сжатия тут не
+ * будет, будет перенос.
  *
  * Гашение сохраняет причину в `title` — те же тексты, что раньше стояли
  * на полосе: распределение живо от трёх выделенных, копирование формата —
@@ -496,74 +499,57 @@ function ArrangeBlock({
 
   return (
     <div className="ed-insp-block">
-      <h3 className="ed-insp-title">Расположение</h3>
-      <div className="ed-insp-organs">
-        {ALIGN_BUTTONS.map(({ kind, label, testId, shapes }) => (
-          <button
-            key={kind}
-            type="button"
-            className="ed-propbar-btn"
-            data-testid={testId}
-            aria-label={label}
-            title={label}
-            onClick={() => onAlign(kind)}
+      <Section title="Расположение">
+        <div className="ed-insp-organs">
+          {ALIGN_BUTTONS.map(({ kind, label, testId, shapes }) => (
+            <IconButton key={kind} testId={testId} label={label} onClick={() => onAlign(kind)}>
+              <AlignIcon shapes={shapes} />
+            </IconButton>
+          ))}
+
+          <span className="ed-propbar-sep" aria-hidden="true" />
+
+          {DISTRIBUTE_BUTTONS.map(({ axis, label, testId, shapes }) => (
+            <IconButton
+              key={axis}
+              testId={testId}
+              label={label}
+              reason={`${label} — нужно выделить хотя бы три`}
+              disabled={!canDistribute}
+              onClick={() => onDistribute(axis)}
+            >
+              <AlignIcon shapes={shapes} />
+            </IconButton>
+          ))}
+
+          <span className="ed-propbar-sep" aria-hidden="true" />
+
+          {LAYER_BUTTONS.map(({ move, label, testId, shapes }) => (
+            <IconButton key={move} testId={testId} label={label} onClick={() => onLayer(move)}>
+              <AlignIcon shapes={shapes} />
+            </IconButton>
+          ))}
+
+          <span className="ed-propbar-sep" aria-hidden="true" />
+
+          {/* title дословно сохранён в обоих состояниях: погашенная — через
+              reason, живая — через hint (Сессия 53, круг правок 1). aria-label
+              при этом остаётся одним и тем же «Копировать форматирование»
+              независимо от состояния — имя органа не меняется от того,
+              доступен он или нет, только подсказка при наведении. */}
+          <IconButton
+            testId="copy-format"
+            label="Копировать форматирование"
+            hint="Копировать форматирование (Ctrl+Alt+C)"
+            reason="Копировать форматирование — нужно выделить один элемент с видом на этом слайде"
+            disabled={!copyFormatEnabled}
+            pressed={copyFormatArmed}
+            onClick={onCopyFormat}
           >
-            <AlignIcon shapes={shapes} />
-          </button>
-        ))}
-
-        <span className="ed-propbar-sep" aria-hidden="true" />
-
-        {DISTRIBUTE_BUTTONS.map(({ axis, label, testId, shapes }) => (
-          <button
-            key={axis}
-            type="button"
-            className="ed-propbar-btn"
-            data-testid={testId}
-            aria-label={label}
-            title={canDistribute ? label : `${label} — нужно выделить хотя бы три`}
-            disabled={!canDistribute}
-            onClick={() => onDistribute(axis)}
-          >
-            <AlignIcon shapes={shapes} />
-          </button>
-        ))}
-
-        <span className="ed-propbar-sep" aria-hidden="true" />
-
-        {LAYER_BUTTONS.map(({ move, label, testId, shapes }) => (
-          <button
-            key={move}
-            type="button"
-            className="ed-propbar-btn"
-            data-testid={testId}
-            aria-label={label}
-            title={label}
-            onClick={() => onLayer(move)}
-          >
-            <AlignIcon shapes={shapes} />
-          </button>
-        ))}
-
-        <span className="ed-propbar-sep" aria-hidden="true" />
-
-        <button
-          type="button"
-          className="ed-propbar-btn"
-          data-testid="copy-format"
-          aria-label="Копировать форматирование"
-          aria-pressed={copyFormatArmed}
-          title={
-            copyFormatEnabled
-              ? 'Копировать форматирование (Ctrl+Alt+C)'
-              : 'Копировать форматирование — нужно выделить один элемент с видом на этом слайде'
-          }
-          disabled={!copyFormatEnabled}
-          onClick={onCopyFormat}
-        >
-          <AlignIcon shapes={COPY_FORMAT_SHAPES} />
-        </button>
-      </div>
+            <AlignIcon shapes={COPY_FORMAT_SHAPES} />
+          </IconButton>
+        </div>
+      </Section>
     </div>
   );
 }

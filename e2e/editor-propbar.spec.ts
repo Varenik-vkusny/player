@@ -143,7 +143,7 @@ test('кнопки блока «Расположение» не сжимаютс
   const probe = await page.evaluate(() => {
     const panel = document.querySelector('[data-testid="inspector"]');
     if (!panel) throw new Error('панель «Объект» не найдена');
-    const widths = Array.from(panel.querySelectorAll('.ed-propbar-btn')).map((b) =>
+    const widths = Array.from(panel.querySelectorAll('.ed-icon-btn')).map((b) =>
       Math.round(b.getBoundingClientRect().width),
     );
     return widths;
