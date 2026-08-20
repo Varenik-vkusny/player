@@ -96,65 +96,63 @@ test.describe('полоса свойств сгруппирована', () => {
   });
 
   /**
-   * Пустая полоса говорит, что делать — и говорит ВИДИМО.
+   * ПУСТАЯ ПОЛОСА МОЛЧИТ, а пилюля появляется только при выделении.
    *
-   * История. Сессия 53 заменила голый `span.ed-propbar-hint` на общий
-   * `EmptyState`, и тест проверял наличие узла `.ed-empty`. 19.08.2026
-   * показания выделения переехали в эту же строку из правого верхнего угла
-   * шапки, где они дублировали заголовок пустого состояния слово в слово,
-   * и `EmptyState` отсюда убран: заголовок теперь говорит сама строка
-   * показаний, а подсказка стоит рядом.
+   * Правило сменилось 20.08.2026 по прямому слову владельца, и прежнее
+   * («пустая полоса говорит, что делать») было ЕГО ЖЕ решением сессией
+   * раньше — поэтому тест не подгоняется, а переписывается под новое.
    *
-   * Тест переписан с ИМЕНИ КЛАССА на то, что видит автор. Проверка вида
-   * `.ed-empty` была тестом реализации: она осталась бы зелёной, если бы
-   * узел присутствовал, но был раздавлен до нуля, — а этот проект уже
-   * покупал ровно такой дефект дважды (подписи полей полосы существуют
-   * в DOM и имеют размер 1x1 с clip-path, то есть на экране их нет).
-   * Поэтому здесь спрашивается не «есть ли узел», а «есть ли на экране
-   * непустой текст размером больше нуля».
+   * Замер натуры 19.08.2026: у Канвы при пустом выделении полосы свойств
+   * НЕТ ВООБЩЕ — ноль узлов; она всплывает пилюлей над выделенным.
+   * Владелец сказал о том же своими словами: непонятная штука наверху,
+   * «то ли квадратная, то ли круглая», напрягает.
    *
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ:
-   *   1) убрать подсказку — останется одна строка вместо двух;
-   *   2) убрать показания — пропадёт слово «выделено»;
-   *   3) спрятать любую из них шириной, высотой или clip-path — узлы
-   *      останутся в DOM, и проверка на текст прошла бы, а эта не пройдёт.
+   * ЧТО ОСТАЁТСЯ И ПОЧЕМУ: сама строка. Её высота постоянна, иначе
+   * появление полосы вместе с выделением сдвигало бы холст между двумя
+   * кликами двойного щелчка, и второй клик промахивался бы мимо элемента
+   * (настоящий дефект, Сессия 29). Строка есть — содержимого в ней нет.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ:
+   *   1) вернуть подсказку или заголовок в пустое состояние;
+   *   2) начать рисовать пилюлю без выделения;
+   *   3) убрать саму строку — тогда высота холста поедет при выделении.
    */
-  test('пустая полоса говорит, что делать', async ({ page }) => {
+  test('пустая полоса молчит, а пилюля приходит с выделением', async ({ page }) => {
     await page.goto('/editor.html?fixture=demo', { waitUntil: 'load' });
     await expect(page.locator('[data-testid="stage-scene"]')).toBeVisible();
 
-    const seen = await page.evaluate(() => {
-      const row = document.querySelector('.ed-propbar-row');
-      if (row === null) return null;
-      return Array.from(row.children)
-        .map((el) => {
-          const r = el.getBoundingClientRect();
-          const cs = getComputedStyle(el);
-          return {
-            text: (el.textContent ?? '').trim(),
-            w: Math.round(r.width),
-            h: Math.round(r.height),
-            clipped: cs.clipPath !== 'none',
-          };
-        })
-        .filter((o) => o.text !== '');
+    const row = page.locator('.ed-propbar-row');
+    await expect(row, 'строки полосы нет — высота холста поедет при выделении').toHaveCount(1);
+
+    // Пилюли нет, пока ничего не выделено.
+    await expect(page.getByTestId('propbar'), 'пилюля показана без выделения').toHaveCount(0);
+
+    // И никакого текста, кроме показаний состояния.
+    const words = await row.evaluate((el) => {
+      const parts: string[] = [];
+      for (const child of Array.from(el.children)) {
+        const text = (child.textContent ?? '').trim();
+        if (text) parts.push(text);
+      }
+      return parts;
     });
-
-    expect(seen, 'строки полосы свойств нет в DOM').not.toBeNull();
     expect(
-      seen!.length,
-      `пустая полоса молчит или говорит одно: ${JSON.stringify(seen)}`,
-    ).toBeGreaterThanOrEqual(2);
+      words.filter((t) => !t.includes('выделено')),
+      `пустая полоса что-то говорит: ${JSON.stringify(words)}`,
+    ).toEqual([]);
 
-    for (const part of seen!) {
-      expect(part.w, `текст «${part.text}» раздавлен по ширине`).toBeGreaterThan(20);
-      expect(part.h, `текст «${part.text}» раздавлен по высоте`).toBeGreaterThan(8);
-      expect(part.clipped, `текст «${part.text}» обрезан clip-path`).toBe(false);
-    }
+    // Выделяем — пилюля обязана прийти.
+    await page.getByTestId('element-row-title').click();
+    await expect(page.getByTestId('propbar'), 'пилюля не пришла с выделением').toBeVisible();
 
-    const all = seen!.map((o) => o.text).join(' ');
-    expect(all, `полоса не говорит о состоянии выделения: ${all}`).toContain('выделено');
-    expect(all, `полоса не говорит, что делать: ${all}`).toContain('Выберите');
+    const pill = await page.getByTestId('propbar').evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { radius: Number.parseFloat(cs.borderTopLeftRadius), shadow: cs.boxShadow, bg: cs.backgroundColor };
+    });
+    // Пилюля — именно пилюля: скруглённая и приподнятая, а не форма в строке.
+    expect(pill.radius, 'у пилюли нет скругления').toBeGreaterThan(8);
+    expect(pill.shadow, 'у пилюли нет тени — она сливается со строкой').not.toBe('none');
+    expect(pill.bg, 'у пилюли нет своего фона').not.toBe('rgba(0, 0, 0, 0)');
   });
 
   /**

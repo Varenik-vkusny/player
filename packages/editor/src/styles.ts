@@ -812,6 +812,9 @@ export const EDITOR_STYLES = `
 .ed-propbar-row .ed-selection { flex: 0 0 auto; max-width: 22ch; }
 /* Полоса полей забирает остаток строки — иначе она сжимается по содержимому
    и её собственная прокрутка (ScrollStrip) включается раньше, чем нужно. */
+/* Пилюля занимает остаток строки. У натуры она по ЦЕНТРУ полотна и шире
+   ровно настолько, сколько нужно органам; у нас слева от неё стоят
+   показания выделения, поэтому она начинается сразу за ними. */
 .ed-propbar-row .ed-propbar { flex: 1 1 auto; min-width: 0; }
 
 /* Подсказка в пустой строке. Без неё белая полоса над тёмным холстом
@@ -842,17 +845,84 @@ export const EDITOR_STYLES = `
   gap: 2px;
 }
 
+/* ПОЛОСА СВОЙСТВ — БЕЛАЯ ПИЛЮЛЯ, а не форма во всю ширину.
+
+   Замер живой Канвы 20.08.2026 при выделенной фигуре:
+
+     строка над полотном  1446x56  фон прозрачный, без рамки и тени
+     сама пилюля           1430x40  белая, скруглённая, с мягкой тенью
+     кнопки-значки         32x32    скругление 10, шаг 36 (зазор 4)
+     текстовые кнопки      высота 32, кегль 14/600
+     рамок у органов       НЕТ НИ У ОДНОГО
+
+   У нас тут была форма: серые поля с обводками, три разных высоты, кегль 12.
+   Владелец сказал про неё дословно — «буквально просто html». Он прав:
+   это и была голая форма, потому что каждый орган рисовал себя сам.
+
+   Пилюля лежит В СТРОКЕ постоянной высоты, а не поверх полотна, и это
+   осознанное расхождение с натурой. Причина куплена настоящим дефектом
+   (журнал Сессии 29): полоса, всплывающая вместе с выделением, ломает
+   двойной щелчок — она возникает под курсором, и второй клик попадает
+   в её кнопку вместо элемента. Постоянная высота строки убирает причину,
+   а вид пилюли даёт то же, что у натуры. */
 .ed-propbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  height: 100%;
-  padding: 0 10px;
+  height: 40px;
+  padding: 0 8px;
+  border-radius: var(--ui-radius-xl);
+  background: var(--ui-surface-panel);
+  box-shadow: var(--ui-shadow-overlay);
   /* Полей стиля и кнопок вместе может не хватить ширины на узком окне —
      полоса скроллится сама, а не толкает соседей (тот же закон, что
      у .ed-slide-strip). */
   overflow-x: auto;
+}
+
+/* ОРГАНЫ ПИЛЮЛИ: 32 высотой, кегль 14/600, скругление 10, БЕЗ РАМОК
+   и без своей заливки — ровно как у натуры. Различие несёт наведение,
+   а не обводка в покое: обводка у каждого органа превращает ряд
+   в перечень коробок, чем полоса и выглядела. */
+.ed-propbar .ed-insp-input,
+.ed-propbar input,
+.ed-propbar select,
+.ed-propbar .ed-btn,
+.ed-propbar .ed-icon-btn {
+  height: 32px;
+  border: 0;
+  border-radius: var(--ui-radius-l);
+  /* background-COLOR, а не сокращение из одного слова. Сокращение сбрасывает
+     и background-image, а им нарисована пометка «разное» — штриховка
+     у поля, значения которого различаются у выделенных объектов
+     (.ed-insp-input--mixed). Написав сокращение, я стёр её молча:
+     поле стало обычным, и автор перестал бы видеть, что трогает разное.
+     Поймал e2e propbar-mixed — «поле обязано быть заштриховано». */
+  background-color: transparent;
+  color: var(--ui-content-fg);
+  font-size: var(--ui-type-m);
+  font-weight: 600;
+}
+.ed-propbar .ed-insp-input:hover,
+.ed-propbar input:hover,
+.ed-propbar select:hover,
+.ed-propbar .ed-btn:hover,
+.ed-propbar .ed-icon-btn:hover:not(:disabled) {
+  background-color: var(--ui-surface-raised);
+}
+.ed-propbar .ed-icon-btn { width: 32px; }
+.ed-propbar .ed-btn { padding: 0 10px; }
+
+/* Образец цвета остаётся квадратом со своей рамкой: это единственный орган,
+   у которого рамка несёт смысл — она отделяет цвет от фона пилюли, иначе
+   белый цвет на белом исчезает. Замер натуры: у неё это круг 24x24. */
+.ed-propbar input[type='color'] {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 50%;
 }
 
 /* Обёртка виджета поля стиля на полосе — тот же .ed-insp-field, что и
@@ -950,7 +1020,10 @@ export const EDITOR_STYLES = `
 
 .ed-propbar-field input,
 .ed-propbar-field select {
-  height: 28px;
+  /* 28 -> 32: высота органа у натуры. Раньше органы полосы были трёх
+     разных высот (28 у полей, 28 у кнопок, 27 у выбора), и ряд читался
+     неровным при полностью исправных отдельных правилах. */
+  height: 32px;
   min-width: 0;
   box-sizing: border-box;
 }
@@ -976,10 +1049,16 @@ export const EDITOR_STYLES = `
    Полоса всё равно скроллится сама, когда содержимого больше ширины, —
    это её закон, а не поломка. Здесь лишь не создаётся новой обрезки там,
    где её не было. */
+/* Образец цвета — КРУГ 24x24, как у натуры (замер: у неё круглый образец
+   в ряду органов). Рамка у него единственного оставлена намеренно: без неё
+   белый цвет на белой пилюле исчезает вовсе. */
 .ed-propbar-field input[type='color'] {
   flex: 0 0 auto;
-  width: 32px;
-  padding: 2px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: 50%;
 }
 
 /* flex: 0 0 auto — не украшение, а починка молчаливого сжатия. Замер
@@ -1071,19 +1150,24 @@ export const EDITOR_STYLES = `
   flex: 1 1 auto;
 }
 
+/* Дверь в панель «Объект» — такой же орган пилюли, как соседи: 32 высотой,
+   14/600, скругление 10, без рамки. Была обведённой кнопкой в 28 px
+   с кеглем 12 — то есть третьей высотой и вторым кеглем в одном ряду. */
 .ed-propbar-more {
   flex: 0 0 auto;
-  padding: 4px 10px;
-  border: 1px solid var(--ui-line-strong);
-  border-radius: var(--ui-radius-m);
-  background: var(--ui-surface-raised);
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--ui-radius-l);
+  background-color: transparent;
   color: inherit;
   font: inherit;
-  font-size: var(--ui-type-s);
+  font-size: var(--ui-type-m);
+  font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
 }
-.ed-propbar-more:hover { border-color: var(--ui-action-selected-line); }
+.ed-propbar-more:hover { background-color: var(--ui-surface-raised); }
 
 /* Направляющая при перетаскивании. Толщина приходит из разметки в пикселях
    контейнера, поэтому линия остаётся волосяной на любом масштабе сцены.
