@@ -43,12 +43,12 @@
  * смысл: он не различает код и прозу и потому не даёт спрятать список
  * в комментарий. Наступить на это успели дважды за одну правку.)
  */
-import type { ReactElement } from 'react';
+import { Fragment, type ReactElement } from 'react';
 
 import type { Segment, Style, Theme } from '@player/core';
 
-import { SCENE_TEMPLATES } from '../state/templates.js';
-import { EmptyState, Tile, TileGrid } from '../ui/index.js';
+import { SCENE_TEMPLATES, type TemplateGroup } from '../state/templates.js';
+import { CatalogSection, EmptyState, Tile, TileGrid } from '../ui/index.js';
 import { TemplateThumb } from './TemplateThumb.js';
 
 export interface TemplatesPanelProps {
@@ -83,42 +83,67 @@ export function TemplatesPanel(
     return <EmptyState title="Ничего не нашлось" hint="Попробуйте другое слово" />;
   }
 
+  /*
+   * РАЗДЕЛЫ, как у натуры: панель разбита на именованные блоки, а не идёт
+   * одной сплошной сеткой. Порядок разделов задан здесь и совпадает
+   * с порядком работы автора: начало объяснения, потом текстовые кадры,
+   * потом раскладки, потом остановка с вопросом.
+   *
+   * При поиске разделы не рисуются: найденное показывается одной сеткой.
+   * Разбивать четыре совпадения на четыре заголовка — это заголовков
+   * больше, чем содержимого.
+   */
+  const ORDER: readonly { readonly id: TemplateGroup; readonly title: string }[] = [
+    { id: 'начало', title: 'Начало и конец' },
+    { id: 'текст', title: 'Текстовые кадры' },
+    { id: 'раскладка', title: 'Раскладки' },
+    { id: 'вопрос', title: 'Остановка с вопросом' },
+  ];
+
+  const tile = (template: (typeof SCENE_TEMPLATES)[number]) => (
+    <Tile
+      key={template.id}
+      shape="раскладка"
+      label={template.label}
+      showLabel={false}
+      data-testid={`template-${template.id}`}
+      onClick={() => onApply(template.id)}
+    >
+      <TemplateThumb
+        template={template}
+        baseSegment={baseSegment}
+        stage={stage}
+        theme={theme}
+        styles={styles}
+      />
+    </Tile>
+  );
+
+  if (needle !== '') {
+    return (
+      <>
+        <CatalogSection title="Найдено" count={shown.length} />
+        <TileGrid kind="раскладка" label="Добавить шаблон">
+          {shown.map(tile)}
+        </TileGrid>
+      </>
+    );
+  }
+
   return (
     <>
-      {/* Шапка раздела парой «имя слева — счёт справа», как у натуры:
-          у неё справа стоит ссылка «Просмотреть все» (14/700 против 12/600).
-          Ссылки у нас нет — показывать нечего, весь набор уже на экране,
-          — поэтому справа стоит счёт заготовок. Врать ссылкой, которая
-          никуда не ведёт, значило бы то же, что пустой пункт рейки. */}
-      <div className="ed-catalog-section">
-        <h3 className="ed-catalog-section-title">
-          {needle === '' ? 'Раскладки слайда' : 'Найдено'}
-        </h3>
-        <span className="ed-catalog-section-note">{shown.length}</span>
-      </div>
-    <TileGrid kind="раскладка" label="Добавить шаблон">
-      {shown.map((template) => (
-        <Tile
-          key={template.id}
-          shape="раскладка"
-          label={template.label}
-          /* Подписи под плиткой больше НЕТ (см. шапку модуля): снимок
-             называет заготовку сам. Имя остаётся у кнопки для тех, кто
-             плитку не видит, — оно уходит в aria-label. */
-          showLabel={false}
-          data-testid={`template-${template.id}`}
-          onClick={() => onApply(template.id)}
-        >
-          <TemplateThumb
-            template={template}
-            baseSegment={baseSegment}
-            stage={stage}
-            theme={theme}
-            styles={styles}
-          />
-        </Tile>
-      ))}
-    </TileGrid>
+      {ORDER.map((section) => {
+        const items = shown.filter((t) => t.group === section.id);
+        if (items.length === 0) return null;
+        return (
+          <Fragment key={section.id}>
+            <CatalogSection title={section.title} count={items.length} />
+            <TileGrid kind="раскладка" label={`Добавить шаблон: ${section.title}`}>
+              {items.map(tile)}
+            </TileGrid>
+          </Fragment>
+        );
+      })}
     </>
   );
 }

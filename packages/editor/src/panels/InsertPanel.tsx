@@ -18,13 +18,13 @@
  * `category` делит каталог между тремя панелями без единого упоминания
  * конкретной заготовки: фильтр читает поле из данных.
  */
-import { useMemo, type ReactElement } from 'react';
+import { Fragment, useMemo, type ReactElement } from 'react';
 
 import type { Segment, Style, Theme } from '@player/core';
 
 import { ELEMENT_LIBRARY, type LibraryCategory } from '../state/library.js';
 import type { SceneTemplate } from '../state/templates.js';
-import { EmptyState, Tile, TileGrid } from '../ui/index.js';
+import { CatalogSection, EmptyState, Tile, TileGrid } from '../ui/index.js';
 import { TemplateThumb } from './TemplateThumb.js';
 
 export interface InsertPanelProps {
@@ -78,7 +78,15 @@ export function InsertPanel(
   const asTemplates = useMemo(
     () => new Map<string, SceneTemplate>(items.map((item) => [
       item.id,
-      { id: item.id, label: item.label, elements: [{ item: item.id, dx: 0, dy: 0, atSeconds: 0 }] },
+      {
+        id: item.id,
+        label: item.label,
+        /* Раздел синтетическому шаблону не нужен — он никогда не попадает
+           в панель шаблонов, — но поле обязательное, и это верно: забытый
+           раздел должен ломать типизацию, а не ронять заготовку молча. */
+        group: 'раскладка',
+        elements: [{ item: item.id, dx: 0, dy: 0, atSeconds: 0 }],
+      },
     ])),
     [items],
   );
@@ -87,48 +95,66 @@ export function InsertPanel(
     return <EmptyState title="Ничего не нашлось" hint="Попробуйте другое слово" />;
   }
 
+  /*
+   * РАЗДЕЛЫ внутри вкладки, как у натуры: её «Элементы» разбиты на блоки
+   * («Недавно использованные», «Рекомендации для вас», «Просмотр
+   * категорий»), а не идут одной сеткой.
+   *
+   * Имена разделов лежат в самих заготовках (`group` в ELEMENT_LIBRARY),
+   * а не перечислены здесь: пополнение библиотеки не должно требовать
+   * правки React — это отдельная охрана, и она уже есть.
+   *
+   * Порядок разделов — порядок первого появления в библиотеке. Заготовки
+   * без раздела собираются в общий, названный вызывающим.
+   */
+  const sections: { title: string; items: typeof items }[] = [];
+  for (const item of items) {
+    const title = item.group ?? sectionTitle;
+    const found = sections.find((sec) => sec.title === title);
+    if (found) found.items.push(item);
+    else sections.push({ title, items: [item] });
+  }
+
+  const tile = (item: (typeof items)[number]) => (
+    <Tile
+      key={item.id}
+      shape="объект"
+      label={item.label}
+      data-testid={`insert-${item.id}`}
+      onClick={() => onInsert(item.id)}
+    >
+      <TemplateThumb
+        template={asTemplates.get(item.id)!}
+        baseSegment={baseSegment}
+        stage={stage}
+        viewport={{ width: item.width, height: item.height }}
+        theme={theme}
+        styles={styles}
+      />
+    </Tile>
+  );
+
+  if (needle !== '') {
+    return (
+      <>
+        <CatalogSection title="Найдено" count={items.length} />
+        <TileGrid kind="объект" label="Добавить элемент">
+          {items.map(tile)}
+        </TileGrid>
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="ed-catalog-section">
-        <h3 className="ed-catalog-section-title">
-          {needle === '' ? sectionTitle : 'Найдено'}
-        </h3>
-        <span className="ed-catalog-section-note">{items.length}</span>
-      </div>
-    <TileGrid kind="объект" label="Добавить элемент">
-      {items.map((item) => (
-        <Tile
-          key={item.id}
-          shape="объект"
-          label={item.label}
-          data-testid={`insert-${item.id}`}
-          onClick={() => onInsert(item.id)}
-        >
-          {/*
-            Плитка показывает КОРОБКУ САМОЙ ЗАГОТОВКИ, а не всю сцену.
-
-            Со сценой 1920x1080 внутри квадрата в 100 px подпись в 28 px
-            превращалась в четыре пикселя — правдиво (столько она и займёт
-            на сцене) и совершенно нечитаемо. У натуры плитка текста
-            показывает образец крупно, жертвуя масштабом ради узнавания,
-            и это верный размен: масштаб автор увидит на холсте через
-            секунду, а выбирать он должен ЗДЕСЬ.
-
-            `stage` при этом остаётся настоящим — он нужен applyTemplate,
-            который кладёт элемент относительно центра сцены. Меняется
-            только окно, в которое смотрит снимок.
-          */}
-          <TemplateThumb
-            template={asTemplates.get(item.id)!}
-            baseSegment={baseSegment}
-            stage={stage}
-            viewport={{ width: item.width, height: item.height }}
-            theme={theme}
-            styles={styles}
-          />
-        </Tile>
+      {sections.map((sec) => (
+        <Fragment key={sec.title}>
+          <CatalogSection title={sec.title} count={sec.items.length} />
+          <TileGrid kind="объект" label={`Добавить элемент: ${sec.title}`}>
+            {sec.items.map(tile)}
+          </TileGrid>
+        </Fragment>
       ))}
-    </TileGrid>
     </>
   );
 }

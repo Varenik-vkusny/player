@@ -60,6 +60,14 @@ export interface LibraryItem {
    * заготовку из всех трёх панелей сразу.
    */
   readonly category: LibraryCategory;
+  /**
+   * Раздел внутри панели. Пустая строка — заготовка стоит в разделе
+   * по умолчанию (имя раздела задаёт вызывающий).
+   *
+   * Заведён 20.08.2026 вместе с разделами шаблонов: у натуры панель
+   * «Элементы» разбита на блоки, у нас была одна сетка.
+   */
+  readonly group?: string;
 }
 
 const ACCENT = '#4c8dff';
@@ -192,6 +200,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'shape',
     label: 'Фигура',
+    group: 'Фигуры',
     type: 'shape',
     width: 300,
     height: 300,
@@ -228,6 +237,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'circle',
     label: 'Круг',
+    group: 'Фигуры',
     type: 'shape',
     width: 240,
     height: 240,
@@ -238,6 +248,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'arrow',
     label: 'Стрелка',
+    group: 'Линии и стрелки',
     type: 'shape',
     width: 320,
     height: 120,
@@ -256,6 +267,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'frame',
     label: 'Рамка',
+    group: 'Рамки и выноски',
     type: 'shape',
     width: 400,
     height: 260,
@@ -266,6 +278,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'line',
     label: 'Линия',
+    group: 'Линии и стрелки',
     type: 'shape',
     width: 400,
     height: 6,
@@ -276,6 +289,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'bracket',
     label: 'Скобка',
+    group: 'Линии и стрелки',
     type: 'shape',
     width: 60,
     height: 300,
@@ -294,6 +308,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'callout',
     label: 'Выноска',
+    group: 'Рамки и выноски',
     type: 'shape',
     width: 360,
     height: 160,

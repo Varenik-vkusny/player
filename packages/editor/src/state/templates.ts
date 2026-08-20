@@ -61,9 +61,29 @@ export interface TemplateGate {
   readonly correctIndex: number;
 }
 
+/**
+ * Раздел каталога, в котором стоит заготовка.
+ *
+ * Заведён 20.08.2026: у натуры панель разбита на именованные разделы
+ * («Недавно использованные», «Больше шаблонов для вас», «Просмотр
+ * категорий»), а у нас была одна сплошная сетка. Владелец сказал прямо:
+ * «надо структурировать во всех категориях так же, как в Канве».
+ *
+ * Разделы у нас СМЫСЛОВЫЕ, а не «недавние» и «рекомендованные»: последние
+ * два — это состояние пользователя и работа их сервера, а у нас ни того,
+ * ни другого нет. Пустой раздел «Недавно использованные» был бы обманом
+ * той же породы, что пункт рейки без содержимого.
+ *
+ * Перечень закрытый: забытый раздел обязан ломать типизацию, а не молча
+ * ронять заготовку из панели.
+ */
+export type TemplateGroup = 'начало' | 'текст' | 'раскладка' | 'вопрос';
+
 export interface SceneTemplate {
   readonly id: string;
   readonly label: string;
+  /** В каком разделе панели показывать. */
+  readonly group: TemplateGroup;
   readonly elements: readonly TemplateElement[];
   readonly gate?: TemplateGate;
 }
@@ -84,6 +104,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'title',
     label: 'Заголовок',
+    group: 'текст',
     elements: [
       {
         item: 'text',
@@ -107,6 +128,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'title-text',
     label: 'Заголовок и текст',
+    group: 'текст',
     elements: [
       {
         item: 'text',
@@ -147,6 +169,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'two-columns',
     label: 'Сравнение двух колонок',
+    group: 'раскладка',
     elements: [
       // Панели-подложки сперва — идут в сцену первыми и остаются позади
       // текста (zIndex растёт по порядку заготовки, см. applyTemplate).
@@ -219,6 +242,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'bullets',
     label: 'Список пунктов',
+    group: 'текст',
     elements: [
       {
         item: 'text',
@@ -275,6 +299,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'question',
     label: 'Вопрос с вариантами',
+    group: 'вопрос',
     elements: [
       {
         item: 'text',
@@ -371,6 +396,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'cover',
     label: 'Обложка',
+    group: 'начало',
     elements: [
     {
       item: 'text',
@@ -410,6 +436,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'divider',
     label: 'Заставка',
+    group: 'начало',
     elements: [
     {
       item: 'shape',
@@ -442,6 +469,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'statement',
     label: 'Утверждение',
+    group: 'текст',
     elements: [
     {
       item: 'text',
@@ -466,6 +494,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'quote',
     label: 'Цитата',
+    group: 'текст',
     elements: [
     {
       item: 'text',
@@ -506,6 +535,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'fact',
     label: 'Число крупно',
+    group: 'текст',
     elements: [
     {
       item: 'text',
@@ -545,6 +575,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'two-cols-header',
     label: 'Заголовок и две колонки',
+    group: 'раскладка',
     elements: [
     {
       item: 'text',
@@ -600,6 +631,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'picture-caption',
     label: 'Картинка с подписью',
+    group: 'раскладка',
     elements: [
     {
       item: 'shape',
@@ -632,6 +664,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'text-and-picture',
     label: 'Текст и картинка',
+    group: 'раскладка',
     elements: [
     {
       item: 'text',
@@ -664,6 +697,7 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
   {
     id: 'closing',
     label: 'Финал',
+    group: 'начало',
     elements: [
     {
       item: 'text',
