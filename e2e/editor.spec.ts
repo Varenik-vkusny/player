@@ -140,7 +140,12 @@ test.describe('редактор: выделение и перетаскиван�
     await page.mouse.click(empty.x, empty.y);
 
     await expect(page.getByTestId('selection-frame')).toHaveCount(0);
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+    /* Выделение снято — ПИЛЮЛИ СВОЙСТВ НЕТ. Раньше здесь проверялся текст
+       «ничего не выделено»; такой надписи на экране больше нет: с 20.08.2026
+       при пустом выделении полоса свойств пуста целиком, как у натуры
+       (замер Канвы: при пустом выделении ноль узлов полосы). Утверждение
+       то же, выражено тем, что видит автор. */
+    await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
   });
 
   test('выделяется то, что видно, а не то, что выше по zIndex', async ({ page }) => {

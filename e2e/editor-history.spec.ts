@@ -182,7 +182,12 @@ test.describe('работа без мыши', () => {
 
     await page.keyboard.press('Delete');
     await expect(page.locator(`.ed-stage-host [data-id="${id}"]`)).toHaveCount(0);
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+      /* Выделение снято — ПИЛЮЛИ НЕТ. Раньше здесь проверялся текст
+         «ничего не выделено», но такой надписи на экране больше нет:
+         с 20.08.2026 при пустом выделении полоса свойств пуста целиком,
+         как у натуры. Утверждение то же, просто выражено тем, что видит
+         автор, а не текстом, которого он не видит. */
+      await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
 
     await page.keyboard.press('Control+z');
     await expect(page.locator(`.ed-stage-host [data-id="${id}"]`)).toHaveCount(1);
@@ -190,7 +195,12 @@ test.describe('работа без мыши', () => {
     await page.getByTestId(`element-row-${id}`).click();
     await expect(page.getByTestId('selection-readout')).toContainText(id);
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+      /* Выделение снято — ПИЛЮЛИ НЕТ. Раньше здесь проверялся текст
+         «ничего не выделено», но такой надписи на экране больше нет:
+         с 20.08.2026 при пустом выделении полоса свойств пуста целиком,
+         как у натуры. Утверждение то же, просто выражено тем, что видит
+         автор, а не текстом, которого он не видит. */
+      await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
   });
 
   test('модуль клавиатуры не глотает Tab: обход всех элементов списка доходит до конца', async ({

@@ -202,7 +202,12 @@ test.describe('удаление', () => {
     await expect(page.getByTestId('removal-message')).toContainText('dot');
     await expect(page.getByTestId('removal-message')).toContainText('слайд');
     await expect(page.locator('[data-id="dot"]')).toHaveCount(0);
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+      /* Выделение снято — ПИЛЮЛИ НЕТ. Раньше здесь проверялся текст
+         «ничего не выделено», но такой надписи на экране больше нет:
+         с 20.08.2026 при пустом выделении полоса свойств пуста целиком,
+         как у натуры. Утверждение то же, просто выражено тем, что видит
+         автор, а не текстом, которого он не видит. */
+      await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
 
     const download = await Promise.all([
       page.waitForEvent('download'),
