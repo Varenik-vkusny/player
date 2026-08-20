@@ -54,6 +54,7 @@ import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
 import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
+import { TextStylesPanel } from './panels/TextStylesPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
 import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js';
 import { SlidePanel } from './panels/SlidePanel.js';
@@ -224,8 +225,19 @@ export function Editor({
    * от правой колонки, нет своего корешка, потому что рельс уже играет
    * эту роль и никогда не сворачивается.
    */
+  /**
+   * Что набрано в поиске каталога.
+   *
+   * Живёт в состоянии вида, а не проекта: это не свойство объяснения,
+   * а положение органа. Сбрасывается при смене категории — искать
+   * «заголовок» среди фигур бессмысленно, и оставленный от прошлой
+   * категории запрос показал бы пустую панель без видимой причины.
+   */
+  const [catalogQuery, setCatalogQuery] = useState('');
+
   const handleSelectCategory = useCallback((id: PanelId) => {
     setPanelId(id);
+    setCatalogQuery('');
     setChromeLayout((previous) => (previous.catalogCollapsed ? { ...previous, catalogCollapsed: false } : previous));
   }, []);
 
@@ -2341,13 +2353,17 @@ export function Editor({
         ) : (
           <CatalogPanel
             title={currentCatalogCategory?.label ?? 'Объект'}
-            hint={currentCatalogCategory?.hint
-              ?? 'Полный состав свойств выделенного. На полосе над холстом — только частое.'}
+            query={catalogQuery}
+            onQueryChange={setCatalogQuery}
+            /* Заголовок печатается только у панелей без пункта на рейке:
+               их имя больше нигде не подсвечено. */
+            showTitle={currentCatalogCategory === undefined}
             onCollapse={handleToggleCatalogCollapsed}
           >
             {panelId === 'templates' ? (
               <TemplatesPanel
                 onApply={handleApplyTemplate}
+                query={catalogQuery}
                 theme={currentProject.meta.theme}
                 styles={currentProject.styles}
                 baseSegment={currentSegment}
@@ -2360,24 +2376,24 @@ export function Editor({
               <InsertPanel
                 onInsert={handleInsert}
                 category="shape"
+                query={catalogQuery}
+                sectionTitle="Фигуры для сцены"
                 stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
                 theme={currentProject.meta.theme}
                 styles={currentProject.styles}
                 baseSegment={currentSegment}
               />
             ) : panelId === 'text' ? (
-              <InsertPanel
-                onInsert={handleInsert}
-                category="text"
-                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
-                theme={currentProject.meta.theme}
-                styles={currentProject.styles}
-                baseSegment={currentSegment}
-              />
+              /* Вкладка «Текст» — НЕ сетка плиток, а список карточек
+                 со ступенями размера: у натуры это другой компонент,
+                 см. шапку TextStylesPanel.tsx. */
+              <TextStylesPanel onInsert={handleInsert} query={catalogQuery} />
             ) : panelId === 'own' ? (
               <InsertPanel
                 onInsert={handleInsert}
                 category="own"
+                query={catalogQuery}
+                sectionTitle="Ваши файлы"
                 stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
                 theme={currentProject.meta.theme}
                 styles={currentProject.styles}

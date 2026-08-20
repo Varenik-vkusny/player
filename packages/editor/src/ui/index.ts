@@ -8,6 +8,7 @@ export { Button, type ButtonKind } from './Button.js';
 export { IconButton } from './IconButton.js';
 export { Icon } from './Icon.js';
 export { Section } from './Section.js';
+export { SearchField } from './SearchField.js';
 export { ScrollStrip } from './ScrollStrip.js';
 export { ICON_PATHS, type IconName } from './icons.js';
 export { AlignIcon, type Shape } from './AlignIcon.js';

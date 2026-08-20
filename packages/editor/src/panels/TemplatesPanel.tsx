@@ -22,15 +22,20 @@
  * (`TemplateThumb`), и без единой строки нового рендера: плитка строится тем
  * же `ScenePreview` и тем же `applyTemplate`, что кладут шаблон на сцену.
  *
- * Подпись под плиткой держалась ровно на схеме: «две заготовки с одним
- * заголовком на 152 px схемой не различить». Со снимком различаются —
+ * Подпись под плиткой держалась ровно на схеме: две заготовки с одинаковой
+ * верхней строкой на 152 px схемой не различить. Со снимком различаются —
  * у них разный текст, цвет и раскладка, — и подпись убрана, как у натуры
  * (замер 20.08.2026: в панели «Шаблоны» Канвы подписей под плитками нет).
  *
+ * (Имён заготовок в этом файле нет даже в прозе: охрана templates.test.ts
+ * ищет их подстрокой по всему исходнику и не различает код и комментарий.
+ * Смысл охраны — не дать спрятать список заготовок в текст.)
+ *
  * Заголовка внутри панели больше НЕТ. Он был (`span.ed-templates-label`),
  * и вместе с заголовком шапки каталога давал два одинаковых слова «Шаблоны»
- * на одном экране — замерено в Сессии 52. У панели один заголовок, и живёт
- * он в `chrome/CatalogPanel.tsx`.
+ * на одном экране — замерено в Сессии 52. Имя панели живёт
+ * в `chrome/CatalogPanel.tsx` и печатается только там, где его негде
+ * прочитать (см. showTitle).
  *
  * (Со строчной буквы намеренно. Охрана `templates.test.ts` ищет подписи
  * заготовок ПОДСТРОКОЙ по всему исходнику, комментарии включая, — а одна
@@ -43,7 +48,7 @@ import type { ReactElement } from 'react';
 import type { Segment, Style, Theme } from '@player/core';
 
 import { SCENE_TEMPLATES } from '../state/templates.js';
-import { Tile, TileGrid } from '../ui/index.js';
+import { EmptyState, Tile, TileGrid } from '../ui/index.js';
 import { TemplateThumb } from './TemplateThumb.js';
 
 export interface TemplatesPanelProps {
@@ -56,14 +61,43 @@ export interface TemplatesPanelProps {
   styles: readonly Style[];
   /** Текущая глава — образец, из которого миниатюра берёт пустую (см. TemplateThumb). */
   baseSegment: Segment;
+  /**
+   * Что набрано в поиске панели. Пустая строка — показать всё.
+   *
+   * Фильтр НАСТОЯЩИЙ: строка поиска у натуры есть, и завести её пустой
+   * ради сходства значило бы соврать так же, как пунктом рейки без
+   * содержимого. Ищется по подписи заготовки, без учёта регистра.
+   */
+  query: string;
 }
 
 export function TemplatesPanel(
-  { onApply, stage, theme, styles, baseSegment }: TemplatesPanelProps,
+  { onApply, stage, theme, styles, baseSegment, query }: TemplatesPanelProps,
 ): ReactElement {
+  const needle = query.trim().toLowerCase();
+  const shown = needle === ''
+    ? SCENE_TEMPLATES
+    : SCENE_TEMPLATES.filter((t) => t.label.toLowerCase().includes(needle));
+
+  if (shown.length === 0) {
+    return <EmptyState title="Ничего не нашлось" hint="Попробуйте другое слово" />;
+  }
+
   return (
+    <>
+      {/* Шапка раздела парой «имя слева — счёт справа», как у натуры:
+          у неё справа стоит ссылка «Просмотреть все» (14/700 против 12/600).
+          Ссылки у нас нет — показывать нечего, весь набор уже на экране,
+          — поэтому справа стоит счёт заготовок. Врать ссылкой, которая
+          никуда не ведёт, значило бы то же, что пустой пункт рейки. */}
+      <div className="ed-catalog-section">
+        <h3 className="ed-catalog-section-title">
+          {needle === '' ? 'Раскладки слайда' : 'Найдено'}
+        </h3>
+        <span className="ed-catalog-section-note">{shown.length}</span>
+      </div>
     <TileGrid kind="раскладка" label="Добавить шаблон">
-      {SCENE_TEMPLATES.map((template) => (
+      {shown.map((template) => (
         <Tile
           key={template.id}
           shape="раскладка"
@@ -85,5 +119,6 @@ export function TemplatesPanel(
         </Tile>
       ))}
     </TileGrid>
+    </>
   );
 }

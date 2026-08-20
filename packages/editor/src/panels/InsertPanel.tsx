@@ -24,7 +24,7 @@ import type { Segment, Style, Theme } from '@player/core';
 
 import { ELEMENT_LIBRARY, type LibraryCategory } from '../state/library.js';
 import type { SceneTemplate } from '../state/templates.js';
-import { Tile, TileGrid } from '../ui/index.js';
+import { EmptyState, Tile, TileGrid } from '../ui/index.js';
 import { TemplateThumb } from './TemplateThumb.js';
 
 export interface InsertPanelProps {
@@ -39,12 +39,20 @@ export interface InsertPanelProps {
   styles: readonly Style[];
   /** Текущая глава — образец пустой для снимка (см. TemplateThumb). */
   baseSegment: Segment;
+  /** Что набрано в поиске панели. Пустая строка — показать всё. */
+  query: string;
+  /** Имя раздела над сеткой. */
+  sectionTitle: string;
 }
 
 export function InsertPanel(
-  { onInsert, category, stage, theme, styles, baseSegment }: InsertPanelProps,
+  { onInsert, category, stage, theme, styles, baseSegment, query, sectionTitle }: InsertPanelProps,
 ): ReactElement {
-  const items = ELEMENT_LIBRARY.filter((item) => item.category === category);
+  const needle = query.trim().toLowerCase();
+  const items = ELEMENT_LIBRARY.filter(
+    (item) => item.category === category
+      && (needle === '' || item.label.toLowerCase().includes(needle)),
+  );
 
   /*
    * Заготовка библиотеки, притворившаяся шаблоном из одного элемента.
@@ -75,7 +83,18 @@ export function InsertPanel(
     [items],
   );
 
+  if (items.length === 0) {
+    return <EmptyState title="Ничего не нашлось" hint="Попробуйте другое слово" />;
+  }
+
   return (
+    <>
+      <div className="ed-catalog-section">
+        <h3 className="ed-catalog-section-title">
+          {needle === '' ? sectionTitle : 'Найдено'}
+        </h3>
+        <span className="ed-catalog-section-note">{items.length}</span>
+      </div>
     <TileGrid kind="объект" label="Добавить элемент">
       {items.map((item) => (
         <Tile
@@ -110,5 +129,6 @@ export function InsertPanel(
         </Tile>
       ))}
     </TileGrid>
+    </>
   );
 }

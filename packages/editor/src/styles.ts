@@ -1573,26 +1573,88 @@ export const EDITOR_STYLES = `
   min-height: 0;
 }
 
+/* ГОЛОВА ПАНЕЛИ — строка поиска, и больше ничего.
+
+   Замер живой Канвы 20.08.2026 (панель «Шаблоны», окно 1879x968):
+   шапка панели 360x86, внутри одна форма 328x58 при поле 16 от края
+   и отступе 16 сверху; скругление 16, фон белый. Заголовка категории
+   в панели НЕТ ВООБЩЕ.
+
+   У нас там стоял заголовок в 16px/700 плюс пояснение под ним — то есть
+   самое верхнее место панели занимало имя, которое автор только что
+   прочитал на рейке слева и которое там подсвечено цветом.
+
+   Линии снизу тоже нет: у натуры голова и тело — одно белое поле,
+   а разделяет их пустота. Линия рисовала «шапку виджета». */
 .ed-catalog-head {
   flex: 0 0 auto;
-  padding: 16px;
-  border-bottom: 1px solid var(--ui-line);
-}
-
-/* Заголовок и кнопка сворачивания в одну строку — кнопка выровнена по
-   правому краю головы, вне зависимости от длины заголовка. */
-.ed-catalog-head-row {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: 8px;
+  padding: 16px;
 }
 
-.ed-catalog-title {
-  margin: 0;
+/* Поле поиска: 328x58 при ширине панели 361 — то есть занимает всё, что
+   остаётся от полей. Кнопка сворачивания стоит рядом и не жмётся. */
+/* Поле поиска с лупой: значок слева, поле занимает остаток. Коробка —
+   это label, поэтому щелчок по лупе тоже ставит курсор в поле. */
+.ed-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 56px;
+  padding: 0 16px;
+  border: 1px solid var(--ui-line-strong);
+  border-radius: var(--ui-radius-xl);
+  background: var(--ui-surface-panel);
+  cursor: text;
+}
+.ed-search:focus-within {
+  border-color: var(--ui-action-selected-line);
+}
+.ed-search .ed-icon {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  color: var(--ui-content-fg-tertiary);
+}
+
+/* Рамка и фон живут на label выше, а не на самом поле: иначе лупа
+   оказалась бы ВНЕ коробки, а у натуры она внутри неё. */
+.ed-search-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
   color: var(--ui-content-fg);
-  font-size: var(--ui-type-l);
-  font-weight: 700;
+  font: inherit;
+  font-size: var(--ui-type-m);
+}
+.ed-search-input:focus { outline: none; }
+.ed-search-input::placeholder { color: var(--ui-content-fg-tertiary); }
+
+
+/* Подпись, спрятанная от глаз, но НЕ от экранного диктора.
+
+   ⚠️ Приём тот же, которым в этом проекте однажды спрятали подписи полей
+   полосы свойств — и это стоило трёх зелёных e2e при пустом экране.
+   Разница принципиальная: там пряталось ЕДИНСТВЕННОЕ имя органа, и человек
+   оставался без него. Здесь имя видно в самом поле подсказкой, а спрятанная
+   подпись существует потому, что placeholder исчезает при первом символе
+   и именем поля не считается. Прячется дубликат, а не единственный носитель
+   смысла. */
+.ed-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Кнопка сворачивания панели каталога и правой колонки (Сессия 30, задача
@@ -1621,11 +1683,117 @@ export const EDITOR_STYLES = `
   color: var(--ui-content-fg);
 }
 
-.ed-catalog-hint {
-  margin: 6px 0 0;
+/* Пояснение под заголовком панели убрано вместе с самим заголовком
+   (20.08.2026): у натуры в голове панели только поиск. Правило снято,
+   а не оставлено «на всякий случай» — правило без представителя ждёт
+   первого, кто заведёт узел с таким классом, и молча его оформит. */
+
+/* ВКЛАДКА «ТЕКСТ»: список карточек-ступеней, а не сетка плиток.
+   Числа с натуры (замер Канвы 20.08.2026) — см. шапку TextStylesPanel.tsx.
+
+   Главная кнопка во всю ширину: 40 высотой, скругление 12, кегль 14/600.
+   У натуры она залита фиолетовым; у нас берёт роль главного действия
+   редактора, чтобы в продукте была ОДНА такая заливка, а не две. */
+.ed-text-add {
+  display: block;
+  width: 100%;
+  height: 40px;
+  margin: 0 0 16px;
+  border-radius: var(--ui-radius-xl);
+  font-size: var(--ui-type-m);
+  font-weight: 600;
+}
+
+/* Карточки идут столбцом с зазором 8 — замер натуры: 373, 471, 530
+   при высотах 90, 51, 46. */
+.ed-text-styles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Высота карточки НЕ задана числом: она следует за кеглем образца через
+   поля. У натуры 90 у заголовка против 46 у основного текста — разница
+   и есть то, чем список показывает ступени ещё до чтения. Задай мы высоту
+   литералом, она разъехалась бы с кеглем при первой же правке. */
+.ed-text-style-card {
+  appearance: none;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 46px;
+  padding: 12px 16px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius-xl);
+  background: var(--ui-surface-panel);
+  color: var(--ui-content-fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--ui-motion-fast), background var(--ui-motion-fast);
+}
+.ed-text-style-card:hover {
+  border-color: var(--ui-line-strong);
+  background: var(--ui-surface-raised);
+}
+.ed-text-style-card:focus-visible {
+  outline: 2px solid var(--ui-focus);
+  outline-offset: 2px;
+}
+
+/* Образец переносится по словам: «Добавить заголовок» в 28 px не влезает
+   в 281 px одной строкой, и у натуры он стоит в две — отсюда её 90 px
+   высоты карточки против 51 у подзаголовка. */
+.ed-text-style-sample {
+  min-width: 0;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+/* ЗАГОЛОВОК РАЗДЕЛА ВНУТРИ ТЕЛА — пара «имя слева, ссылка справа».
+
+   Замер натуры: «Недавно использованные» 14px/700 почти чёрным при
+   непрозрачности 0.85, на левом поле содержимого; «Просмотреть все»
+   12px/600 того же цвета справа. Второй раздел ниже — тем же кеглем.
+   (Цвет назван словами, а не записью: охрана ролей ищет сырые цвета
+   по всему файлу и комментарии не вырезает.) */
+.ed-catalog-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.ed-catalog-section + .ed-tile-grid { margin-bottom: 26px; }
+/* Заголовок ПАНЕЛИ — только у тех, чьё имя негде прочитать (см. showTitle
+   в CatalogPanel.tsx). Ступень --ui-type-l, 16px.
+
+   ⚠️ Эта ступень чуть не осталась без представителя: заголовок панели был
+   её единственным носителем, и когда его сняли у категорий рейки, охрана
+   «каждая объявленная роль хотя бы раз использована» покраснела в тот же
+   прогон. Она указала на настоящий дефект, а не на формальность: панель
+   «Объект» открывается кнопкой из полосы свойств, её имя нигде не
+   подсвечено, и без заголовка автор попадал в безымянную панель. */
+.ed-catalog-title {
+  margin: 16px 16px 0;
+  color: var(--ui-content-fg);
+  font-size: var(--ui-type-l);
+  font-weight: 700;
+}
+
+/* Заголовок раздела внутри тела — 14/700, замер натуры. */
+.ed-catalog-section-title {
+  margin: 0;
+  color: var(--ui-content-fg);
+  font-size: var(--ui-type-m);
+  font-weight: 700;
+}
+.ed-catalog-section-note {
+  flex: 0 0 auto;
   color: var(--ui-content-fg-secondary);
   font-size: var(--ui-type-s);
-  line-height: 1.4;
+  font-weight: 600;
 }
 
 .ed-catalog-body {
