@@ -35,11 +35,35 @@ async function computedOf(
 }
 
 /** Правит стиль ОДНОЙ записью в правило — та же функция, что в styles.spec.ts. */
+/**
+ * Правит правило стиля прямо в листе БОЛЬШОЙ сцены.
+ *
+ * ⚠️ Лист выбирается по имени сцены, а не «первый попавшийся», и это
+ * куплено настоящим случаем 20.08.2026. Плитки каталога получили внутри
+ * себя настоящие снимки сцены (`ScenePreview`), и каждая такая сцена
+ * заводит СВОЙ лист стилей — замер живой страницы: шесть листов
+ * `sc1`…`sc6` при пяти плитках и одном холсте, все разведены приставкой
+ * `[data-scene="scN"]`.
+ *
+ * Прибор брал первый лист и правил стиль ПЛИТКИ. Большая сцена не менялась,
+ * тест падал «140px против 96px», и выглядело это как поломка живой связи
+ * стилей — то есть прибор указывал на исправный продукт.
+ *
+ * Разведение приставкой — не новость, оно измерено проектом раньше:
+ * «две сцены на странице разводятся приставкой контейнера, один
+ * идентификатор стиля дал 21px и 22px порознь». Новым стало то, что сцен
+ * на странице теперь много ВСЕГДА, а не в редком случае.
+ */
 async function editStyle(page: Page, styleId: string, props: Record<string, string>): Promise<void> {
   await page.evaluate(({ id, values }) => {
+    const scene = document.querySelector<HTMLElement>('[data-testid="stage-scene"]');
+    const sceneName = scene?.dataset['scene'] ?? scene?.getAttribute('data-scene');
+    if (!sceneName) throw new Error('у большой сцены нет data-scene — лист не опознать');
     const sheets = [...document.styleSheets];
-    const sheet = sheets.find((s) => (s.ownerNode as HTMLElement | null)?.dataset?.['sceneStyles']);
-    if (!sheet) throw new Error('Лист стилей сцены не найден: править нечего');
+    const sheet = sheets.find(
+      (s) => (s.ownerNode as HTMLElement | null)?.dataset?.['sceneStyles'] === sceneName,
+    );
+    if (!sheet) throw new Error(`Лист стилей сцены «${sceneName}» не найден: править нечего`);
     const rule = [...sheet.cssRules].find(
       (r) => (r as CSSStyleRule).selectorText?.includes(`.st-${id}`),
     ) as CSSStyleRule | undefined;

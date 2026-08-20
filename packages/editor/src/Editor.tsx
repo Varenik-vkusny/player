@@ -2348,17 +2348,41 @@ export function Editor({
             {panelId === 'templates' ? (
               <TemplatesPanel
                 onApply={handleApplyTemplate}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
                 // Схема на плитке рисуется в координатах СЦЕНЫ ПРОЕКТА, а не
                 // в своих: у проекта 4:3 схема, нарисованная в 16:9, показала
                 // бы не ту раскладку, которая ляжет.
                 stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
               />
             ) : panelId === 'shapes' ? (
-              <InsertPanel onInsert={handleInsert} category="shape" />
+              <InsertPanel
+                onInsert={handleInsert}
+                category="shape"
+                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
+              />
             ) : panelId === 'text' ? (
-              <InsertPanel onInsert={handleInsert} category="text" />
+              <InsertPanel
+                onInsert={handleInsert}
+                category="text"
+                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
+              />
             ) : panelId === 'own' ? (
-              <InsertPanel onInsert={handleInsert} category="own" />
+              <InsertPanel
+                onInsert={handleInsert}
+                category="own"
+                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
+              />
             ) : panelId === 'theme' ? (
               <ThemePanel
                 theme={currentProject.meta.theme}

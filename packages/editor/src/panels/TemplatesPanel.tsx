@@ -15,11 +15,17 @@
  * и ни одного имени шаблона в этом файле нет. Пополнение каталога остаётся
  * дописанной записью в данных — это и проверяет test/templates.test.ts.
  *
- * **Подпись под плиткой у нас есть, а у Канвы её нет** — осознанное
- * расхождение, объяснённое в анатомии: у Канвы внутри плитки лежит настоящий
- * снимок шаблона, по нему всё понятно. У нас снимка нет и не будет, плитка
- * рисуется схемой, а две заготовки с одним заголовком на 152 px схемой
- * не различить.
+ * **Что изменилось 20.08.2026: снимок вместо схемы, и подписи больше нет.**
+ *
+ * Прежний текст на этом месте гласил: «у нас снимка нет и не будет, плитка
+ * рисуется схемой». Второе утверждение оказалось неверным — снимок появился
+ * (`TemplateThumb`), и без единой строки нового рендера: плитка строится тем
+ * же `ScenePreview` и тем же `applyTemplate`, что кладут шаблон на сцену.
+ *
+ * Подпись под плиткой держалась ровно на схеме: «две заготовки с одним
+ * заголовком на 152 px схемой не различить». Со снимком различаются —
+ * у них разный текст, цвет и раскладка, — и подпись убрана, как у натуры
+ * (замер 20.08.2026: в панели «Шаблоны» Канвы подписей под плитками нет).
  *
  * Заголовка внутри панели больше НЕТ. Он был (`span.ed-templates-label`),
  * и вместе с заголовком шапки каталога давал два одинаковых слова «Шаблоны»
@@ -34,17 +40,27 @@
  */
 import type { ReactElement } from 'react';
 
+import type { Segment, Style, Theme } from '@player/core';
+
 import { SCENE_TEMPLATES } from '../state/templates.js';
-import { LayoutThumb, Tile, TileGrid } from '../ui/index.js';
-import { templateShapes } from './thumbShapes.js';
+import { Tile, TileGrid } from '../ui/index.js';
+import { TemplateThumb } from './TemplateThumb.js';
 
 export interface TemplatesPanelProps {
   onApply: (templateId: string) => void;
-  /** Размер сцены проекта: схема рисуется в его координатах, а не в чужих. */
+  /** Размер сцены проекта: шаблон раскладывается в его координатах, а не в чужих. */
   stage: { readonly width: number; readonly height: number };
+  /** Тема проекта: у шаблона нет своих цветов, он ссылается на её роли. */
+  theme: Theme;
+  /** Именованные наборы свойств: элемент шаблона может ссылаться на стиль. */
+  styles: readonly Style[];
+  /** Текущая глава — образец, из которого миниатюра берёт пустую (см. TemplateThumb). */
+  baseSegment: Segment;
 }
 
-export function TemplatesPanel({ onApply, stage }: TemplatesPanelProps): ReactElement {
+export function TemplatesPanel(
+  { onApply, stage, theme, styles, baseSegment }: TemplatesPanelProps,
+): ReactElement {
   return (
     <TileGrid kind="раскладка" label="Добавить шаблон">
       {SCENE_TEMPLATES.map((template) => (
@@ -52,13 +68,19 @@ export function TemplatesPanel({ onApply, stage }: TemplatesPanelProps): ReactEl
           key={template.id}
           shape="раскладка"
           label={template.label}
+          /* Подписи под плиткой больше НЕТ (см. шапку модуля): снимок
+             называет заготовку сам. Имя остаётся у кнопки для тех, кто
+             плитку не видит, — оно уходит в aria-label. */
+          showLabel={false}
           data-testid={`template-${template.id}`}
           onClick={() => onApply(template.id)}
         >
-          <LayoutThumb
-            viewWidth={stage.width}
-            viewHeight={stage.height}
-            shapes={templateShapes(template, stage)}
+          <TemplateThumb
+            template={template}
+            baseSegment={baseSegment}
+            stage={stage}
+            theme={theme}
+            styles={styles}
           />
         </Tile>
       ))}

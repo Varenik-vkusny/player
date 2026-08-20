@@ -22,25 +22,42 @@ const SHAPE_CLASS: Record<TileShape, string> = {
 };
 
 interface TileOwnProps {
-  /** Подпись под рисунком. Обязательна — см. пояснение выше. */
+  /** Имя плитки. Обязательно — см. пояснение выше. */
   label: string;
+  /**
+   * Рисовать ли подпись под рисунком. По умолчанию да.
+   *
+   * `false` ставится там, где рисунок называет вещь сам: в панели «Шаблоны»
+   * подписей нет и у натуры (замер Канвы 20.08.2026), потому что внутри
+   * плитки лежит настоящий снимок. Пока у нас там была серая схема, подпись
+   * была обязательна — «Заголовок» и «Заголовок и текст» схемой на 160 px
+   * не различить; со снимком различаются.
+   *
+   * ИМЯ ПРИ ЭТОМ НЕ ПРОПАДАЕТ, и это не то же самое, что спрятать текст
+   * стилем. Подписи нет в разметке вовсе, а имя кнопки живёт в aria-label —
+   * законный способ назвать кнопку с картинкой. Спрятанный `clip-path`-ом
+   * текст этот проект уже покупал: он остаётся видимым тестам и невидимым
+   * человеку, то есть врёт обоим сразу.
+   */
+  showLabel?: boolean;
   shape: TileShape;
-  /** Сам рисунок: `LayoutThumb` или другая схема. */
+  /** Сам рисунок: снимок сцены или схема. */
   children: ReactNode;
 }
 
 type TileProps = TileOwnProps & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'>;
 
-export function Tile({ label, shape, children, ...rest }: TileProps): JSX.Element {
+export function Tile({ label, shape, showLabel = true, children, ...rest }: TileProps): JSX.Element {
   const { className, ...others } = rest;
   return (
     <button
       type="button"
       className={['ed-tile', className].filter(Boolean).join(' ')}
+      aria-label={showLabel ? undefined : label}
       {...others}
     >
       <span className={`ed-tile-art ${SHAPE_CLASS[shape]}`}>{children}</span>
-      <span className="ed-tile-label">{label}</span>
+      {showLabel ? <span className="ed-tile-label">{label}</span> : null}
     </button>
   );
 }

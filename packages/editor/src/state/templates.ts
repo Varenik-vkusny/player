@@ -69,6 +69,7 @@ export interface SceneTemplate {
 }
 
 const WHITE = '#f5f7fa';
+const ACCENT_TEXT = '#4c8dff';
 const MUTED = '#9fb0c4';
 const PANEL = '#1b2430';
 const SANS = 'system-ui, sans-serif';
@@ -339,6 +340,349 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
     // в state/gates.ts): гейт указывает вопрос ровно там же, куда автор уже
     // положил текст, а не системную кнопку поверх.
     gate: { atSeconds: 1, prompt: 'Вопрос?', optionIndexes: [1, 2], correctIndex: 1 },
+  },
+  /*
+   * РАСКЛАДКИ ПО ИНДУСТРИАЛЬНОМУ ПЕРЕЧНЮ (добавлены 20.08.2026).
+   *
+   * Состав НЕ выдуман и не срисован с чужого экрана: взят перечень
+   * встроенных раскладок Slidev (MIT, sli.dev/builtin/layouts) — cover,
+   * intro, section, statement, quote, fact, two-cols, two-cols-header,
+   * center, image-left/right, end. Тот же по смыслу набор лежит
+   * в PowerPoint, Keynote и Google Slides («Title Slide», «Section
+   * Header», «Two Content», «Comparison»), то есть это отраслевой
+   * стандарт, а не чья-то собственность. Заимствован СОСТАВ,
+   * реализация здесь своя.
+   *
+   * Зачем: каталог у натуры заполнен доверху, у нас было пять плиток
+   * и пустое поле под ними. Похожесть каталога держится на количестве
+   * заготовок, а не на вёрстке сетки, — и владелец сказал об этом
+   * прямым текстом.
+   *
+   * Слова «раздел» в подписях НЕТ намеренно: оно запрещено словарём
+   * проекта (CLAUDE.md). Slidev-овский section назван «Заставкой».
+   *
+   * Текст ВНУТРИ заставки — «Глава вторая», а не «Часть вторая», и это
+   * тоже словарь, а не вкус. Поймано прогоном в тот же день: страж
+   * editor-segments.spec.ts ищет слово «часть» по ВИДИМОМУ ТЕКСТУ
+   * страницы и не различает интерфейс и содержимое заготовки. Он прав:
+   * заготовка попадает автору на экран, и слово из неё он унесёт
+   * в свой словарь.
+   */
+  {
+    id: 'cover',
+    label: 'Обложка',
+    elements: [
+    {
+      item: 'text',
+      dx: 0,
+      dy: -60,
+      width: 1500,
+      height: 240,
+      content: 'Название объяснения',
+      style: {
+        'font-family': SANS,
+        'font-size': '110px',
+        'font-weight': '700',
+        color: WHITE,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    {
+      item: 'text',
+      dx: 0,
+      dy: 130,
+      width: 1200,
+      height: 100,
+      content: 'Кто рассказывает и о чём',
+      style: {
+        'font-family': SANS,
+        'font-size': '44px',
+        color: MUTED,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.5,
+    },
+    ],
+  },
+  {
+    id: 'divider',
+    label: 'Заставка',
+    elements: [
+    {
+      item: 'shape',
+      dx: 0,
+      dy: 0,
+      width: 1920,
+      height: 1080,
+      style: { background: PANEL, 'border-radius': '0px' },
+      atSeconds: 0.0,
+    },
+    {
+      item: 'text',
+      dx: 0,
+      dy: 0,
+      width: 1400,
+      height: 200,
+      content: 'Глава вторая',
+      style: {
+        'font-family': SANS,
+        'font-size': '96px',
+        'font-weight': '700',
+        color: WHITE,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.2,
+    },
+    ],
+  },
+  {
+    id: 'statement',
+    label: 'Утверждение',
+    elements: [
+    {
+      item: 'text',
+      dx: 0,
+      dy: 0,
+      width: 1500,
+      height: 400,
+      content: 'Одна мысль, ради которой всё',
+      style: {
+        'font-family': SANS,
+        'font-size': '84px',
+        'font-weight': '700',
+        color: WHITE,
+        'text-align': 'center',
+        'line-height': '1.2',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    ],
+  },
+  {
+    id: 'quote',
+    label: 'Цитата',
+    elements: [
+    {
+      item: 'text',
+      dx: 0,
+      dy: -40,
+      width: 1400,
+      height: 300,
+      content: '«Здесь чужие слова, которые стоит привести дословно»',
+      style: {
+        'font-family': SANS,
+        'font-size': '64px',
+        'font-style': 'italic',
+        color: WHITE,
+        'text-align': 'center',
+        'line-height': '1.35',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    {
+      item: 'text',
+      dx: 0,
+      dy: 180,
+      width: 900,
+      height: 80,
+      content: '— кто это сказал',
+      style: {
+        'font-family': SANS,
+        'font-size': '36px',
+        color: MUTED,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.5,
+    },
+    ],
+  },
+  {
+    id: 'fact',
+    label: 'Число крупно',
+    elements: [
+    {
+      item: 'text',
+      dx: 0,
+      dy: -80,
+      width: 1200,
+      height: 320,
+      content: '87 %',
+      style: {
+        'font-family': SANS,
+        'font-size': '240px',
+        'font-weight': '700',
+        color: ACCENT_TEXT,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    {
+      item: 'text',
+      dx: 0,
+      dy: 180,
+      width: 1200,
+      height: 120,
+      content: 'что именно это число значит',
+      style: {
+        'font-family': SANS,
+        'font-size': '44px',
+        color: MUTED,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.4,
+    },
+    ],
+  },
+  {
+    id: 'two-cols-header',
+    label: 'Заголовок и две колонки',
+    elements: [
+    {
+      item: 'text',
+      dx: 0,
+      dy: -340,
+      width: 1500,
+      height: 140,
+      content: 'Заголовок',
+      style: {
+        'font-family': SANS,
+        'font-size': '72px',
+        'font-weight': '700',
+        color: WHITE,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    {
+      item: 'text',
+      dx: -390,
+      dy: 60,
+      width: 700,
+      height: 420,
+      content: 'Слева',
+      style: {
+        'font-family': SANS,
+        'font-size': '40px',
+        color: WHITE,
+        'line-height': '1.5',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.4,
+    },
+    {
+      item: 'text',
+      dx: 390,
+      dy: 60,
+      width: 700,
+      height: 420,
+      content: 'Справа',
+      style: {
+        'font-family': SANS,
+        'font-size': '40px',
+        color: WHITE,
+        'line-height': '1.5',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.7,
+    },
+    ],
+  },
+  {
+    id: 'picture-caption',
+    label: 'Картинка с подписью',
+    elements: [
+    {
+      item: 'shape',
+      dx: 0,
+      dy: -70,
+      width: 1100,
+      height: 620,
+      style: { background: PANEL, 'border-radius': '24px' },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    {
+      item: 'text',
+      dx: 0,
+      dy: 330,
+      width: 1100,
+      height: 100,
+      content: 'Что на картинке',
+      style: {
+        'font-family': SANS,
+        'font-size': '40px',
+        color: MUTED,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.4,
+    },
+    ],
+  },
+  {
+    id: 'text-and-picture',
+    label: 'Текст и картинка',
+    elements: [
+    {
+      item: 'text',
+      dx: -420,
+      dy: 0,
+      width: 780,
+      height: 500,
+      content: 'Объяснение слева, а справа то, о чём речь',
+      style: {
+        'font-family': SANS,
+        'font-size': '48px',
+        color: WHITE,
+        'line-height': '1.4',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    {
+      item: 'shape',
+      dx: 430,
+      dy: 0,
+      width: 800,
+      height: 560,
+      style: { background: PANEL, 'border-radius': '24px' },
+      preset: 'fade-in',
+      atSeconds: 0.4,
+    },
+    ],
+  },
+  {
+    id: 'closing',
+    label: 'Финал',
+    elements: [
+    {
+      item: 'text',
+      dx: 0,
+      dy: 0,
+      width: 1400,
+      height: 240,
+      content: 'Спасибо',
+      style: {
+        'font-family': SANS,
+        'font-size': '120px',
+        'font-weight': '700',
+        color: WHITE,
+        'text-align': 'center',
+      },
+      preset: 'fade-in',
+      atSeconds: 0.0,
+    },
+    ],
   },
 ];
 

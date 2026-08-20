@@ -18,22 +18,63 @@
  * `category` делит каталог между тремя панелями без единого упоминания
  * конкретной заготовки: фильтр читает поле из данных.
  */
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
+
+import type { Segment, Style, Theme } from '@player/core';
 
 import { ELEMENT_LIBRARY, type LibraryCategory } from '../state/library.js';
-import { LayoutThumb, Tile, TileGrid } from '../ui/index.js';
-import { objectShape } from './thumbShapes.js';
-
-/** Поле, в котором рисуется схема одной заготовки. Квадрат — плитка объекта 1:1. */
-const FIELD = 100;
+import type { SceneTemplate } from '../state/templates.js';
+import { Tile, TileGrid } from '../ui/index.js';
+import { TemplateThumb } from './TemplateThumb.js';
 
 export interface InsertPanelProps {
   onInsert: (itemId: string) => void;
   category: LibraryCategory;
+  /**
+   * Размер сцены проекта. Нужен НЕ для рисунка плитки (см. ниже), а для
+   * `applyTemplate`, который раскладывает элемент относительно центра сцены.
+   */
+  stage: { readonly width: number; readonly height: number };
+  theme: Theme;
+  styles: readonly Style[];
+  /** Текущая глава — образец пустой для снимка (см. TemplateThumb). */
+  baseSegment: Segment;
 }
 
-export function InsertPanel({ onInsert, category }: InsertPanelProps): ReactElement {
+export function InsertPanel(
+  { onInsert, category, stage, theme, styles, baseSegment }: InsertPanelProps,
+): ReactElement {
   const items = ELEMENT_LIBRARY.filter((item) => item.category === category);
+
+  /*
+   * Заготовка библиотеки, притворившаяся шаблоном из одного элемента.
+   *
+   * Второй машинки для снимка здесь НЕТ и не заводится: `TemplateThumb`
+   * умеет рисовать любой шаблон, а шаблон из одной записи — это ровно
+   * «положить на пустую сцену вот этот элемент по центру». Так снимок
+   * заготовки строится тем же путём, что и снимок шаблона, а значит
+   * тем же единым рендером (инвариант №5).
+   *
+   * Зачем вообще: до 20.08.2026 плитка рисовалась серой схемой из
+   * objectShape, и все текстовые заготовки выглядели ОДИНАКОВЫМИ серыми
+   * полосками — крупная ступень не отличалась от мелкой ничем, кроме
+   * подписи под плиткой. У натуры плитка показывает сам образец своим
+   * кеглем, и ступени размера видны сразу. Со снимком это получается
+   * само: 96 px и 28 px в одном окне отличаются втрое с лишним.
+   *
+   * (Имён заготовок в этом файле НЕТ намеренно, включая прозу: охрана
+   * library.test.ts ищет их подстрокой по всему исходнику и не различает
+   * код и комментарий. Смысл охраны — не дать пополнению библиотеки
+   * потребовать правки React; наступил на неё в тот же день.)
+   */
+  const asTemplates = useMemo(
+    () => new Map<string, SceneTemplate>(items.map((item) => [
+      item.id,
+      { id: item.id, label: item.label, elements: [{ item: item.id, dx: 0, dy: 0, atSeconds: 0 }] },
+    ])),
+    [items],
+  );
+
   return (
     <TileGrid kind="объект" label="Добавить элемент">
       {items.map((item) => (
@@ -44,7 +85,28 @@ export function InsertPanel({ onInsert, category }: InsertPanelProps): ReactElem
           data-testid={`insert-${item.id}`}
           onClick={() => onInsert(item.id)}
         >
-          <LayoutThumb viewWidth={FIELD} viewHeight={FIELD} shapes={[objectShape(item, FIELD)]} />
+          {/*
+            Плитка показывает КОРОБКУ САМОЙ ЗАГОТОВКИ, а не всю сцену.
+
+            Со сценой 1920x1080 внутри квадрата в 100 px подпись в 28 px
+            превращалась в четыре пикселя — правдиво (столько она и займёт
+            на сцене) и совершенно нечитаемо. У натуры плитка текста
+            показывает образец крупно, жертвуя масштабом ради узнавания,
+            и это верный размен: масштаб автор увидит на холсте через
+            секунду, а выбирать он должен ЗДЕСЬ.
+
+            `stage` при этом остаётся настоящим — он нужен applyTemplate,
+            который кладёт элемент относительно центра сцены. Меняется
+            только окно, в которое смотрит снимок.
+          */}
+          <TemplateThumb
+            template={asTemplates.get(item.id)!}
+            baseSegment={baseSegment}
+            stage={stage}
+            viewport={{ width: item.width, height: item.height }}
+            theme={theme}
+            styles={styles}
+          />
         </Tile>
       ))}
     </TileGrid>
