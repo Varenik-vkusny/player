@@ -50,6 +50,50 @@ async function seekTrack(page: Page, seconds: number): Promise<void> {
   await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2);
 }
 
+/**
+ * Ставит гейт на секунду `seconds`: правый щелчок по дорожке (он же
+ * перематывает головку в точку щелчка, Сессия 55) открывает меню места,
+ * пункт `ctxmenu-add-gate` — бывшая кнопка «остановка».
+ *
+ * Возвращает секунду, которую в действительности получит продукт — она
+ * НЕ побитово равна `seconds`. Замерено 21.08.2026 живым браузером:
+ * `pointerdown` (используется прежним `seekTrack` для левого щелчка) несёт
+ * ДРОБНЫЙ `clientX` (`1197.8999...`), а `contextmenu` — обычное `MouseEvent`,
+ * и Chromium отдаёт в нём `clientX` ЦЕЛЫМ (`1197`, отброшена дробная часть).
+ * На дорожке шириной 689px и длительности 48.6с это до ~0.07с ошибки —
+ * то есть больше прежнего допуска `toBeCloseTo(x, 1)` (0.05с). Не дефект
+ * продукта: браузер всегда округлял координаты `MouseEvent` так же, дробные
+ * координаты бывают только у `PointerEvent`. Раньше это было не видно,
+ * потому что секунду перемотки задавал ОТДЕЛЬНЫЙ левый щелчок
+ * (`pointerdown`, дробный), а кнопка «остановка» просто читала уже
+ * точную `positionSeconds`. Теперь оба действия — один правый щелчок.
+ */
+async function addGateAt(page: Page, seconds: number): Promise<number> {
+  const box = await page.getByTestId('track-lane').boundingBox();
+  if (!box) throw new Error('дорожка не видна');
+  const duration = await page.evaluate(
+    () =>
+      (window as unknown as { __transport: { durationSeconds: number } }).__transport
+        .durationSeconds,
+  );
+  const clickX = box.x + (box.width * seconds) / duration;
+  await page.mouse.click(clickX, box.y + box.height / 2, { button: 'right' });
+  await page.getByTestId('ctxmenu-add-gate').click();
+  /*
+   * Возвращается ЗАПРОШЕННАЯ секунда, а не пересчитанная из целого пикселя.
+   *
+   * Одно время здесь стояло `Math.trunc(clickX)`: меню правой кнопки само
+   * перематывало головку по `clientX` события `contextmenu`, а у него тип
+   * `MouseEvent` и координата целочисленная — то есть щелчок огрублялся
+   * до пикселя (около 0.06 с при масштабе ×1).
+   *
+   * Огрубление убрано в продукте, а не обойдено здесь: перемотку делает
+   * `pointerdown` полотна, который случается раньше и несёт дробную
+   * координату. Вторая, более грубая перемотка затирала более точную.
+   */
+  return seconds;
+}
+
 async function gatesOf(page: Page): Promise<{ id: string; at: SavedRef }[]> {
   return page.evaluate(
     () =>
@@ -191,16 +235,10 @@ test.describe('метки на дорожке', () => {
     // Середина слова — там привязка обязана быть однозначной.
     const word = DEMO.audio.words[12]!;
     const middle = word.start + (word.end - word.start) / 2;
-    await seekTrack(page, middle);
-    // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
-    // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
-    // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    //
-    // Имя без символа ▮ с Сессии 45: столбик был буквой из шрифта и попадал
-    // в доступное имя кнопки, то есть читалка произносила его вслух. Теперь
-    // это значок с aria-hidden (ADR-034), и имя кнопки — одно слово.
-    // Правка локатора, а не продукта: имя стало ЧИЩЕ, а не другим.
-    await page.getByRole('button', { name: 'остановка', exact: true }).click();
+    // Кнопка «остановка» убрана в Сессии 55: гейт теперь ставится пунктом
+    // меню правой кнопки `ctxmenu-add-gate` (правый щелчок заодно ведёт
+    // головку в точку щелчка, отдельная перемотка не нужна).
+    await addGateAt(page, middle);
 
     const after = await gatesOf(page);
     expect(after).toHaveLength(before.length + 1);
@@ -242,18 +280,42 @@ test.describe('метки на дорожке', () => {
     );
 
     const before = await gatesOf(page);
-    await seekTrack(page, gapAt);
-    // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
-    // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
-    // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: 'остановка', exact: true }).click();
+    // Кнопка «остановка» убрана в Сессии 55: гейт ставится пунктом меню
+    // правой кнопки `ctxmenu-add-gate` (сам щелчок ведёт головку в точку).
+    const expectedSeconds = await addGateAt(page, gapAt);
 
     const after = await gatesOf(page);
     const added = after.find((gate) => !before.some((old) => old.id === gate.id));
     if (!added) throw new Error('гейт не добавился');
 
     expect(added.at.kind).toBe('seconds');
-    expect(added.at.t).toBeCloseTo(gapAt, 1);
+    // Сужение типа, а не удобство: у TimeRef поле `t` есть только
+    // у варианта 'seconds', и без явной проверки обращение к нему —
+    // возможный undefined. Заодно это второй, независимый от `kind`,
+    // способ сказать «метка встала секундами, а не словом».
+    const seconds = added.at.t;
+    if (seconds === undefined) throw new Error('метка встала не секундами — у неё нет поля t');
+    /*
+     * Допуск — РАЗРЕШЕНИЕ ЭКРАНА, а не круглое число «на всякий случай».
+     *
+     * Щелчок задаёт секунду через пиксель дорожки, и точнее одного пикселя
+     * попасть нельзя физически: при длительности около 49 с и ширине полосы
+     * порядка 850 px пиксель стоит примерно 0.06 с. Требовать совпадения
+     * до третьего знака значило бы требовать от мыши точности, которой
+     * у неё нет, и тест падал бы от смены ширины окна.
+     */
+    const secondsPerPixel = await page.evaluate(() => {
+      const lane = document.querySelector('[data-testid=track-lane]')!.getBoundingClientRect();
+      const duration = (window as unknown as { __transport: { durationSeconds: number } })
+        .__transport.durationSeconds;
+      return duration / lane.width;
+    });
+    expect(
+      Math.abs(seconds - expectedSeconds),
+      `метка встала на ${seconds} с вместо ${expectedSeconds} с — это больше пикселя (${secondsPerPixel} с)`,
+    ).toBeLessThan(secondsPerPixel);
+    // И всё равно попал в саму паузу, а не куда-то ещё.
+    expect(Math.abs(seconds - gapAt)).toBeLessThan(0.1);
   });
 
   test('добавление метки не отматывает сцену в начало', async ({ page }) => {
@@ -269,10 +331,10 @@ test.describe('метки на дорожке', () => {
     );
     expect(Number(before), 'на 24-й секунде заголовок обязан быть виден').toBeGreaterThan(0.9);
 
-    // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
-    // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
-    // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: 'остановка', exact: true }).click();
+    // Кнопка «остановка» убрана в Сессии 55: гейт ставится пунктом меню
+    // правой кнопки `ctxmenu-add-gate`. Щёлкаем НА ТОЙ ЖЕ секунде — сам
+    // правый щелчок тоже перематывает головку, и это не должно её сдвинуть.
+    await addGateAt(page, 24);
 
     const after = await page.evaluate(
       () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,

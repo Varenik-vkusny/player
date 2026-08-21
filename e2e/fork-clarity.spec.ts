@@ -39,13 +39,18 @@ async function openEditor(page: Page, fixture: string): Promise<string[]> {
   return errors;
 }
 
-/** Режет текущую главу в долях её дорожки — так же, как это делает человек. */
+/**
+ * Режет текущую главу в долях её дорожки — так же, как это делает человек.
+ * Кнопка «разделить здесь» убрана в Сессии 55: разрез теперь пункт меню
+ * правой кнопки по пустому месту дорожки (`ctxmenu-split-here`), и сам
+ * правый щелчок заодно перематывает головку в точку щелчка.
+ */
 async function splitAt(page: Page, ratio: number): Promise<void> {
   const lane = await page.getByTestId('track-lane').boundingBox();
   if (!lane) throw new Error('дорожка не видна');
-  await page.mouse.click(lane.x + lane.width * ratio, lane.y + lane.height / 2);
-  await expect(page.getByTestId('split-here')).toBeEnabled();
-  await page.getByTestId('split-here').click();
+  await page.mouse.click(lane.x + lane.width * ratio, lane.y + lane.height / 2, { button: 'right' });
+  await expect(page.getByTestId('ctxmenu-split-here')).toHaveAttribute('aria-disabled', 'false');
+  await page.getByTestId('ctxmenu-split-here').click();
 }
 
 /** Размеры узла своими глазами: «нажимается ли» видимости не доказывает. */

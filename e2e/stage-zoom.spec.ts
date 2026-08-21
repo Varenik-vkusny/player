@@ -318,17 +318,48 @@ test.describe('масштаб холста', () => {
       `лента вернула сцене ${tallHost - shortHost} px, замер обещал ~98`,
     ).toBeGreaterThan(80);
 
-    // Голова ленты со счётчиком и кнопками буфера видна в ОБОИХ состояниях:
-    // свёрнутая лента отнимает место, а не возможности. Спрячь она подпись
-    // с причиной — автор видел бы погашенные кнопки без объяснения.
+    // СВЁРНУТАЯ ЛЕНТА ОТНИМАЕТ МЕСТО, А НЕ ВОЗМОЖНОСТИ — то же утверждение,
+    // что и раньше, но проверяется теперь по существу, а не по кнопкам.
+    //
+    // Раньше здесь стояло «видна кнопка slide-duplicate и строка причины»:
+    // четыре кнопки буфера и их общая строка жили в голове ленты. В Сессии 55
+    // и кнопки, и строка удалены — действия над слайдом уехали в меню правой
+    // кнопки по метке слайда, а причина встала в сам пункт меню.
+    //
+    // Значит проверять надо не наличие кнопки, а ДОСТИЖИМОСТЬ ДЕЙСТВИЯ при
+    // свёрнутой ленте. Иначе тест охранял бы имя органа вместо свойства
+    // продукта и был бы зелен при полностью недоступном буфере.
     await page.getByTestId('slide-strip-toggle').click();
     await expect(page.getByTestId('slide-strip')).toBeHidden();
     await expect(page.getByTestId('strip-counter')).toBeVisible();
-    await expect(page.getByTestId('slide-duplicate')).toBeVisible();
-    await expect(page.getByTestId('slide-clipboard-note')).toBeAttached();
 
     expect(await hostHeight(page)).toBe(tallHost);
     await scaleCatchesUp(page);
+
+    /*
+     * ПРОВЕРКА ДОСТИЖИМОСТИ ИДЁТ ПОСЛЕДНЕЙ, И ПОРЯДОК ЗДЕСЬ НЕСУЩИЙ.
+     *
+     * `sceneScale()` меряет масштаб КОСВЕННО — шириной элемента `mover`,
+     * делённой на 320 (его ширину в координатах сцены). У фикстуры `morph`
+     * `mover` меняет размер от слайда к слайду, то есть делитель верен
+     * только пока головка стоит на прежнем слайде.
+     *
+     * Правый щелчок по метке ведёт головку к ней (`handleSelectMark`) и тем
+     * самым меняет текущий слайд. Стой этот блок ВЫШЕ — `scaleCatchesUp`
+     * сравнивал бы ширину уже другого элемента с прежним делителем и падал
+     * бы с расхождением 0.334, называя причиной масштаб, который на самом
+     * деле не менялся. Проверено прогоном: ровно так и упало.
+     */
+    const slideMark = page.locator('[data-mark-kind=slide]').first();
+    await expect(slideMark, 'на дорожке нет ни одной метки слайда — проверять нечего').toBeVisible();
+    await slideMark.click({ button: 'right' });
+    await expect(
+      page.getByTestId('ctxmenu-slide-copy'),
+      'при свёрнутой ленте действия над слайдом стали недостижимы',
+    ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('context-menu')).toHaveCount(0);
+
     expect(errors).toEqual([]);
   });
 

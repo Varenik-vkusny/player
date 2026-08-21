@@ -87,7 +87,11 @@ test.describe('тяга дорожки за кромку: e2e', () => {
     const collapsedRoot = page.getByTestId('track-collapsed');
     await expect(collapsedRoot).toBeVisible();
 
-    const clock = page.getByTestId('track-clock');
+    // Часы того же testid есть и в нижней полосе окна (Сессия 55, ВСЕГДА
+    // на экране, вне зависимости от складывания) — значит на свёрнутой
+    // дорожке `getByTestId('track-clock')` неоднозначен без области поиска.
+    // Часы корешка — свои собственные, внутри `track-collapsed`.
+    const clock = collapsedRoot.getByTestId('track-clock');
     await expect(clock).toBeVisible();
     await expect(clock).toHaveText(/^\d{2}:\d{2}\.\d \/ \d{2}:\d{2}\.\d$/);
 
@@ -95,15 +99,16 @@ test.describe('тяга дорожки за кромку: e2e', () => {
     if (!box) throw new Error('корешок не виден');
     expect(box.height, 'высота корешка обязана быть РОВНО 28px').toBe(28);
 
-    // Транспорт и полосы — не просто визуально спрятаны, а НЕ смонтированы:
-    // жест перемотки не должен оставаться доступным под корешком.
-    await expect(page.locator('.ed-transport')).toHaveCount(0);
+    // Полосы — не просто визуально спрятаны, а НЕ смонтированы: жест
+    // перемотки не должен оставаться доступным под корешком. Строки
+    // транспорта (`.ed-transport`) с Сессии 55 не существует вовсе —
+    // проверять нечего, органы транспорта переехали в нижнюю полосу окна.
     await expect(page.locator('.ed-lanes')).toHaveCount(0);
 
     // Разворот кнопкой возвращает дорожку к прежнему виду.
     await page.getByTestId('track-expand').click();
     await expect(page.getByTestId('track-collapsed')).toHaveCount(0);
-    await expect(page.locator('.ed-transport')).toBeVisible();
+    await expect(page.locator('.ed-lanes')).toBeVisible();
   });
 
   /**
@@ -121,7 +126,9 @@ test.describe('тяга дорожки за кромку: e2e', () => {
 
     await page.getByTestId('track-resize-handle').dblclick();
     await expect(page.getByTestId('track-collapsed')).toHaveCount(0);
-    await expect(page.locator('.ed-transport')).toBeVisible();
+    // `.ed-transport` не существует с Сессии 55 — полосы дорожки возвращаются
+    // в `.ed-lanes`, органы транспорта живут в нижней полосе окна отдельно.
+    await expect(page.locator('.ed-lanes')).toBeVisible();
   });
 
   /**

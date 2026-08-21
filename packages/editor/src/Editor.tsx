@@ -109,12 +109,12 @@ import { importPptxFile, PPTX_ACCEPT } from './import/openPptx.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
 import { AudioSourceBody, AudioSourceHead, useAudioSource } from './track/AudioSourcePanel.js';
-import { gateName, secondsText } from './timeText.js';
+import { clockText, gateName, secondsText } from './timeText.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { SpanRange } from './track/spans.js';
 import type { Mark } from './track/MarksLane.js';
 import { BranchesView } from './track/BranchesView.js';
-import { SlideStripCards, SlideStripHead, SlideStripNote } from './track/SlideStrip.js';
+import { SlideStripCards, SlideStripHead } from './track/SlideStrip.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
 
@@ -2519,6 +2519,83 @@ export function Editor({
           onContextMenu={handleStageContextMenu}
           onImageDrop={handleImageDrop}
           onReady={handleReady}
+          /*
+            Левая группа нижней полосы — «что я показываю»: переключатель
+            вида нижней зоны и второе окно. Раньше эти три кнопки стояли
+            в строке НАД дорожкой, в одном ряду с крошками, буфером слайдов
+            и счётчиком — то есть в ленте из тринадцати органов, где ничто
+            не говорило, какой из них к чему относится.
+
+            У обеих натур над дорожкой органов нет вовсе, а переключатель
+            того, что показано внизу, стоит именно в нижней полосе окна
+            (у Канвы это «Страницы»).
+          */
+          stripLeft={
+            <>
+              <button
+                type="button"
+                className={bottomView === 'tracks' ? 'ed-strip-view ed-strip-view--on' : 'ed-strip-view'}
+                data-testid="view-tracks"
+                aria-pressed={bottomView === 'tracks'}
+                onClick={() => setBottomView('tracks')}
+              >
+                <Icon name="rows" /> <span className="ed-strip-view-label">Дорожки</span>
+              </button>
+              <button
+                type="button"
+                className={bottomView === 'branches' ? 'ed-strip-view ed-strip-view--on' : 'ed-strip-view'}
+                data-testid="view-branches"
+                aria-pressed={bottomView === 'branches'}
+                onClick={() => setBottomView('branches')}
+              >
+                <Icon name="git-branch" /> <span className="ed-strip-view-label">Ветки</span>
+              </button>
+              {/* Второе окно — значком без подписи: это редкое действие,
+                  и подпись рядом с двумя другими читалась бы как третий
+                  равноправный вид, которым оно не является. */}
+              <button
+                type="button"
+                className="ed-strip-icon"
+                data-testid="open-second-window"
+                onClick={handleOpenSecondWindow}
+                aria-label="Дерево веток во весь экран на втором мониторе"
+                title="Дерево веток во весь экран на втором мониторе"
+              >
+                <Icon name="external-link" />
+              </button>
+            </>
+          }
+          /*
+            Средняя группа — «где я во времени». У Канвы транспорт стоит
+            ровно здесь: по центру, под холстом, НАД линейкой. Замер её
+            таймлайна 19.08.2026: «0:00 ▶ 0:05», центр совпадает с центром
+            холста, и ничего больше в этой строке по центру нет.
+
+            Часы и кнопка уехали сюда из строки .ed-transport внутри зоны,
+            которая теперь удалена целиком.
+          */
+          stripCenter={
+            <>
+              <button
+                type="button"
+                className="ed-strip-play"
+                onClick={transport.toggle}
+                disabled={Boolean(transport.failure)}
+                aria-label={transport.isPlaying ? 'Пауза' : 'Играть'}
+              >
+                {transport.isPlaying ? '❚❚' : '▶'}
+              </button>
+              <code className="ed-clock" data-testid="track-clock">
+                {clockText(transport.positionSeconds)} / {clockText(transport.durationSeconds)}
+              </code>
+              {/* Сообщение о незагрузившейся дорожке сюда НЕ ставится.
+                  Оно длинное («Дорожка не загрузилась: audio/…mp3»), а эта
+                  группа обязана стоять по центру холста: замер 21.08.2026 дал
+                  ширину группы 671 px вместо 167 и наезд на соседей при окне
+                  1280. Место сообщения — в полосе звука, там, где из-за него
+                  же не нарисовалась волна (TrackView). */}
+            </>
+          }
         />
         </div>
         </div>
@@ -2735,49 +2812,13 @@ export function Editor({
                 currentSlideId={state.currentSlideId}
                 collapsed={slidesCollapsed}
                 onToggleCollapsed={() => setSlidesCollapsed((was) => !was)}
-                onDuplicate={handleDuplicateSlide}
-                onCopy={handleCopySlide}
-                onCut={handleCutSlide}
-                onPaste={handlePasteSlide}
-                cutProblem={currentSlideCutProblem}
-                duplicateProblem={slideSpotProblem}
-                pasteProblem={slidePasteProblem}
               />
             </>
           ) : null}
-          <span className="ed-zone-views">
-            <button
-              type="button"
-              className={bottomView === 'tracks' ? 'ed-zone-view ed-zone-view--on' : 'ed-zone-view'}
-              data-testid="view-tracks"
-              aria-pressed={bottomView === 'tracks'}
-              onClick={() => setBottomView('tracks')}
-            >
-              Дорожки
-            </button>
-            <button
-              type="button"
-              className={bottomView === 'branches' ? 'ed-zone-view ed-zone-view--on' : 'ed-zone-view'}
-              data-testid="view-branches"
-              aria-pressed={bottomView === 'branches'}
-              onClick={() => setBottomView('branches')}
-            >
-              Ветки
-            </button>
-            {/* Второе окно показывает дерево веток во весь экран — решение
-                владельца 16.08.2026 (`tracks.md` §4). Кнопка стоит рядом
-                с переключателем видов, а не в верхней полосе: она про то же
-                самое дерево, и искать её автор будет здесь. */}
-            <button
-              type="button"
-              className="ed-zone-view"
-              data-testid="open-second-window"
-              onClick={handleOpenSecondWindow}
-              title="Дерево веток во весь экран на втором мониторе"
-            >
-              Второе окно
-            </button>
-          </span>
+          {/* Переключатель видов и второе окно ПЕРЕЕХАЛИ в нижнюю полосу
+              окна (Сессия 55, `design/track-zone.md`). Над дорожкой органов
+              не остаётся: у обеих натур их там ноль, а у нас было
+              семнадцать в трёх рядах — 96 px из 306, то есть треть зоны. */}
         </div>
 
         {bottomView === 'branches' ? (
@@ -2792,11 +2833,20 @@ export function Editor({
           />
         ) : (
         <>
-        <SlideStripNote
-          cutProblem={currentSlideCutProblem}
-          duplicateProblem={slideSpotProblem}
-          pasteProblem={slidePasteProblem}
-        />
+        {/*
+          СТРОКА ПРИЧИН УДАЛЕНА (Сессия 55, долг от 20.08.2026).
+
+          Она печатала ТРИ причины разом — «Первый слайд вырезать нельзя ·
+          Начало главы занято · Буфер пуст», — относящиеся к трём разным
+          кнопкам, и печатала всегда. В узкой зоне строка переносилась
+          на вторую: замер дал высоту 37 вместо 21, зона 306 -> 322,
+          холст 344 -> 328. То есть высота холста зависела от того,
+          влез ли текст в ширину окна.
+
+          Каждая причина уехала в СВОЙ пункт меню правой кнопки по метке
+          слайда (TrackView). Возврат к `title` был бы шагом назад:
+          на подсказки, как измерено, не смотрят.
+        */}
         {audioSource.open ? (
           <AudioSourceBody
             state={audioSource}
@@ -2840,6 +2890,13 @@ export function Editor({
           onEditSpan={handleEditSpan}
           onEditSpanEnd={handleCommitHistory}
           onRemoveSpan={handleRemoveSpan}
+          onDuplicateSlide={handleDuplicateSlide}
+          onCopySlide={handleCopySlide}
+          onCutSlide={handleCutSlide}
+          onPasteSlide={handlePasteSlide}
+          slideCutProblem={currentSlideCutProblem}
+          slideDuplicateProblem={slideSpotProblem}
+          slidePasteProblem={slidePasteProblem}
         />
         </>
         )}

@@ -307,6 +307,14 @@ export function MarksLane({
             }}
             data-testid={`mark-${mark.kind}-${mark.id}`}
             data-anchor={mark.anchor}
+            /* Род и имя метки — атрибутами ДАННЫХ, а не разбором testid.
+               Меню правой кнопки над дорожкой узнаёт по ним, на что нажали,
+               и предлагает действия этого предмета. Разбирать `data-testid`
+               значило бы сделать имя для тестов частью работающей логики:
+               переименовали бы его ради теста — и меню молча перестало бы
+               узнавать метки. */
+            data-mark-kind={mark.kind}
+            data-mark-id={mark.id}
             title={mark.title}
             aria-label={mark.title}
             onPointerDown={(event) => handleDown(event, mark)}

@@ -68,7 +68,17 @@ test.describe('полоса капли', () => {
     // всегда) — покраснеет вторая половина.
     await openEditor(page, 'transitions');
     await expect(page.getByTestId('bubble-lane')).toHaveCount(0);
-    await expect(page.getByTestId('bubble-lane-toggle')).toHaveCount(0);
+
+    // Переключатель полосы убран из шапки зоны в Сессия 55 и стал пунктом
+    // меню правой кнопки по пустому месту дорожки (`ctxmenu-bubble-lane-toggle`,
+    // `TrackView.tsx` — пункт добавляется в перечень, только когда `bubble`
+    // определён). У главы без капли открываем то же меню и убеждаемся,
+    // что переключателя капли в нём нет вовсе.
+    const lane = await page.getByTestId('track-lane').boundingBox();
+    if (!lane) throw new Error('дорожка не видна');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height / 2, { button: 'right' });
+    await expect(page.getByTestId('context-menu')).toBeVisible();
+    await expect(page.getByTestId('ctxmenu-bubble-lane-toggle')).toHaveCount(0);
   });
 
   test('автор рисует новый отрезок тягой по свободному месту', async ({ page }) => {
@@ -136,18 +146,27 @@ test.describe('полоса капли', () => {
 
   test('«спрятать каплю» убирает полосу, но не отрезки', async ({ page }) => {
     await openEditor(page, 'bubble-spans');
-    const toggle = page.getByTestId('bubble-lane-toggle');
 
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    // Переключатель полосы капли — пункт меню правой кнопки по пустому
+    // месту дорожки (Сессия 55), а не отдельная кнопка над дорожкой.
+    const lane = await page.getByTestId('track-lane').boundingBox();
+    if (!lane) throw new Error('дорожка не видна');
+    const openMenu = () =>
+      page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height / 2, { button: 'right' });
+
+    await openMenu();
+    const toggle = page.getByTestId('ctxmenu-bubble-lane-toggle');
+    await expect(toggle).toContainText('Спрятать полосу капли');
     await toggle.click();
 
     await expect(page.getByTestId('bubble-lane')).toHaveCount(0);
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    // Надпись называет ДЕЙСТВИЕ и обязана меняться: состояние, живущее
-    // только в `aria-pressed`, видит тест и не видит автор.
-    await expect(toggle).toContainText('показать');
 
-    await toggle.click();
+    // Надпись называет ДЕЙСТВИЕ и обязана поменяться на обратное:
+    // состояние, живущее только в атрибуте, видит тест и не видит автор.
+    await openMenu();
+    await expect(page.getByTestId('ctxmenu-bubble-lane-toggle')).toContainText('Показать полосу капли');
+    await page.getByTestId('ctxmenu-bubble-lane-toggle').click();
+
     // Отрезки на месте — пряталась полоса, а не владение.
     await expect(page.getByTestId('bubble-span')).toHaveCount(2);
   });

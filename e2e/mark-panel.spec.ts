@@ -34,6 +34,30 @@ async function setNumberField(page: Page, label: string, value: number): Promise
 
 const stateOf = (page: Page) => page.evaluate(() => document.getElementById('state')?.textContent);
 
+/**
+ * Ставит гейт под ТЕКУЩЕЙ головкой: кнопка «остановка» убрана в Сессии 55,
+ * теперь это пункт меню правой кнопки `ctxmenu-add-gate`. Правый щелчок сам
+ * перематывает головку в точку щелчка — целимся в ТУ ЖЕ секунду, где она
+ * уже стоит (обычно поставлена заранее через `__transport.seek`), чтобы
+ * не сдвинуть её повторно.
+ */
+async function addGateAtHead(page: Page): Promise<void> {
+  const box = await page.getByTestId('track-lane').boundingBox();
+  if (!box) throw new Error('дорожка не видна');
+  const duration = await page.evaluate(
+    () =>
+      (window as unknown as { __transport: { durationSeconds: number } }).__transport
+        .durationSeconds,
+  );
+  const seconds = await page.evaluate(
+    () => (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds,
+  );
+  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2, {
+    button: 'right',
+  });
+  await page.getByTestId('ctxmenu-add-gate').click();
+}
+
 test.describe('панель гейта: выбор варианта', () => {
   test('гейт с вариантами, привязанными к элементам сцены, собранный в редакторе, работает в плеере', async ({
     page,
@@ -76,7 +100,7 @@ test.describe('панель гейта: выбор варианта', () => {
       (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(1);
     });
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
-    await page.getByRole('button', { name: /остановка/ }).click();
+    await addGateAtHead(page);
     await expect(page.getByTestId('mark-panel')).toBeVisible();
 
     await page.getByLabel('Вид', { exact: true }).selectOption('choice');
@@ -136,7 +160,7 @@ test.describe('панель гейта: ввод ответа', () => {
       (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(1);
     });
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
-    await page.getByRole('button', { name: /остановка/ }).click();
+    await addGateAtHead(page);
     await page.getByLabel('Вид', { exact: true }).selectOption('input');
     await page.getByLabel('Вопрос', { exact: true }).fill('Что является часами проекта?');
 

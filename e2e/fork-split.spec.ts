@@ -197,17 +197,18 @@ test.describe('метка режет главу где угодно, а не т�
 
     const before = await segmentsOf(page);
 
-    // Перемотка нажатием по дорожке — так же, как это делает человек.
+    // Правый щелчок по пустому месту дорожки: он сам перематывает головку
+    // в точку щелчка (Сессия 55) и открывает меню места с пунктом разреза.
     const box = await page.getByTestId('track-lane').boundingBox();
     if (!box) throw new Error('дорожка не видна');
-    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2, { button: 'right' });
 
     const at = await page.evaluate(() =>
       (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds);
-    expect(at, 'головка обязана стоять внутри главы, иначе кнопка законно погашена').toBeGreaterThan(0);
+    expect(at, 'головка обязана стоять внутри главы, иначе пункт разреза законно погашен').toBeGreaterThan(0);
 
-    await expect(page.getByTestId('split-here')).toBeEnabled();
-    await page.getByTestId('split-here').click();
+    await expect(page.getByTestId('ctxmenu-split-here')).toHaveAttribute('aria-disabled', 'false');
+    await page.getByTestId('ctxmenu-split-here').click();
 
     const after = await segmentsOf(page);
     // Промежуточная проверка «предыдущий шаг СОСТОЯЛСЯ»: без неё проверки
@@ -240,9 +241,15 @@ test.describe('метка режет главу где угодно, а не т�
   test('в самом начале главы кнопка погашена и называет причину', async ({ page }) => {
     await openEditor(page, 'exit-branch');
 
-    // Головка стоит на нуле сразу после открытия — делить нечего.
-    await expect(page.getByTestId('split-here')).toBeDisabled();
-    await expect(page.getByTestId('split-here')).toHaveAttribute('title', /в самом начале главы/);
+    // Головка стоит на нуле сразу после открытия — делить нечего. Щёлкаем
+    // у самого левого края дорожки, чтобы правый щелчок (он тоже перематывает)
+    // не увёл головку с нуля.
+    const box = await page.getByTestId('track-lane').boundingBox();
+    if (!box) throw new Error('дорожка не видна');
+    await page.mouse.click(box.x, box.y + box.height / 2, { button: 'right' });
+
+    await expect(page.getByTestId('ctxmenu-split-here')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('ctxmenu-why-split-here')).toContainText('в самом начале главы');
   });
 
   test('разрезанный проект остаётся загружаемым схемой', async ({ page }) => {
@@ -252,8 +259,8 @@ test.describe('метка режет главу где угодно, а не т�
 
     const box = await page.getByTestId('track-lane').boundingBox();
     if (!box) throw new Error('дорожка не видна');
-    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2);
-    await page.getByTestId('split-here').click();
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height / 2, { button: 'right' });
+    await page.getByTestId('ctxmenu-split-here').click();
 
     // ПРОМЕЖУТОЧНАЯ ПРОВЕРКА «предыдущий шаг СОСТОЯЛСЯ», без которой тест
     // декоративен: проект валиден и когда разреза не было вовсе. Поймано

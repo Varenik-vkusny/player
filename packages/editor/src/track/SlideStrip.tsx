@@ -41,7 +41,6 @@ import {
 import type { Element, Slide, Style, Theme, Word } from '@player/core';
 import { ScenePreview, type Segment } from '@player/player';
 
-import { Button } from '../ui/index.js';
 import { markSeconds } from './marks.js';
 import { slideChangeSummary } from './slide-summary.js';
 import { secondsText } from '../timeText.js';
@@ -52,26 +51,6 @@ export interface SlideStripHeadProps {
   readonly currentSlideId: string;
   readonly collapsed: boolean;
   readonly onToggleCollapsed: () => void;
-  readonly onDuplicate: () => void;
-  readonly onCopy: () => void;
-  readonly onCut: () => void;
-  readonly onPaste: () => void;
-  /** Почему «Вырезать» недоступна. `undefined` — доступна. */
-  readonly cutProblem: string | undefined;
-  /**
-   * Почему «Дублировать» недоступна. `undefined` — доступна.
-   *
-   * Отдельный сигнал, а не общий с «Вставить», и это не симметрия ради
-   * симметрии. Обе кнопки метят в одну секунду — головку дорожки, — но
-   * дублирование НЕ ЧИТАЕТ буфер автора: `duplicateSlideAt` работает через
-   * свой временный `SlideClipboard`. Сведи их в один сигнал — и пустой буфер
-   * гасил бы «Дублировать» с причиной «Буфер пуст», то есть автор не мог бы
-   * размножить кадр, пока чего-нибудь не скопирует. Логика редьюсера при
-   * этом исправна, и юнит-тест такого не поймал бы.
-   */
-  readonly duplicateProblem: string | undefined;
-  /** Почему «Вставить» недоступна. `undefined` — доступна. */
-  readonly pasteProblem: string | undefined;
 }
 
 /**
@@ -87,13 +66,6 @@ export function SlideStripHead({
   currentSlideId,
   collapsed,
   onToggleCollapsed,
-  onDuplicate,
-  onCopy,
-  onCut,
-  onPaste,
-  cutProblem,
-  duplicateProblem,
-  pasteProblem,
 }: SlideStripHeadProps): ReactElement {
   const currentIndex = slides.findIndex((slide) => slide.id === currentSlideId);
   const currentSlide = currentIndex >= 0 ? slides[currentIndex] : undefined;
@@ -117,69 +89,36 @@ export function SlideStripHead({
         <span>Слайды</span>
       </button>
       <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
-      <div className="ed-slide-strip-actions">
-        <Button
-          data-testid="slide-duplicate"
-          disabled={duplicateProblem !== undefined}
-          onClick={onDuplicate}
-        >
-          Дублировать
-        </Button>
-        <Button data-testid="slide-copy" onClick={onCopy}>
-          Копировать
-        </Button>
-        <Button
-          data-testid="slide-cut"
-          disabled={cutProblem !== undefined}
-          onClick={onCut}
-        >
-          Вырезать
-        </Button>
-        <Button
-          data-testid="slide-paste"
-          disabled={pasteProblem !== undefined}
-          onClick={onPaste}
-        >
-          Вставить
-        </Button>
-      </div>
+      {/*
+        ЧЕТЫРЕ КНОПКИ БУФЕРА УДАЛЕНЫ (Сессия 55).
+
+        Они стояли здесь всегда, в одном ряду с крошками, переключателем
+        вида и счётчиком — тринадцать органов подряд, где ничто не говорило,
+        какой к чему относится. Под ними строкой печатались их причины,
+        все три разом.
+
+        Теперь это пункты меню правой кнопки ПО МЕТКЕ СЛАЙДА (TrackView):
+        действие стоит рядом со своим предметом, а причина видна ровно одна
+        и ровно у того пункта, которому мешает.
+      */}
     </>
   );
 }
 
-export interface SlideStripNoteProps {
-  readonly cutProblem: string | undefined;
-  readonly duplicateProblem: string | undefined;
-  readonly pasteProblem: string | undefined;
-}
-
-/**
- * Строка причины под шапкой зоны — рисуется ВСЕГДА, даже пустой. Появляйся
- * она только при наличии причины, высота головы менялась бы при каждой
- * перемотке головки, и сцена под руками автора прыгала бы. `min-height`
- * в стилях держит место.
+/*
+ * SlideStripNote УДАЛЁН (Сессия 55).
  *
- * Свёрнутая лента отнимает МЕСТО, а не ВОЗМОЖНОСТИ: голова со счётчиком
- * и кнопками буфера остаётся видна и при свёрнутых карточках — спрячь мы
- * эту строку, автор видел бы погашенные кнопки без объяснения (`screens.md`
- * §6).
+ * Он печатал под шапкой зоны все причины разом — «Первый слайд вырезать
+ * нельзя · Начало главы занято · Буфер пуст», — и печатал ВСЕГДА, держа
+ * место через min-height, чтобы высота головы не прыгала. В узкой зоне
+ * строка переносилась на вторую: замер 20.08.2026 дал высоту 37 вместо 21,
+ * зона 306 -> 322, холст 344 -> 328. Высота холста зависела от того,
+ * влез ли текст в ширину окна.
+ *
+ * Причины уехали каждая в свой пункт меню правой кнопки по метке слайда
+ * (TrackView): видна ровно та, что сейчас мешает, и ровно там, где автор
+ * ищет действие.
  */
-export function SlideStripNote({ cutProblem, duplicateProblem, pasteProblem }: SlideStripNoteProps): ReactElement {
-  // Одна строка на все причины разом: кнопки могут быть недоступны
-  // ОДНОВРЕМЕННО (головка на первом слайде + пустой буфер), и автор обязан
-  // увидеть обе, а не только последнюю посчитанную (wordAnchorProblem,
-  // track/marks.ts — тот же принцип: объяснить, а не погасить молча).
-  //
-  // Повторы убираются `Set`, и это не украшательство: при непустом буфере
-  // `duplicateProblem` и `pasteProblem` — ОДНА И ТА ЖЕ причина про место
-  // головки, и без свёртки автор читал бы «на этой секунде уже стоит слайд»
-  // дважды подряд.
-  const clipboardNote = [...new Set(
-    [cutProblem, duplicateProblem, pasteProblem].filter((problem): problem is string => problem !== undefined),
-  )].join(' · ');
-
-  return <span className="ed-slide-strip-note" data-testid="slide-clipboard-note">{clipboardNote}</span>;
-}
 
 export interface SlideStripCardsProps {
   /**

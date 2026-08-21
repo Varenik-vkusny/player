@@ -179,6 +179,22 @@ export interface StageViewProps {
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
   onImageDrop?: (file: File) => void;
   onReady?: (preview: ScenePreview | null) => void;
+  /**
+   * Левая и средняя группы нижней полосы окна.
+   *
+   * Полоса под холстом — единственное место в редакторе, где по натуре
+   * стоят органы «что показываю · где я во времени · как приближено»
+   * (Канва центрует транспорт под холстом, КапКут держит все три группы
+   * одной строкой; совпало у двоих — закон). Правая группа, масштаб холста,
+   * живёт здесь же и принадлежит StageView по существу.
+   *
+   * Левая и средняя ему НЕ принадлежат: переключатель вида нижней зоны
+   * и транспорт — про дорожку, а не про сцену. Поэтому они приходят
+   * готовыми узлами от Editor.tsx, а StageView только даёт им место.
+   * Так layering остаётся честным: сцена не начинает знать про транспорт.
+   */
+  stripLeft?: React.ReactNode;
+  stripCenter?: React.ReactNode;
 }
 
 interface Gesture {
@@ -284,6 +300,8 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     onContextMenu,
     onImageDrop,
     onReady,
+    stripLeft,
+    stripCenter,
   }: StageViewProps,
   ref,
 ): ReactElement {
@@ -1607,16 +1625,32 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       поэтому площадь холста при работе не меняется и сцена не уезжает
       из-под курсора (та же физика, что у полосы свойств, см. `PropBar.tsx`).
     */}
+    {/*
+      Три группы, каждая отвечает на свой вопрос автора:
+      слева «что я показываю», по центру «где я во времени», справа
+      «как это приближено». Членение снято с натуры: у КапКута ровно эти
+      три группы одной строкой, у Канвы транспорт центрован под холстом,
+      а масштаб — в нижней строке окна. Совпало у двоих — берём.
+
+      Пустой левый узел остаётся В РАЗМЕТКЕ и когда групп нет: раскладка
+      строки — грид из трёх колонок, и центральная группа обязана стоять
+      по центру ХОЛСТА, а не по центру остатка. Пропади левый узел —
+      транспорт уехал бы влево, и это было бы видно на каждом переключении.
+    */}
     <div className="ed-zoom-strip">
-      <ZoomBar
-        zoom={zoom}
-        scale={shownScale}
-        canZoomIn={canZoomIn(zoom, shownScale)}
-        canZoomOut={canZoomOut(zoom, shownScale)}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onPick={setZoom}
-      />
+      <span className="ed-strip-group ed-strip-group--left">{stripLeft}</span>
+      <span className="ed-strip-group ed-strip-group--center">{stripCenter}</span>
+      <span className="ed-strip-group ed-strip-group--right">
+        <ZoomBar
+          zoom={zoom}
+          scale={shownScale}
+          canZoomIn={canZoomIn(zoom, shownScale)}
+          canZoomOut={canZoomOut(zoom, shownScale)}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onPick={setZoom}
+        />
+      </span>
     </div>
     </>
   );
