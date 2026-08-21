@@ -399,6 +399,26 @@ export type EditorAction =
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
   | { readonly type: 'connect'; readonly when: readonly Condition[]; readonly goto: string }
+  /*
+   * Куда уводит ОДИН ответ остановки — одной отправкой (Сессия 55).
+   *
+   * Заведено под карточку остановки на дорожке, где автор выбирает цель
+   * ответа списком. Без него смена цели складывалась бы из `disconnect`
+   * и `connect`, то есть из ДВУХ шагов истории, и Ctrl+Z возвращал бы
+   * половину — ответ без выхода вовсе. Тот же довод, что у `branchFromOption`
+   * ниже.
+   *
+   * `goto: null` — «своего правила нет»: рассказ идёт запасным выходом главы.
+   * `goto`, равный текущей главе, законен и означает «пройти её заново»:
+   * механика повтора уже написана (`player/src/repeat.ts`) и решена
+   * владельцем 02.08.2026.
+   */
+  | {
+    readonly type: 'setOptionTarget';
+    readonly gateId: string;
+    readonly optionId: string;
+    readonly goto: string | null;
+  }
   // «Завести ветку» прямо от варианта ответа (Сессия 51, задача Б3).
   //
   // ОДИН шаг истории на оба дела — заведение главы и правило выхода в неё, —
@@ -1225,6 +1245,21 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'connect': {
       const project = exits.connect(state.project, state.currentSegmentId, action.when, action.goto);
+      return { ...state, project };
+    }
+
+    case 'setOptionTarget': {
+      const segment = currentSegment(state);
+      const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
+      // Падаем громко: карточка показывается только у существующей остановки,
+      // и её пропажа между отрисовкой и отправкой — расхождение состояния,
+      // а не случай, который надо пережить молча.
+      if (!gate) {
+        throw new Error(`Остановки «${action.gateId}» нет в текущей главе: некуда вести ответ`);
+      }
+      const project = exits.setOptionTarget(
+        state.project, state.currentSegmentId, gate.recordAs, action.optionId, action.goto,
+      );
       return { ...state, project };
     }
 

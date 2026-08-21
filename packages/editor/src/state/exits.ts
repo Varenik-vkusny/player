@@ -403,6 +403,93 @@ export function disconnect(project: Project, segmentId: string, ruleId: string):
 }
 
 /**
+ * Простое правило для ответа `optionId` переменной `variable`: ровно одно
+ * условие вида «`variable` равно `optionId`». Тот же смысл «простого», что
+ * у `optionDestination` (`conditionText.ts`, случай `plain`) — записан здесь
+ * ещё раз, а не подключён оттуда: `conditionText.ts` импортирует из этого
+ * файла (`answerVariables`), и обратный импорт замкнул бы модули друг
+ * на друга. Два места обязаны понимать «простое» ОДИНАКОВО — разойдись они,
+ * `optionDestination` показывала бы автору одну цель, а эта функция меняла
+ * бы другую.
+ */
+function isSimpleOptionRule(rule: ExitRule, variable: string, optionId: string): boolean {
+  const only = rule.when.length === 1 ? rule.when[0]! : undefined;
+  return only !== undefined && only.kind === 'equals' && only.variable === variable && only.value === optionId;
+}
+
+/**
+ * Задаёт цель ОДНОГО варианта ответа одним шагом истории.
+ *
+ * Была дыра: `connect` только добавляет правило, `disconnect` только
+ * удаляет по `id` — сменить цель уже существующего ответа получалось
+ * лишь парой вызовов, то есть двумя шагами истории. Ctrl/Cmd+Z после
+ * такой пары отменил бы один из двух и оставил ответ ЛИБО без цели совсем,
+ * либо с двумя целями сразу — ни одно из состояний автор не просил.
+ *
+ * Работает только с ПРОСТЫМИ правилами (см. `isSimpleOptionRule`). Простое
+ * правило одного ответа выражается одним именем главы; всё прочее — цепочка
+ * условий через «и» или второе правило про тот же ответ — уже не сводится
+ * к одному имени, и трогать его здесь значило бы соврать о том, что делает
+ * операция. Для такого места автору назначено «Правила выхода» (`connect`/
+ * `disconnect`/`addCondition`/`removeCondition` по отдельности).
+ *
+ * `goto === null` значит «этот ответ никуда не уводит явно»: рассказ пойдёт
+ * запасным выходом главы (`Exit.default`), как и прежде для ответов без
+ * своего правила.
+ *
+ * `goto`, равный самому `segmentId`, — законное ребро назад: механика
+ * повтора куска решена владельцем 02.08.2026 (`player/src/repeat.ts`),
+ * и никакой отдельной проверки для этого случая не нужно — `goto` идёт
+ * тем же путём, что любая другая цель.
+ */
+export function setOptionTarget(
+  project: Project,
+  segmentId: string,
+  variable: string,
+  optionId: string,
+  goto: string | null,
+): Project {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте`);
+  }
+
+  const simple = segment.exit.rules.filter((rule) => isSimpleOptionRule(rule, variable, optionId));
+  if (simple.length > 1) {
+    throw new Error(
+      `Ответ «${optionId}» переменной «${variable}» уже задан ${simple.length} простыми правилами выхода `
+        + `у сегмента «${segmentId}»: одним именем главы цель не выразить, правьте в «Правилах выхода»`,
+    );
+  }
+
+  if (goto === null) {
+    // Простого правила нет — снимать нечего: убрать то, чего нет, не ошибка.
+    if (simple.length === 0) return project;
+    return disconnect(project, segmentId, simple[0]!.id);
+  }
+
+  if (simple.length === 1) {
+    // Правило уже есть — меняем только цель, id и when оставляем как были:
+    // те же проверки, что проходил связанный вид (SegmentPanel), автору
+    // ничего заново подтверждать не нужно.
+    if (!project.segments.some((candidate) => candidate.id === goto)) {
+      throw new Error(`Сегмента «${goto}» нет в проекте: правилу выхода некуда вести`);
+    }
+    const ruleId = simple[0]!.id;
+    const exit: Exit = {
+      ...segment.exit,
+      rules: segment.exit.rules.map((rule) => (rule.id === ruleId ? { ...rule, goto } : rule)),
+    };
+    const segments = project.segments.map((candidate) => (candidate.id === segmentId ? { ...candidate, exit } : candidate));
+    return { ...project, segments };
+  }
+
+  // Простого правила нет — заводим новое. `connect` уже несёт все нужные
+  // проверки (сегмент, цель, переменная) — второй копии здесь не место.
+  return connect(project, segmentId, [{ kind: 'equals', variable, value: optionId }], goto);
+}
+
+/**
  * Почему такое имя переменной принять нельзя. `undefined` — можно.
  *
  * Одна функция на две задачи, и это не удобство, а требование: панель

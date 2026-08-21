@@ -5297,6 +5297,108 @@ export const EDITOR_STYLES = `
    пункта под подписью стоит строка «почему сейчас нельзя». Без wrap она
    встала бы в тот же ряд и сжала бы подпись до многоточия — то есть
    отобрала бы у автора имя действия ради объяснения, почему его нет. */
+/* ── Карточка остановки над её меткой (Сессия 55) ─────────────────────────
+   Плавает поверх всего: холст под ней не ужимается ни на пиксель. Это было
+   прямым условием — жалоба владельца на крошечную сцену старше этой работы,
+   и отдавать ей высоту ради панели значило бы чинить одно за счёт другого.
+
+   Растёт ВВЕРХ от метки: снизу только полоса расшифровки и край окна. */
+.ed-stopcard {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 12px;
+  border-radius: var(--ui-radius-l);
+  background: var(--ui-surface-overlay);
+  box-shadow: var(--ui-shadow-overlay);
+  color: var(--ui-content-fg);
+}
+
+.ed-stopcard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ed-stopcard-title {
+  font-size: var(--ui-type-s);
+  font-weight: 600;
+  color: var(--ui-content-fg-secondary);
+}
+
+.ed-stopcard-close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: var(--ui-radius-s);
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  cursor: pointer;
+}
+.ed-stopcard-close:hover { color: var(--ui-content-fg); background: var(--ui-surface-raised); }
+
+/* Ответ — своим блоком с линией сверху: без неё три ответа с полями
+   и списками читаются одной кашей, и автор не видит, где кончается один. */
+.ed-stopcard-option {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ui-line);
+}
+
+.ed-stopcard-goto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* «и тогда» — не подпись поля, а связка во фразе «Ответ 1 … и тогда …».
+   Подписью её делать нельзя: у поля рядом уже есть своё имя в aria-label,
+   и второе имя на том же органе развело бы то, что автор читает глазами,
+   и то, что находит поиском по имени. */
+.ed-stopcard-goto-label {
+  flex: 0 0 auto;
+  font-size: var(--ui-type-xs);
+  color: var(--ui-content-fg-tertiary);
+}
+
+.ed-stopcard-goto-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--ui-line);
+  border-radius: var(--ui-radius-s);
+  background: var(--ui-field-bg);
+  color: var(--ui-content-fg);
+  font: inherit;
+  font-size: var(--ui-type-s);
+}
+
+/* Подпись ответа в панели метки — ЧИТАЕМАЯ строка, а не поле: правится она
+   в карточке остановки, и второе поле на то же значение развело бы то, что
+   автор видит, и то, что он правит. */
+.ed-option-name {
+  margin: 0 0 4px;
+  font-size: var(--ui-type-xs);
+  font-weight: 600;
+  color: var(--ui-content-fg-secondary);
+}
+
+.ed-stopcard-plain {
+  margin: 0;
+  font-size: var(--ui-type-xs);
+  color: var(--ui-content-fg-tertiary);
+}
+
 .ed-ctxmenu-item {
   display: flex;
   flex-wrap: wrap;

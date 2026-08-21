@@ -115,6 +115,7 @@ import type { SpanRange } from './track/spans.js';
 import type { Mark } from './track/MarksLane.js';
 import { BranchesView } from './track/BranchesView.js';
 import { SlideStripCards, SlideStripHead } from './track/SlideStrip.js';
+import { StopCard, useMarkAnchor } from './track/StopCard.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
 
@@ -362,6 +363,34 @@ export function Editor({
     const slide = segment.slides.find((candidate) => candidate.id === selectedMark.id);
     return slide ? { kind: 'slide', slide } : undefined;
   }, [selectedMark, segment.gates, segment.slides]);
+
+  /*
+   * ЧТО НУЖНО КАРТОЧКЕ ОСТАНОВКИ. Считается здесь, где виден проект целиком:
+   * список глав — цели, куда может уводить ответ, а «куда ведёт» вправе
+   * смотреть на переменную, записанную остановкой ДРУГОЙ главы.
+   *
+   * Карточка появляется только у остановки. У метки слайда её нет: слайд
+   * правится на холсте, и вопросов с ответами у него не бывает.
+   */
+  const stopCardGate = markData?.kind === 'gate' ? markData.gate : undefined;
+  const stopCardAnchor = useMarkAnchor(stopCardGate?.id);
+  const stopCardSeconds = useMemo(
+    () => (stopCardGate ? markSeconds(stopCardGate.at, segment.words) : 0),
+    [stopCardGate, segment.words],
+  );
+  /*
+   * Имя главы для списка — то же, что показывает доска веток и «Правила
+   * выхода». Пустое имя заменяется идентификатором: глава без названия —
+   * законное состояние (её только что завели), а пункт списка без подписи
+   * выбрать нельзя.
+   */
+  const chapterChoices = useMemo(
+    () => currentProject.segments.map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title || chapter.id,
+    })),
+    [currentProject.segments],
+  );
 
   // Метка могла исчезнуть не только через кнопку удаления, но и через Ctrl+Z
   // (отмена её добавления) — тот же случай, что и «выделенного элемента нет
@@ -2726,23 +2755,10 @@ export function Editor({
                 splitBlockedReason={markData.kind === 'gate'
                   ? splitBlockedReason(markData.gate, segment.words)
                   : undefined}
-                /* Куда ведёт вариант — читается ЗДЕСЬ, где виден проект
-                   целиком: правило выхода вправе смотреть на переменную,
-                   записанную гейтом другой главы. Панель проекта не видит. */
-                destinationOf={markData.kind === 'gate'
-                  ? (optionId) => optionDestination(
-                    currentProject, state.currentSegmentId, markData.gate.recordAs, optionId,
-                  )
-                  : undefined}
-                /* Одна отправка на оба дела — глава и правило в неё. Ctrl+Z
-                   обязан отменять их вместе: половина отката оставила бы
-                   главу, до которой не дойти. Довод и устройство — в разборе
-                   действия `branchFromOption` (state/project.ts). */
-                onBranchFromOption={markData.kind === 'gate'
-                  ? (optionId) => dispatch({
-                    type: 'branchFromOption', gateId: markData.gate.id, optionId,
-                  })
-                  : undefined}
+                /* «Куда ведёт» и «Завести ветку» ОТСЮДА УБРАНЫ (Сессия 55):
+                   и то, и другое живёт в карточке остановки над её меткой.
+                   Панель осталась местом для редкого — имени переменной,
+                   поведения при неверном ответе, попыток, привязки к слову. */
               />
             ) : (
               // Ничего не выделено и метка не выбрана — свойств показывать
@@ -2917,6 +2933,49 @@ export function Editor({
           onClose={() => setContextMenuAt(undefined)}
         />
       )}
+
+      {/*
+        КАРТОЧКА ОСТАНОВКИ — поверх всего, рядом со своей меткой.
+
+        Стоит здесь, а не внутри дорожки, по той же причине, что и меню
+        правой кнопки: узел с `position: fixed` не должен зависеть от
+        переполнения и прокрутки предков. Внутри контейнера прокрутки полос
+        её обрезало бы ровно тогда, когда она нужна, — при масштабе дорожки
+        больше единицы.
+
+        Показывается при ВЫБРАННОЙ остановке — и тогда, когда её метки
+        на экране нет (дорожка свёрнута, полотно укатилось при масштабе):
+        карточка единственное место, где правятся вопрос и ответы, и исчезни
+        она вместе с меткой, поля стали бы недостижимы вовсе. Без метки
+        карточка встаёт по центру, без привязки.
+
+        Ничего не выбрано — карточки нет вовсе: пустая плашка на экране
+        запрещена прямым словом владельца.
+      */}
+      {stopCardGate ? (
+        <StopCard
+          gate={stopCardGate}
+          seconds={stopCardSeconds}
+          chapters={chapterChoices}
+          currentChapterId={state.currentSegmentId}
+          destinationOf={(optionId) => optionDestination(
+            currentProject, state.currentSegmentId, stopCardGate.recordAs, optionId,
+          )}
+          anchor={stopCardAnchor}
+          onUpdateGate={handleUpdateGate}
+          onOptionTarget={(optionId, goto) => dispatch({
+            type: 'setOptionTarget',
+            gateId: stopCardGate.id,
+            optionId,
+            goto,
+          })}
+          onBranchFromOption={(optionId) => dispatch({
+            type: 'branchFromOption', gateId: stopCardGate.id, optionId,
+          })}
+          onCommitHistory={handleCommitHistory}
+          onClose={() => setSelectedMark(undefined)}
+        />
+      ) : null}
     </div>
   );
 }

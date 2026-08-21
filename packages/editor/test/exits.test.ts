@@ -17,6 +17,7 @@ import {
   removeSegment,
   renameSegment,
   renameVariable,
+  setOptionTarget,
   uncoveredOutcomes,
 } from '../src/state/exits.js';
 
@@ -442,6 +443,166 @@ describe('disconnect', () => {
   it('несуществующий сегмент бросает', () => {
     const p = project([segment('seg-1')]);
     expect(() => disconnect(p, 'ghost', 'r1')).toThrow(/ghost/);
+  });
+});
+
+/**
+ * `setOptionTarget` — одна операция, один шаг истории: «ответ уводит сюда»
+ * вместо пары `connect`+`disconnect`. Работает только с ПРОСТЫМИ правилами
+ * (ровно одно условие вида `variable === optionId`, то же понятие «простого»,
+ * что у `optionDestination` в `conditionText.ts`).
+ */
+describe('setOptionTarget', () => {
+  it('простого правила не было — появляется одно с верными when и goto', () => {
+    // ЧТО СЛОМАТЬ: не позвать `connect` в ветке «правила нет», а вернуть
+    // проект как есть — `rules` останется пустым, `toHaveLength(1)` покраснеет.
+    // Или перепутать местами `variable`/`optionId` в условии — `when` разойдётся.
+    const p = project([
+      segment('seg-1', { gates: [choiceGate('g1', ['a', 'b'])] }),
+      segment('seg-2'),
+    ]);
+    const next = setOptionTarget(p, 'seg-1', 'g1', 'a', 'seg-2');
+    const rules = next.segments[0]!.exit.rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0]!.when).toEqual([{ kind: 'equals', variable: 'g1', value: 'a' }]);
+    expect(rules[0]!.goto).toBe('seg-2');
+  });
+
+  it('простое правило было — goto сменился, id и when не тронуты, число правил НЕ выросло', () => {
+    // ЧТО СЛОМАТЬ: вместо замены цели у найденного правила всегда звать
+    // `connect` (добавлять новое) — правил станет два, `toHaveLength(1)`
+    // покраснеет. Или пересобрать правило целиком без сохранения `id` —
+    // `rules[0]!.id` разойдётся с `r1`.
+    const p = project([
+      segment('seg-1', {
+        gates: [choiceGate('g1', ['a', 'b'])],
+        exit: { rules: [rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-2')], default: null },
+      }),
+      segment('seg-2'),
+      segment('seg-3'),
+    ]);
+    const next = setOptionTarget(p, 'seg-1', 'g1', 'a', 'seg-3');
+    const rules = next.segments[0]!.exit.rules;
+    expect(rules).toHaveLength(1);
+    expect(rules[0]!.id).toBe('r1');
+    expect(rules[0]!.when).toEqual([{ kind: 'equals', variable: 'g1', value: 'a' }]);
+    expect(rules[0]!.goto).toBe('seg-3');
+  });
+
+  it('goto === null при существующем простом правиле — правило исчезает, прочие правила главы целы', () => {
+    // ЧТО СЛОМАТЬ: снять правило по индексу/первому совпадению вместо точного
+    // `id` — второе правило (про 'b') могло бы пострадать. Проверяется именно
+    // то, что ОСТАЛОСЬ 'r2', а не просто «длина уменьшилась на один».
+    const p = project([
+      segment('seg-1', {
+        gates: [choiceGate('g1', ['a', 'b'])],
+        exit: {
+          rules: [
+            rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-2'),
+            rule('r2', { kind: 'equals', variable: 'g1', value: 'b' }, 'seg-2'),
+          ],
+          default: null,
+        },
+      }),
+      segment('seg-2'),
+    ]);
+    const next = setOptionTarget(p, 'seg-1', 'g1', 'a', null);
+    expect(next.segments[0]!.exit.rules.map((r) => r.id)).toEqual(['r2']);
+  });
+
+  it('goto === null без правила — проект возвращается тем же объектом: убрать то, чего нет, не ошибка', () => {
+    // ЧТО СЛОМАТЬ: безусловно звать `disconnect`, не проверив, что правило
+    // вообще есть, — `disconnect` бросит «нет правила выхода», тест поймает
+    // брошенное там, где должен вернуться тот же объект.
+    const p = project([
+      segment('seg-1', { gates: [choiceGate('g1', ['a', 'b'])] }),
+      segment('seg-2'),
+    ]);
+    expect(setOptionTarget(p, 'seg-1', 'g1', 'a', null)).toBe(p);
+  });
+
+  it('goto равен самому segmentId — законное ребро повтора, правило создаётся, проект валиден по схеме', () => {
+    // ЧТО СЛОМАТЬ: отдельная (неверная) проверка «goto !== segmentId» —
+    // функция бросила бы там, где владелец 02.08.2026 разрешил повтор куска.
+    const p = project([
+      segment('seg-1', {
+        gates: [choiceGate('g1', ['a', 'b'])],
+        exit: { rules: [rule('r-b', { kind: 'equals', variable: 'g1', value: 'b' }, 'seg-2')], default: null },
+      }),
+      segment('seg-2'),
+    ]);
+    const next = setOptionTarget(p, 'seg-1', 'g1', 'a', 'seg-1');
+    expect(next.segments[0]!.exit.rules.find((r) => r.id !== 'r-b')!.goto).toBe('seg-1');
+    expect(ProjectSchema.safeParse(next).success).toBe(true);
+  });
+
+  it('два простых правила про один ответ — бросает, сообщение называет ответ', () => {
+    // ЧТО СЛОМАТЬ: убрать проверку `simple.length > 1` — вместо броска
+    // функция молча заменила бы цель ПЕРВОГО найденного правила, оставив
+    // второе как есть, то есть автор получил бы не то, что нажал.
+    const p = project([
+      segment('seg-1', {
+        gates: [choiceGate('g1', ['a', 'b'])],
+        exit: {
+          rules: [
+            rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-2'),
+            rule('r2', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-3'),
+          ],
+          default: null,
+        },
+      }),
+      segment('seg-2'),
+      segment('seg-3'),
+    ]);
+    expect(() => setOptionTarget(p, 'seg-1', 'g1', 'a', 'seg-2')).toThrow(/«a»/);
+  });
+
+  it('несуществующая целевая глава — бросает (и на создании, и на замене)', () => {
+    // ЧТО СЛОМАТЬ: пропустить проверку цели в ветке «замена» (там она
+    // не унаследована от `connect` — написана вручную) — замена приняла бы
+    // ссылку в никуда, и схема отказала бы автору только на следующей загрузке.
+    const withoutRule = project([
+      segment('seg-1', { gates: [choiceGate('g1', ['a', 'b'])] }),
+    ]);
+    expect(() => setOptionTarget(withoutRule, 'seg-1', 'g1', 'a', 'ghost')).toThrow(/ghost/);
+
+    const withRule = project([
+      segment('seg-1', {
+        gates: [choiceGate('g1', ['a', 'b'])],
+        exit: { rules: [rule('r1', { kind: 'equals', variable: 'g1', value: 'a' }, 'seg-1')], default: null },
+      }),
+    ]);
+    expect(() => setOptionTarget(withRule, 'seg-1', 'g1', 'a', 'ghost')).toThrow(/ghost/);
+  });
+
+  it('правило со СЛОЖНЫМ условием (два через И) про тот же ответ — не считается простым: рядом появляется новое, старое не тронуто', () => {
+    // ЧТО СЛОМАТЬ: в `isSimpleOptionRule` проверять «есть подходящее условие
+    // СРЕДИ» вместо «условие ровно одно и оно подходит» (`some` вместо
+    // `length === 1`) — сложное правило посчиталось бы простым, и его цель
+    // подменили бы вместо того, чтобы завести новое рядом: `rules` осталась
+    // бы длиной 1, а `rules[0]` разошлось бы с исходным `complex`.
+    const complex: ExitRule = {
+      id: 'r-complex',
+      when: [
+        { kind: 'equals', variable: 'g1', value: 'a' },
+        { kind: 'equals', variable: 'g2', value: 'x' },
+      ],
+      goto: 'seg-3',
+    };
+    const p = project([
+      segment('seg-1', {
+        gates: [choiceGate('g1', ['a', 'b']), choiceGate('g2', ['x', 'y'])],
+        exit: { rules: [complex], default: null },
+      }),
+      segment('seg-2'),
+      segment('seg-3'),
+    ]);
+    const next = setOptionTarget(p, 'seg-1', 'g1', 'a', 'seg-2');
+    const rules = next.segments[0]!.exit.rules;
+    expect(rules).toHaveLength(2);
+    expect(rules[0]).toEqual(complex);
+    expect(rules[1]!.when).toEqual([{ kind: 'equals', variable: 'g1', value: 'a' }]);
+    expect(rules[1]!.goto).toBe('seg-2');
   });
 });
 

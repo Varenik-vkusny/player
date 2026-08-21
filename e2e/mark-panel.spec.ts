@@ -104,7 +104,12 @@ test.describe('панель гейта: выбор варианта', () => {
     await expect(page.getByTestId('mark-panel')).toBeVisible();
 
     await page.getByLabel('Вид', { exact: true }).selectOption('choice');
-    await page.getByLabel('Вопрос', { exact: true }).fill('Что было часами проекта?');
+    // Вопрос правится в КАРТОЧКЕ остановки над её меткой, а не в панели
+    // (Сессия 55). В панели этого поля больше нет намеренно: два поля на одно
+    // значение — два места, куда автор может написать разное, и строгий режим
+    // Playwright поймал их как две одинаковые подписи на одном экране.
+    await page.getByTestId('stopcard-prompt').fill('Что было часами проекта?');
+    await page.getByTestId('stopcard-prompt').blur();
 
     await page.getByTestId('gate-option-bind-0').selectOption('text-1');
     await page.getByTestId('gate-option-bind-1').selectOption('text-2');
@@ -162,7 +167,8 @@ test.describe('панель гейта: ввод ответа', () => {
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
     await addGateAtHead(page);
     await page.getByLabel('Вид', { exact: true }).selectOption('input');
-    await page.getByLabel('Вопрос', { exact: true }).fill('Что является часами проекта?');
+    await page.getByTestId('stopcard-prompt').fill('Что является часами проекта?');
+    await page.getByTestId('stopcard-prompt').blur();
 
     const accept = page.getByTestId('gate-accept');
     await accept.fill('аудио');
