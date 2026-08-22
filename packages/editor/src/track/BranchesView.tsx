@@ -48,6 +48,7 @@ import {
   IDENTITY_VIEW,
   panBy,
   wheelIntent,
+  openView,
   zoomAt,
   type SpaceView,
 } from './branchSpace.js';
@@ -253,15 +254,20 @@ export function BranchesView({
     return () => observer.disconnect();
   }, []);
 
-  // Вписывание — один раз при первом ненулевом размере окна. Дальше вид
+  // Открытие — один раз при первом ненулевом размере окна. Дальше вид
   // принадлежит автору и не прыгает сам, даже когда дерево меняется
   // (сворачивание ветки, переименование).
+  //
+  // `openView`, а не `fitView`: вписывание любой ценой давало 40 % на
+  // получасовом объяснении (подписи кеглем 4 px) и 148 % на коротком.
+  // Разбор — в `branchSpace.ts`. «Показать всё» осталось вписыванием:
+  // там автор просит обзор сознательно.
   const hasFittedRef = useRef(false);
   useEffect(() => {
     if (hasFittedRef.current) return;
     if (spaceSize.width <= 0 || spaceSize.height <= 0) return;
     hasFittedRef.current = true;
-    setView(fitView(layout.bounds, spaceSize.width, spaceSize.height));
+    setView(openView(layout.bounds, spaceSize.width, spaceSize.height));
   }, [spaceSize, layout.bounds]);
 
   const handleFit = useCallback(() => {

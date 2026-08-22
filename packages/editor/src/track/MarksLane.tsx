@@ -21,6 +21,26 @@ import type { MarkKind } from '../state/project.js';
 import type { MarkAnchor } from './marks.js';
 import { ratioToX } from './zoom.js';
 import { secondsText } from '../timeText.js';
+import { assignMarkRows } from './markRows.js';
+
+/**
+ * Размер метки и шаг ряда — числа раскладки, а не оформления.
+ *
+ * Ширина совпадает с `.ed-mark` в styles.ts (18) намеренно: раскладка
+ * считает перекрытие по тем же прямоугольникам, которые рисует браузер.
+ * Разойдись эти числа — функция разводила бы метки, которые на экране
+ * не пересекаются, и оставляла бы вместе те, что пересекаются.
+ *
+ * Шаг 12 и два ряда выбраны замером, а не на глаз: метка 18 в ряду 34
+ * стоит с `top: 8`. Сдвиг рядов на -6 и +6 даёт прямоугольники 2..20
+ * и 14..32 — оба внутри полосы, центры разнесены на 12 px, и точка
+ * в центре каждого достаётся ЕЙ, а не соседке.
+ */
+const MARK_SIZE = 18;
+const MARK_ROWS = 2;
+const ROW_STEP = 12;
+/** Верхний ряд поднят на половину шага, чтобы полоса осталась уравновешенной. */
+const ROW_LIFT = -ROW_STEP / 2;
 
 export interface Mark {
   readonly kind: MarkKind;
@@ -213,6 +233,28 @@ export function MarksLane({
     [onTransitionSecondsCommit],
   );
 
+  const rowOf = ((): ReadonlyMap<string, number> => {
+    const merged = new Map<string, number>();
+    for (const kind of ['slide', 'gate'] as const) {
+      const rows = assignMarkRows(
+        marks
+          .filter((mark) => mark.kind === kind)
+          .map((mark) => ({
+            key: `${mark.kind}:${mark.id}`,
+            x: ratioToX(mark.seconds / durationSeconds, canvasWidthPx),
+          })),
+        MARK_SIZE,
+        MARK_ROWS,
+      );
+      for (const [key, row] of rows) merged.set(key, row);
+    }
+    return merged;
+  })();
+
+  /** Сдвиг метки вниз от её ряда — в пикселях. */
+  const rowShift = (mark: Mark): number =>
+    ROW_LIFT + (rowOf.get(`${mark.kind}:${mark.id}`) ?? 0) * ROW_STEP;
+
   return (
     <div
       className="ed-marks"
@@ -226,6 +268,17 @@ export function MarksLane({
           без перетаскивания выделяет метку (Задача 6), а ручка на его
           левом конце тянет длительность перехода (Задача 5); это два
           разных элемента ровно потому, что жесты у них разные. */}
+      {/*
+        РАЗВЕДЕНИЕ БЛИЗКИХ МЕТОК ПО РЯДАМ (Сессия 55, долг от 20.08.2026).
+
+        Считается на каждую отрисовку, потому что зависит от ширины полотна:
+        та меняется и от окна, и от масштаба дорожки. Запомненная раскладка
+        разошлась бы с экраном ровно тогда, когда автор потянул за край.
+
+        Слайды и остановки раскладываются ОТДЕЛЬНО: они стоят в разных рядах
+        полосы (top 8 и top 43) и перекрыть друг друга не могут — общая
+        раскладка развела бы их без нужды.
+      */}
       {marks
         .filter((mark) => mark.morphSeconds > 0)
         .map((mark) => {
@@ -239,7 +292,14 @@ export function MarksLane({
                 data-testid={`mark-tail-${mark.id}`}
                 title={mark.title}
                 aria-label={mark.title}
-                style={{ left: `${tailLeft}px`, width: `${tailWidth}px` }}
+                style={{
+                  left: `${tailLeft}px`,
+                  width: `${tailWidth}px`,
+                  // Хвост едет вместе со своей меткой: он показывает окно
+                  // движения ИМЕННО к ней, и оставшись на месте, указывал бы
+                  // на соседку.
+                  transform: `translateY(${rowShift(mark)}px)`,
+                }}
                 onClick={() => onSelect(mark.kind, mark.id)}
               />
               {/* Ручка на ЛЕВОМ конце хвоста — шире хвоста и вылезает
@@ -255,7 +315,7 @@ export function MarksLane({
                 data-testid={`mark-transition-${mark.id}`}
                 title="Потянуть — изменить длительность перехода"
                 aria-label={`Длительность перехода к метке на ${secondsText(mark.seconds)}`}
-                style={{ left: `${tailLeft}px` }}
+                style={{ left: `${tailLeft}px`, transform: `translateY(${rowShift(mark)}px)` }}
                 onPointerDown={(event) => handleTransitionDown(event, mark)}
                 onPointerMove={handleTransitionMove}
                 onPointerUp={handleTransitionUp}
@@ -295,14 +355,27 @@ export function MarksLane({
               а центр поздней — правее правого края ранней. Значит при верхней
               РАННЕЙ свободны центры обеих, а при верхней поздней — только её.
 
-              Перекрытие больше половины ширины (9 px) так не лечится,
-              и это честно записано долгом: там нужно настоящее разведение.
+              Перекрытие больше половины ширины (9 px) так не лечилось,
+              и это было записано долгом. ДОЛГ ЗАКРЫТ В СЕССИИ 55: близкие
+              метки разводятся по двум рядам внутри полосы (`markRows.ts`),
+              и их центры перестают закрывать друг друга даже при полном
+              наложении прямоугольников. Порядок наложения оставлен —
+              он по-прежнему верен и дешевле любого другого при перекрытии
+              в пару пикселей, где ряды разводить незачем.
+
+              Замер до разведения, фикстура demo: при окне 1280 недостижимы
+              были СЕМЬ меток из шестнадцати.
 
               Выделенная метка поднимается над всеми: она единственная,
               чью рамку автор обязан видеть целиком.
             */
             style={{
               left: `${ratioToX(mark.seconds / durationSeconds, canvasWidthPx)}px`,
+              // Сдвиг ряда — трансформацией, а не правкой `top`: `top` задан
+              // в стилях и разный у слайдов и остановок, а трансформация
+              // ложится поверх любого из них одним правилом. Плюс инвариант
+              // №8: двигаем `transform`, а не геометрию.
+              transform: `translateY(${rowShift(mark)}px)`,
               zIndex: isSelected ? marks.length + 1 : marks.length - index,
             }}
             data-testid={`mark-${mark.kind}-${mark.id}`}

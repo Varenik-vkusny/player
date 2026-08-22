@@ -113,6 +113,66 @@ export function zoomAt(view: SpaceView, factor: number, screenPoint: Point): Spa
  * что у `tileWidths` в `chapters.ts` для главы нулевой длительности — там,
  * впрочем, отвечали константой минимума, здесь честный ответ — тождество).
  */
+/**
+ * Каким доска ОТКРЫВАЕТСЯ. Не то же, что «Показать всё».
+ *
+ * ЗАЧЕМ ОТДЕЛЬНАЯ ФУНКЦИЯ. Доска вписывала дерево при открытии любой ценой,
+ * и цена оказалась высокой. Замер 22.08.2026, фикстура `branching`, окно
+ * 1440×900: вписывание давало **40 %**, то есть подписи глав рисовались
+ * кеглем 4 px. Автор открывал «Ветки» и видел россыпь нечитаемых полосок
+ * в пустом поле — ровно то, на что владелец пожаловался словом «пустое».
+ *
+ * Обратный перекос был тем же вписыванием: у короткой фикстуры
+ * (`exit-branch`) оно РАЗДУВАЛО дерево до 148 %, и три главы занимали
+ * весь экран.
+ *
+ * Поэтому при открытии масштаб зажат в читаемое: не мельче
+ * `READABLE_MIN_SCALE` и не крупнее единицы. Дерево, которое в эти рамки
+ * не влезло, показывается С НАЧАЛА, а не серединой: рассказ читают
+ * слева направо, и первая глава — то место, откуда автор смотрит.
+ *
+ * «Показать всё» (`fitView`) при этом не трогается: там автор просит обзор
+ * сознательно и готов к мелкому кеглю.
+ */
+/** Вид, в котором центр содержимого попадает в центр окна при данном масштабе. */
+function centredAt(content: Box, viewportWidth: number, viewportHeight: number, scale: number): { x: number; y: number } {
+  return {
+    x: content.x + content.width / 2 - viewportWidth / 2 / scale,
+    y: content.y + content.height / 2 - viewportHeight / 2 / scale,
+  };
+}
+
+export const READABLE_MIN_SCALE = 0.75;
+
+export function openView(content: Box, viewportWidth: number, viewportHeight: number): SpaceView {
+  const fitted = fitView(content, viewportWidth, viewportHeight);
+  const scale = clamp(fitted.scale, READABLE_MIN_SCALE, 1);
+
+  /*
+   * Центрировать или показывать с начала — решает то, ВЛЕЗАЕТ ЛИ дерево
+   * при выбранном масштабе, а не совпал ли масштаб с вписыванием.
+   *
+   * Разница поймана тестом: дерево 800×300 в окне 1000×500 вписалось бы
+   * на 119 %, потолок срезал до 100 — и по равенству масштабов выходило
+   * «не влезло», хотя при 100 % оно влезает с запасом. Автор увидел бы
+   * прижатое к углу дерево там, где просилось по центру.
+   */
+  const availableWidth = viewportWidth - 2 * FIT_PADDING_PX;
+  const availableHeight = viewportHeight - 2 * FIT_PADDING_PX;
+  const fitsNow = content.width * scale <= availableWidth
+    && content.height * scale <= availableHeight;
+  if (fitsNow) return { scale, ...centredAt(content, viewportWidth, viewportHeight, scale) };
+
+  // Не влезло: ставим левый верхний угол дерева в угол окна с тем же
+  // зазором, что у обзора. Центрирование здесь показало бы СЕРЕДИНУ
+  // дерева — место, которого автор не просил.
+  return {
+    scale,
+    x: content.x - FIT_PADDING_PX / scale,
+    y: content.y - FIT_PADDING_PX / scale,
+  };
+}
+
 export function fitView(content: Box, viewportWidth: number, viewportHeight: number): SpaceView {
   const availableWidth = viewportWidth - 2 * FIT_PADDING_PX;
   const availableHeight = viewportHeight - 2 * FIT_PADDING_PX;

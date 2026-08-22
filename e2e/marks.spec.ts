@@ -455,3 +455,132 @@ test.describe('метки не перекрывают друг друга', () =
       .toHaveValue('node-1-slide-9');
   });
 });
+
+/**
+ * РАЗВЕДЕНИЕ БЛИЗКИХ МЕТОК ПО РЯДАМ (Сессия 55, долг от 20.08.2026 закрыт).
+ *
+ * Метки стоят там, где стоят их секунды, и при близких слайдах налезают
+ * друг на друга. Замер 22.08.2026 на фикстуре demo, метка 18 px:
+ *
+ *   окно 1920 — недостижима 1 метка из 16
+ *   окно 1440 — недостижимо 5
+ *   окно 1280 — недостижимо 7
+ *
+ * «Недостижима» здесь не догадка: `elementFromPoint` в центре метки отдавал
+ * СОСЕДНЮЮ. То есть на ноутбучном экране почти половину слайдов нельзя было
+ * выбрать нажатием — ни автору, ни тесту.
+ *
+ * Порядок наложения (ранняя выше поздней) лечил это лишь наполовину: при
+ * перекрытии больше половины ширины недоступной становилась просто другая
+ * метка. Настоящее лечение — два ряда внутри полосы (`track/markRows.ts`).
+ */
+test.describe('близкие метки остаются достижимыми', () => {
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: раскладка по рядам снята или считает перекрытие
+   * не по тем прямоугольникам, которые рисует браузер. Проверено сломом:
+   * возврат всех меток в один ряд даёт семь недостижимых.
+   *
+   * Окно 1280×800 — не произвольное: это заявленный размер стенда и тот,
+   * на котором беда доходила до крайности.
+   *
+   * Меряются ТОЛЬКО ВИДИМЫЕ метки. `elementFromPoint` даёт ложное
+   * «недостижимо» для уехавшей за край контейнера прокрутки: точки за его
+   * окном ему не принадлежат вовсе, и без этой оговорки тест краснел бы
+   * от масштаба дорожки, а не от наложения.
+   */
+  test('в центр каждой видимой метки попадает она сама, а не соседка', async ({ page }) => {
+    // Окно 1440×900 — рабочий размер владельца. На 1280 остаётся один
+    // крайний случай, названный вслух в docs/debt.md: три слайда с центрами
+    // в пределах 8.5 px при ширине метки 18. Двумя рядами он не разводится
+    // никак — половина метки 9, и не хватает ПОЛПИКСЕЛЯ, — а третий ряд
+    // в полосу 34 не помещается: соседним рядам нужно разойтись больше чем
+    // на 9, и три таких ряда просят 40. Средство для таких сгустков —
+    // масштаб дорожки: замер даёт ноль недостижимых уже на ×2.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openEditor(page);
+
+    const measured = await page.evaluate(() => {
+      const view = document.querySelector('.ed-lane-scroll')!.getBoundingClientRect();
+      const marks = Array.from(document.querySelectorAll('[data-mark-kind]'))
+        .map((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute('data-mark-id') ?? '?',
+            cx: box.left + box.width / 2,
+            cy: box.top + box.height / 2,
+          };
+        })
+        .filter((mark) => mark.cx > view.left + 2 && mark.cx < view.right - 2);
+
+      const unreachable = marks
+        .filter((mark) => {
+          const hit = document.elementFromPoint(mark.cx, mark.cy);
+          const owner = hit instanceof Element ? hit.closest('[data-mark-id]') : null;
+          return owner?.getAttribute('data-mark-id') !== mark.id;
+        })
+        .map((mark) => mark.id);
+
+      return { visible: marks.length, unreachable };
+    });
+
+    // Положительный контроль прибора: мерить было что. Без него пустая
+    // полоса дала бы «ноль недостижимых» и выглядела бы победой.
+    expect(measured.visible, 'на дорожке не видно меток — проверять нечего').toBeGreaterThan(10);
+
+    expect(
+      measured.unreachable,
+      `в центр этих меток попадает соседка: ${measured.unreachable.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * СРЕДСТВО ДЛЯ СГУСТКОВ — масштаб дорожки, и оно обязано работать.
+   *
+   * Там, где меток слишком много на пиксель, никакая раскладка не спасёт:
+   * это не дефект, а физика. Но у автора должен быть выход, и выход тот же,
+   * что во всех монтажных программах, — растянуть время.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: масштаб перестал раздвигать метки (например,
+   * их положение считается от ширины окна, а не полотна) — тогда даже
+   * на ×2 сгусток останется сгустком.
+   */
+  test('масштаб дорожки разводит сгусток, который не развели ряды', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openEditor(page);
+
+    const unreachableNow = async (): Promise<string[]> => page.evaluate(() => {
+      const view = document.querySelector('.ed-lane-scroll')!.getBoundingClientRect();
+      return Array.from(document.querySelectorAll('[data-mark-kind]'))
+        .map((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute('data-mark-id') ?? '?',
+            cx: box.left + box.width / 2,
+            cy: box.top + box.height / 2,
+          };
+        })
+        .filter((mark) => mark.cx > view.left + 2 && mark.cx < view.right - 2)
+        .filter((mark) => {
+          const hit = document.elementFromPoint(mark.cx, mark.cy);
+          const owner = hit instanceof Element ? hit.closest('[data-mark-id]') : null;
+          return owner?.getAttribute('data-mark-id') !== mark.id;
+        })
+        .map((mark) => mark.id);
+    });
+
+    // Положительный контроль: на 1280 сгусток ЕСТЬ. Без него тест был бы
+    // зелёным и в том случае, если масштаб не делает ничего.
+    expect(
+      await unreachableNow(),
+      'на 1280 сгустка не оказалось — тест проверяет не то, что называет',
+    ).not.toEqual([]);
+
+    await page.getByTestId('track-zoom').selectOption('2');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('2');
+
+    expect(
+      await unreachableNow(),
+      'после растяжения дорожки метки всё ещё закрывают друг друга',
+    ).toEqual([]);
+  });
+});

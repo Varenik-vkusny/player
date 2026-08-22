@@ -12,7 +12,8 @@ import { ARC_HEADROOM, layoutLanes, NAME_WIDTH, ROW_HEIGHT, ROW_GAP } from '../s
  * Раскладка дерева веток в координаты пространства (`design/branches.md` §5).
  * Чистая арифметика — как её соседи `branchTree.test.ts` и `chapters.test.ts`.
  *
- * Контрольные числа посчитаны РУКАМИ (длительность × 40 px/с), а не взяты
+ * Контрольные числа посчитаны РУКАМИ (длительность × PX_PER_SECOND), а не
+ * взяты
  * из полей самой раскладки — иначе тест сравнивал бы формулу сама с собой
  * и был бы пуст по построению (см. предупреждение в задании).
  */
@@ -34,7 +35,9 @@ const NO_COLLAPSED: ReadonlySet<string> = new Set();
 describe('layoutLanes', () => {
   /**
    * split-track: s-head (2.5с) и s-tail (1.5с) в корневой полосе.
-   * 2.5×40=100, 1.5×40=60 — оба выше MIN_TILE_PX (24), клиппинга нет.
+   * 2.5×10=25, 1.5×10=15 — оба НИЖЕ MIN_TILE_PX (24), поэтому обе плитки
+   * получают пол в 24: множитель снижен 40 → 10 в Сессии 55, разбор
+   * в branchLayout.ts у самой константы.
    *
    * Что сломает: любая ошибка в переводе секунд в пиксели (п. 1) или
    * в стыковке плиток (п. 2) — сдвинутся сами числа x/width.
@@ -46,27 +49,28 @@ describe('layoutLanes', () => {
     const layout = layoutLanes(lanes, NO_COLLAPSED);
     const root = rowOf(layout.rows, 's-head');
 
-    expect(root.tiles[0]).toMatchObject({ id: 's-head', x: 0, width: 100 });
-    expect(root.tiles[1]).toMatchObject({ id: 's-tail', x: 100, width: 60 });
-    expect(root.tail).toEqual({ kind: 'end', label: 'конец', x: 160, repeat: false });
+    expect(root.tiles[0]).toMatchObject({ id: 's-head', x: 0, width: 25 });
+    expect(root.tiles[1]).toMatchObject({ id: 's-tail', x: 25, width: 24 });
+    // Хвост стоит за правым краем последней плитки: 25 + 24 = 49.
+    expect(root.tail).toEqual({ kind: 'end', label: 'конец', x: 49, repeat: false });
   });
 
   /**
-   * Икс начала ОБЕИХ дочерних полос обязан быть 100 — правый край плитки
-   * `s-head` (0 + 100), не левый (0) и не сумма секунд самой ветки.
+   * Икс начала ОБЕИХ дочерних полос обязан быть 25 — правый край плитки
+   * `s-head` (0 + 25), не левый (0) и не сумма секунд самой ветки.
    *
    * Что сломает: п. 3 переписан на левый край анкер-плитки (сабораж 2
    * из задания) или на анкер-секунды вместо анкер-индекса.
    * Верно ли при любой реализации: нет — при левом крае получилось бы 0,
    * число из независимо посчитанного литерала это ловит.
    */
-  it('дочерние полосы split-track начинаются под правым краем плитки-развилки, литерал 100', () => {
+  it('дочерние полосы split-track начинаются под правым краем плитки-развилки, литерал 25', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
-    expect(rowOf(layout.rows, 's-left').startX).toBe(100);
-    expect(rowOf(layout.rows, 's-right').startX).toBe(100);
-    expect(rowOf(layout.rows, 's-left').tiles[0]).toMatchObject({ x: 100, width: 24 });
+    expect(rowOf(layout.rows, 's-left').startX).toBe(25);
+    expect(rowOf(layout.rows, 's-right').startX).toBe(25);
+    expect(rowOf(layout.rows, 's-left').tiles[0]).toMatchObject({ x: 25, width: 24 });
   });
 
   /**
@@ -104,7 +108,7 @@ describe('layoutLanes', () => {
     const row = rowOf(layout.rows, 'r');
 
     expect(row.tiles[0]).toMatchObject({ x: 0, width: 24 });
-    expect(row.tiles[1]).toMatchObject({ x: 24, width: 40 });
+    expect(row.tiles[1]).toMatchObject({ x: 24, width: 24 });
   });
 
   /**
@@ -137,7 +141,7 @@ describe('layoutLanes', () => {
   });
 
   /**
-   * Связка родитель→ребёнок: `x` = 100 (как startX ребёнка), `fromY` = низ
+   * Связка родитель→ребёнок: `x` = 25 (как startX ребёнка), `fromY` = низ
    * строки родителя (24+56=80), `toY` = середина строки ребёнка
    * (92+28=120).
    *
@@ -151,7 +155,7 @@ describe('layoutLanes', () => {
 
     expect(layout.connectors).toHaveLength(2);
     const toLeft = layout.connectors.find((c) => c.toLaneId === 's-left');
-    expect(toLeft).toEqual({ fromLaneId: 's-head', toLaneId: 's-left', x: 100, fromY: 80, toY: 120 });
+    expect(toLeft).toEqual({ fromLaneId: 's-head', toLaneId: 's-left', x: 25, fromY: 80, toY: 120 });
   });
 
   /**
@@ -179,16 +183,16 @@ describe('layoutLanes', () => {
 
   /**
    * repeat.json: `s-b → s-a` дуга-повтор. `s-a` 2.904с, `s-b` 2.736с,
-   * обе в одной (корневой) полосе. fromX — правый край s-b = (2.904+2.736)×40
-   * = 225.6, toX — левый край s-a = 0, обе точки на y=52 (единственная
+   * обе в одной (корневой) полосе. fromX — правый край s-b = (2.904+2.736)×10
+   * = 56.4, toX — левый край s-a = 0, обе точки на y=52 (единственная
    * строка: ARC_HEADROOM 24 + ROW_HEIGHT/2 28).
    *
    * Что сломает: перепутанные from/to края плиток (например, взять левый
-   * край s-b вместо правого) — число разошлось бы с 225.6.
-   * Верно ли при любой реализации: нет — 225.6 получается только из
+   * край s-b вместо правого) — число разошлось бы с 56.4.
+   * Верно ли при любой реализации: нет — 56.4 получается только из
    * конкретной суммы двух длительностей, а не из произвольной точки.
    */
-  it('дуга повтора repeat.json: fromX/toX против литералов 225.6 и 0', () => {
+  it('дуга повтора repeat.json: fromX/toX против литералов 56.4 и 0', () => {
     const lanes = branchTree(loadFixture('repeat.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
@@ -197,7 +201,7 @@ describe('layoutLanes', () => {
     expect(arc.fromChapterId).toBe('s-b');
     expect(arc.toChapterId).toBe('s-a');
     expect(arc.repeat).toBe(true);
-    expect(arc.fromX).toBeCloseTo(225.6);
+    expect(arc.fromX).toBeCloseTo(56.4);
     expect(arc.toX).toBe(0);
     expect(arc.fromY).toBe(52);
     expect(arc.toY).toBe(52);
@@ -210,17 +214,17 @@ describe('layoutLanes', () => {
    *
    * Что сломает: расчёт `bounds` по правому краю последней ПЛИТКИ вместо
    * хвоста — потерялся бы запас TAIL_WIDTH, число не сошлось бы с 280
-   * (и тем более с 460 для ширины).
+   * (и тем более с 349 для ширины).
    * Верно ли при любой реализации: нет — числа зависят от конкретной
    * ширины подписи хвоста (константа TAIL_WIDTH), а не любого положительного запаса.
    */
-  it('bounds охватывает самый правый хвост, литералы -180/0/460/216', () => {
+  it('bounds охватывает самый правый хвост, литералы -180/0/349/216', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
     // Высота выросла на ARC_HEADROOM: коробка по-прежнему начинается на нуле,
     // но последняя строка сдвинута вниз вместе со всеми.
-    expect(layout.bounds).toEqual({ x: -NAME_WIDTH, y: 0, width: 460, height: 216 });
+    expect(layout.bounds).toEqual({ x: -NAME_WIDTH, y: 0, width: 349, height: 216 });
   });
 
   /**

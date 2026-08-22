@@ -5,7 +5,9 @@ import {
   IDENTITY_VIEW,
   MAX_SCALE,
   MIN_SCALE,
+  READABLE_MIN_SCALE,
   fitView,
+  openView,
   panBy,
   toScreen,
   toSpace,
@@ -221,5 +223,64 @@ describe('пространство «Ветки»: разбор колеса', (
     const before = toScreen(view, fixedPoint);
     const nowAt = toScreen(after, fixedPoint);
     expect(nowAt.y).toBeLessThan(before.y);
+  });
+});
+
+/**
+ * КАКИМ ДОСКА ОТКРЫВАЕТСЯ — не то же, что «Показать всё».
+ *
+ * Замер 22.08.2026: вписывание при открытии давало 40 % на фикстуре
+ * `branching` (подписи глав кеглем 4 px) и 148 % на короткой `exit-branch`.
+ * Автор открывал «Ветки» и видел нечитаемые полоски в пустом поле.
+ */
+describe('openView: доска открывается читаемой', () => {
+  const space = { width: 1000, height: 500 };
+
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: открытие снова стало вписыванием. Тогда длинное
+   * объяснение открывалось бы кеглем, который нельзя прочесть, — а это
+   * и есть жалоба, ради которой функция появилась.
+   */
+  it('огромное дерево не мельчит: масштаб не ниже читаемого', () => {
+    const huge = { x: 0, y: 0, width: 20_000, height: 400 };
+    const view = openView(huge, space.width, space.height);
+    expect(view.scale).toBe(READABLE_MIN_SCALE);
+    // И для сравнения: вписывание дало бы нечто нечитаемое.
+    expect(fitView(huge, space.width, space.height).scale).toBeLessThan(0.1);
+  });
+
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: снят потолок в единицу. Тогда три коротких главы
+   * раздувались бы на весь экран — обратный перекос того же вписывания.
+   */
+  it('крошечное дерево не раздувается крупнее ста процентов', () => {
+    const tiny = { x: 0, y: 0, width: 100, height: 50 };
+    expect(openView(tiny, space.width, space.height).scale).toBe(1);
+    expect(fitView(tiny, space.width, space.height).scale).toBeGreaterThan(1);
+  });
+
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: не влезшее дерево снова центрируется. Автор
+   * увидел бы СЕРЕДИНУ рассказа — место, которого он не просил.
+   */
+  it('не влезшее дерево показывается С НАЧАЛА, а не серединой', () => {
+    const wide = { x: 300, y: 200, width: 20_000, height: 400 };
+    const view = openView(wide, space.width, space.height);
+    // Левый верхний угол дерева попадает в окно с зазором.
+    const corner = toScreen(view, { x: wide.x, y: wide.y });
+    expect(corner.x).toBeCloseTo(FIT_PADDING_PX, 3);
+    expect(corner.y).toBeCloseTo(FIT_PADDING_PX, 3);
+  });
+
+  /**
+   * Влезло в читаемом масштабе — показываем по центру, как обзор:
+   * тут прятать нечего, и прижимать дерево к углу было бы кривлянием.
+   */
+  it('влезшее дерево стоит по центру окна', () => {
+    const fits = { x: 0, y: 0, width: 800, height: 300 };
+    const view = openView(fits, space.width, space.height);
+    const centre = toScreen(view, { x: fits.width / 2, y: fits.height / 2 });
+    expect(centre.x).toBeCloseTo(space.width / 2, 3);
+    expect(centre.y).toBeCloseTo(space.height / 2, 3);
   });
 });
