@@ -1330,9 +1330,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!gate) {
         throw new Error(`Остановки «${action.gateId}» нет в текущей главе: некуда вести ответ`);
       }
-      const project = exits.setOptionTarget(
+      const targeted = exits.setOptionTarget(
         state.project, state.currentSegmentId, gate.recordAs, action.optionId, action.goto,
       );
+      // Тот же довод, что у `branchFromOption`: назначив цель ОДНОМУ ответу,
+      // автор оставил бы остальных без выхода, и работа перестала бы
+      // сохраняться. Снятие цели (`goto === null`) запасного выхода
+      // не требует — правил могло не остаться вовсе.
+      const project = action.goto === null
+        ? targeted
+        : exits.ensureFallback(targeted, state.currentSegmentId, action.goto);
       return { ...state, project };
     }
 
@@ -1360,12 +1367,23 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const titled = exits.renameSegment(
         withSegment, created.id, branches_title(gate, action.optionId, index),
       );
-      const project = exits.connect(
+      const connected = exits.connect(
         titled,
         state.currentSegmentId,
         [{ kind: 'equals', variable: gate.recordAs, value: action.optionId }],
         created.id,
       );
+      /*
+       * Остальным ответам тоже нужно куда-то идти, иначе проект перестаёт
+       * быть валидным и АВТОСОХРАНЕНИЕ ПАДАЕТ. Найдено владельцем в живом
+       * редакторе 22.08.2026: он развёл один ответ и получил красную полосу
+       * «Не удалось сохранить работу в браузере».
+       *
+       * Запасной выход ведёт в ту же новую главу, и карточка говорит об этом
+       * у каждого неразведённого ответа дословно: «пойдёт в «…», как и все
+       * остальные ответы». Автор видит и переназначает.
+       */
+      const project = exits.ensureFallback(connected, state.currentSegmentId, created.id);
 
       // Автор ОСТАЁТСЯ на месте, в отличие от обычного `addSegment`.
       // Он не просил перевести себя в новую главу — он размечал варианты

@@ -41,69 +41,20 @@ import {
 import type { Element, Slide, Style, Theme, Word } from '@player/core';
 import { ScenePreview, type Segment } from '@player/player';
 
-import { markSeconds } from './marks.js';
 import { slideChangeSummary } from './slide-summary.js';
-import { secondsText } from '../timeText.js';
 
-export interface SlideStripHeadProps {
-  readonly slides: readonly Slide[];
-  readonly words: readonly Word[];
-  readonly currentSlideId: string;
-  readonly collapsed: boolean;
-  readonly onToggleCollapsed: () => void;
-}
-
-/**
- * Голова ленты: кнопка складывания, счётчик «N / M · сс с» и четыре кнопки
- * буфера обмена. Возвращает фрагмент, не свой контейнер (тот же приём,
- * что и у `ui/Section` и `AudioSourceHead`): встаёт на место среди соседей
- * по строке общей шапки нижней зоны, не заводя собственной раскладки.
- * Обязана остаться ровно в одну строку ВСЕГДА.
+/*
+ * SlideStripHead УДАЛЁН (Сессия 55).
+ *
+ * Кнопка складывания и счётчик стояли в общей шапке нижней зоны, в одном
+ * ряду с крошками и переключателем вида. Владелец спросил про них прямо
+ * 22.08.2026: «есть сверху кнопка слайды и кнопка озвучка, так и должно
+ * быть точно?»
+ *
+ * Не должно. Кнопкой складывания стала подпись полосы «Слайды» на самой
+ * дорожке, а число слайдов эта полоса и так показывает своей подписью —
+ * счётчик дублировал её через весь экран.
  */
-export function SlideStripHead({
-  slides,
-  words,
-  currentSlideId,
-  collapsed,
-  onToggleCollapsed,
-}: SlideStripHeadProps): ReactElement {
-  const currentIndex = slides.findIndex((slide) => slide.id === currentSlideId);
-  const currentSlide = currentIndex >= 0 ? slides[currentIndex] : undefined;
-  const counterText = currentSlide
-    ? `${currentIndex + 1} / ${slides.length} · ${secondsText(markSeconds(currentSlide.at, words))}`
-    : `– / ${slides.length}`;
-
-  return (
-    <>
-      {/* Кнопка складывания — текстовая, а не один значок, тем же приёмом
-          и по той же причине, что у панели озвучки: слово «Слайды» заодно
-          называет ленту, у которой своего заголовка не было вовсе. */}
-      <button
-        type="button"
-        className="ed-slide-strip-toggle"
-        data-testid="slide-strip-toggle"
-        aria-expanded={!collapsed}
-        onClick={onToggleCollapsed}
-      >
-        <span aria-hidden="true">{collapsed ? '▸' : '▾'}</span>
-        <span>Слайды</span>
-      </button>
-      <span className="ed-slide-strip-counter" data-testid="strip-counter">{counterText}</span>
-      {/*
-        ЧЕТЫРЕ КНОПКИ БУФЕРА УДАЛЕНЫ (Сессия 55).
-
-        Они стояли здесь всегда, в одном ряду с крошками, переключателем
-        вида и счётчиком — тринадцать органов подряд, где ничто не говорило,
-        какой к чему относится. Под ними строкой печатались их причины,
-        все три разом.
-
-        Теперь это пункты меню правой кнопки ПО МЕТКЕ СЛАЙДА (TrackView):
-        действие стоит рядом со своим предметом, а причина видна ровно одна
-        и ровно у того пункта, которому мешает.
-      */}
-    </>
-  );
-}
 
 /*
  * SlideStripNote УДАЛЁН (Сессия 55).

@@ -3859,6 +3859,29 @@ export const EDITOR_STYLES = `
   text-overflow: ellipsis;
 }
 
+/* Подпись полосы, которая ЕЩЁ И КНОПКА: «Звук» и «Слайды» складывают свои
+   панели. Выглядит как подпись, а не как кнопка, намеренно — рамка и заливка
+   у каждой второй подписи вернули бы в зону ту самую ленту одинаковых
+   прямоугольников, ради ухода от которой всё затевалось. Что это орган,
+   говорит треугольник состояния слева и отклик на наведение. */
+.ed-lane-head-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  font-size: var(--ui-type-xs);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.ed-lane-head-button:hover { color: var(--ui-content-fg); }
+.ed-lane-head-button:disabled { cursor: default; opacity: 0.5; }
+
 /* Масштаб дорожки в голове линейки (Сессия 55). Голова 120 px и высота
    линейки 24 — орган обязан влезть в них, не растя полосу: вырасти она,
    и зона отняла бы у холста ровно столько же. Поэтому без рамки и почти

@@ -359,43 +359,34 @@ export interface AudioSourceHeadProps {
  * тем же приёмом, что и `ui/Section`: встаёт на место среди соседей по
  * строке, не заводя собственной раскладки.
  */
-export function AudioSourceHead({ state }: AudioSourceHeadProps): ReactElement {
-  const { inputRef, handleFileChange, open, mustSpeak, setCollapsed, silentLabel } = state;
+/**
+ * ТОЛЬКО СКРЫТЫЙ ВЫБОР ФАЙЛА (Сессия 55).
+ *
+ * Кнопка складывания отсюда убрана: теперь ею служит подпись полосы «Звук»
+ * на самой дорожке (`TrackView`). Владелец 22.08.2026 спросил про эту
+ * кнопку прямо — «так и должно быть точно?» — и не должно: она открывала
+ * панель СВОЕЙ полосы, а стояла в общем ряду с крошками и счётчиком.
+ *
+ * Сам `<input type="file">` остаётся здесь и остаётся спрятанным. Автор
+ * его не видит никогда, нажимает по нему кнопка панели через `ref`, места
+ * на экране он не занимает. Перенос поменял бы способ открытия файла —
+ * то есть ПОВЕДЕНИЕ ради ничего.
+ *
+ * Указание «озвучки нет» уехало в тело панели вместе с остальным: оно
+ * объясняет, почему метки ставятся по секундам, и место ему рядом
+ * с источником звука, а не в чужой строке.
+ */
+export function AudioSourceFilePicker({ state }: AudioSourceHeadProps): ReactElement {
+  const { inputRef, handleFileChange } = state;
   return (
-    <>
-      <input
-        ref={inputRef}
-        type="file"
-        accept="audio/*"
-        className="ed-audio-input"
-        onChange={handleFileChange}
-        data-testid="audio-file-input"
-      />
-      <button
-        type="button"
-        className="ed-audio-source-toggle"
-        data-testid="audio-source-toggle"
-        aria-expanded={open}
-        disabled={mustSpeak}
-        title={
-          mustSpeak
-            ? 'Панели есть что сообщить — свернуть её сейчас нельзя'
-            : open
-              ? 'Свернуть озвучку'
-              : 'Развернуть озвучку'
-        }
-        onClick={() => setCollapsed(open)}
-      >
-        <span aria-hidden="true">{open ? '▾' : '▸'}</span> Озвучка
-      </button>
-      {/* Указание «озвучки нет» стоит в ПОСТОЯННО ВИДИМОЙ строке, а не
-          в теле панели: тело раскрывается щелчком, а автор должен понимать,
-          почему метки ставятся по секундам, ещё до того, как что-либо
-          откроет (инвариант №10). Регрессия 18.08.2026 — см. silentLabel. */}
-      {silentLabel === undefined ? null : (
-        <span className="ed-audio-silent" data-testid="audio-silent">{silentLabel}</span>
-      )}
-    </>
+    <input
+      ref={inputRef}
+      type="file"
+      accept="audio/*"
+      className="ed-audio-input"
+      onChange={handleFileChange}
+      data-testid="audio-file-input"
+    />
   );
 }
 

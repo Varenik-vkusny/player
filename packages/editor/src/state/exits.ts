@@ -96,6 +96,46 @@ export function removeSegment(project: Project, segmentId: string): Project {
   return { ...project, segments };
 }
 
+/**
+ * Даёт главе запасной выход, если правила у неё уже есть, а выхода нет.
+ *
+ * ЗАЧЕМ. Правила выхода обязаны быть ТОТАЛЬНЫМИ: либо покрыты все исходы,
+ * либо задан `default`. Иначе ответ, не подошедший ни под одно правило,
+ * заводит зрителя в тупик — и схема такой проект не принимает.
+ *
+ * Пока веток заводили по одной из панели, промежуточное состояние жило
+ * секунды и в глаза не бросалось. С Сессии 55 ветка заводится одной кнопкой
+ * прямо в карточке остановки, и автор немедленно получал красную полосу
+ * «не удалось сохранить работу»: он развёл ОДИН ответ, а остальным идти
+ * стало некуда. Работа при этом переставала сохраняться — то есть цена
+ * промежуточного состояния была не «некрасиво», а «можно потерять сделанное».
+ *
+ * Запасной выход ведёт туда же, куда только что заведённая ветка. Это НЕ
+ * ложь о намерении: у остальных ответов своего правила действительно нет,
+ * и карточка говорит об этом дословно — «пойдёт в «…», как и все остальные
+ * ответы». Автор видит и меняет.
+ *
+ * Ничего не делает, если выход уже есть или правил ещё нет: у главы без
+ * правил `default: null` означает «конец объяснения» и вполне законен.
+ */
+export function ensureFallback(project: Project, segmentId: string, goto: string): Project {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте`);
+  }
+  if (segment.exit.default !== null || segment.exit.rules.length === 0) return project;
+  if (!project.segments.some((candidate) => candidate.id === goto)) {
+    throw new Error(`Сегмента «${goto}» нет в проекте: запасному выходу некуда вести`);
+  }
+
+  const segments = project.segments.map((candidate) => (
+    candidate.id === segmentId
+      ? { ...candidate, exit: { ...candidate.exit, default: goto } }
+      : candidate
+  ));
+  return { ...project, segments };
+}
+
 /** Переименовывает сегмент, не трогая остальное. */
 export function renameSegment(project: Project, segmentId: string, title: string): Project {
   const segment = project.segments.find((candidate) => candidate.id === segmentId);

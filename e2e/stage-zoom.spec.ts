@@ -331,7 +331,10 @@ test.describe('масштаб холста', () => {
     // продукта и был бы зелен при полностью недоступном буфере.
     await page.getByTestId('slide-strip-toggle').click();
     await expect(page.getByTestId('slide-strip')).toBeHidden();
-    await expect(page.getByTestId('strip-counter')).toBeVisible();
+    // Кнопка складывания ленты — это подпись полосы «Слайды» на дорожке
+    // (Сессия 55), и при свёрнутой ленте она обязана остаться на месте:
+    // свёрнутая лента отнимает МЕСТО, а не возможность её вернуть.
+    await expect(page.getByTestId('slide-strip-toggle')).toBeVisible();
 
     expect(await hostHeight(page)).toBe(tallHost);
     await scaleCatchesUp(page);

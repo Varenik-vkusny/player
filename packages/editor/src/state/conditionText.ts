@@ -121,7 +121,6 @@ export function optionDestination(
 ): OptionDestination {
   const own = project.segments.find((candidate) => candidate.id === segmentId);
 
-  const mentions = (condition: Condition): boolean => condition.variable === variable;
   const isThisOption = (condition: Condition): boolean =>
     condition.kind === 'equals' && condition.variable === variable && condition.value === optionId;
 
@@ -148,11 +147,31 @@ export function optionDestination(
   // Своего правила нет. Если у главы есть ДРУГИЕ правила про эту же
   // переменную, ответ проваливается мимо них — куда именно, решает всё тот
   // же выход, и честно назвать это можно только через «Правила выхода».
-  const others = own?.exit.rules.some((rule) => rule.when.some(mentions)) ?? false;
+  /*
+   * МОЖЕТ ЛИ ЭТОТ ОТВЕТ ВООБЩЕ ПОПАСТЬ ПОД ЧУЖОЕ ПРАВИЛО.
+   *
+   * Своего правила у него нет (проверено выше). Но правило про ТУ ЖЕ
+   * переменную может его зацепить — например, условием «не равно A».
+   * Тогда назвать одну главу нельзя честно, и остаётся отправить автора
+   * в «Правила выхода».
+   *
+   * А вот правило вида «переменная равна ДРУГОМУ ответу» зацепить его
+   * не может никогда: равенство с чужим значением при этом ответе ложно
+   * по построению. Значит рассказ пойдёт запасным выходом, и это можно
+   * сказать прямо.
+   *
+   * Уточнено 22.08.2026. Прежняя проверка считала «зависит от условий»
+   * при ЛЮБОМ упоминании переменной, и после того, как «Завести ветку»
+   * стала сразу давать главе запасной выход, автор на втором ответе видел
+   * «зависит от условий — смотрите Правила выхода» там, где правда была
+   * проста: «пойдёт туда же, куда все остальные».
+   */
+  const couldMatch = (own?.exit.rules ?? []).some((rule) =>
+    rule.when.some((condition) => condition.variable === variable && condition.kind !== 'equals'));
   const fallback = own?.exit.default ?? null;
 
   if (fallback !== null) {
-    const via = others ? 'conditions' : 'default';
+    const via = couldMatch ? 'conditions' : 'default';
     const title = titleOfId(project, fallback);
     return via === 'default'
       ? { via: 'default', targetId: fallback, text: `пойдёт в «${title}», как и все остальные ответы` }

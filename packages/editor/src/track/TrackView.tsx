@@ -236,6 +236,30 @@ export interface TrackViewProps {
    * и его причина стоят рядом со своим предметом, и причина показывается
    * ровно одна — та, что сейчас мешает.
    */
+  /*
+   * СКЛАДЫВАНИЕ ПОЛОС — У САМИХ ПОЛОС (Сессия 55, по слову владельца
+   * 22.08.2026: «есть сверху кнопка слайды и кнопка озвучка… так и должно
+   * быть точно?»).
+   *
+   * Нет, не должно. Это был последний остаток строки органов над дорожкой:
+   * две кнопки, которые открывают панели СВОИХ полос, стояли в общем ряду
+   * с крошками и счётчиком, и ничто не связывало их с тем, чем они
+   * управляют. Теперь подпись полосы «Звук» и подпись полосы «Слайды» сами
+   * и есть эти кнопки.
+   */
+  soundOpen: boolean;
+  onToggleSound: () => void;
+  /**
+   * Почему складывать озвучку сейчас нельзя. `undefined` — можно.
+   *
+   * Кнопка при этом ОСТАЁТСЯ и гаснет, а не исчезает: спрятанный орган
+   * неотличим от несуществующего, и автор считает его задуманным. Это уже
+   * записанное правило проекта, и я нарушил его здесь на первой же правке —
+   * поймали три e2e, которые ищут кнопку по имени.
+   */
+  soundToggleProblem: string | undefined;
+  slidesOpen: boolean;
+  onToggleSlides: () => void;
   onDuplicateSlide: () => void;
   onCopySlide: () => void;
   onCutSlide: () => void;
@@ -279,6 +303,11 @@ export function TrackView({
   onEditSpan,
   onEditSpanEnd,
   onRemoveSpan,
+  soundOpen,
+  onToggleSound,
+  soundToggleProblem,
+  slidesOpen,
+  onToggleSlides,
   onDuplicateSlide,
   onCopySlide,
   onCutSlide,
@@ -943,6 +972,29 @@ export function TrackView({
                       disabled: zoomBlockedReason(width, step) !== undefined,
                     }))}
                   />
+                ) : lane === 'sound' ? (
+                  <button
+                    type="button"
+                    className="ed-lane-head-title ed-lane-head-button"
+                    data-testid="audio-source-toggle"
+                    aria-expanded={soundOpen}
+                    disabled={soundToggleProblem !== undefined}
+                    title={soundToggleProblem ?? (soundOpen ? 'Свернуть озвучку' : 'Развернуть озвучку')}
+                    onClick={onToggleSound}
+                  >
+                    <span aria-hidden="true">{soundOpen ? '▾' : '▸'}</span> {laneTitle(lane, soundLabel)}
+                  </button>
+                ) : lane === 'slides' ? (
+                  <button
+                    type="button"
+                    className="ed-lane-head-title ed-lane-head-button"
+                    data-testid="slide-strip-toggle"
+                    aria-expanded={slidesOpen}
+                    title={slidesOpen ? 'Свернуть ленту слайдов' : 'Развернуть ленту слайдов'}
+                    onClick={onToggleSlides}
+                  >
+                    <span aria-hidden="true">{slidesOpen ? '▾' : '▸'}</span> {laneTitle(lane, soundLabel)}
+                  </button>
                 ) : (
                   <span className="ed-lane-head-title">{laneTitle(lane, soundLabel)}</span>
                 )}

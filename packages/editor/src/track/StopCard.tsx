@@ -22,7 +22,7 @@
  * `state/gates.ts`, которыми пользуется панель, а «куда ведёт» читается тем
  * же `optionDestination`. Разойтись двум местам не на чем.
  */
-import { useCallback, useEffect, useLayoutEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 
 import type { Gate } from '@player/core';
 
@@ -150,17 +150,50 @@ export function StopCard({
   onClose,
 }: StopCardProps): ReactElement {
   /*
-   * Закрытие по Escape. Щелчок мимо карточку НЕ закрывает намеренно:
-   * автор постоянно ходит между ней и холстом — посмотреть, как выглядит
-   * сцена в этот момент, — и карточка, исчезающая от каждого такого
-   * взгляда, заставляла бы выбирать метку заново по десять раз.
+   * ЗАКРЫВАЕТСЯ ЩЕЛЧКОМ МИМО И ПО ESCAPE.
+   *
+   * Сперва щелчок мимо был намеренно оставлен без действия: я рассудил, что
+   * автор ходит между карточкой и холстом, и карточка, исчезающая от каждого
+   * взгляда на сцену, заставит выбирать метку заново.
+   *
+   * Владелец, открыв редактор, сказал прямо: «окно не закрывается». Довод
+   * оказался придуманным за него — карточка лежит поверх холста и мешает
+   * смотреть на то, ради чего её открыли. Всплывающее окно закрывается
+   * щелчком мимо, потому что так закрываются все всплывающие окна.
+   *
+   * Щелчок ПО МЕТКЕ исключён: он выбирает другую остановку, и закрывать
+   * карточку, чтобы тут же открыть её снова, значило бы мигать ею на каждом
+   * переходе между метками.
    */
+  const rootRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onClose();
     };
+    const onPointerDown = (event: PointerEvent): void => {
+      const node = rootRef.current;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (node?.contains(target)) return;
+      if (target instanceof Element && target.closest('[data-mark-kind]')) return;
+      /*
+       * Панель метки справа — не «мимо»: она про ту же остановку, и автор
+       * ходит между ней и карточкой. Закрывать карточку от щелчка в неё
+       * значило бы отнимать её ровно тогда, когда автор работает
+       * с тем же предметом.
+       */
+      if (target instanceof Element && target.closest('[data-testid="mark-panel"]')) return;
+      onClose();
+    };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Фаза перехвата — чтобы успеть до обработчиков сцены и дорожки, ровно
+    // как это делает меню правой кнопки.
+    document.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+    };
   }, [onClose]);
 
   const config = gate.config;
@@ -174,7 +207,7 @@ export function StopCard({
    */
   if (config.kind === 'continue') {
     return (
-      <Card anchor={anchor} seconds={seconds} onClose={onClose}>
+      <Card rootRef={rootRef} anchor={anchor} seconds={seconds} onClose={onClose}>
         <p className="ed-stopcard-plain">Сейчас это просто остановка: зритель нажимает «Дальше».</p>
         <Button data-testid="stopcard-make-question" onClick={onAskOnStage}>
           Задать вопрос с ответами
@@ -190,7 +223,7 @@ export function StopCard({
   }
 
   return (
-    <Card anchor={anchor} seconds={seconds} onClose={onClose}>
+    <Card rootRef={rootRef} anchor={anchor} seconds={seconds} onClose={onClose}>
       <StringField
         label="Вопрос"
         value={config.prompt}
@@ -324,11 +357,13 @@ export function StopCard({
 
 /** Корпус карточки: рамка, заголовок, крестик и привязка к метке. */
 function Card({
+  rootRef,
   anchor,
   seconds,
   onClose,
   children,
 }: {
+  readonly rootRef: React.RefObject<HTMLDivElement | null>;
   readonly anchor: { readonly x: number; readonly y: number } | undefined;
   readonly seconds: number;
   readonly onClose: () => void;
@@ -352,6 +387,7 @@ function Card({
 
   return (
     <div
+      ref={rootRef}
       className="ed-stopcard"
       data-testid="stop-card"
       role="dialog"

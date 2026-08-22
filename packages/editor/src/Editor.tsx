@@ -108,13 +108,13 @@ import { saveWork } from './state/workspace.js';
 import { importPptxFile, PPTX_ACCEPT } from './import/openPptx.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
-import { AudioSourceBody, AudioSourceHead, useAudioSource } from './track/AudioSourcePanel.js';
+import { AudioSourceBody, AudioSourceFilePicker, useAudioSource } from './track/AudioSourcePanel.js';
 import { clockText, gateName, secondsText } from './timeText.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { SpanRange } from './track/spans.js';
 import type { Mark } from './track/MarksLane.js';
 import { BranchesView } from './track/BranchesView.js';
-import { SlideStripCards, SlideStripHead } from './track/SlideStrip.js';
+import { SlideStripCards } from './track/SlideStrip.js';
 import { StopCard, useMarkAnchor } from './track/StopCard.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
@@ -373,6 +373,21 @@ export function Editor({
    * правится на холсте, и вопросов с ответами у него не бывает.
    */
   const stopCardGate = markData?.kind === 'gate' ? markData.gate : undefined;
+  /*
+   * КАРТОЧКА ЗАКРЫТА РУКОЙ — но метка ОСТАЁТСЯ выбранной.
+   *
+   * Сперва закрытие карточки просто снимало выделение, и это дало настоящую
+   * регрессию: щелчок по любому органу панели метки справа считался щелчком
+   * МИМО карточки, снимал выделение, панель исчезала под пальцем — и нажатие
+   * не доходило до кнопки вовсе. Поймали три e2e, которые нажимают в панели
+   * после выбора остановки.
+   *
+   * Закрытие всплывающего окна и снятие выделения — разные вещи. Признак
+   * сбрасывается при смене метки: выбрал другую остановку — карточка снова
+   * открыта, иначе автор один раз закрыл бы её навсегда.
+   */
+  const [stopCardClosed, setStopCardClosed] = useState(false);
+  useEffect(() => setStopCardClosed(false), [selectedMark?.kind, selectedMark?.id]);
   const stopCardAnchor = useMarkAnchor(stopCardGate?.id);
   const stopCardSeconds = useMemo(
     () => (stopCardGate ? markSeconds(stopCardGate.at, segment.words) : 0),
@@ -1759,11 +1774,25 @@ export function Editor({
    * было известно. Теперь хук вызывается в `Editor.tsx` и отдаёт готовое
    * `loadedName` — второй правды больше нет, имя приходит из одного места.
    */
+  /*
+   * Подпись полосы звука. У немого сегмента берётся ПОЛНАЯ подпись панели
+   * («без звука: 6 с»), а не короткое «без звука».
+   *
+   * Куплено регрессией 18.08.2026 и чуть не куплено второй раз сегодня.
+   * Тогда сведение трёх полос-заголовков в одну убрало эту подпись
+   * из постоянно видимого места, и вместе с ней пропало единственное
+   * указание, что озвучки нет: автор видит, что метки ставятся по секундам,
+   * а не по словам (инвариант №10), и не понимает почему. Тихая потеря.
+   *
+   * Тогда вернуть подпись целиком было нельзя ЗАМЕРОМ: в шапке оставалось
+   * 11 px запаса. Теперь шапки с тринадцатью органами больше нет, а у полосы
+   * звука есть своя строка подписи — место, где этой подписи и место.
+   */
   const soundLabel = segment.source.kind === 'file'
     ? (audioSource.loadedName ?? segment.source.fileId)
     : segment.source.kind === 'url'
       ? segment.source.url
-      : 'без звука';
+      : (audioSource.silentLabel ?? 'без звука');
 
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
   // на каждый рендер и пересобирал сцену по десять раз в секунду.
@@ -2819,18 +2848,25 @@ export function Editor({
           <span className="ed-zone-crumbs" data-testid="zone-crumbs">
             Основная › {currentSegment.title || currentSegment.id}
           </span>
-          {bottomView === 'tracks' ? (
-            <>
-              <AudioSourceHead state={audioSource} />
-              <SlideStripHead
-                slides={segment.slides}
-                words={segment.words}
-                currentSlideId={state.currentSlideId}
-                collapsed={slidesCollapsed}
-                onToggleCollapsed={() => setSlidesCollapsed((was) => !was)}
-              />
-            </>
-          ) : null}
+          {/*
+            ГОЛОВЫ ОЗВУЧКИ И ЛЕНТЫ УБРАНЫ ИЗ ЭТОЙ СТРОКИ (Сессия 55).
+
+            Владелец, открыв редактор 22.08.2026: «есть сверху кнопка слайды
+            и кнопка озвучка и вот это вот всё, так и должно быть точно?»
+            Нет: это был последний остаток строки органов над дорожкой. Обе
+            кнопки открывают панели СВОИХ полос, а стояли в общем ряду
+            с крошками, и ничто не связывало их с тем, чем они управляют.
+
+            Теперь подпись полосы «Звук» и подпись полосы «Слайды» сами
+            и есть эти кнопки (TrackView). В строке остались только крошки —
+            то есть ответ на вопрос «где я», и ничего кроме.
+
+            Скрытый выбор файла живёт дальше здесь: он `display: none`,
+            автор его не видит никогда, а нажимает по нему кнопка панели
+            через ref. Перенос его в полосу поменял бы способ открытия файла,
+            то есть ПОВЕДЕНИЕ, ради места на экране, которого он не занимает.
+          */}
+          {bottomView === 'tracks' ? <AudioSourceFilePicker state={audioSource} /> : null}
           {/* Переключатель видов и второе окно ПЕРЕЕХАЛИ в нижнюю полосу
               окна (Сессия 55, `design/track-zone.md`). Над дорожкой органов
               не остаётся: у обеих натур их там ноль, а у нас было
@@ -2906,6 +2942,16 @@ export function Editor({
           onEditSpan={handleEditSpan}
           onEditSpanEnd={handleCommitHistory}
           onRemoveSpan={handleRemoveSpan}
+          /* Складывание полос — у самих полос (Сессия 55). Кнопки «Озвучка»
+             и «Слайды» больше не стоят в общем ряду над дорожкой: подпись
+             полосы и есть её кнопка. */
+          soundOpen={audioSource.open}
+          onToggleSound={() => audioSource.setCollapsed(audioSource.open)}
+          soundToggleProblem={
+            audioSource.mustSpeak ? 'Панели есть что сообщить — свернуть её сейчас нельзя' : undefined
+          }
+          slidesOpen={!slidesCollapsed}
+          onToggleSlides={() => setSlidesCollapsed((was) => !was)}
           onDuplicateSlide={handleDuplicateSlide}
           onCopySlide={handleCopySlide}
           onCutSlide={handleCutSlide}
@@ -2952,7 +2998,7 @@ export function Editor({
         Ничего не выбрано — карточки нет вовсе: пустая плашка на экране
         запрещена прямым словом владельца.
       */}
-      {stopCardGate ? (
+      {stopCardGate && !stopCardClosed ? (
         <StopCard
           gate={stopCardGate}
           seconds={stopCardSeconds}
@@ -2980,7 +3026,7 @@ export function Editor({
             type: 'branchFromOption', gateId: stopCardGate.id, optionId,
           })}
           onCommitHistory={handleCommitHistory}
-          onClose={() => setSelectedMark(undefined)}
+          onClose={() => setStopCardClosed(true)}
         />
       ) : null}
     </div>
