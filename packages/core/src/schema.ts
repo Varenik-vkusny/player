@@ -25,7 +25,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 /**
  * Длительность перехода по умолчанию, секунды.
@@ -586,8 +586,41 @@ const ChoiceConfig = z.object({
    * не здесь, а в `.refine` на `GateSchema`: `.refine` превращает объект
    * в `ZodEffects`, а `discriminatedUnion` принимает только `ZodObject`.
    */
-  options: z.array(z.object({ id: Id, label: z.string(), when: ConditionsSchema.optional() })).min(2),
+  /**
+   * `elementId` — элемент сцены, служащий кнопкой ЭТОГО ответа (ADR-035).
+   *
+   * До версии 15 связь держалась на СОВПАДЕНИИ идентификаторов: плеер брал
+   * `this.#nodes.get(option.id)` и, найдя узел, делал его кнопкой. Совпадение
+   * не ссылка: намерения из него не вывести (имена могли совпасть случайно),
+   * и разрыв из него не поймать — переименуй любую из двух сторон, и связь
+   * исчезнет молча. ADR-011 записал это последствие честно: «вариант просто
+   * деградирует до системной кнопки».
+   *
+   * Ссылка проверяется на существование элемента В ТОМ ЖЕ сегменте
+   * (см. `.superRefine` ниже) — так же строго, как `authorSpans[].elementId`.
+   * Пусто — вариант рисуется системной кнопкой, и это законный основной
+   * случай, а не недоделка.
+   */
+  options: z.array(z.object({
+    id: Id,
+    label: z.string(),
+    when: ConditionsSchema.optional(),
+    elementId: Id.optional(),
+  })).min(2),
   correctId: Id.nullable(),
+  /**
+   * `promptElementId` — элемент сцены, показывающий САМ ВОПРОС.
+   *
+   * Симметричен `elementId` у ответа и заведён по той же причине. Без него
+   * вопрос существовал бы на экране дважды: как `prompt` в данных остановки
+   * и как текст на сцене, — и автор правил бы одно, а зритель читал другое.
+   * Этот класс расхождения в проекте уже стоил сессии: два поля «Вопрос»
+   * на одном экране поймал строгий режим Playwright тестом про другое.
+   *
+   * Пусто — вопрос на сцену не вынесен, и его показывает служебная плашка
+   * оснастки. Законный случай: так открывается всякий старый проект.
+   */
+  promptElementId: Id.optional(),
 });
 
 const InputConfig = z.object({
@@ -1096,6 +1129,35 @@ export const ProjectSchema = z
           message: `Сегмент «${segment.id}»: идентификатор элемента повторяется`,
         });
       }
+
+      /*
+       * Ссылка ответа на элемент сцены (ADR-035): элемент обязан быть в ЭТОМ
+       * сегменте. Битая ссылка — ошибка разбора, а не молчаливый откат
+       * к системной кнопке: именно молчание и было тем, ради чего поле
+       * заводилось.
+       */
+      segment.gates.forEach((gate, g) => {
+        if (gate.config.kind !== 'choice') return;
+        const promptElementId = gate.config.promptElementId;
+        if (promptElementId !== undefined && !elementIds.has(promptElementId)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: at('gates', g, 'config', 'promptElementId'),
+            message: `Вопрос остановки «${gate.id}» показан элементом «${promptElementId}», `
+              + `которого нет в сегменте «${segment.id}»`,
+          });
+        }
+        gate.config.options.forEach((option, o) => {
+          if (option.elementId === undefined) return;
+          if (elementIds.has(option.elementId)) return;
+          ctx.addIssue({
+            code: 'custom',
+            path: at('gates', g, 'config', 'options', o, 'elementId'),
+            message: `Ответ «${option.id}» остановки «${gate.id}» назначен элементу `
+              + `«${option.elementId}», которого нет в сегменте «${segment.id}»`,
+          });
+        });
+      });
 
       // Ссылка на стиль: ведёт к существующему и подходит элементу по типу.
       //

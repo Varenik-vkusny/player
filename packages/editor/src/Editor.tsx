@@ -2963,6 +2963,13 @@ export function Editor({
           )}
           anchor={stopCardAnchor}
           onUpdateGate={handleUpdateGate}
+          onAskOnStage={() => dispatch({ type: 'askOnStage', gateId: stopCardGate.id })}
+          onPromptChange={(text) => dispatch({
+            type: 'setGatePrompt', gateId: stopCardGate.id, text,
+          })}
+          onOptionLabelChange={(optionId, text) => dispatch({
+            type: 'setGateOptionLabel', gateId: stopCardGate.id, optionId, text,
+          })}
           onOptionTarget={(optionId, goto) => dispatch({
             type: 'setOptionTarget',
             gateId: stopCardGate.id,

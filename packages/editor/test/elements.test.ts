@@ -234,3 +234,79 @@ describe('removeElement: гейты не трогает', () => {
     expect(next.gates).toBe(seg.gates);
   });
 });
+
+/**
+ * УДАЛЕНИЕ ФИГУРЫ СНИМАЕТ ССЫЛКИ ОТВЕТОВ НА НЕЁ (ADR-035, схема v15).
+ *
+ * С версии 15 связь «ответ — элемент сцены» это настоящее поле, и ссылка
+ * на несуществующий элемент — ошибка разбора. Значит удаление фигуры,
+ * оставившее ссылку, сделало бы проект незагружаемым: автор нажал Delete,
+ * а узнал бы об этом при сохранении или, хуже, у зрителя.
+ *
+ * Обратная сторона строгости обязана быть закрыта здесь, а не оставлена
+ * автору: он не должен помнить, что фигура «занята» ответом.
+ */
+describe('removeElement: ссылки ответов на удалённую фигуру', () => {
+  function choiceGate(elementId: string | undefined): Gate {
+    return {
+      id: 'g1',
+      at: { kind: 'seconds', t: 1 },
+      config: {
+        kind: 'choice',
+        prompt: 'Где?',
+        options: [
+          { id: 'opt-1', label: 'Первый', ...(elementId === undefined ? {} : { elementId }) },
+          { id: 'opt-2', label: 'Второй' },
+        ],
+        correctId: 'opt-1',
+      },
+      onWrong: 'continue',
+      maxAttempts: null,
+      recordAs: 'g1',
+    };
+  }
+
+  /** Фигура с ЗАДАННЫМ именем: ссылка ответа сверяется именно с ним. */
+  const card = (id: string): Segment['elements'][number] => ({
+    id,
+    type: 'text',
+    content: 'т',
+    locked: false,
+  });
+
+  const withCard = (): Segment => segment({
+    elements: [card('card')],
+    gates: [choiceGate('card')],
+  });
+
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: снятая чистка ссылок в `removeElement`. Тогда
+   * после удаления фигуры в проекте осталась бы ссылка на неё, и схема
+   * отказалась бы его разбирать.
+   */
+  it('ссылка снимается, и вариант остаётся на месте', () => {
+    const after = removeElement(withCard(), 'card');
+    const config = after.gates[0]!.config;
+    if (config.kind !== 'choice') throw new Error('ожидался choice');
+    expect(config.options.map((o) => o.id)).toEqual(['opt-1', 'opt-2']);
+    expect(config.options[0]!.elementId).toBeUndefined();
+    // Вопрос и верный ответ не тронуты: меняется только то, чем щёлкают.
+    expect(config.prompt).toBe('Где?');
+    expect(config.correctId).toBe('opt-1');
+  });
+
+  /**
+   * Положительный контроль на сам прибор: без него тест выше прошёл бы
+   * и на реализации, которая выбрасывает варианты целиком.
+   */
+  it('удаление ЧУЖОЙ фигуры ссылку не трогает', () => {
+    const base = segment({
+      elements: [card('card'), card('other')],
+      gates: [choiceGate('card')],
+    });
+    const after = removeElement(base, 'other');
+    const config = after.gates[0]!.config;
+    if (config.kind !== 'choice') throw new Error('ожидался choice');
+    expect(config.options[0]!.elementId).toBe('card');
+  });
+});

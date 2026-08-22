@@ -597,3 +597,76 @@ describe('v9 → v10: видео как тип элемента и направ�
     expect(() => ElementSchema.parse({ ...withVideo, type: 'hologram' })).toThrow();
   });
 });
+
+/**
+ * v14 → v15: связь ответа с элементом сцены становится ПОЛЕМ (ADR-035).
+ *
+ * Проверяется не «поле появилось», а то, ради чего версия менялась:
+ * поведение старых проектов обязано остаться прежним до последней детали.
+ * До версии 15 плеер делал кнопкой элемент, чей id совпал с id варианта;
+ * миграция обязана записать ровно эти совпадения и НИ ОДНОГО лишнего.
+ */
+describe('миграция v14 → v15: привязка ответа к фигуре', () => {
+  const v14 = (): unknown => ({
+    schemaVersion: 14,
+    meta: { title: 'Т' },
+    entry: 's1',
+    styles: [],
+    segments: [{
+      id: 's1',
+      elements: [{ id: 'moscow-card' }, { id: 'bg' }],
+      gates: [{
+        id: 'g1',
+        config: {
+          kind: 'choice',
+          prompt: 'Где?',
+          options: [{ id: 'moscow-card', label: 'Москва' }, { id: 'kazan', label: 'Казань' }],
+          correctId: 'moscow-card',
+        },
+      }],
+    }],
+  });
+
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: миграция перестала проставлять ссылку — и все
+   * проекты, где автор привязал ответ к фигуре, тихо вернулись бы
+   * к системным кнопкам.
+   */
+  it('совпадение имён становится ссылкой', () => {
+    const out = MIGRATIONS[14]!(v14()) as {
+      schemaVersion: number;
+      segments: { gates: { config: { options: { id: string; elementId?: string }[] } }[] }[];
+    };
+    expect(out.schemaVersion).toBe(15);
+    const options = out.segments[0]!.gates[0]!.config.options;
+    expect(options[0]!.elementId).toBe('moscow-card');
+  });
+
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: миграция стала привязывать ЧТО ПОПАЛО — например,
+   * по порядку вместо совпадения. Тогда вариант, у которого фигуры не было,
+   * получил бы чужую, и щелчок по ней означал бы не тот ответ.
+   */
+  it('вариант без одноимённого элемента остаётся без ссылки', () => {
+    const out = MIGRATIONS[14]!(v14()) as {
+      segments: { gates: { config: { options: { id: string; elementId?: string }[] } }[] }[];
+    };
+    const options = out.segments[0]!.gates[0]!.config.options;
+    expect(options[1]!.id).toBe('kazan');
+    expect(options[1]!.elementId).toBeUndefined();
+  });
+
+  /**
+   * Положительный контроль на сам прибор: без него оба теста выше прошли бы
+   * и на миграции, которая молча теряет остановки целиком.
+   */
+  it('остановка и её варианты доезжают целиком', () => {
+    const out = MIGRATIONS[14]!(v14()) as {
+      segments: { gates: { id: string; config: { prompt: string; options: unknown[] } }[] }[];
+    };
+    const gate = out.segments[0]!.gates[0]!;
+    expect(gate.id).toBe('g1');
+    expect(gate.config.prompt).toBe('Где?');
+    expect(gate.config.options).toHaveLength(2);
+  });
+});

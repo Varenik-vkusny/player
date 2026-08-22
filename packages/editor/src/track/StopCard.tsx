@@ -27,7 +27,7 @@ import { useCallback, useEffect, useLayoutEffect, useState, type ReactElement, t
 import type { Gate } from '@player/core';
 
 import type { OptionDestination } from '../state/conditionText.js';
-import { addOption, setGateKind, setOptionLabel, setPrompt } from '../state/gates.js';
+import { addOption } from '../state/gates.js';
 import { secondsText } from '../timeText.js';
 import { Button, PlainSelect, StringField } from '../ui/index.js';
 
@@ -107,6 +107,26 @@ export interface StopCardProps {
    */
   readonly anchor: { readonly x: number; readonly y: number } | undefined;
   readonly onUpdateGate: (gate: Gate) => void;
+  /**
+   * Превращает остановку в вопрос И КЛАДЁТ ЕГО НА СЦЕНУ одним шагом.
+   *
+   * Не `setGateKind`: смена вида даёт вопрос, которого зритель не увидит —
+   * его рисует служебная плашка оснастки поверх сцены, а текст вопроса
+   * на сцену не попадает вовсе. Замер 21.08.2026: во всех эталонных наборах
+   * ноль вариантов было привязано к фигурам, то есть задуманный основной
+   * путь (ADR-011) на живых данных не встречался ни разу.
+   */
+  readonly onAskOnStage: () => void;
+  /**
+   * Правка текста вопроса и подписей ответов.
+   *
+   * Отдельно от `onUpdateGate`, потому что текст живёт В ДВУХ МЕСТАХ сразу:
+   * в данных остановки и на сцене, если вопрос туда вынесен. Правка обязана
+   * доходить до обоих одной отправкой — иначе автор пишет одно, а зритель
+   * читает другое, и оба значения по отдельности верны.
+   */
+  readonly onPromptChange: (text: string) => void;
+  readonly onOptionLabelChange: (optionId: string, text: string) => void;
   readonly onOptionTarget: (optionId: string, goto: string | null) => void;
   readonly onBranchFromOption: (optionId: string) => void;
   readonly onCommitHistory: () => void;
@@ -121,6 +141,9 @@ export function StopCard({
   destinationOf,
   anchor,
   onUpdateGate,
+  onAskOnStage,
+  onPromptChange,
+  onOptionLabelChange,
   onOptionTarget,
   onBranchFromOption,
   onCommitHistory,
@@ -153,15 +176,15 @@ export function StopCard({
     return (
       <Card anchor={anchor} seconds={seconds} onClose={onClose}>
         <p className="ed-stopcard-plain">Сейчас это просто остановка: зритель нажимает «Дальше».</p>
-        <Button
-          data-testid="stopcard-make-question"
-          onClick={() => {
-            onUpdateGate(setGateKind(gate, 'choice'));
-            onCommitHistory();
-          }}
-        >
+        <Button data-testid="stopcard-make-question" onClick={onAskOnStage}>
           Задать вопрос с ответами
         </Button>
+        {/* Сказано вслух, потому что это ГЛАВНОЕ следствие нажатия: на сцене
+            появятся настоящие элементы, которые автор двигает и оформляет,
+            а не служебная плашка поверх его картинки. */}
+        <p className="ed-stopcard-plain">
+          Вопрос и ответы появятся на сцене — их можно двигать и оформлять.
+        </p>
       </Card>
     );
   }
@@ -173,7 +196,7 @@ export function StopCard({
         value={config.prompt}
         testId="stopcard-prompt"
         onCommit={(prompt) => {
-          onUpdateGate(setPrompt(gate, prompt));
+          onPromptChange(prompt);
           onCommitHistory();
         }}
       />
@@ -205,7 +228,7 @@ export function StopCard({
                   value={option.label}
                   testId={`stopcard-option-label-${index}`}
                   onCommit={(label) => {
-                    onUpdateGate(setOptionLabel(gate, option.id, label));
+                    onOptionLabelChange(option.id, label);
                     onCommitHistory();
                   }}
                 />

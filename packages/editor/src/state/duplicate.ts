@@ -198,7 +198,22 @@ export function copySegment(
     const options = gate.config.options.map((option) => {
       const optionId = claimOptionId(option.id);
       optionIdMap.set(option.id, optionId);
-      return { ...option, id: optionId };
+      /*
+       * ССЫЛКА НА ФИГУРУ ПЕРЕЕЗЖАЕТ ВМЕСТЕ С САМОЙ ФИГУРОЙ (ADR-035).
+       *
+       * Элементы копии получают новые имена (`elementIdMap` выше), и ссылка,
+       * оставленная прежней, показывала бы на фигуру ЧУЖОГО куска. С версии
+       * схемы 15 это не «работает не так», а отказ разбора: копия перестала
+       * бы открываться вовсе. Поймано тестом, который открывает копию
+       * в плеере целиком, а не проверяет problems().
+       *
+       * Ссылки на элемент, которого в копии нет, быть не может: карта строится
+       * по всем элементам куска, а гейт живёт в том же куске.
+       */
+      const elementId = option.elementId === undefined
+        ? undefined
+        : elementIdMap.get(option.elementId) ?? option.elementId;
+      return { ...option, id: optionId, ...(elementId === undefined ? {} : { elementId }) };
     });
     variableRemap.set(gate.recordAs, { variable: newRecordAs, options: optionIdMap });
 
@@ -210,6 +225,11 @@ export function copySegment(
         ...gate.config,
         options,
         correctId: gate.config.correctId === null ? null : (optionIdMap.get(gate.config.correctId) ?? null),
+        // Ссылка вопроса на свою фигуру переезжает вместе с фигурой — по той
+        // же причине, что и ссылки ответов: элементы копии переименованы.
+        ...(gate.config.promptElementId === undefined
+          ? {}
+          : { promptElementId: elementIdMap.get(gate.config.promptElementId) ?? gate.config.promptElementId }),
       },
     };
   });

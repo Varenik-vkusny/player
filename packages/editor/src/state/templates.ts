@@ -27,9 +27,10 @@
  * могло что-то лежать (см. комментарий самой функции).
  */
 import { DEFAULT_TRANSITION_SECONDS, resolveTimeRef } from '@player/core';
-import type { Element, ElementState, Gate, Segment, TimeRef } from '@player/core';
+import type { Element, ElementState, Gate, Segment, Slide, TimeRef, Word } from '@player/core';
 
 import { freeId } from './elements.js';
+import { bindOption, setGateKind } from './gates.js';
 import { animationPreset, libraryItem, type AnimationPreset } from './library.js';
 
 /** Что шаблон кладёт на сцену: элемент из библиотеки со сдвигом и своим текстом. */
@@ -361,9 +362,8 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         atSeconds: 0.6,
       },
     ],
-    // Варианты — сами элементы сцены (индексы 1 и 2, см. ADR-011 и bindOption
-    // в state/gates.ts): гейт указывает вопрос ровно там же, куда автор уже
-    // положил текст, а не системную кнопку поверх.
+    // Варианты привязаны к элементам сцены (индексы 1 и 2, ADR-035): зритель
+    // жмёт по тому, что нарисовал автор, а не по системной кнопке поверх.
     gate: { atSeconds: 1, prompt: 'Вопрос?', optionIndexes: [1, 2], correctIndex: 1 },
   },
   /*
@@ -747,6 +747,81 @@ function finalState(te: TemplateElement, item: ReturnType<typeof libraryItem>, w
 }
 
 /**
+ * Строит новый элемент шаблона и его финальное (полностью появившееся)
+ * состояние — часть `applyTemplate`, вынесенная в отдельную функцию, чтобы
+ * `askOnStage` могла собрать элементы вопроса той же геометрией заготовки
+ * `question`, не переписывая её числа заново (см. комментарий у `askOnStage`).
+ *
+ * НЕ добавляет элемент в `elements` — этим заведует вызывающий: порядок
+ * вставки (значит, и порядковый `zIndex`) решает он, а не эта функция.
+ */
+function instantiateTemplateElement(
+  te: TemplateElement,
+  elements: readonly { id: string }[],
+  zIndex: number,
+  stage: { width: number; height: number },
+): { element: Element; final: ElementState } {
+  const item = libraryItem(te.item);
+  const width = te.width ?? item.width;
+  const height = te.height ?? item.height;
+  const element: Element = {
+    id: freeId(item.id, elements),
+    type: item.type,
+    content: te.content ?? item.content,
+    // v11: шаблон кладёт элементы верхним уровнем и незапертыми.
+    locked: false,
+  };
+  const final = finalState(te, item, width, height, stage, zIndex);
+  return { element, final };
+}
+
+/**
+ * Вставляет патч состояний в слайд, ДЕЙСТВУЮЩИЙ в момент `atSeconds` —
+ * общая механика появления элементов «внутри» сегмента, а не с самого начала.
+ *
+ * Если слайда ровно на этой секунде нет, вставляет новый: копия состояний
+ * ближайшего предыдущего слайда (иначе то, что уже видно, пропало бы) плюс
+ * патч. Если слайд ровно на этой секунде уже есть — дописывает патч в него.
+ *
+ * Вынесена из `applyTemplate` (`laterPatches`), чтобы `askOnStage` могла
+ * поставить появление вопроса на секунду ОСТАНОВКИ той же механикой —
+ * дважды написанное «вставить слайд появления» разошлось бы на первой же
+ * правке одного из двух мест.
+ */
+function insertOrPatchSlideAt(
+  slides: readonly Slide[],
+  atSeconds: number,
+  patch: Readonly<Record<string, ElementState>>,
+  words: readonly Word[],
+): Slide[] {
+  const at: TimeRef = { kind: 'seconds', t: atSeconds };
+  let insertAfter = 0;
+  for (let i = 0; i < slides.length; i += 1) {
+    if (resolveTimeRef(slides[i]!.at, words) < atSeconds) insertAfter = i;
+  }
+  const anchor = slides[insertAfter]!;
+  const existingAtSameTime = slides.find((slide) => resolveTimeRef(slide.at, words) === atSeconds);
+
+  if (existingAtSameTime) {
+    const i = slides.indexOf(existingAtSameTime);
+    const next = slides.slice();
+    next[i] = { ...existingAtSameTime, states: { ...existingAtSameTime.states, ...patch } };
+    return next;
+  }
+
+  const newSlide: Slide = {
+    id: freeId('slide', slides),
+    at,
+    transition: 'morph',
+    transitionSeconds: DEFAULT_TRANSITION_SECONDS,
+    states: { ...anchor.states, ...patch },
+  };
+  const next = slides.slice();
+  next.splice(insertAfter + 1, 0, newSlide);
+  return next;
+}
+
+/**
  * Патч состояния «до появления» — накладывается на финальное состояние,
  * чтобы получить состояние элемента на первом слайде сегмента (см. описание
  * заготовок появления в `state/library.ts`). `dx`/`dy` заготовки в патч
@@ -798,22 +873,10 @@ export function applyTemplate(
   const laterPatches = new Map<number, Record<string, ElementState>>();
 
   template.elements.forEach((te, index) => {
-    const item = libraryItem(te.item);
-    const width = te.width ?? item.width;
-    const height = te.height ?? item.height;
     const zIndex = startZ + index;
-
-    const element: Element = {
-      id: freeId(item.id, elements),
-      type: item.type,
-      content: te.content ?? item.content,
-      // v11: шаблон кладёт элементы верхним уровнем и незапертыми.
-      locked: false,
-    };
+    const { element, final } = instantiateTemplateElement(te, elements, zIndex, stage);
     elements.push(element);
     newElements.push(element);
-
-    const final = finalState(te, item, width, height, stage, zIndex);
 
     if (te.preset === undefined || te.atSeconds <= 0) {
       // Без появления или появление прямо на старте: слайду на нуле морфить
@@ -841,29 +904,7 @@ export function applyTemplate(
   // плюс патч элементов, которые появляются именно в этот момент.
   const words = segment.audio.words;
   for (const atSeconds of [...laterPatches.keys()].sort((a, b) => a - b)) {
-    const at: TimeRef = { kind: 'seconds', t: atSeconds };
-    let insertAfter = 0;
-    for (let i = 0; i < slides.length; i += 1) {
-      if (resolveTimeRef(slides[i]!.at, words) < atSeconds) insertAfter = i;
-    }
-    const anchor = slides[insertAfter]!;
-    const existingAtSameTime = slides.find((slide) => resolveTimeRef(slide.at, words) === atSeconds);
-    const patch = laterPatches.get(atSeconds)!;
-
-    if (existingAtSameTime) {
-      const i = slides.indexOf(existingAtSameTime);
-      slides[i] = { ...existingAtSameTime, states: { ...existingAtSameTime.states, ...patch } };
-      continue;
-    }
-
-    const newSlide = {
-      id: freeId('slide', slides),
-      at,
-      transition: 'morph' as const,
-      transitionSeconds: DEFAULT_TRANSITION_SECONDS,
-      states: { ...anchor.states, ...patch },
-    };
-    slides.splice(insertAfter + 1, 0, newSlide);
+    slides = insertOrPatchSlideAt(slides, atSeconds, laterPatches.get(atSeconds)!, words);
   }
 
   let gates = segment.gates;
@@ -874,17 +915,25 @@ export function applyTemplate(
       if (!element) {
         throw new Error(`Шаблон «${template.id}»: гейт ссылается на элемент №${optionIndex}, которого нет`);
       }
-      return { id: element.id, label: element.content };
+      /*
+       * Связь ответа с фигурой — ПОЛЕМ (ADR-035, схема v15). Раньше здесь
+       * варианту давали идентификатор элемента, чтобы плеер нашёл узел
+       * совпадением имён; теперь у варианта своё имя и явная ссылка.
+       */
+      return { id: `option-${optionIndex}`, label: element.content, elementId: element.id };
     });
     const correctElement = newElements[correctIndex];
     if (!correctElement) {
       throw new Error(`Шаблон «${template.id}»: гейт ссылается на элемент №${correctIndex}, которого нет`);
     }
+    // Верным отмечается ВАРИАНТ, а не элемент: имя варианта больше
+    // не совпадает с именем фигуры, и ссылка на фигуру тут была бы битой.
+    const correctOptionId = `option-${correctIndex}`;
     const gateId = freeId('gate', segment.gates);
     const gate: Gate = {
       id: gateId,
       at: { kind: 'seconds', t: atSeconds },
-      config: { kind: 'choice', prompt, options, correctId: correctElement.id },
+      config: { kind: 'choice', prompt, options, correctId: correctOptionId },
       // «Продолжить», а не retry: гейт без правил выхода под правило
       // проходимости не попадает, а шаблон «вопрос с вариантами» затевался
       // ровно ради того, чтобы автор развёл варианты по разным сегментам
@@ -895,6 +944,140 @@ export function applyTemplate(
     };
     gates = [...segment.gates, gate];
   }
+
+  return { ...segment, elements, slides, gates };
+}
+
+/**
+ * Кладёт вопрос уже стоящей на дорожке остановки НА СЦЕНУ — настоящими
+ * элементами, которые автор двигает и оформляет как всё остальное, а не
+ * служебной плашкой поверх картинки (владелец, 21.08.2026: «фигуры должны
+ * быть обозначены как то, что они именно кликабельные и относятся
+ * к вопросу»).
+ *
+ * Геометрия и оформление — заготовки `question` из `SCENE_TEMPLATES`,
+ * а не переписанные числа: элемент №0 заготовки — вопрос, №1 и №2 —
+ * первые два варианта. Лишние варианты (гейт может нести больше двух —
+ * число берётся из САМОГО ГЕЙТА, а не из заготовки) раскладываются тем же
+ * шагом по горизонтали, что и первые два: шаг вычислен ИЗ разницы их `dx`,
+ * а не задан заново литералом.
+ *
+ * Появление элементов — В МОМЕНТ ОСТАНОВКИ, а не с начала главы: секунда
+ * берётся из `gate.at` (`resolveTimeRef`), и `insertOrPatchSlideAt` кладёт
+ * состояния новых элементов ровно в слайд, действующий на этой секунде.
+ * Ни на одном более раннем слайде (включая первый слайд сегмента) у новых
+ * элементов состояния нет вовсе — а элемент без состояния на слайде
+ * не рисуется (см. комментарий в шапке файла), значит раньше остановки
+ * он и не появится. applyTemplate решает ту же задачу иначе (кладёт
+ * элементы видимыми с первого слайда сегмента и патчит их появление внутри
+ * первых нескольких секунд шаблона) — здесь секунда появления может быть
+ * сколь угодно поздней, поэтому старт «изнутри» первого слайда не годится.
+ *
+ * Связь вариант ↔ элемент — ТОЛЬКО через `bindOption` (ADR-035): она же
+ * проверяет «один элемент — один ответ», своей версии этой проверки здесь
+ * нет и не должно быть.
+ */
+export function askOnStage(segment: Segment, gateId: string, stage: { width: number; height: number }): Segment {
+  const gate = segment.gates.find((candidate) => candidate.id === gateId);
+  if (!gate) {
+    throw new Error(`В сегменте «${segment.id}» нет остановки «${gateId}»: некуда класть вопрос`);
+  }
+
+  // Приведение вида — ЧУЖОЙ функцией: setGateKind уже знает, как сохранить
+  // вопрос при переключении и какие два варианта дать по умолчанию.
+  const choiceGate = gate.config.kind === 'choice' ? gate : setGateKind(gate, 'choice');
+  const config = choiceGate.config;
+  if (config.kind !== 'choice') {
+    // Недостижимо: setGateKind('choice') всегда возвращает choice-конфиг.
+    // Оставлено ради сужения типа, а не как ожидаемый случай.
+    throw new Error(`Остановка «${gateId}» не приведена к виду «выбор»`);
+  }
+
+  const questionTemplate = sceneTemplate('question');
+  const questionTe = questionTemplate.elements[0];
+  const firstOptionTe = questionTemplate.elements[1];
+  const secondOptionTe = questionTemplate.elements[2];
+  if (!questionTe || !firstOptionTe || !secondOptionTe) {
+    // Заготовка «question» — часть кода этого же файла: расхождение с тем,
+    // что читает эта функция, значит саму заготовку сломали, а не вызов.
+    throw new Error('Заготовка «question» в SCENE_TEMPLATES повреждена: в ней меньше трёх элементов');
+  }
+  // Шаг раскладки лишних вариантов — ИЗ заготовки, не литерал: если геометрию
+  // заготовки поправят, третий и последующий варианты поедут вместе с ней.
+  const dxStep = secondOptionTe.dx - firstOptionTe.dx;
+
+  const firstSlide = segment.slides[0];
+  if (!firstSlide) {
+    throw new Error(`В сегменте «${segment.id}» нет ни одного слайда`);
+  }
+
+  const elements = segment.elements.slice();
+  const patch: Record<string, ElementState> = {};
+
+  const startZ = Object.values(firstSlide.states).reduce(
+    (max, state) => Math.max(max, state.zIndex), -1,
+  ) + 1;
+
+  /*
+   * ПУСТОЙ ВОПРОС ЗАМЕНЯЕТСЯ ЗАГОТОВОЧНЫМ ТЕКСТОМ.
+   *
+   * Остановка, только что поставленная на дорожке, приходит сюда с пустым
+   * `prompt` (`setGateKind` не выдумывает текста). Пустой текстовый элемент
+   * на сцене НЕВИДИМ: автор нажал «Задать вопрос», увидел две кнопки
+   * и ничего между ними — и решил бы, что вопрос не создался.
+   *
+   * Берётся тот же текст, что у заготовки каталога, чтобы автор видел одно
+   * и то же независимо от того, каким путём пришёл.
+   */
+  const promptText = config.prompt || (questionTe.content ?? '');
+
+  const questionElement = instantiateTemplateElement(
+    { ...questionTe, content: promptText },
+    elements,
+    startZ,
+    stage,
+  );
+  elements.push(questionElement.element);
+  patch[questionElement.element.id] = questionElement.final;
+
+  let boundGate = choiceGate;
+  config.options.forEach((option, index) => {
+    const optionTe: TemplateElement = {
+      ...firstOptionTe,
+      dx: firstOptionTe.dx + dxStep * index,
+      content: option.label,
+    };
+    const built = instantiateTemplateElement(optionTe, elements, startZ + 1 + index, stage);
+    elements.push(built.element);
+    patch[built.element.id] = built.final;
+    boundGate = bindOption(boundGate, option.id, built.element.id);
+  });
+
+  const atSeconds = resolveTimeRef(gate.at, segment.audio.words);
+  const slides = insertOrPatchSlideAt(segment.slides, atSeconds, patch, segment.audio.words);
+
+  /*
+   * ВОПРОС ТОЖЕ ПОЛУЧАЕТ ССЫЛКУ НА СВОЙ ЭЛЕМЕНТ (`promptElementId`).
+   *
+   * Без неё вопрос жил бы на экране дважды — как `prompt` в данных
+   * остановки и как текст на сцене, — и правка одного не доходила бы
+   * до другого. Автор написал бы вопрос в карточке, а зритель прочёл
+   * старый на сцене; ни один тест такого не заметил бы, потому что оба
+   * значения по отдельности верны.
+   */
+  if (boundGate.config.kind !== 'choice') {
+    throw new Error('askOnStage: вид остановки перестал быть выбором посреди работы');
+  }
+  boundGate = {
+    ...boundGate,
+    config: {
+      ...boundGate.config,
+      prompt: promptText,
+      promptElementId: questionElement.element.id,
+    },
+  };
+
+  const gates = segment.gates.map((candidate) => (candidate.id === gateId ? boundGate : candidate));
 
   return { ...segment, elements, slides, gates };
 }

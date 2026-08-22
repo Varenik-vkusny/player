@@ -167,6 +167,110 @@ test.describe('карточка остановки', () => {
   });
 
   /**
+   * ГЛАВНОЕ ОБЕЩАНИЕ СРЕЗА: зритель увидит вопрос.
+   *
+   * До Сессии 55 текст вопроса на сцену не попадал ВОВСЕ — его рисовала
+   * служебная плашка оснастки поверх картинки автора, а при полностью
+   * привязанных вариантах плашка не открывалась, и вопроса не видел никто
+   * (ранний возврат в `apps/playground/src/main.ts`). Замер: во всех
+   * эталонных наборах ноль вариантов было привязано к фигурам — задуманный
+   * путь ADR-011 на живых данных не встречался ни разу.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: «Задать вопрос» перестало класть элементы
+   * на сцену; ответы перестали ссылаться на свои фигуры; вопрос лёг
+   * на сцену, но пустым текстом (тогда он невидим, и автор решит,
+   * что ничего не создалось).
+   */
+  test('вопрос и ответы ложатся на сцену настоящими элементами', async ({ page }) => {
+    const errors = await openEditor(page);
+
+    const before = await page.locator('.ed-stage-host [data-id]').count();
+
+    await addStopAt(page, 0.55);
+    await page.getByTestId('stopcard-make-question').click();
+    await expect(page.getByTestId('stopcard-prompt')).toBeVisible();
+
+    // На сцене прибавилось РОВНО: вопрос плюс по элементу на ответ.
+    const options = await page.getByTestId('stopcard-prompt').evaluate(
+      () => (window as unknown as {
+        __project: { segments: { gates: { config: { options: unknown[] } }[] }[] };
+      }).__project.segments[0]!.gates.at(-1)!.config.options.length,
+    );
+    await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(before + 1 + options);
+
+    const gate = await page.evaluate(
+      () => (window as unknown as {
+        __project: {
+          segments: {
+            elements: { id: string; content: string }[];
+            gates: { config: { prompt: string; promptElementId?: string; options: { elementId?: string }[] } }[];
+          }[];
+        };
+      }).__project.segments[0]!,
+    );
+    const config = gate.gates.at(-1)!.config;
+
+    // Каждый ответ ссылается на СВОЮ фигуру, и все ссылки живые.
+    const ids = new Set(gate.elements.map((element) => element.id));
+    for (const option of config.options) {
+      expect(option.elementId, 'ответ не привязан — зритель получит системную кнопку').toBeDefined();
+      expect(ids.has(option.elementId!)).toBe(true);
+    }
+    expect(new Set(config.options.map((o) => o.elementId)).size).toBe(config.options.length);
+
+    // Вопрос тоже показан фигурой, и текст у неё НЕ ПУСТОЙ: пустой текст
+    // на сцене невидим, и автор решил бы, что вопрос не создался.
+    expect(config.promptElementId, 'вопрос не вынесен на сцену').toBeDefined();
+    const promptElement = gate.elements.find((element) => element.id === config.promptElementId);
+    expect(promptElement?.content, 'текст вопроса на сцене пуст — его не будет видно').toBeTruthy();
+
+    expect(errors).toEqual([]);
+  });
+
+  /**
+   * ОДИН ТЕКСТ — ОДНО ЗНАЧЕНИЕ. Вопрос теперь живёт в двух местах сразу:
+   * в данных остановки и на сцене. Правка обязана доходить до обоих, иначе
+   * автор пишет одно, а зритель читает другое — и оба значения по отдельности
+   * верны, поэтому никакая проверка целостности не покраснеет.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: правка вопроса перестала доходить до фигуры;
+   * холст перестал перерисовывать элемент, у которого изменилось содержимое
+   * (этот дефект и был найден здесь: точечное обновление сцены срабатывало
+   * только на смену СОСТОЯНИЙ слайда, а содержимое живёт в самом элементе).
+   *
+   * Проверяется НА ЭКРАНЕ, а не в данных: «в проекте поменялось» было бы
+   * зелёным и при полностью замершем холсте.
+   */
+  test('правка вопроса в карточке доходит до сцены', async ({ page }) => {
+    const errors = await openEditor(page);
+
+    await addStopAt(page, 0.55);
+    await page.getByTestId('stopcard-make-question').click();
+
+    const promptElementId = await page.evaluate(
+      () => (window as unknown as {
+        __project: { segments: { gates: { config: { promptElementId?: string } }[] }[] };
+      }).__project.segments[0]!.gates.at(-1)!.config.promptElementId,
+    );
+    expect(promptElementId, 'вопрос не вынесен на сцену — проверять нечего').toBeDefined();
+
+    const onStage = page.locator(`.ed-stage-host [data-id="${promptElementId}"]`);
+    const wasText = (await onStage.textContent())?.trim();
+    expect(wasText, 'заготовочный текст вопроса пуст — прибор врёт').toBeTruthy();
+
+    await page.getByTestId('stopcard-prompt').fill('Какой из них легче?');
+    await page.getByTestId('stopcard-prompt').blur();
+
+    await expect(
+      onStage,
+      'текст на сцене не догнал правку: автор пишет одно, зритель прочтёт другое',
+    ).toHaveText('Какой из них легче?');
+    expect(await onStage.textContent()).not.toBe(wasText);
+
+    expect(errors).toEqual([]);
+  });
+
+  /**
    * ПУСТО ЗНАЧИТ ПУСТО. Требование владельца дословно: «кому нужно видеть
    * надпись о том, что ничего не выделено».
    *

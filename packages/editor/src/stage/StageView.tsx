@@ -325,6 +325,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const backdropRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
   const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
+  /*
+   * Какими элементы были нарисованы в прошлый раз — ПО ССЫЛКЕ на объект.
+   *
+   * Нужен отдельно от состояний, потому что содержимое элемента (текст,
+   * путь к картинке) живёт НЕ в состоянии слайда, а в самом элементе.
+   * Правка содержимого не меняет `currentSlide.states`, и эффект ниже,
+   * сравнивающий только состояния, выходил бы раньше, чем что-то сделал.
+   *
+   * До Сессии 55 это не всплывало: единственным способом поменять текст
+   * была правка ПРЯМО НА ХОЛСТЕ, где DOM меняет сам набор с клавиатуры,
+   * а данные лишь догоняют. Первая же правка снаружи — из карточки
+   * остановки — дала классический случай «данные верны, на экране старое».
+   */
+  const renderedElementsRef = useRef<readonly Element[]>([]);
   const gestureRef = useRef<Gesture | null>(null);
   /**
    * Двинулся ли указатель за текущий жест.
@@ -646,6 +660,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     const preview = new ScenePreview(stage, built);
     previewRef.current = preview;
     renderedStatesRef.current = built.slides[0]!.states;
+    renderedElementsRef.current = elements;
     // Инвариант №3 действует и в редакторе, только по другой причине:
     // здесь сцена не должна перехватывать жесты у слоя взаимодействия.
     stage.style.pointerEvents = 'none';
@@ -702,8 +717,12 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     if (!preview) return;
 
     const previous = renderedStatesRef.current;
+    const previousElements = renderedElementsRef.current;
     const states = currentSlide.states;
-    if (previous === states) return;
+    // Ни состояния, ни сами элементы не менялись — рисовать нечего.
+    if (previous === states && previousElements === elements) return;
+
+    const wasElement = new Map(previousElements.map((element) => [element.id, element]));
 
     for (const element of elements) {
       const state = states[element.id];
@@ -712,7 +731,10 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // бы правку, даже не пересоздавая узел («Правка текста на холсте»,
       // препятствие №3). Источник истины остаётся element.content — DOM
       // расходится с ним ровно на время жеста, как и при перетаскивании.
-      if (state && state !== previous[element.id] && editingRef.current?.id !== element.id) {
+      // Перерисовываем и когда изменилось СОСТОЯНИЕ (подвинули, покрасили),
+      // и когда изменился САМ ЭЛЕМЕНТ (правка текста снаружи холста).
+      const changed = state !== previous[element.id] || wasElement.get(element.id) !== element;
+      if (state && changed && editingRef.current?.id !== element.id) {
         // «Вернуть как в стиле» (ADR-029, styleLink.ts) СНИМАЕТ ключ из
         // state.style. `applyElement` (player/src/render.ts) только
         // ЗАПИСЫВАЕТ ключи, которые есть в style, — ключ, пропавший между
@@ -726,6 +748,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       }
     }
     renderedStatesRef.current = states;
+    renderedElementsRef.current = elements;
   }, [elements, currentSlide.states]);
 
   // Живой отклик темы на холсте (docs/design/theme-panel.md §5 — ГЛАВНАЯ

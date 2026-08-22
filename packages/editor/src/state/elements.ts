@@ -129,5 +129,53 @@ export function removeElement(segment: Segment, id: string): Segment {
     return { ...slide, states };
   });
 
-  return { ...segment, elements, slides };
+  /*
+   * ССЫЛКИ ОТВЕТОВ НА ЭТУ ФИГУРУ СНИМАЮТСЯ ЗДЕСЬ (ADR-035).
+   *
+   * С версии схемы 15 связь «ответ — элемент сцены» это настоящее поле,
+   * и ссылка на несуществующий элемент — ошибка разбора. Значит удаление
+   * фигуры, оставившее ссылку, сделало бы проект незагружаемым: автор
+   * нажал Delete, а узнал бы об этом при сохранении или у зрителя.
+   *
+   * Вариант при этом не исчезает и не портится — он возвращается
+   * к системной кнопке, ровно как до привязки. Это законное состояние,
+   * а не полуслом: вопрос остаётся заданным, ответ остаётся ответом,
+   * меняется только то, чем по нему щёлкают.
+   */
+  const bound = segment.gates.some((gate) =>
+    gate.config.kind === 'choice'
+    && (gate.config.promptElementId === id
+      || gate.config.options.some((option) => option.elementId === id)));
+
+  /*
+   * Массив гейтов остаётся ТЕМ ЖЕ ПО ССЫЛКЕ, если на фигуру никто
+   * не ссылался. Это не микрооптимизация: тождество здесь уже охраняется
+   * тестом, и через него держится дешёвое сравнение в React. Пересобирать
+   * список на каждое удаление значило бы перерисовывать дорожку всякий раз,
+   * когда автор убрал ничем не связанную фигуру.
+   */
+  const gates = bound
+    ? segment.gates.map((gate) => {
+      if (gate.config.kind !== 'choice') return gate;
+      const config = gate.config;
+      const touchesPrompt = config.promptElementId === id;
+      const touchesOption = config.options.some((option) => option.elementId === id);
+      if (!touchesPrompt && !touchesOption) return gate;
+
+      const options = config.options.map((option) => {
+        if (option.elementId !== id) return option;
+        const { elementId: _dropped, ...rest } = option;
+        return rest;
+      });
+      // Удалили фигуру, показывавшую сам вопрос: вопрос остаётся в данных
+      // остановки и снова показывается служебной плашкой. Текст не теряется.
+      const { promptElementId: _droppedPrompt, ...restConfig } = config;
+      return {
+        ...gate,
+        config: touchesPrompt ? { ...restConfig, options } : { ...config, options },
+      };
+    })
+    : segment.gates;
+
+  return { ...segment, elements, slides, gates };
 }

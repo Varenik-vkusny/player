@@ -917,6 +917,67 @@ const migrateV13toV14: Migration = (input) => {
   };
 };
 
+/**
+ * v14 → v15: связь ответа с элементом сцены становится ПОЛЕМ.
+ *
+ * До этой версии её не было вовсе: плеер считал кнопкой тот элемент, чей
+ * `id` совпал с `option.id` (ADR-011). Миграция записывает ровно то, что
+ * выводилось при каждом открытии гейта, — и ничего сверх того: где элемента
+ * с таким именем в сегменте нет, поле остаётся пустым, и вариант
+ * по-прежнему рисуется системной кнопкой.
+ *
+ * Поэтому поведение старых проектов не меняется НИ НА ЙОТУ. Меняется
+ * только то, что связь теперь записана и проверяется: ссылка на удалённый
+ * элемент станет ошибкой разбора вместо молчаливой деградации.
+ *
+ * **Зачем бамп при добавлении необязательного поля.** Он защищает отказ
+ * назад. Проект с привязками, попав в сборку, знающую только v14, разобрался
+ * бы УСПЕШНО — Zod отбрасывает незнакомые ключи молча, — и связь исчезла бы
+ * вместе с ними: зритель получил бы системные кнопки вместо нарисованных
+ * автором. Не «сломалось», а «работает не так», и это худший из двух исходов.
+ *
+ * → docs/adr/ADR-035-answer-element-link.md
+ */
+const migrateV14toV15: Migration = (input) => {
+  const v14 = input as {
+    readonly schemaVersion: number;
+    readonly meta: unknown;
+    readonly entry: unknown;
+    readonly styles: unknown;
+    readonly segments: readonly {
+      readonly elements?: readonly { readonly id: string }[];
+      readonly gates?: readonly {
+        readonly config?: { readonly kind?: string; readonly options?: readonly { readonly id: string }[] };
+      }[];
+    }[];
+  };
+
+  const segments = v14.segments.map((segment) => {
+    const elementIds = new Set((segment.elements ?? []).map((element) => element.id));
+    const gates = (segment.gates ?? []).map((gate) => {
+      const config = gate.config;
+      if (config?.kind !== 'choice' || !config.options) return gate;
+      return {
+        ...gate,
+        config: {
+          ...config,
+          options: config.options.map((option) =>
+            (elementIds.has(option.id) ? { ...option, elementId: option.id } : option)),
+        },
+      };
+    });
+    return { ...segment, gates };
+  });
+
+  return {
+    schemaVersion: 15,
+    meta: v14.meta,
+    entry: v14.entry,
+    segments,
+    styles: v14.styles,
+  };
+};
+
 export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   1: migrateV1toV2,
   2: migrateV2toV3,
@@ -931,6 +992,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   11: migrateV11toV12,
   12: migrateV12toV13,
   13: migrateV13toV14,
+  14: migrateV14toV15,
 });
 
 export class SchemaVersionError extends Error {

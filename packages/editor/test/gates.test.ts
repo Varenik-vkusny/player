@@ -452,18 +452,37 @@ describe('setCorrect', () => {
   });
 });
 
-describe('bindOption: привязка варианта к элементу сцены (ADR-011)', () => {
-  it('переименовывает id варианта в id элемента', () => {
+/**
+ * ДОГОВОР ЗДЕСЬ СМЕНИЛСЯ РЕШЕНИЕМ, А НЕ ПОДГОНКОЙ ПОД КОД (ADR-035, схема v15).
+ *
+ * До версии 15 связи «ответ — элемент сцены» в схеме не было вовсе, и
+ * привязка делалась единственным доступным способом: варианту меняли `id`
+ * на идентификатор элемента, чтобы плеер нашёл узел совпадением (ADR-011).
+ * Тесты ниже закрепляли именно это переименование — вместе с его побочными
+ * следствиями (правкой `correctId`).
+ *
+ * Совпадение идентификаторов заменено настоящим полем `elementId`, потому
+ * что из совпадения нельзя вывести намерение и нельзя получить громкий
+ * отказ: разорвать его можно переименованием ЛЮБОЙ из двух сторон, и ни
+ * одна проверка этого не замечала. Значит переименование варианта больше
+ * не происходит, и тесты про него утверждали бы отменённое.
+ */
+describe('bindOption: привязка варианта к элементу сцены (ADR-035)', () => {
+  it('записывает elementId и НЕ трогает имя варианта', () => {
     const next = bindOption(choiceGate(), 'london', 'hero-image');
     if (next.config.kind !== 'choice') throw new Error('ожидался choice');
-    expect(next.config.options.map((o) => o.id)).toEqual(['paris', 'hero-image']);
+    // Имена вариантов остались прежними — в этом и смысл поля.
+    expect(next.config.options.map((o) => o.id)).toEqual(['paris', 'london']);
+    expect(next.config.options.map((o) => o.elementId)).toEqual([undefined, 'hero-image']);
     assertLoadable(next, [element('hero-image')]);
   });
 
-  it('чинит correctId, если он указывал на старый id привязываемого варианта', () => {
+  it('correctId не трогается вовсе, даже у привязываемого варианта', () => {
+    // Раньше привязка «чинила» correctId, потому что меняла имя варианта,
+    // на которое он ссылался. Теперь чинить нечего: имя не меняется.
     const next = bindOption(choiceGate(), 'paris', 'hero-image');
     if (next.config.kind !== 'choice') throw new Error('ожидался choice');
-    expect(next.config.correctId).toBe('hero-image');
+    expect(next.config.correctId).toBe('paris');
     assertLoadable(next, [element('hero-image')]);
   });
 
@@ -473,8 +492,22 @@ describe('bindOption: привязка варианта к элементу сц
     expect(next.config.correctId).toBe('paris');
   });
 
-  it('elementId, уже занятый другим вариантом этого гейта, — ошибка', () => {
-    expect(() => bindOption(choiceGate(), 'london', 'paris')).toThrow(/занят/);
+  it('снятие привязки убирает поле, оставляя вариант на месте', () => {
+    const bound = bindOption(choiceGate(), 'london', 'hero-image');
+    const free = bindOption(bound, 'london', undefined);
+    if (free.config.kind !== 'choice') throw new Error('ожидался choice');
+    expect(free.config.options.map((o) => o.id)).toEqual(['paris', 'london']);
+    expect(free.config.options.every((o) => o.elementId === undefined)).toBe(true);
+    // Снятие привязки не делает проект невалидным: вариант возвращается
+    // к системной кнопке, и это законный основной случай.
+    assertLoadable(free, [element('hero-image')]);
+  });
+
+  it('один элемент нельзя отдать двум вариантам сразу', () => {
+    // Иначе щелчок по фигуре означал бы два разных ответа, и плеер выбрал бы
+    // первый попавшийся молча.
+    const bound = bindOption(choiceGate(), 'london', 'hero-image');
+    expect(() => bindOption(bound, 'paris', 'hero-image')).toThrow(/занят/);
   });
 
   it('пустой elementId — ошибка', () => {
@@ -489,9 +522,12 @@ describe('bindOption: привязка варианта к элементу сц
     expect(() => bindOption(choiceGate(), 'ghost', 'hero-image')).toThrow(/ghost/);
   });
 
-  it('привязка к тому же id — no-op по ссылке', () => {
-    const gate = choiceGate();
-    expect(bindOption(gate, 'paris', 'paris')).toBe(gate);
+  it('повторная привязка к тому же элементу ничего не ломает', () => {
+    const once = bindOption(choiceGate(), 'paris', 'hero-image');
+    const twice = bindOption(once, 'paris', 'hero-image');
+    if (twice.config.kind !== 'choice') throw new Error('ожидался choice');
+    expect(twice.config.options[0]!.elementId).toBe('hero-image');
+    assertLoadable(twice, [element('hero-image')]);
   });
 
   it('на не-choice гейте бросает ошибку', () => {
@@ -618,7 +654,9 @@ describe('охранник целостности: гейт, собранный 
     gate = setOptionLabel(gate, optB!.id, 'Казань');
     gate = setOptionLabel(gate, optC!.id, 'Сочи');
     gate = bindOption(gate, optA!.id, 'moscow-card');
-    gate = setCorrect(gate, 'moscow-card');
+    // Верным отмечается САМ вариант, а не элемент: с ADR-035 привязка имени
+    // варианта не меняет, и `correctId` по-прежнему ссылается на него.
+    gate = setCorrect(gate, optA!.id);
     gate = setOnWrong(gate, 'inline-explain');
     gate = setMaxAttempts(gate, 2);
 
@@ -628,7 +666,9 @@ describe('охранник целостности: гейт, собранный 
     expect(loadedGate.onWrong).toBe('inline-explain');
     expect(loadedGate.maxAttempts).toBe(2);
     if (loadedGate.config.kind === 'choice') {
-      expect(loadedGate.config.correctId).toBe('moscow-card');
+      expect(loadedGate.config.correctId).toBe(optA!.id);
+      // И связь с фигурой записана полем, а не подменой имени.
+      expect(loadedGate.config.options[0]!.elementId).toBe('moscow-card');
       expect(loadedGate.config.prompt).toBe('Где столица России?');
     }
   });

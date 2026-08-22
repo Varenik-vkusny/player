@@ -312,23 +312,51 @@ function assertValidElementId(elementId: string): void {
  * указывал на старый id варианта, переезжает на новый, иначе связь
  * «правильный вариант» бы молча оборвалась.
  */
-export function bindOption(gate: Gate, optionId: string, elementId: string): Gate {
+export function bindOption(
+  gate: Gate,
+  optionId: string,
+  elementId: string | undefined,
+): Gate {
   const config = requireChoice(gate, 'Привязать вариант к элементу сцены');
-  assertValidElementId(elementId);
 
   const index = config.options.findIndex((option) => option.id === optionId);
   if (index < 0) {
     throw new Error(`Нельзя привязать вариант «${optionId}»: его нет в этом гейте`);
   }
-  if (optionId === elementId) return gate;
-  if (config.options.some((option, i) => i !== index && option.id === elementId)) {
+
+  const options = config.options.slice();
+
+  /*
+   * СНЯТИЕ ПРИВЯЗКИ — отдельный законный случай, а не «привязка к пустоте».
+   * Вариант возвращается к системной кнопке; его собственное имя при этом
+   * не трогается, потому что на имени больше ничего не держится.
+   */
+  if (elementId === undefined) {
+    const { elementId: _dropped, ...rest } = options[index]!;
+    options[index] = rest;
+    return { ...gate, config: { ...config, options } };
+  }
+
+  assertValidElementId(elementId);
+
+  // Один элемент — один ответ. Иначе щелчок по фигуре означал бы два разных
+  // ответа сразу, и плеер выбрал бы первый попавшийся молча.
+  if (config.options.some((option, i) => i !== index && option.elementId === elementId)) {
     throw new Error(`Элемент «${elementId}» уже занят другим вариантом этого гейта`);
   }
 
-  const options = config.options.slice();
-  options[index] = { ...options[index]!, id: elementId };
-  const correctId = config.correctId === optionId ? elementId : config.correctId;
-  return { ...gate, config: { ...config, options, correctId } };
+  /*
+   * ПИШЕТСЯ ПОЛЕ, А НЕ ПЕРЕИМЕНОВЫВАЕТСЯ ВАРИАНТ (ADR-035, схема v15).
+   *
+   * До версии 15 связи не существовало, и привязка делалась единственным
+   * доступным способом: варианту меняли `id` на идентификатор элемента,
+   * чтобы плеер нашёл узел совпадением. Побочные следствия были прямые —
+   * менялся `correctId`, менялись условия правил выхода, ссылающиеся
+   * на этот ответ, и всё это ради связи, которую всё равно можно было
+   * разорвать переименованием любой из сторон.
+   */
+  options[index] = { ...options[index]!, elementId };
+  return { ...gate, config: { ...config, options } };
 }
 
 /**

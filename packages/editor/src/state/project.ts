@@ -33,13 +33,14 @@ import {
   ungroupElements as ungroupElementsInSegment,
 } from './groupElements.js';
 import * as exits from './exits.js';
+import { setOptionLabel, setPrompt } from './gates.js';
 import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
 import { branches_title, splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
 import { bakeStyle } from './styleLink.js';
-import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
+import { applyTemplate as applyTemplateToSegment, askOnStage as askOnStageOnSegment, type SceneTemplate } from './templates.js';
 
 /**
  * `freeId` живёт в `elements.ts` — это модуль про элементы, а не про весь
@@ -387,6 +388,34 @@ export type EditorAction =
   // отдельными addElement/addSlide/addGate, которые historyReducer положил
   // бы в историю по одному.
   | { readonly type: 'applyTemplate'; readonly template: SceneTemplate }
+  /*
+   * «Задать вопрос с ответами» у уже стоящей остановки — кладёт вопрос
+   * НА СЦЕНУ настоящими элементами вместо служебной плашки (владелец,
+   * 21.08.2026). Один шаг истории на всё сразу — тем же доводом, что
+   * у `branchFromOption` ниже: смена вида гейта на «выбор», создание
+   * текстовых элементов и привязка вариантов к ним (`bindOption`) обязаны
+   * откатываться Ctrl+Z ЦЕЛИКОМ. Разложи это на смену вида + addElement
+   * по одному на вариант + bindOption по одному — и половинчатый откат
+   * оставил бы либо фигуры без вопроса, либо вопрос без фигур.
+   */
+  | { readonly type: 'askOnStage'; readonly gateId: string }
+  /*
+   * Текст вопроса и подписи ответов — ОДНОЙ отправкой на данные остановки
+   * и на элемент сцены, который их показывает.
+   *
+   * Раздельно было бы не «две правки», а РАСХОЖДЕНИЕ: автор правит вопрос
+   * в карточке, зритель читает старый на сцене, и оба значения по отдельности
+   * верны, поэтому ни одна проверка не покраснеет. Тот же класс, что дважды
+   * пойман в этой сессии: два поля «Вопрос» на одном экране и «строка причин»,
+   * повторяющая то, что уже сказано кнопкой.
+   */
+  | { readonly type: 'setGatePrompt'; readonly gateId: string; readonly text: string }
+  | {
+    readonly type: 'setGateOptionLabel';
+    readonly gateId: string;
+    readonly optionId: string;
+    readonly text: string;
+  }
   | { readonly type: 'addSegment' }
   | { readonly type: 'removeSegment'; readonly id: string }
   // Жёсткая копия куска (product.md §7, механика «копия блока» — не путать
@@ -1177,6 +1206,50 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // пользуется плеер, а не из состояния вида.
       const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
       const nextSegment = applyTemplateToSegment(action.template, currentSegment(state), stage);
+      return replaceSegment(state, nextSegment);
+    }
+
+    case 'setGatePrompt':
+    case 'setGateOptionLabel': {
+      const segment = currentSegment(state);
+      const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
+      if (!gate) {
+        throw new Error(`Остановки «${action.gateId}» нет в текущей главе`);
+      }
+      if (gate.config.kind === 'continue') {
+        throw new Error(`У остановки «${action.gateId}» нет вопроса: это переход «Дальше»`);
+      }
+
+      // Какой элемент сцены показывает правимый текст. `undefined` — вопрос
+      // на сцену не вынесен, и правится только запись в остановке.
+      let shownBy: string | undefined;
+      let nextGate: Gate;
+      if (action.type === 'setGatePrompt') {
+        shownBy = gate.config.kind === 'choice' ? gate.config.promptElementId : undefined;
+        nextGate = setPrompt(gate, action.text);
+      } else {
+        if (gate.config.kind !== 'choice') {
+          throw new Error(`У остановки «${action.gateId}» нет вариантов ответа`);
+        }
+        shownBy = gate.config.options.find((option) => option.id === action.optionId)?.elementId;
+        nextGate = setOptionLabel(gate, action.optionId, action.text);
+      }
+
+      const gates = segment.gates.map((candidate) => (candidate.id === action.gateId ? nextGate : candidate));
+      const elements = shownBy === undefined
+        ? segment.elements
+        : segment.elements.map((element) => (
+          element.id === shownBy ? { ...element, content: action.text } : element
+        ));
+
+      return replaceSegment(state, { ...segment, gates, elements });
+    }
+
+    case 'askOnStage': {
+      // Тот же размер сцены, что и у applyTemplate: из meta проекта,
+      // а не из состояния вида.
+      const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
+      const nextSegment = askOnStageOnSegment(currentSegment(state), action.gateId, stage);
       return replaceSegment(state, nextSegment);
     }
 

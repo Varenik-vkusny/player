@@ -650,9 +650,14 @@ function ChoiceOptionsEditor({
         // на самом обычном клике, вместо того чтобы просто не предлагать
         // недопустимый выбор.
         const takenByOthers = new Set(
-          config.options.filter((other) => other.id !== option.id).map((other) => other.id),
+          config.options
+            .filter((other) => other.id !== option.id)
+            .map((other) => other.elementId)
+            .filter((id): id is string => id !== undefined),
         );
-        const boundElementId = elements.some((element) => element.id === option.id) ? option.id : UNBOUND;
+        // Привязка читается из ПОЛЯ варианта (ADR-035), а не выводится
+        // совпадением имён: совпадение больше не значит ничего.
+        const boundElementId = option.elementId ?? UNBOUND;
         const bindChoices: readonly Choice[] = [
           { value: UNBOUND, label: '— не привязан (системная кнопка) —' },
           ...elements
@@ -698,7 +703,10 @@ function ChoiceOptionsEditor({
               value={boundElementId}
               choices={bindChoices}
               onCommit={(elementId) => {
-                if (elementId !== UNBOUND) onUpdate(bindOption(gate, option.id, elementId));
+                // Пустой выбор — СНЯТИЕ привязки, а не «ничего не делать».
+                // Раньше снять её было нельзя вовсе: привязка меняла имя
+                // варианта, и обратного хода у неё не было.
+                onUpdate(bindOption(gate, option.id, elementId === UNBOUND ? undefined : elementId));
               }}
               testId={`gate-option-bind-${index}`}
             />
