@@ -21,6 +21,17 @@
  * же самым, что пункт рейки без содержимого, — обманом; отсюда же решение
  * не заводить категории «Проекты» и «Приложения», которых у нас нет.
  *
+ * Из этого же следует, что у панели БЕЗ фильтрации поиска НЕТ ВОВСЕ. В
+ * Сессии 55 сюда переехали «Слои», «Главы» и «Метка», и над каждой стояло
+ * поле «Поиск: слои», не фильтрующее ничего: `query` читают только шесть
+ * категорий каталога. Замечено глазами на живом экране, не тестом, — поле
+ * выглядело рабочим до буквы.
+ *
+ * Чтобы это не вернулось само, признак выражен ТИПОМ, а не флагом:
+ * `query` и `onQueryChange` — пара, и она либо есть целиком, либо её нет.
+ * Панель без фильтрации физически не может передать половину пары, а флаг
+ * `showSearch` можно было бы забыть выставить, и поле вернулось бы молча.
+ *
  * Кнопка сворачивания существует ТОЛЬКО пока панель отрисована: свёрнутый
  * каталог Editor.tsx не рендерит вовсе (ширина колонки уходит в 0 через
  * --ed-catalog-w). Дорога назад — рельс категорий слева, он не сворачивается
@@ -30,6 +41,16 @@ import type { ReactElement, ReactNode } from 'react';
 
 import { SearchField } from '../ui/index.js';
 
+/**
+ * Поиск панели: что набрано и куда сообщать о наборе. Единое поле, а не два
+ * необязательных, — чтобы «есть поиск» и «есть фильтрация» нельзя было
+ * рассогласовать.
+ */
+export interface CatalogSearch {
+  readonly query: string;
+  readonly onQueryChange: (value: string) => void;
+}
+
 export interface CatalogPanelProps {
   /**
    * Имя категории. На экране больше НЕ печатается (см. шапку модуля), но
@@ -37,9 +58,12 @@ export interface CatalogPanelProps {
    * в дереве доступности — это «регион», и переходить по нему нечем.
    */
   title: string;
-  /** Что сейчас набрано в поиске. */
-  query: string;
-  onQueryChange: (value: string) => void;
+  /**
+   * Поиск. `undefined` — панель ничего не фильтрует, и поля на экране НЕТ
+   * (см. шапку модуля): орган, который не делает того, что обещает подписью,
+   * хуже отсутствующего.
+   */
+  search?: CatalogSearch | undefined;
   children: ReactNode;
   /**
    * Печатать ли имя панели заголовком.
@@ -61,19 +85,21 @@ export interface CatalogPanelProps {
 }
 
 export function CatalogPanel(
-  { title, query, onQueryChange, children, showTitle = false, onCollapse }: CatalogPanelProps,
+  { title, search, children, showTitle = false, onCollapse }: CatalogPanelProps,
 ): ReactElement {
   return (
     <aside className="ed-catalog" data-testid="catalog" aria-label={title}>
       {showTitle ? <h2 className="ed-catalog-title">{title}</h2> : null}
       <div className="ed-catalog-head">
-        <SearchField
-          label={`Поиск в категории «${title}»`}
-          placeholder={`Поиск: ${title.toLowerCase()}`}
-          value={query}
-          onChange={onQueryChange}
-          testId="catalog-search"
-        />
+        {search ? (
+          <SearchField
+            label={`Поиск в категории «${title}»`}
+            placeholder={`Поиск: ${title.toLowerCase()}`}
+            value={search.query}
+            onChange={search.onQueryChange}
+            testId="catalog-search"
+          />
+        ) : null}
         <button
           type="button"
           className="ed-catalog-collapse"

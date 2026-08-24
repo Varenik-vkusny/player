@@ -16,6 +16,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { loadProject } from '@player/core';
+import { openChapters } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -105,11 +106,19 @@ test.describe('разрез повествования по развилке', (
    */
   test('после разреза автор видит, что новые ветки пусты', async ({ page }) => {
     await openEditor(page, 'exit-branch');
-    await selectFork(page);
+
+    // «Пустые главы» живут в панели «Главы» — открываем её ДО выбора метки:
+    // «Разрезать» стоит в панели «Метка», а панель — общий слот с «Главами»
+    // (см. e2e/panels.ts), и обе двери подряд не открыть — вторая сгонит
+    // первую. Выбор метки ниже сам переключит слот на «Метку».
+    await openChapters(page);
 
     // До разреза пустых частей в этой фикстуре нет: у концовок есть элементы.
     await expect(page.getByTestId('empty-segments')).toContainText('Во всех главах что-то есть');
 
+    // Метка живёт в виде «Дорожки» — «Главы» его подменили выше.
+    await page.getByTestId('view-tracks').click();
+    await selectFork(page);
     await page.getByTestId('gate-split').click();
 
     const created = await page.evaluate(
@@ -123,6 +132,9 @@ test.describe('разрез повествования по развилке', (
           .map((s) => s.id),
     );
     expect(created.length, 'разрез создал пустые ветки').toBeGreaterThan(0);
+
+    // Разрез открыл «Метку» — снова «Главы», тем же слотом.
+    await openChapters(page);
 
     // Предупреждение видно, и названа причина, а не просто счётчик.
     await expect(page.getByTestId('empty-segments')).toContainText('здесь пока ничего нет');

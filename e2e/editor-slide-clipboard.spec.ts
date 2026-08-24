@@ -38,6 +38,7 @@
  * так что щёлкать по нему было бы не по чему.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 async function waitTransportReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -247,7 +248,11 @@ test.describe('буфер обмена слайдов', () => {
     ).toBeEnabled();
     await page.getByTestId('ctxmenu-slide-copy').click();
 
+    await openChapters(page);
     await page.getByTestId('segment-s-b').click();
+    // Дверь глав переключила нижнюю зону на «Ветки» — контекстное меню
+    // дорожки (openTrackMenuAt ниже) живёт в виде «Дорожки», возвращаемся.
+    await page.getByTestId('view-tracks').click();
     await waitTransportReady(page); // новый сегмент — новый источник звука, транспорт пересоздаётся
 
     // Родная сцена s-b: bg-b/label-b, «Кусок B» — до вставки её элементы не тронуты.

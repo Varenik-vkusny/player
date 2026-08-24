@@ -18,6 +18,7 @@
  * `MIN_TAIL_SECONDS`, значит продолжение действительно родится.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -84,6 +85,9 @@ test.describe('разрез без расшифровки: автор узнаё
     await expect(page.getByTestId('mark-panel')).toBeVisible();
     await page.getByTestId('gate-split').click();
 
+    // Предупреждение живёт в панели «Главы» (Editor.tsx, panelId === 'chapters'),
+    // а после разреза открыта осталась «Метка» — дверь та же, что у списка глав.
+    await openChapters(page);
     const warning = page.getByTestId('speech-split-warning');
     await expect(warning).toBeVisible();
     // Словами автора: «кусок» через «продолжение», «текст озвучки», «расшифровка».

@@ -15,6 +15,7 @@
  * от друга, промахнуться указателем мимо одного в другой нельзя.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 interface Box { x: number; y: number; width: number; height: number }
 
@@ -345,6 +346,7 @@ test.describe('группы в редакторе', () => {
    */
   test('двойной щелчок по содержимому группы выделяет ребёнка, а не группу', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     const groupId = await groupTwo(page);
 
     // Снять выделение клавишей, а не кликом по (10, 10): та точка попадает
@@ -375,6 +377,7 @@ test.describe('группы в редакторе', () => {
    */
   test('выделенный ребёнок обведён рамкой там, где он виден', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await page.keyboard.press('Escape');
@@ -408,6 +411,7 @@ test.describe('группы в редакторе', () => {
    */
   test('Escape выходит: следующий щелчок по тому же месту снова берёт группу', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     const groupId = await groupTwo(page);
 
     await page.keyboard.press('Escape');
@@ -437,6 +441,7 @@ test.describe('группы в редакторе', () => {
    */
   test('пока автор внутри группы — на холсте бледная рамка группы, после выхода её нет', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     const groupId = await groupTwo(page);
 
     await page.keyboard.press('Escape');
@@ -479,6 +484,7 @@ test.describe('группы в редакторе', () => {
    */
   test('тяга ребёнка внутри НЕПОВЁРНУТОЙ группы: экранный переезд равен жесту', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await page.keyboard.press('Escape');
@@ -534,6 +540,7 @@ test.describe('группы в редакторе', () => {
    */
   test('тяга ребёнка внутри ПОВЁРНУТОЙ группы: экранный переезд равен жесту', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await clickElement(page, 'mover'); // одиночный щелчок по содержимому берёт ГРУППУ целиком
@@ -633,6 +640,7 @@ test.describe('группы в редакторе', () => {
    */
   test('ресайз ребёнка ручкой меняет его размер, а не швыряет его', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await page.keyboard.press('Escape');
@@ -671,6 +679,7 @@ test.describe('группы в редакторе', () => {
    */
   test('рамка группы охватывает содержимое после того, как ребёнка вытащили за край', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await page.keyboard.press('Escape');
@@ -709,6 +718,7 @@ test.describe('группы в редакторе', () => {
     page,
   }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await clickElement(page, 'mover'); // одиночный щелчок берёт ГРУППУ целиком
@@ -766,6 +776,7 @@ test.describe('группы в редакторе', () => {
    */
   test('рамка группы догоняет содержимое и после сдвига стрелками', async ({ page }) => {
     await openEditor(page);
+    await openLayers(page);
     await groupTwo(page);
 
     await page.keyboard.press('Escape');

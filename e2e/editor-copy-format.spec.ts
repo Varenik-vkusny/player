@@ -11,6 +11,7 @@
  * с плеером (инвариант №5), лист стилей сцены у него тот же.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -108,6 +109,7 @@ test.describe('копировать форматирование', () => {
     page,
   }) => {
     await openEditor(page, 'styles');
+    await openLayers(page);
 
     // note идёт по «Тихому»: 40px, rgb(147, 164, 184) — до всякого копирования.
     expect(await computedOf(page, 'note', 'fontSize')).toBe('40px');
@@ -174,6 +176,8 @@ test.describe('копировать форматирование', () => {
     // note остался на styleId «quiet» (формат-значения его не переводили) —
     // правка ИСТОЧНИКА (не quiet, не heading) приёмника не касается вовсе:
     // разовое копирование, а не связь.
+    // propbar-more выше увёл дверь с «Слои» на «Объект» — открываем заново.
+    await openLayers(page);
     await page.getByTestId('element-row-text-1').click();
     await page.getByTestId('propbar-more').click();
     // Полоса свойств ТОЖЕ показывает поле «Цвет» для текста (BAR_FIELD_KEYS) —
@@ -198,6 +202,7 @@ test.describe('копировать форматирование', () => {
 
   test('тип источника и цели обязаны совпадать: клик по фигуре формат не тратит', async ({ page }) => {
     await openEditor(page, 'styles');
+    await openLayers(page);
 
     const plateBefore = await computedOf(page, 'plate-1', 'backgroundColor');
 

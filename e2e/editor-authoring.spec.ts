@@ -17,6 +17,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 
 import { SCHEMA_VERSION } from '@player/core';
+import { openLayers, openSlideStrip } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -148,6 +149,7 @@ test.describe('список элементов', () => {
 
     // Клика по сцене здесь нет намеренно: клик там, где стоит dot, выделил бы
     // то, что нарисовано поверх него, а не сам dot (StageView.isVisible).
+    await openLayers(page);
     await page.getByTestId('element-row-dot').click();
 
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
@@ -156,6 +158,7 @@ test.describe('список элементов', () => {
 
   test('список показывает все элементы сцены, сверху — с наибольшим zIndex', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     // demo.json: 7 элементов. title/lead/footer — zIndex 3, dot/accent — 2, card — 1, bg — 0.
     const rows = page.locator('.ed-elements-list [data-testid^="element-row-"]');
     await expect(rows).toHaveCount(7);
@@ -171,6 +174,7 @@ test.describe('список элементов', () => {
 
   test('клик по строке списка выделяет элемент и на сцене видна рамка', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-card').click();
     await expect(page.getByTestId('selection-readout')).toContainText('card');
     await expect(page.getByTestId('selection-frame')).toBeVisible();
@@ -180,6 +184,7 @@ test.describe('список элементов', () => {
 test.describe('удаление', () => {
   test('кнопка удаления недоступна, пока ничего не выделено', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     // Кнопка удаления ЭЛЕМЕНТА (заголовок «Элементы», Section action) — не
     // спутать с кнопками удаления СЛАЙДА панели `SlidePanel`: те теперь
     // значки с именем «Удалить слайд» (Сессия 53), и exact-совпадение на
@@ -191,6 +196,7 @@ test.describe('удаление', () => {
     page,
   }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     // dot — цель двух анимаций в demo.json: c-dot и c-dot-move.
     await page.getByTestId('element-row-dot').click();
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
@@ -370,7 +376,8 @@ test.describe('слайд рождается при первой правке', 
     // Второй слайд ленты — его метка заведомо раньше 24 с.
     const slides = await slidesOf(page);
     const target = slides[1]!;
-    await page.getByTestId(`slide-${target.id}`).click();
+    await openSlideStrip(page);
+    await page.getByTestId(`strip-card-${target.id}`).click();
 
     const head = await page.evaluate(
       () => (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds,
@@ -442,6 +449,7 @@ test.describe('перетаскивание картинки на холст', (
 test.describe('элемент на слайде: поместить и убрать', () => {
   test('убрать со слайда — элемент уходит со сцены, но остаётся в списке части', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
 
     const row = page.getByTestId('element-row-title');
     const toggle = page.getByTestId('element-slide-toggle-title');

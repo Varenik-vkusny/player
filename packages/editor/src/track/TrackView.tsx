@@ -260,6 +260,12 @@ export interface TrackViewProps {
   soundToggleProblem: string | undefined;
   slidesOpen: boolean;
   onToggleSlides: () => void;
+  /** Ставит слайд на секунде, куда показал автор. */
+  onAddSlideHere: () => void;
+  /** Убирает слайд, по метке которого открыто меню. */
+  onRemoveSlide: (slideId: string) => void;
+  /** Почему этот слайд убрать нельзя. `undefined` — можно. */
+  slideRemoveProblem: (slideId: string) => string | undefined;
   onDuplicateSlide: () => void;
   onCopySlide: () => void;
   onCutSlide: () => void;
@@ -308,6 +314,9 @@ export function TrackView({
   soundToggleProblem,
   slidesOpen,
   onToggleSlides,
+  onAddSlideHere,
+  onRemoveSlide,
+  slideRemoveProblem,
   onDuplicateSlide,
   onCopySlide,
   onCutSlide,
@@ -561,9 +570,19 @@ export function TrackView({
      * Поэтому объектные действия живут у метки, а местные — у пустого места.
      */
     if (menu.target.kind === 'slide') {
+      const slideId = menu.target.id ?? '';
+      const removeProblem = slideRemoveProblem(slideId);
       return [
         { id: 'slide-copy', label: 'Копировать слайд', shortcut: 'Ctrl+C', onSelect: onCopySlide },
         { id: 'slide-cut', label: 'Вырезать слайд', shortcut: 'Ctrl+X', disabled: slideCutProblem !== undefined, hint: slideCutProblem, onSelect: onCutSlide },
+        {
+          id: 'slide-remove',
+          label: 'Удалить слайд',
+          separatorBefore: true,
+          disabled: removeProblem !== undefined,
+          hint: removeProblem,
+          onSelect: () => onRemoveSlide(slideId),
+        },
       ];
     }
 
@@ -625,6 +644,7 @@ export function TrackView({
         hint: slideDuplicateProblem,
         onSelect: onDuplicateSlide,
       },
+      { id: 'add-slide', label: 'Поставить слайд здесь', onSelect: onAddSlideHere },
       { id: 'add-gate', label: 'Поставить остановку здесь', onSelect: onAddGate },
       {
         /*
@@ -656,7 +676,8 @@ export function TrackView({
         : []),
     ];
   }, [
-    menu, splitProblem, onSplitHere, onAddGate, bubble, bubbleLaneHidden,
+    menu, splitProblem, onSplitHere, onAddGate, onAddSlideHere, onRemoveSlide,
+    slideRemoveProblem, bubble, bubbleLaneHidden,
     onDuplicateSlide, onCopySlide, onCutSlide, onPasteSlide,
     slideDuplicateProblem, slideCutProblem, slidePasteProblem,
   ]);

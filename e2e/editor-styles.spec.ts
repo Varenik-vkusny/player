@@ -14,6 +14,7 @@
  * здесь — то же самое, но через интерфейс редактора).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -47,14 +48,18 @@ test.describe('секция «Вид»: пометка «отличается о
   test('у непотревоженного title пометки нет, у отцепленного по кеглю sub — есть', async ({ page }) => {
     await openEditor(page, 'styles');
 
+    await openLayers(page);
     await page.getByTestId('element-row-title').click();
     await expect(page.getByTestId('selection-readout')).toContainText('title');
     await openObjectPanel(page);
 
     await expect(page.getByTestId('style-detached-font-size')).toHaveCount(0);
 
+    // openObjectPanel выше увёл дверь со «Слои» на «Объект» — открываем заново.
+    await openLayers(page);
     await page.getByTestId('element-row-sub').click();
     await expect(page.getByTestId('selection-readout')).toContainText('sub');
+    await openObjectPanel(page);
 
     await expect(page.getByTestId('style-detached-font-size')).toBeVisible();
     // Отцепление ПО СВОЙСТВУ: цвет sub не трогал руками, у него пометки нет.
@@ -64,6 +69,7 @@ test.describe('секция «Вид»: пометка «отличается о
   test('«Вернуть как в стиле» убирает пометку и подгоняет кегль sub под title', async ({ page }) => {
     await openEditor(page, 'styles');
 
+    await openLayers(page);
     await page.getByTestId('element-row-sub').click();
     await expect(page.getByTestId('selection-readout')).toContainText('sub');
     await openObjectPanel(page);
@@ -90,8 +96,12 @@ test.describe('панель стилей проекта', () => {
     await expect(page.getByTestId('style-item-quiet')).toBeVisible();
     await expect(page.getByTestId('style-item-plate')).toBeVisible();
 
+    // «Слои» и «Стили» делят один слот панели (Сессия 55) — открываем
+    // «Слои», чтобы выбрать элемент из списка, и возвращаемся обратно.
+    await openLayers(page);
     await page.getByTestId('element-row-note').click();
     await expect(page.getByTestId('selection-readout')).toContainText('note');
+    await page.getByTestId('rail-styles').click();
 
     // note идёт по «Тихому» на первом слайде — кегль 40px.
     expect(await computedOf(page, 'note', 'fontSize')).toBe('40px');
@@ -113,8 +123,12 @@ test.describe('панель стилей проекта', () => {
     await openEditor(page, 'styles');
 
     await page.getByTestId('rail-styles').click();
+    // «Слои» и «Стили» делят один слот панели (Сессия 55) — открываем
+    // «Слои», чтобы выбрать элемент из списка, и возвращаемся обратно.
+    await openLayers(page);
     await page.getByTestId('element-row-sub').click();
     await expect(page.getByTestId('selection-readout')).toContainText('sub');
+    await page.getByTestId('rail-styles').click();
 
     await page.getByLabel('Имя нового стиля').fill('Особый');
     await page.getByTestId('style-save').click();

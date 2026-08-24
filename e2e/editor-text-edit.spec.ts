@@ -9,6 +9,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
+import { openLayers, openSlideStrip } from './panels.js';
+
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
@@ -76,7 +78,8 @@ test.describe('правка текста на холсте', () => {
     // проявляется («visible: false → true») на слайде `node-1-slide-3`
     // (0.8 с) — берём более поздний `node-1-slide-8` (9.2 с), тот же, что
     // и в e2e/editor.spec.ts, где title и card уже видны.
-    await page.getByTestId('slide-node-1-slide-8').click();
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click();
 
     const before = await elementContent(page, 'title');
     const center = await centerOnScreen(page, 'title');
@@ -110,7 +113,8 @@ test.describe('правка текста на холсте', () => {
     // выбирается панелью слайдов, а не перемоткой дорожки: та трогает
     // только звук, сцена в редакторе показывает `currentSlide`, а не то,
     // что «сейчас звучит» (см. комментарий в первом тесте файла).
-    await page.getByTestId('slide-node-1-slide-8').click();
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click();
     const before = await elementContent(page, 'title');
     const center = await centerOnScreen(page, 'title');
 
@@ -134,7 +138,8 @@ test.describe('правка текста на холсте', () => {
 
   test('пока каретка в тексте, Delete не удаляет элемент со сцены', async ({ page }) => {
     await openEditor(page, 'demo');
-    await page.getByTestId('slide-node-1-slide-8').click(); // title виден только после появления — см. комментарий выше
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click(); // title виден только после появления — см. комментарий выше
     const center = await centerOnScreen(page, 'title');
 
     await page.mouse.dblclick(center.x, center.y);
@@ -153,7 +158,8 @@ test.describe('правка текста на холсте', () => {
 
   test('клик мимо коммитит правку так же, как Escape', async ({ page }) => {
     await openEditor(page, 'demo');
-    await page.getByTestId('slide-node-1-slide-8').click(); // title виден только после появления — см. комментарий выше
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click(); // title виден только после появления — см. комментарий выше
     const before = await elementContent(page, 'title');
     const center = await centerOnScreen(page, 'title');
 
@@ -164,6 +170,7 @@ test.describe('правка текста на холсте', () => {
     // Клик по строке другого элемента — обычная кнопка вне сцены. Ловится
     // слушателем document в фазе захвата раньше, чем список успеет
     // сменить выделение (см. StageView.beginTextEdit).
+    await openLayers(page);
     await page.getByTestId('element-row-lead').click();
 
     expect(await isEditingText(page), 'клик мимо обязан завершить правку текста').toBe(false);
@@ -179,7 +186,8 @@ test.describe('правка текста на холсте', () => {
     // card тоже проявляется не сразу — без выбора слайда двойной клик
     // ничего бы не нашёл вовсе (ADR-010, «Выделяется то, что ВИДНО»), и тест
     // прошёл бы по неверной причине, а не потому что card — не текст.
-    await page.getByTestId('slide-node-1-slide-8').click();
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click();
     const center = await centerOnScreen(page, 'card'); // card — shape, не text
 
     await page.mouse.dblclick(center.x, center.y);

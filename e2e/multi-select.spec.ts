@@ -11,6 +11,7 @@
  * от друга, поэтому промахнуться указателем мимо одного в другой нельзя.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -130,6 +131,7 @@ test.describe('резиновая рамка', () => {
     // На первом слайде фикстуры видимы ровно двое: mover и leaver.
     // `label` лежит там же, но с visible: false — рамка обязана его
     // пропустить, как пропускает клик (см. isVisible в StageView).
+    await openLayers(page);
     await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
   });
 
@@ -144,6 +146,7 @@ test.describe('резиновая рамка', () => {
       { x: mover.right + 20, y: mover.bottom + 20 },
     );
 
+    await openLayers(page);
     await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
     await expect(page.getByTestId('selection-frame')).toBeVisible();
   });
@@ -153,6 +156,7 @@ test.describe('резиновая рамка', () => {
 
     // mover выделен кликом. Рамка накрывает ОБОИХ, включая уже выделенного.
     await clickElement(page, 'mover');
+    await openLayers(page);
     await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
 
     const host = await screenBoundsOf(page, '.ed-stage-host');
@@ -188,6 +192,7 @@ test.describe('резиновая рамка', () => {
     await page.mouse.click(host.left + 4, host.top + 4);
 
     await expect(page.getByTestId('selection-frame')).toHaveCount(0);
+    await openLayers(page);
     await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(0);
   });
 });
@@ -202,6 +207,7 @@ test.describe('множественное выделение', () => {
     // Смотрим на то, что видит автор: обе строки списка помечены нажатыми.
     // Проверка состояния редьюсера прошла бы и при неработающем Shift
     // на самой сцене.
+    await openLayers(page);
     const pressed = page.locator('.ed-element-row[aria-pressed="true"]');
     await expect(pressed).toHaveCount(2);
   });
@@ -213,6 +219,7 @@ test.describe('множественное выделение', () => {
     await clickElement(page, 'leaver', true);
     await clickElement(page, 'leaver');
 
+    await openLayers(page);
     await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
   });
 

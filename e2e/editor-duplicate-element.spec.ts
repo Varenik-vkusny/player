@@ -11,6 +11,7 @@
  * от друга, промахнуться указателем мимо одного в другой нельзя.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -91,6 +92,8 @@ test.describe('Ctrl+D — копия элементов', () => {
     expect(copy.y).toBeGreaterThan(original.y);
 
     // Выделение перешло на копию: автор сейчас же потащит её в сторону.
+    // Строки списка теперь за дверью «Слои» (Сессия 55).
+    await openLayers(page);
     expect(await selectedIds(page)).toEqual([copyId]);
   });
 

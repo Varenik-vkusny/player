@@ -19,6 +19,7 @@
  * не знает, что можно.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -27,6 +28,7 @@ async function openWithSelection(page: Page): Promise<void> {
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
     timeout: 30_000,
   });
+  await openLayers(page);
   await page.getByTestId('element-row-title').click();
   await expect(page.getByTestId('propbar')).toBeVisible();
 }

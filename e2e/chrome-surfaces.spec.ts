@@ -23,8 +23,12 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-/** Панели середины: шесть прямых детей .ed-main дают четыре видимых листа. */
-const PANELS = ['.ed-rail', '.ed-catalog', '.ed-stage-cell', '.ed-side'] as const;
+/**
+ * Панели середины. Правая колонка (.ed-side) удалена в Сессии 55 — у Канвы
+ * и КапКута справа от полотна нет ничего; проверять её отсутствие здесь
+ * нечем, зато соседи остались теми же.
+ */
+const PANELS = ['.ed-rail', '.ed-catalog', '.ed-stage-cell'] as const;
 
 async function openEditor(page: Page): Promise<void> {
   await page.goto('/editor.html?fixture=demo', { waitUntil: 'load' });

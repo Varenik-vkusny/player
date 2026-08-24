@@ -12,6 +12,7 @@
  * краю, и это используется в тестах направляющих.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -109,6 +110,9 @@ async function clickElement(page: Page, id: string, shift = false): Promise<void
 /** Выделяет несколько элементов подряд: первый обычным кликом, прочие с Shift. */
 async function selectAll(page: Page, ids: readonly string[]): Promise<void> {
   for (const [index, id] of ids.entries()) await clickElement(page, id, index > 0);
+  // Строки элементов теперь за дверью «Слои» (Сессия 55): без неё
+  // `.ed-element-row` не в DOM, и проверка количества упадёт по чужой причине.
+  await openLayers(page);
   await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(ids.length);
 }
 
@@ -364,6 +368,8 @@ test.describe('полоска расположения', () => {
     // goes ушёл вниз — клик в общую точку обязан достаться caption.
     await page.mouse.click(0, 0); // снять выделение, чтобы проверка была честной
     await clickElement(page, 'caption');
+    // openObjectPanel выше увёл дверь на «Объект» — «Слои» открываем заново.
+    await openLayers(page);
     await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(1);
 
     const captionRow = page.locator('.ed-element-row[aria-pressed="true"]');

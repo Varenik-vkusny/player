@@ -10,6 +10,7 @@
  * к элементу (ADR-011), и при потерянной правке свойства анимации.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openSlideStrip } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -478,9 +479,24 @@ test.describe('панель слайда: каталог из восьми пр�
     await dissolveTile.click();
     await expect(dissolveTile, 'плитка «Растворение» стала выбранной').toHaveAttribute('aria-pressed', 'true');
 
-    const row = page.getByTestId(`slide-${slideId}`);
-    await expect(row, 'подпись в списке слайдов — «Растворение»').toContainText('Растворение');
-    await expect(row, 'подпись НЕ осталась словом «разрез» от старого тернарника').not.toContainText('разрез');
+    /*
+     * ГДЕ ТЕПЕРЬ ЧИТАЕТСЯ ВЫБОР. Список слайдов (`slide-<id>`) удалён
+     * в Сессии 55 вместе с правой колонкой. Приём слайда называется
+     * в подписи его МЕТКИ на дорожке (`Editor.tsx`, `title` метки).
+     *
+     * Названо прямо: это ОСЛАБЛЕНИЕ прибора. Было — видимый текст на чипе,
+     * стало — атрибут `title`, который всплывает по наведению. В проекте
+     * измерено, что пометка, спрятанная в подпись органа, до автора
+     * не доходит вовсе. Здесь это терпимо, потому что САМ ВЫБОР автор
+     * видит проверкой выше (плитка стала `aria-pressed`), а подпись метки
+     * охраняет то, ради чего тест написан: тернарник, писавший «разрез»
+     * всему подряд. Если у метки появится видимая подпись приёма — проверку
+     * надо перевести на неё.
+     */
+    const mark = page.getByTestId(`mark-slide-${slideId}`);
+    await expect(mark, 'подпись метки слайда — «растворение»').toHaveAttribute('title', /растворение/i);
+    await expect(mark, 'подпись НЕ осталась словом «разрез» от старого тернарника')
+      .not.toHaveAttribute('title', /разрез/i);
   });
 
   /**
@@ -531,7 +547,11 @@ test.describe('панель слайда: каталог из восьми пр�
           .__project.segments[0]!.slides[2]!.id,
     );
     await page.getByTestId(`mark-slide-${thirdSlideId}`).click();
-    await expect(page.getByTestId(`slide-${thirdSlideId}`)).toBeVisible();
+    // Список слайдов `SlidePanel` удалён в Сессии 55 — карточка слайда
+    // живёт теперь в ленте дорожки (`strip-card-<id>`), лента свёрнута
+    // по умолчанию.
+    await openSlideStrip(page);
+    await expect(page.getByTestId(`strip-card-${thirdSlideId}`)).toBeVisible();
 
     // И назад — панель второго слайда монтируется заново.
     await page.getByTestId(`mark-slide-${slideId}`).click();

@@ -83,6 +83,17 @@ test('время для автора: все подписи секунд на э
    */
   const slideMark = page.getByTestId('mark-slide-node-1-slide-2');
 
+  /*
+   * Сперва ВЫБИРАЕМ метку обычным щелчком. Это не лишний шаг: панель метки
+   * печатает секунды слайда, и до Сессии 55 их обход давала панель слайдов
+   * (`.ed-slide-panel`, удалена вместе с правой колонкой). Без выбора метки
+   * панели на экране нет вовсе, и целый корень обхода выпал бы из проверки
+   * молча — то есть разнобой в секундах панели снова накапливался бы
+   * незамеченным, ровно как накопился в первый раз.
+   */
+  await slideMark.click();
+  await expect(page.getByTestId('mark-panel')).toBeVisible();
+
   await slideMark.click({ button: 'right' });
   await page.getByTestId('ctxmenu-slide-copy').click();
   await expect(page.getByTestId('context-menu')).toHaveCount(0);
@@ -116,7 +127,10 @@ test('время для автора: все подписи секунд на э
       // ровно то место, ради которого написана: причина с секундами живёт
       // теперь там. Узел меню лежит вне зоны (position: fixed на странице),
       // поэтому обходом .ed-track-column он не достаётся.
-      const roots = ['.ed-track-column', '.ed-slide-panel', '.ed-ctxmenu'];
+      // `.ed-catalog` вместо `.ed-slide-panel` (Сессия 55): панели переехали
+      // в колонку каталога и открываются по одной. Обход берёт ту, что
+      // открыта сейчас, — здесь это панель выбранной метки.
+      const roots = ['.ed-track-column', '.ed-catalog', '.ed-ctxmenu'];
       for (const root of roots) {
         const node = document.querySelector(root);
         if (!node) throw new Error(`нет узла ${root}`);

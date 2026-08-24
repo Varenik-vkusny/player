@@ -15,6 +15,7 @@
  * её поймает проверка про скругление.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<string[]> {
   const errors: string[] = [];
@@ -80,6 +81,7 @@ async function backgroundOf(page: Page, id: string): Promise<string> {
 async function selectBothShapes(page: Page): Promise<void> {
   await clickElement(page, 'mover');
   await clickElement(page, 'leaver', true);
+  await openLayers(page);
   await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
 }
 

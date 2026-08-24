@@ -17,6 +17,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
+import { openSlideStrip } from './panels.js';
+
 /** Логическая ширина сцены во всех эталонных фикстурах. */
 const STAGE_WIDTH = 1920;
 
@@ -161,12 +163,15 @@ test.describe('редактор: выделение и перетаскиван�
     // ровно одного `currentSlide`, TrackView.seekToPointer трогает только
     // `transport`, см. `packages/editor/src/track/TrackView.tsx`). Слайд,
     // на котором карточка уже проявилась (`visible: true`), а точка ещё
-    // нет, выбирается через панель слайдов — `node-1-slide-8` на 9.2 с,
+    // нет, выбирается щелчком по карточке в ленте слайдов дорожки
+    // (панель слайдов удалена в Сессии 55 как дубликат ленты) —
+    // `node-1-slide-8` на 9.2 с,
     // это первый после начала анимации карточки (слово №20) и до начала
     // анимации точки (слово №58, ≈27.7 с). Id устойчив: он выведен из
     // структуры demo.json (кью и их порядка), а не подобран на глаз.
     await openEditor(page, 'demo');
-    await page.getByTestId('slide-node-1-slide-8').click();
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click();
 
     // «Видно» на этом слайде значит `visibility`, а не `opacity`: миграция
     // v1→v3 превращает кью «opacity 0→1» в `visible: false→true`
