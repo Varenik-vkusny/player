@@ -34,30 +34,26 @@ import { findSegment } from '@player/core';
 import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
 
 import { keyToIntent, type KeyContext, type KeyIntent } from './keyboard.js';
-import { ELEMENTS, GATES, plural } from './plural.js';
-import { CATALOG_CATEGORIES, type PanelId } from './chrome/catalog.js';
+import { CATALOG_CATEGORIES, PANEL_TITLES, type PanelId } from './chrome/catalog.js';
 import { CatalogPanel } from './chrome/CatalogPanel.js';
 import { CatalogRail } from './chrome/CatalogRail.js';
 import {
   CATALOG_WIDTH_MAX,
   CATALOG_WIDTH_MIN,
   readChromeLayout,
-  SIDE_SPINE_WIDTH_PX,
-  SIDE_WIDTH_MAX,
-  SIDE_WIDTH_MIN,
   writeChromeLayout,
   type ChromeLayout,
 } from './chrome/layoutStore.js';
 import { Splitter } from './chrome/Splitter.js';
-import { Button, ChoiceField, Icon } from './ui/index.js';
+import { Button, ChoiceField, EmptyState, Icon, IconButton } from './ui/index.js';
 import { ElementList } from './panels/ElementList.js';
 import { toRows } from './panels/elementRows.js';
 import { SegmentPanel } from './panels/SegmentPanel.js';
 import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
+import { TextStylesPanel } from './panels/TextStylesPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
 import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js';
-import { SlidePanel } from './panels/SlidePanel.js';
 import { StylesPanel } from './panels/StylesPanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
@@ -108,13 +104,14 @@ import { saveWork } from './state/workspace.js';
 import { importPptxFile, PPTX_ACCEPT } from './import/openPptx.js';
 import { wordMarkCount } from './state/audio.js';
 import { StageView, type StageViewHandle } from './stage/StageView.js';
-import { AudioSourceBody, AudioSourceHead, useAudioSource } from './track/AudioSourcePanel.js';
-import { gateName, secondsText } from './timeText.js';
+import { AudioSourceBody, AudioSourceFilePicker, useAudioSource } from './track/AudioSourcePanel.js';
+import { clockText, gateName, secondsText } from './timeText.js';
 import { anchorStateOf, markSeconds, timeRefAt } from './track/marks.js';
 import type { SpanRange } from './track/spans.js';
 import type { Mark } from './track/MarksLane.js';
 import { BranchesView } from './track/BranchesView.js';
-import { SlideStripCards, SlideStripHead, SlideStripNote } from './track/SlideStrip.js';
+import { SlideStripCards } from './track/SlideStrip.js';
+import { StopCard, useMarkAnchor } from './track/StopCard.js';
 import { TrackView } from './track/TrackView.js';
 import { useTransport } from './track/useTransport.js';
 
@@ -225,25 +222,43 @@ export function Editor({
    * от правой колонки, нет своего корешка, потому что рельс уже играет
    * эту роль и никогда не сворачивается.
    */
+  /**
+   * Что набрано в поиске каталога.
+   *
+   * Живёт в состоянии вида, а не проекта: это не свойство объяснения,
+   * а положение органа. Сбрасывается при смене категории — искать
+   * «заголовок» среди фигур бессмысленно, и оставленный от прошлой
+   * категории запрос показал бы пустую панель без видимой причины.
+   */
+  const [catalogQuery, setCatalogQuery] = useState('');
+
+  /**
+   * Показать панель — значит и РАЗВЕРНУТЬ колонку, если она свёрнута.
+   * Свёрнутый каталог не рендерится вовсе (см. разметку ниже), и панель,
+   * «открытая» в свёрнутую колонку, не существует на экране.
+   *
+   * Вынесено отдельной функцией после находки 23.08.2026: автооткрытие
+   * панели метки этого НЕ делало, и при свёрнутом каталоге выбор метки
+   * открывал панель в никуда. Правило было в одном месте из двух.
+   */
+  const expandCatalog = useCallback(() => {
+    setChromeLayout((previous) => (
+      previous.catalogCollapsed ? { ...previous, catalogCollapsed: false } : previous
+    ));
+  }, []);
+
   const handleSelectCategory = useCallback((id: PanelId) => {
     setPanelId(id);
-    setChromeLayout((previous) => (previous.catalogCollapsed ? { ...previous, catalogCollapsed: false } : previous));
-  }, []);
+    setCatalogQuery('');
+    expandCatalog();
+  }, [expandCatalog]);
 
   const handleToggleCatalogCollapsed = useCallback(() => {
     setChromeLayout((previous) => ({ ...previous, catalogCollapsed: !previous.catalogCollapsed }));
   }, []);
 
-  const handleToggleSideCollapsed = useCallback(() => {
-    setChromeLayout((previous) => ({ ...previous, sideCollapsed: !previous.sideCollapsed }));
-  }, []);
-
   const handleCatalogWidthChange = useCallback((width: number) => {
     setChromeLayout((previous) => ({ ...previous, catalogWidth: width }));
-  }, []);
-
-  const handleSideWidthChange = useCallback((width: number) => {
-    setChromeLayout((previous) => ({ ...previous, sideWidth: width }));
   }, []);
 
   // Мост к правке текста на холсте (см. StageView.beginTextEdit): Escape
@@ -313,13 +328,22 @@ export function Editor({
    */
   const selectedState = selected === undefined ? undefined : currentSlide.states[selected.id];
 
+  /**
+   * Показания выделения. С 19.08.2026 живут в полосе свойств, а не в правом
+   * верхнем углу шапки (см. комментарий на месте выноса).
+   *
+   * Размер и поворот из строки УБРАНЫ. Не ради краткости: они напечатаны
+   * тут же рядом полями самой полосы и панели «Объект», а строка при этом
+   * съедала около 220 px у полосы, которой места не хватает и без неё
+   * (замер Сессии 48: полям нужно 673 при доступных 586). Положение
+   * оставлено — его полоса полями не показывает.
+   */
   const selectionReadout =
     selected === undefined
       ? 'ничего не выделено'
       : selectedState === undefined
         ? `${selected.id}: нет на этом слайде`
-        : `${selected.id}: ${selectedState.x} × ${selectedState.y}, `
-          + `${selectedState.width}×${selectedState.height}, ${selectedState.rotation}°`;
+        : `${selected.id}: ${selectedState.x} × ${selectedState.y}`;
 
   // Выделение метки на дорожке — состояние вида, а не проекта: в файл оно
   // не попадает и переписку интерфейса переживать не обязано (как и раньше).
@@ -342,6 +366,70 @@ export function Editor({
     const slide = segment.slides.find((candidate) => candidate.id === selectedMark.id);
     return slide ? { kind: 'slide', slide } : undefined;
   }, [selectedMark, segment.gates, segment.slides]);
+
+  /*
+   * ЧТО НУЖНО КАРТОЧКЕ ОСТАНОВКИ. Считается здесь, где виден проект целиком:
+   * список глав — цели, куда может уводить ответ, а «куда ведёт» вправе
+   * смотреть на переменную, записанную остановкой ДРУГОЙ главы.
+   *
+   * Карточка появляется только у остановки. У метки слайда её нет: слайд
+   * правится на холсте, и вопросов с ответами у него не бывает.
+   */
+  const stopCardGate = markData?.kind === 'gate' ? markData.gate : undefined;
+  /*
+   * КАРТОЧКА ЗАКРЫТА РУКОЙ — но метка ОСТАЁТСЯ выбранной.
+   *
+   * Сперва закрытие карточки просто снимало выделение, и это дало настоящую
+   * регрессию: щелчок по любому органу панели метки справа считался щелчком
+   * МИМО карточки, снимал выделение, панель исчезала под пальцем — и нажатие
+   * не доходило до кнопки вовсе. Поймали три e2e, которые нажимают в панели
+   * после выбора остановки.
+   *
+   * Закрытие всплывающего окна и снятие выделения — разные вещи. Признак
+   * сбрасывается при смене метки: выбрал другую остановку — карточка снова
+   * открыта, иначе автор один раз закрыл бы её навсегда.
+   */
+  /*
+   * ВЫБРАЛ МЕТКУ — ОТКРЫЛАСЬ ЕЁ ПАНЕЛЬ. Записано в `chrome/catalog.ts`:
+   * «она открывается сама, когда автор выбирает метку». До Сессии 55 панель
+   * жила в правой колонке и была видна всегда; теперь колонки нет, и без
+   * этого редкие свойства остановки стали бы недостижимы вовсе.
+   *
+   * Обратного не делаем: снял выбор — панель остаётся открытой и пустеет.
+   * Захлопывать её самой значило бы отбирать у автора место, которое он
+   * только что смотрел.
+   *
+   * РАЗВОРАЧИВАЕМ И САМУ КОЛОНКУ. Найдено 23.08.2026: без этого при свёрнутом
+   * каталоге выбор метки «открывал» панель, которой нет в DOM, — свёрнутая
+   * колонка не рендерится вовсе. Все остальные двери разворачивают колонку
+   * сами (`handleSelectCategory`), и эта была единственным исключением.
+   */
+  useEffect(() => {
+    if (!selectedMark) return;
+    setPanelId('mark');
+    expandCatalog();
+  }, [selectedMark?.kind, selectedMark?.id, expandCatalog]);
+
+  const [stopCardClosed, setStopCardClosed] = useState(false);
+  useEffect(() => setStopCardClosed(false), [selectedMark?.kind, selectedMark?.id]);
+  const stopCardAnchor = useMarkAnchor(stopCardGate?.id);
+  const stopCardSeconds = useMemo(
+    () => (stopCardGate ? markSeconds(stopCardGate.at, segment.words) : 0),
+    [stopCardGate, segment.words],
+  );
+  /*
+   * Имя главы для списка — то же, что показывает доска веток и «Правила
+   * выхода». Пустое имя заменяется идентификатором: глава без названия —
+   * законное состояние (её только что завели), а пункт списка без подписи
+   * выбрать нельзя.
+   */
+  const chapterChoices = useMemo(
+    () => currentProject.segments.map((chapter) => ({
+      id: chapter.id,
+      title: chapter.title || chapter.id,
+    })),
+    [currentProject.segments],
+  );
 
   // Метка могла исчезнуть не только через кнопку удаления, но и через Ctrl+Z
   // (отмена её добавления) — тот же случай, что и «выделенного элемента нет
@@ -620,18 +708,36 @@ export function Editor({
    * гарантированно проходят проверку `addSlide` («позже предыдущего, раньше
    * следующего»), не полагаясь на положение головки плеера.
    */
-  const handleAddSlide = useCallback(() => {
-    const slides = currentSegment.slides;
-    const index = slides.findIndex((slide) => slide.id === state.currentSlideId);
-    const anchor = slides[index]!;
-    const next = slides[index + 1];
+  /**
+   * Слайд НА ЭТОЙ СЕКУНДЕ — из меню правой кнопки по дорожке (Сессия 55).
+   *
+   * Отличается от `handleAddSlide` тем, ЧТО ЗАДАЁТ МОМЕНТ. Тот кладёт слайд
+   * в середину между текущим и следующим — так надо кнопке «Добавить слайд»
+   * в списке, где никакой секунды не подразумевается. Здесь секунда есть:
+   * автор ткнул в дорожку, и слайд обязан встать туда, куда он показал.
+   *
+   * Предыдущий слайд ищется по времени, а не берётся из выделения: автор мог
+   * показать в место, лежащее до выделенного, и вставка «после выделенного»
+   * дала бы слайд не там, где палец.
+   */
+  const handleAddSlideHere = useCallback(() => {
+    const seconds = transport.positionSeconds;
     const words = segment.words;
-    const anchorSeconds = markSeconds(anchor.at, words);
-    const target = next
-      ? (anchorSeconds + markSeconds(next.at, words)) / 2
-      : anchorSeconds + Math.max(0.1, (segment.duration - anchorSeconds) / 2);
-    dispatch({ type: 'addSlide', afterSlideId: anchor.id, at: timeRefAt(words, target) });
-  }, [currentSegment.slides, state.currentSlideId, segment.words, segment.duration]);
+    const before = [...currentSegment.slides]
+      .filter((slide) => markSeconds(slide.at, words) < seconds)
+      .sort((a, b) => markSeconds(b.at, words) - markSeconds(a.at, words))[0];
+    if (!before) {
+      throw new Error('Некуда поставить слайд: до этой секунды нет ни одного');
+    }
+    dispatch({ type: 'addSlide', afterSlideId: before.id, at: timeRefAt(words, seconds) });
+  }, [currentSegment.slides, segment.words, transport.positionSeconds]);
+
+  /* Прежний handleAddSlide («добавить слайд», кнопка удалённой панели
+     слайдов) убран вместе с ней. Он ставил слайд ПОСЕРЕДИНЕ между текущим
+     и следующим — то есть автор нажимал кнопку и получал слайд неизвестно
+     где: посередине чего-то, что на дорожке не отмечено. handleAddSlideHere
+     выше ставит его в ту секунду, где стоит игла, и это место автор видит
+     глазами до нажатия. */
 
   /**
    * Одношаговая правка содержимого элемента (текст, путь к картинке) —
@@ -686,7 +792,7 @@ export function Editor({
    * не скопирует, а логика редьюсера была бы при этом исправна.
    */
   const slidePasteProblem = state.slideClipboard === undefined
-    ? 'Буфер пуст: сначала скопируйте или вырежьте слайд'
+    ? 'Буфер пуст: скопируйте или вырежьте слайд'
     : slideSpotProblem;
 
   /**
@@ -1710,11 +1816,25 @@ export function Editor({
    * было известно. Теперь хук вызывается в `Editor.tsx` и отдаёт готовое
    * `loadedName` — второй правды больше нет, имя приходит из одного места.
    */
+  /*
+   * Подпись полосы звука. У немого сегмента берётся ПОЛНАЯ подпись панели
+   * («без звука: 6 с»), а не короткое «без звука».
+   *
+   * Куплено регрессией 18.08.2026 и чуть не куплено второй раз сегодня.
+   * Тогда сведение трёх полос-заголовков в одну убрало эту подпись
+   * из постоянно видимого места, и вместе с ней пропало единственное
+   * указание, что озвучки нет: автор видит, что метки ставятся по секундам,
+   * а не по словам (инвариант №10), и не понимает почему. Тихая потеря.
+   *
+   * Тогда вернуть подпись целиком было нельзя ЗАМЕРОМ: в шапке оставалось
+   * 11 px запаса. Теперь шапки с тринадцатью органами больше нет, а у полосы
+   * звука есть своя строка подписи — место, где этой подписи и место.
+   */
   const soundLabel = segment.source.kind === 'file'
     ? (audioSource.loadedName ?? segment.source.fileId)
     : segment.source.kind === 'url'
       ? segment.source.url
-      : 'без звука';
+      : (audioSource.silentLabel ?? 'без звука');
 
   // Ссылка стабильна: иначе эффект в StageView считал бы её изменившейся
   // на каждый рендер и пересобирал сцену по десять раз в секунду.
@@ -2110,34 +2230,54 @@ export function Editor({
     <div className="ed-root">
       <header className="ed-header">
         <strong className="ed-title">{currentProject.meta.title}</strong>
-        <span className="ed-muted">
-          {plural(segment.elements.length, ELEMENTS)} · {plural(segment.gates.length, GATES)}
-        </span>
+        {/* СЧЁТЧИК «7 элементов · 2 остановки» УБРАН из шапки 19.08.2026.
+            Он не терялся: те же числа сказаны на экране ещё дважды —
+            элементы перечислены списком, остановки посчитаны на голове
+            полосы дорожки. Прежний комментарий бюджета шапки называл его
+            первым кандидатом на вылет ровно по этой причине. Убран не ради
+            места, а потому что повтор третьим шрифтом читается как новая
+            величина, а не как та же самая. */}
         <span className="ed-actions">
-          {/* ГРУППА 1 — история правок. */}
+          {/* ГРУППА 1 — история правок, ЗНАЧКАМИ.
+              Словами она занимала 196 px на двоих, и при окне 1280 имени
+              работы оставалось 69 px: шапка показывала «Демо:...». Огрызок
+              хуже отсутствия — это в проекте записано измерением, и здесь
+              он появился ровно из-за переноса облика (кегль вырос с 12
+              до натурных 14). У обеих натур история правок — значки.
+              Подпись не потеряна: она в aria-label и в подсказке. */}
           <span className="ed-actions-group">
-          <Button
+          <IconButton
+            label="Отменить"
             onClick={() => dispatch({ type: 'undo' })}
             disabled={!canUndoState(state)}
+            reason="Отменять нечего"
           >
-            Отменить
-          </Button>
-          <Button
+            <Icon name="undo" />
+          </IconButton>
+          <IconButton
+            label="Повторить"
             onClick={() => dispatch({ type: 'redo' })}
             disabled={!canRedoState(state)}
+            reason="Повторять нечего"
           >
-            Повторить
-          </Button>
+            <Icon name="redo" />
+          </IconButton>
           </span>
 
-          {/* ГРУППА 2 — работа с файлом. «Сохранить» здесь единственная
-              главная кнопка редактора: владелец 18.08.2026 утвердил её
-              заполненной синей. Порядок внутри группы прежний — в макете
-              она стоит последней, но переставлять её значило бы менять
-              состав шапки, а он утверждён как узнаваемый. */}
+          {/* ГРУППА 2 — работа с файлом.
+
+              «Сохранить» БОЛЬШЕ НЕ ГЛАВНАЯ (было утверждено 18.08.2026,
+              переоткрыто владельцем 19.08.2026 при переносе облика с натуры).
+              Причина не вкусовая: у обеих натур — Канвы и КапКута — залитая
+              кнопка стоит в ПРАВОМ ВЕРХНЕМ УГЛУ и означает «отдать работу
+              зрителю» («Поделиться», «Export»). Залитая кнопка в середине
+              ряда не читается как главная: заливка среди пяти соседей
+              работает, а положение — нет.
+
+              Наш точный аналог «Поделиться» — «Открыть в плеере»: это конец
+              работы автора. Он и стал главным, см. группу 3. */}
           <span className="ed-actions-group">
           <Button
-            kind="главная"
             onClick={() => downloadProject(currentProject)}
           >
             Сохранить
@@ -2191,7 +2331,9 @@ export function Editor({
           </Button>
           </span>
 
-          {/* ГРУППА 3 — выход к зрителю. */}
+          {/* ГРУППА 3 — выход к зрителю: настройка предпросмотра и сам
+              выход. Они в ОДНОЙ группе намеренно: селект меняет ровно то,
+              что откроет кнопка, и порознь читались как несвязанные. */}
           <span className="ed-actions-group">
           {/* Режим «смотреть как зритель, ответивший X» (product.md §2б [Р]).
               Без него условные варианты ответа физически непроверяемы: редактор
@@ -2199,7 +2341,6 @@ export function Editor({
               эту часть автору больше негде. */}
           {viewAsVariables.length > 0 ? (
             <span className="ed-view-as" data-testid="view-as">
-              <span className="ed-view-as-title">смотреть как ответивший</span>
               {viewAsVariables.map((variable) => (
                 /* Имя переменной ПОДПИСЬЮ поля, а не пунктом внутри списка:
                    иначе список растягивается по самому длинному пункту
@@ -2210,7 +2351,37 @@ export function Editor({
                 <ChoiceField
                   key={variable.name}
                   className="ed-field--inline ed-view-as-item"
-                  label={variable.name}
+                  /* Подпись — человеческая, а не ключ схемы.
+
+                     Было `variable.name`, то есть `recordAs` остановки:
+                     на видном месте шапки стояло «gate-choice». Автор
+                     такого имени не задавал и прочитать его не может.
+
+                     Одна остановка — подпись «Зритель»: различать нечего,
+                     и короткое слово говорит о назначении органа больше,
+                     чем текст вопроса. Несколько — подписью становится сам
+                     вопрос: тогда различать НАДО, и никакое общее слово
+                     этого не сделает. Полный вопрос стоит подсказкой
+                     в обоих случаях. */
+                  /* Подпись говорит, ЧТО ОРГАН ДЕЛАЕТ, а не как называется
+                     то, что он хранит. Владелец 20.08.2026: «вообще не понял,
+                     для чего она на самом деле» — и был прав дважды.
+
+                     Во-первых, «Зритель» не сообщает, что это настройка
+                     ПРЕДПРОСМОТРА: она меняет то, что откроется по соседней
+                     кнопке, и больше ничего. Во-вторых, орган стоял отдельной
+                     группой, хотя без «Открыть в плеере» бессмыслен.
+
+                     Стало «Открыть как» и вплотную к главной кнопке — теперь
+                     ряд читается одной фразой: открыть как «не отвечал» —
+                     [Открыть в плеере].
+
+                     Зачем режим вообще: объяснение ветвится, и после
+                     остановки с вариантами разные зрители видят разные главы.
+                     Автор в редакторе видит ВСЕ варианты сразу, зритель —
+                     только свой путь; проверить чужой путь больше негде
+                     (product.md §2б [Р]). */
+                  label={viewAsVariables.length === 1 ? 'Открыть как' : variable.prompt || variable.name}
                   testId={`view-as-${variable.name}`}
                   value={viewAs[variable.name] ?? ''}
                   choices={[
@@ -2224,16 +2395,30 @@ export function Editor({
               ))}
             </span>
           ) : null}
+          {/* ГЛАВНОЕ ДЕЙСТВИЕ, правый верхний угол. См. группу 2 о том,
+              почему оно переехало сюда с «Сохранить». */}
           <Button
+            kind="главная"
             onClick={() => openInPlayer(currentProject, previewUrl)}
           >
             Открыть в плеере
           </Button>
           </span>
         </span>
-        <span className="ed-selection" data-testid="selection-readout">
-          {selectionReadout}
-        </span>
+        {/* СТРОКА ВЫДЕЛЕНИЯ УЕХАЛА В ПОЛОСУ СВОЙСТВ (stage/PropBar.tsx).
+            Она занимала правый верхний угол — самое заметное место окна,
+            где у обеих натур стоит главное действие, — и печатала там
+            «ничего не выделено». Хуже того, ровно то же самое было
+            напечатано вторым текстом в полосе над холстом: «Ничего
+            не выделено. Выберите элемент на холсте». Одна мысль дважды
+            на одном экране — тот самый случай, который проект уже покупал
+            («две панели рядом дают две одинаковые подписи»).
+
+            Узел не спрятан и не удалён: он ПЕРЕЕХАЛ вместе со своим
+            data-testid туда, где показания выделения и должны читаться —
+            в полосу свойств этого самого выделения. Прятать его классом
+            было бы прямым повторением дефекта «подписи полей невидимы»:
+            двадцать e2e остались бы зелёными при пустом месте на экране. */}
       </header>
 
       {/* Полосы про слот работы — отдельной строкой ПОД шапкой, а не внутри
@@ -2252,27 +2437,45 @@ export function Editor({
           {workError}
         </div>
       ) : null}
+      {/*
+        ДВА СООБЩЕНИЯ АВТОРУ, ПЕРЕЕХАВШИЕ СЮДА ИЗ ПРАВОЙ КОЛОНКИ (Сессия 55).
+
+        «Почему нельзя удалить» и «почему не легла картинка» жили в колонке,
+        которой больше нет. Место выбрано не «куда влезло»: это ОТКАЗЫ,
+        а отказы в редакторе уже показываются здесь — той же полосой, где
+        автор видит «не удалось сохранить работу».
+
+        Прятать их в панель было бы хуже прежнего: панель открыта не всегда,
+        а картинку бросают на холст, глядя на холст.
+      */}
+      {removalMessage ? (
+        <div className="ed-workspace-error" role="status" data-testid="removal-message">
+          {removalMessage}
+        </div>
+      ) : null}
+      {imageDropError ? (
+        <div className="ed-workspace-error" role="alert" data-testid="image-drop-error">
+          {imageDropError}
+        </div>
+      ) : null}
 
       {/*
-        Шесть прямых детей .ed-main — ровно столько же колонок в её гриде
-        (styles.ts). Число ДЕТЕЙ держится постоянным вне зависимости от
+        Прямые дети .ed-main расставлены по НОМЕРУ (правила
+        .ed-main > :nth-child в styles.ts), а не по классу. Число ДЕТЕЙ
+        держится постоянным вне зависимости от
         свёрнутости: свёрнутая зона отдаёт пустой узел на своё место
         (комментарий у каждого такого узла ниже), а не пропадает из DOM
         совсем, — иначе auto-placement грида сдвинул бы всех соседей
         в чужие колонки, потеряв рельс/сцену на месте. Ширины колонок
         обнуляются через инлайн-переменные на самом .ed-main: так же,
-        как задизайнено в styles.ts (--ed-catalog-w, --ed-right-w и парные
-        им --ed-*-splitter-w для ручек, которых у свёрнутой зоны нет).
+        как задизайнено в styles.ts (--ed-catalog-w и парная ей
+        --ed-catalog-splitter-w для ручки, которой у свёрнутой зоны нет).
       */}
       <div
         className="ed-main"
         style={{
           '--ed-catalog-w': chromeLayout.catalogCollapsed ? '0px' : `${chromeLayout.catalogWidth}px`,
           '--ed-catalog-splitter-w': chromeLayout.catalogCollapsed ? '0px' : '6px',
-          '--ed-side-splitter-w': chromeLayout.sideCollapsed ? '0px' : '6px',
-          '--ed-right-w': chromeLayout.sideCollapsed
-            ? `${SIDE_SPINE_WIDTH_PX}px`
-            : `${chromeLayout.sideWidth}px`,
         } as CSSProperties}
       >
         {/* Колонка 1: рельс категорий. Никогда не сворачивается — это
@@ -2287,25 +2490,59 @@ export function Editor({
           <div aria-hidden="true" />
         ) : (
           <CatalogPanel
-            title={currentCatalogCategory?.label ?? 'Объект'}
-            hint={currentCatalogCategory?.hint
-              ?? 'Полный состав свойств выделенного. На полосе над холстом — только частое.'}
+            title={currentCatalogCategory?.label ?? PANEL_TITLES[panelId] ?? 'Объект'}
+            /* Поиск — ТОЛЬКО у категорий рейки: `catalogQuery` читают ровно
+               их шесть панелей. У «Слоёв», «Глав», «Метки» и «Объекта» поле
+               фильтровало бы пустоту, обещая подписью обратное. Признак
+               и заголовок вычисляются из одного и того же различия, поэтому
+               рассогласоваться не могут. */
+            search={currentCatalogCategory
+              ? { query: catalogQuery, onQueryChange: setCatalogQuery }
+              : undefined}
+            /* Заголовок печатается только у панелей без пункта на рейке:
+               их имя больше нигде не подсвечено. */
+            showTitle={currentCatalogCategory === undefined}
             onCollapse={handleToggleCatalogCollapsed}
           >
             {panelId === 'templates' ? (
               <TemplatesPanel
                 onApply={handleApplyTemplate}
+                query={catalogQuery}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
                 // Схема на плитке рисуется в координатах СЦЕНЫ ПРОЕКТА, а не
                 // в своих: у проекта 4:3 схема, нарисованная в 16:9, показала
                 // бы не ту раскладку, которая ляжет.
                 stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
               />
             ) : panelId === 'shapes' ? (
-              <InsertPanel onInsert={handleInsert} category="shape" />
+              <InsertPanel
+                onInsert={handleInsert}
+                category="shape"
+                query={catalogQuery}
+                sectionTitle="Фигуры для сцены"
+                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
+              />
             ) : panelId === 'text' ? (
-              <InsertPanel onInsert={handleInsert} category="text" />
+              /* Вкладка «Текст» — НЕ сетка плиток, а список карточек
+                 со ступенями размера: у натуры это другой компонент,
+                 см. шапку TextStylesPanel.tsx. */
+              <TextStylesPanel onInsert={handleInsert} query={catalogQuery} />
             ) : panelId === 'own' ? (
-              <InsertPanel onInsert={handleInsert} category="own" />
+              <InsertPanel
+                onInsert={handleInsert}
+                category="own"
+                query={catalogQuery}
+                sectionTitle="Ваши файлы"
+                stage={{ width: currentProject.meta.stageWidth, height: currentProject.meta.stageHeight }}
+                theme={currentProject.meta.theme}
+                styles={currentProject.styles}
+                baseSegment={currentSegment}
+              />
             ) : panelId === 'theme' ? (
               <ThemePanel
                 theme={currentProject.meta.theme}
@@ -2323,6 +2560,89 @@ export function Editor({
                 onApply={handleApplyStyle}
                 onDelete={handleDeleteStyle}
                 onTake={handleTakeStyles}
+              />
+            ) : panelId === 'layers' ? (
+              /*
+                СПИСОК ЭЛЕМЕНТОВ переехал сюда из правой колонки (Сессия 55).
+                Открывается кнопкой «Слои» полосы свойств — так же, как
+                «Объект», и так же, как у Канвы: справа от полотна у натуры
+                нет ничего, панели открываются слева.
+              */
+              <ElementList
+                rows={elementRows}
+                selectedIds={state.selectedIds}
+                onSelect={handleSelect}
+                onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
+                onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
+                headerAction={
+                  <Button onClick={handleDeleteSelected} disabled={state.selectedIds.length === 0}>
+                    Удалить
+                  </Button>
+                }
+              />
+            ) : panelId === 'chapters' ? (
+              <>
+                {/* ADR-022: разрез без расшифровки потерял текст озвучки
+                    продолжения. Стоит рядом с панелью глав — там же, где
+                    «Пустые главы», только это разовое событие разреза,
+                    а не пересчитываемое состояние проекта. */}
+                {speechSplitWarning ? (
+                  <span className="ed-warning" role="status" data-testid="speech-split-warning">
+                    {speechSplitWarning}
+                  </span>
+                ) : null}
+                <SegmentPanel
+                  project={currentProject}
+                  currentSegmentId={state.currentSegmentId}
+                  onSelectSegment={handleSelectSegment}
+                  onAddSegment={handleAddSegment}
+                  onRemoveSegment={handleRemoveSegment}
+                  onDuplicateSegment={handleDuplicateSegment}
+                  onConnect={handleConnect}
+                  onDisconnect={handleDisconnect}
+                  onAddCondition={handleAddCondition}
+                  onRemoveCondition={handleRemoveCondition}
+                />
+              </>
+            ) : panelId === 'mark' && markData ? (
+              <MarkPanel
+                mark={markData}
+                elements={segment.elements}
+                words={segment.words}
+                onRetargetMark={handleRetargetMark}
+                gateInsideTransition={markData.kind === 'gate'
+                  && gateInsideTransition(markData.gate, segment.slides, segment.words)}
+                onUpdateGate={handleUpdateGate}
+                onSetSlideTransition={handleSetSlideTransition}
+                onSetSlideTransitionDirection={handleSetSlideTransitionDirection}
+                onSetSlideTransitionSeconds={handleSetSlideTransitionSecondsLive}
+                onCommitHistory={handleCommitHistory}
+                slideTransitionGapSeconds={selectedSlideGapSeconds}
+                onRenameVariable={handleRenameVariable}
+                variableProblemOf={variableProblemOf}
+                onRemove={handleRemoveMark}
+                onSplitAtGate={markData.kind === 'gate'
+                  ? () => handleSplitAtGate(markData.gate.id)
+                  : undefined}
+                splitBlockedReason={markData.kind === 'gate'
+                  ? splitBlockedReason(markData.gate, segment.words)
+                  : undefined}
+              />
+            ) : panelId === 'mark' ? (
+              /*
+                ПАНЕЛЬ МЕТКИ БЕЗ ВЫБРАННОЙ МЕТКИ. Ветка нужна отдельная:
+                без неё цепочка проваливалась в инспектор объекта, и автор
+                видел свойства ЭЛЕМЕНТА под заголовком «Метка». Заголовок
+                врал, и это не опечатка вида — панель показывала не то,
+                чем назвалась.
+
+                Панель остаётся открытой и пустеет намеренно (см. эффект
+                автооткрытия выше): захлопывать её самой значило бы отбирать
+                у автора место, которое он только что смотрел.
+              */
+              <EmptyState
+                title="Метка не выбрана"
+                hint="Выберите остановку или слайд на дорожке — их свойства появятся здесь"
               />
             ) : (
               // panelId === 'object': панель свойств выделенного элемента —
@@ -2385,12 +2705,14 @@ export function Editor({
         <div className="ed-stage-cell">
         <PropBar
           selectedCount={state.selectedIds.length}
+          selectionReadout={selectionReadout}
           styleFields={propbarFields}
           styleValueOf={propbarStyleValueOf}
           onStyleCommit={handlePropbarStyleCommit}
           onStyleLiveCommit={handlePropbarStyleLive}
           onStyleCommitHistory={handleCommitHistory}
           onOpenObject={() => handleSelectCategory('object')}
+          onOpenLayers={() => handleSelectCategory('layers')}
         />
         <StageView
           ref={stageRef}
@@ -2405,165 +2727,128 @@ export function Editor({
           onContextMenu={handleStageContextMenu}
           onImageDrop={handleImageDrop}
           onReady={handleReady}
+          /*
+            Левая группа нижней полосы — «что я показываю»: переключатель
+            вида нижней зоны и второе окно. Раньше эти три кнопки стояли
+            в строке НАД дорожкой, в одном ряду с крошками, буфером слайдов
+            и счётчиком — то есть в ленте из тринадцати органов, где ничто
+            не говорило, какой из них к чему относится.
+
+            У обеих натур над дорожкой органов нет вовсе, а переключатель
+            того, что показано внизу, стоит именно в нижней полосе окна
+            (у Канвы это «Страницы»).
+          */
+          stripLeft={
+            <>
+              <button
+                type="button"
+                className={bottomView === 'tracks' ? 'ed-strip-view ed-strip-view--on' : 'ed-strip-view'}
+                data-testid="view-tracks"
+                aria-pressed={bottomView === 'tracks'}
+                onClick={() => setBottomView('tracks')}
+              >
+                <Icon name="rows" /> <span className="ed-strip-view-label">Дорожки</span>
+              </button>
+              <button
+                type="button"
+                className={bottomView === 'branches' ? 'ed-strip-view ed-strip-view--on' : 'ed-strip-view'}
+                data-testid="view-branches"
+                aria-pressed={bottomView === 'branches'}
+                onClick={() => setBottomView('branches')}
+              >
+                <Icon name="git-branch" /> <span className="ed-strip-view-label">Ветки</span>
+              </button>
+              {/* Второе окно — значком без подписи: это редкое действие,
+                  и подпись рядом с двумя другими читалась бы как третий
+                  равноправный вид, которым оно не является. */}
+              <button
+                type="button"
+                className="ed-strip-icon"
+                data-testid="open-second-window"
+                onClick={handleOpenSecondWindow}
+                aria-label="Дерево веток во весь экран на втором мониторе"
+                title="Дерево веток во весь экран на втором мониторе"
+              >
+                <Icon name="external-link" />
+              </button>
+            </>
+          }
+          /*
+            Средняя группа — «где я во времени». У Канвы транспорт стоит
+            ровно здесь: по центру, под холстом, НАД линейкой. Замер её
+            таймлайна 19.08.2026: «0:00 ▶ 0:05», центр совпадает с центром
+            холста, и ничего больше в этой строке по центру нет.
+
+            Часы и кнопка уехали сюда из строки .ed-transport внутри зоны,
+            которая теперь удалена целиком.
+          */
+          stripCenter={
+            <>
+              <button
+                type="button"
+                className="ed-strip-play"
+                onClick={transport.toggle}
+                disabled={Boolean(transport.failure)}
+                aria-label={transport.isPlaying ? 'Пауза' : 'Играть'}
+              >
+                {transport.isPlaying ? '❚❚' : '▶'}
+              </button>
+              <code className="ed-clock" data-testid="track-clock">
+                {clockText(transport.positionSeconds)} / {clockText(transport.durationSeconds)}
+              </code>
+              {/* Сообщение о незагрузившейся дорожке сюда НЕ ставится.
+                  Оно длинное («Дорожка не загрузилась: audio/…mp3»), а эта
+                  группа обязана стоять по центру холста: замер 21.08.2026 дал
+                  ширину группы 671 px вместо 167 и наезд на соседей при окне
+                  1280. Место сообщения — в полосе звука, там, где из-за него
+                  же не нарисовалась волна (TrackView). */}
+            </>
+          }
         />
         </div>
         </div>
 
-        {/* Колонка 5: ручка между сценой и правой колонкой. Та же логика,
-            что у колонки 3, только для правой стороны. */}
-        {chromeLayout.sideCollapsed ? (
-          <div aria-hidden="true" />
-        ) : (
-          <Splitter
-            width={chromeLayout.sideWidth}
-            min={SIDE_WIDTH_MIN}
-            max={SIDE_WIDTH_MAX}
-            side="right"
-            onChange={handleSideWidthChange}
-          />
-        )}
+        {/*
+          КОЛОНКИ 5 И 6 (ручка и правая колонка) УДАЛЕНЫ ЦЕЛИКОМ — Сессия 55,
+          решение владельца 19.08.2026 «убрать совсем, как у Канвы».
 
-        {/* Колонка 6: правая колонка. В отличие от каталога, свернуть её
-            в пустоту нельзя — своего рельса у неё нет, и без видимого следа
-            автор не нашёл бы дорогу назад (задание Сессии 30: «кнопка
-            развернуть обязана остаться доступной у свёрнутой зоны»).
-            Свёрнутая — это узкая полоска-корешок (.ed-side-spine) с ОДНОЙ
-            кнопкой развернуть, а не пустой узел, как у колонок 2/3/5. */}
-        {chromeLayout.sideCollapsed ? (
-          <div className="ed-side-spine" aria-label="Слайды, сегменты и метки (свёрнуто)">
-            <button
-              type="button"
-              className="ed-side-expand"
-              data-testid="collapse-side"
-              aria-expanded="false"
-              aria-label="Развернуть правую колонку"
-              onClick={handleToggleSideCollapsed}
-            >
-              <Icon name="chevron-left" />
-            </button>
-          </div>
-        ) : (
-          <aside className="ed-side" aria-label="Слайды, сегменты и метки">
-            <div className="ed-side-collapse-row">
-              <button
-                type="button"
-                className="ed-side-collapse"
-                data-testid="collapse-side"
-                aria-expanded="true"
-                aria-label="Свернуть правую колонку"
-                onClick={handleToggleSideCollapsed}
-              >
-                <Icon name="chevron-right" />
-              </button>
-            </div>
-            {removalMessage ? (
-              <span className="ed-notice" role="status" data-testid="removal-message">
-                {removalMessage}
-              </span>
-            ) : null}
-            {imageDropError ? (
-              <span className="ed-failure" role="alert" data-testid="image-drop-error">
-                {imageDropError}
-              </span>
-            ) : null}
-            <ElementList
-              rows={elementRows}
-              selectedIds={state.selectedIds}
-              onSelect={handleSelect}
-              onPutOnSlide={(id) => dispatch({ type: 'putElementOnSlide', elementId: id })}
-              onRemoveFromSlide={(id) => dispatch({ type: 'removeElementFromSlide', elementId: id })}
-              headerAction={
-                <Button
-                  onClick={handleDeleteSelected}
-                  disabled={state.selectedIds.length === 0}
-                >
-                  Удалить
-                </Button>
-              }
-            />
-            <SlidePanel
-              slides={segment.slides}
-              words={segment.words}
-              currentSlideId={state.currentSlideId}
-              onSelect={handleSelectSlide}
-              onAdd={handleAddSlide}
-              onRemove={handleRemoveSlide}
-              cutProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
-            />
-            {/* ADR-022: разрез без расшифровки потерял текст озвучки продолжения.
-                Рядом с панелью глав — тот же класс сообщения, что и «Пустые
-                главы» внутри неё (state/exits.ts: emptySegments), только здесь
-                это разовое событие самого разреза, а не постоянно пересчитываемое
-                состояние проекта (см. handleSplitAtGate выше). */}
-            {speechSplitWarning ? (
-              <span className="ed-warning" role="status" data-testid="speech-split-warning">
-                {speechSplitWarning}
-              </span>
-            ) : null}
-            <SegmentPanel
-              project={currentProject}
-              currentSegmentId={state.currentSegmentId}
-              onSelectSegment={handleSelectSegment}
-              onAddSegment={handleAddSegment}
-              onRemoveSegment={handleRemoveSegment}
-              onDuplicateSegment={handleDuplicateSegment}
-              onConnect={handleConnect}
-              onDisconnect={handleDisconnect}
-              onAddCondition={handleAddCondition}
-              onRemoveCondition={handleRemoveCondition}
-            />
-            {markData ? (
-              <MarkPanel
-                mark={markData}
-                elements={segment.elements}
-                words={segment.words}
-                onRetargetMark={handleRetargetMark}
-                gateInsideTransition={markData.kind === 'gate'
-                  && gateInsideTransition(markData.gate, segment.slides, segment.words)}
-                onUpdateGate={handleUpdateGate}
-                onSetSlideTransition={handleSetSlideTransition}
-                onSetSlideTransitionDirection={handleSetSlideTransitionDirection}
-                onSetSlideTransitionSeconds={handleSetSlideTransitionSecondsLive}
-                onCommitHistory={handleCommitHistory}
-                slideTransitionGapSeconds={selectedSlideGapSeconds}
-                onRenameVariable={handleRenameVariable}
-                variableProblemOf={variableProblemOf}
-                onRemove={handleRemoveMark}
-                onSplitAtGate={markData.kind === 'gate'
-                  ? () => handleSplitAtGate(markData.gate.id)
-                  : undefined}
-                splitBlockedReason={markData.kind === 'gate'
-                  ? splitBlockedReason(markData.gate, segment.words)
-                  : undefined}
-                /* Куда ведёт вариант — читается ЗДЕСЬ, где виден проект
-                   целиком: правило выхода вправе смотреть на переменную,
-                   записанную гейтом другой главы. Панель проекта не видит. */
-                destinationOf={markData.kind === 'gate'
-                  ? (optionId) => optionDestination(
-                    currentProject, state.currentSegmentId, markData.gate.recordAs, optionId,
-                  )
-                  : undefined}
-                /* Одна отправка на оба дела — глава и правило в неё. Ctrl+Z
-                   обязан отменять их вместе: половина отката оставила бы
-                   главу, до которой не дойти. Довод и устройство — в разборе
-                   действия `branchFromOption` (state/project.ts). */
-                onBranchFromOption={markData.kind === 'gate'
-                  ? (optionId) => dispatch({
-                    type: 'branchFromOption', gateId: markData.gate.id, optionId,
-                  })
-                  : undefined}
-              />
-            ) : (
-              // Ничего не выделено и метка не выбрана — свойств показывать
-              // нечего. Панель «Объект» (см. CatalogPanel выше) — единственное
-              // место, где теперь стоит Inspector; двух его копий на экране
-              // быть не должно (задание Сессии 30, «полоса свойств»).
-              null
-            )}
-          </aside>
-        )}
-      </div>
+          Замер натуры: у Канвы справа от полотна нет НИЧЕГО — панели
+          открываются только слева, от рейки, а свойства выделенного живут
+          в полосе над полотном. То же у КапКута.
 
+          Куда что уехало, и у каждого своя дверь рядом со своим предметом:
+
+            список элементов -> панель «Слои», кнопка полосы свойств;
+            список слайдов   -> дорожка: лента карточек и метки, а действия
+                                в меню правой кнопки («Поставить слайд здесь»,
+                                «Удалить слайд»);
+            список глав и правила выхода -> панель «Главы», кнопка на доске
+                                веток;
+            свойства метки    -> панель «Метка», открывается сама при выборе
+                                метки на дорожке.
+
+          Пустые узлы на месте колонок НЕ оставлены: сетка .ed-main сокращена
+          с шести колонок до четырёх, и правила по номеру ребёнка в styles.ts
+          поправлены вместе с ней.
+        */}
+
+        {/* Колонка 7 (второй ряд): НИЖНЯЯ ЗОНА.
+
+            Переехала сюда из корня редактора 20.08.2026. Была третьим
+            рядом .ed-root и потому физически не могла не тянуться во всю
+            ширину окна: рейка и каталог обрывались на середине высоты,
+            а дорожка подныривала под них.
+
+            У натуры наоборот, и это совпало у двух независимых продуктов:
+            рейка и панель — колонны во всю высоту, а нижняя зона живёт
+            ПРАВЕЕ них (замер КапКута: зона начинается с x = 356, а не
+            с нуля). Совпавшее у двоих — закон, а не их вкусовщина.
+
+            Сетка .ed-main получила второй ряд, первые три колонки
+            растянуты на оба (styles.ts, правила .ed-main > :nth-child).
+            Позиции заданы по номеру ребёнка, а не по классу: свёрнутые
+            зоны отдают на своё место безымянный <div aria-hidden>,
+            и правило по классу их бы не увидело. */}
       {/* Обёрнуты вместе: .ed-root — грид с тремя строками (auto 1fr auto),
           и третья строка обязана остаться ОДНИМ ребёнком, иначе разметка
           требует четвёртой строки. */}
@@ -2596,58 +2881,29 @@ export function Editor({
           <span className="ed-zone-crumbs" data-testid="zone-crumbs">
             Основная › {currentSegment.title || currentSegment.id}
           </span>
-          {bottomView === 'tracks' ? (
-            <>
-              <AudioSourceHead state={audioSource} />
-              <SlideStripHead
-                slides={segment.slides}
-                words={segment.words}
-                currentSlideId={state.currentSlideId}
-                collapsed={slidesCollapsed}
-                onToggleCollapsed={() => setSlidesCollapsed((was) => !was)}
-                onDuplicate={handleDuplicateSlide}
-                onCopy={handleCopySlide}
-                onCut={handleCutSlide}
-                onPaste={handlePasteSlide}
-                cutProblem={currentSlideCutProblem}
-                duplicateProblem={slideSpotProblem}
-                pasteProblem={slidePasteProblem}
-              />
-            </>
-          ) : null}
-          <span className="ed-zone-views">
-            <button
-              type="button"
-              className={bottomView === 'tracks' ? 'ed-zone-view ed-zone-view--on' : 'ed-zone-view'}
-              data-testid="view-tracks"
-              aria-pressed={bottomView === 'tracks'}
-              onClick={() => setBottomView('tracks')}
-            >
-              Дорожки
-            </button>
-            <button
-              type="button"
-              className={bottomView === 'branches' ? 'ed-zone-view ed-zone-view--on' : 'ed-zone-view'}
-              data-testid="view-branches"
-              aria-pressed={bottomView === 'branches'}
-              onClick={() => setBottomView('branches')}
-            >
-              Ветки
-            </button>
-            {/* Второе окно показывает дерево веток во весь экран — решение
-                владельца 16.08.2026 (`tracks.md` §4). Кнопка стоит рядом
-                с переключателем видов, а не в верхней полосе: она про то же
-                самое дерево, и искать её автор будет здесь. */}
-            <button
-              type="button"
-              className="ed-zone-view"
-              data-testid="open-second-window"
-              onClick={handleOpenSecondWindow}
-              title="Дерево веток во весь экран на втором мониторе"
-            >
-              Второе окно
-            </button>
-          </span>
+          {/*
+            ГОЛОВЫ ОЗВУЧКИ И ЛЕНТЫ УБРАНЫ ИЗ ЭТОЙ СТРОКИ (Сессия 55).
+
+            Владелец, открыв редактор 22.08.2026: «есть сверху кнопка слайды
+            и кнопка озвучка и вот это вот всё, так и должно быть точно?»
+            Нет: это был последний остаток строки органов над дорожкой. Обе
+            кнопки открывают панели СВОИХ полос, а стояли в общем ряду
+            с крошками, и ничто не связывало их с тем, чем они управляют.
+
+            Теперь подпись полосы «Звук» и подпись полосы «Слайды» сами
+            и есть эти кнопки (TrackView). В строке остались только крошки —
+            то есть ответ на вопрос «где я», и ничего кроме.
+
+            Скрытый выбор файла живёт дальше здесь: он `display: none`,
+            автор его не видит никогда, а нажимает по нему кнопка панели
+            через ref. Перенос его в полосу поменял бы способ открытия файла,
+            то есть ПОВЕДЕНИЕ, ради места на экране, которого он не занимает.
+          */}
+          {bottomView === 'tracks' ? <AudioSourceFilePicker state={audioSource} /> : null}
+          {/* Переключатель видов и второе окно ПЕРЕЕХАЛИ в нижнюю полосу
+              окна (Сессия 55, `design/track-zone.md`). Над дорожкой органов
+              не остаётся: у обеих натур их там ноль, а у нас было
+              семнадцать в трёх рядах — 96 px из 306, то есть треть зоны. */}
         </div>
 
         {bottomView === 'branches' ? (
@@ -2659,14 +2915,24 @@ export function Editor({
             range={durationSpread}
             extractReason={(ids) => extractBlockedReason(currentProject, ids)}
             onExtract={(chapterIds) => dispatch({ type: 'extractToBranch', chapterIds })}
+            onOpenChapters={() => handleSelectCategory('chapters')}
           />
         ) : (
         <>
-        <SlideStripNote
-          cutProblem={currentSlideCutProblem}
-          duplicateProblem={slideSpotProblem}
-          pasteProblem={slidePasteProblem}
-        />
+        {/*
+          СТРОКА ПРИЧИН УДАЛЕНА (Сессия 55, долг от 20.08.2026).
+
+          Она печатала ТРИ причины разом — «Первый слайд вырезать нельзя ·
+          Начало главы занято · Буфер пуст», — относящиеся к трём разным
+          кнопкам, и печатала всегда. В узкой зоне строка переносилась
+          на вторую: замер дал высоту 37 вместо 21, зона 306 -> 322,
+          холст 344 -> 328. То есть высота холста зависела от того,
+          влез ли текст в ширину окна.
+
+          Каждая причина уехала в СВОЙ пункт меню правой кнопки по метке
+          слайда (TrackView). Возврат к `title` был бы шагом назад:
+          на подсказки, как измерено, не смотрят.
+        */}
         {audioSource.open ? (
           <AudioSourceBody
             state={audioSource}
@@ -2710,10 +2976,32 @@ export function Editor({
           onEditSpan={handleEditSpan}
           onEditSpanEnd={handleCommitHistory}
           onRemoveSpan={handleRemoveSpan}
+          /* Складывание полос — у самих полос (Сессия 55). Кнопки «Озвучка»
+             и «Слайды» больше не стоят в общем ряду над дорожкой: подпись
+             полосы и есть её кнопка. */
+          soundOpen={audioSource.open}
+          onToggleSound={() => audioSource.setCollapsed(audioSource.open)}
+          soundToggleProblem={
+            audioSource.mustSpeak ? 'Панели есть что сообщить — свернуть её сейчас нельзя' : undefined
+          }
+          slidesOpen={!slidesCollapsed}
+          onToggleSlides={() => setSlidesCollapsed((was) => !was)}
+          onAddSlideHere={handleAddSlideHere}
+          onRemoveSlide={handleRemoveSlide}
+          slideRemoveProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
+          onDuplicateSlide={handleDuplicateSlide}
+          onCopySlide={handleCopySlide}
+          onCutSlide={handleCutSlide}
+          onPasteSlide={handlePasteSlide}
+          slideCutProblem={currentSlideCutProblem}
+          slideDuplicateProblem={slideSpotProblem}
+          slidePasteProblem={slidePasteProblem}
         />
         </>
         )}
       </div>
+      </div>
+
       {/*
         Меню правой кнопки — соседка всей раскладки, а не потомок сцены.
         У сцены свой `transform` масштаба, а `position: fixed` внутри
@@ -2728,6 +3016,56 @@ export function Editor({
           onClose={() => setContextMenuAt(undefined)}
         />
       )}
+
+      {/*
+        КАРТОЧКА ОСТАНОВКИ — поверх всего, рядом со своей меткой.
+
+        Стоит здесь, а не внутри дорожки, по той же причине, что и меню
+        правой кнопки: узел с `position: fixed` не должен зависеть от
+        переполнения и прокрутки предков. Внутри контейнера прокрутки полос
+        её обрезало бы ровно тогда, когда она нужна, — при масштабе дорожки
+        больше единицы.
+
+        Показывается при ВЫБРАННОЙ остановке — и тогда, когда её метки
+        на экране нет (дорожка свёрнута, полотно укатилось при масштабе):
+        карточка единственное место, где правятся вопрос и ответы, и исчезни
+        она вместе с меткой, поля стали бы недостижимы вовсе. Без метки
+        карточка встаёт по центру, без привязки.
+
+        Ничего не выбрано — карточки нет вовсе: пустая плашка на экране
+        запрещена прямым словом владельца.
+      */}
+      {stopCardGate && !stopCardClosed ? (
+        <StopCard
+          gate={stopCardGate}
+          seconds={stopCardSeconds}
+          chapters={chapterChoices}
+          currentChapterId={state.currentSegmentId}
+          destinationOf={(optionId) => optionDestination(
+            currentProject, state.currentSegmentId, stopCardGate.recordAs, optionId,
+          )}
+          anchor={stopCardAnchor}
+          onUpdateGate={handleUpdateGate}
+          onAskOnStage={() => dispatch({ type: 'askOnStage', gateId: stopCardGate.id })}
+          onPromptChange={(text) => dispatch({
+            type: 'setGatePrompt', gateId: stopCardGate.id, text,
+          })}
+          onOptionLabelChange={(optionId, text) => dispatch({
+            type: 'setGateOptionLabel', gateId: stopCardGate.id, optionId, text,
+          })}
+          onOptionTarget={(optionId, goto) => dispatch({
+            type: 'setOptionTarget',
+            gateId: stopCardGate.id,
+            optionId,
+            goto,
+          })}
+          onBranchFromOption={(optionId) => dispatch({
+            type: 'branchFromOption', gateId: stopCardGate.id, optionId,
+          })}
+          onCommitHistory={handleCommitHistory}
+          onClose={() => setStopCardClosed(true)}
+        />
+      ) : null}
     </div>
   );
 }

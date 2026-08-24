@@ -8,6 +8,8 @@ export { Button, type ButtonKind } from './Button.js';
 export { IconButton } from './IconButton.js';
 export { Icon } from './Icon.js';
 export { Section } from './Section.js';
+export { CatalogSection } from './CatalogSection.js';
+export { SearchField } from './SearchField.js';
 export { ScrollStrip } from './ScrollStrip.js';
 export { ICON_PATHS, type IconName } from './icons.js';
 export { AlignIcon, type Shape } from './AlignIcon.js';
@@ -42,3 +44,11 @@ export {
   MultilineField, ReadonlyField, type ReadonlyFieldProps, ColorField, ChoiceField, type Choice,
   parseNumber, type Accepts, ANY_NUMBER, POSITIVE, INTEGER, POSITIVE_INTEGER,
 } from './fields.js';
+/**
+ * Список без видимой подписи — орган, который сам показывает своё значение
+ * (масштаб дорожки, масштаб холста). Стоит ОТДЕЛЬНО от полей выше, а не
+ * среди них, потому что нарушает их общее правило `label: string` без `?`:
+ * подписи у него нет на экране намеренно. Имя органа при этом обязательно,
+ * только приезжает через `ariaLabel`.
+ */
+export { PlainSelect, type PlainSelectProps, type PlainSelectOption } from './PlainSelect.js';

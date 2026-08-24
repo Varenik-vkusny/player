@@ -25,6 +25,7 @@
  * неверный код даёт верный ответ, потому что `0 − 0 = 0`.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -74,6 +75,7 @@ test.describe('переключение главы с окном звука', ()
 
     // `s-left` начинается на 2.5 с внутри общего файла — то самое окно,
     // из-за которого позиция уходила в минус.
+    await openChapters(page);
     await page.getByTestId('segment-s-left').click();
 
     await expect(page.locator('.ed-root')).toBeVisible();
@@ -121,6 +123,7 @@ test.describe('переключение главы с окном звука', ()
   test('позиция головки в главе с окном ни в один кадр не уходит в минус', async ({ page }) => {
     await openEditor(page, 'split-track');
     await waitTransportReady(page);
+    await openChapters(page);
     await page.getByTestId('segment-s-left').click();
 
     const minimum = await page.evaluate(async () => {

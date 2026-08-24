@@ -34,10 +34,7 @@ import {
   setGateKind,
   setMaxAttempts,
   setOnWrong,
-  setOptionLabel,
-  setPrompt,
 } from '../state/gates.js';
-import type { OptionDestination } from '../state/conditionText.js';
 import { retargetMark, wordAnchorProblem } from '../track/marks.js';
 import {
   DIRECTION_INFO, DIRECTION_ORDER, TRANSITION_INFO, TRANSITION_ORDER,
@@ -51,7 +48,6 @@ import {
   RangeField,
   ReadonlyField,
   Radio,
-  StringField,
   ValidatedStringField,
   type Choice,
 } from '../ui/fields.js';
@@ -137,7 +133,6 @@ export interface MarkPanelProps {
    * записанную гейтом другой главы. Панель проекта не видит и видеть не
    * должна — она чисто презентационная (см. заголовок модуля).
    */
-  destinationOf?: ((optionId: string) => OptionDestination) | undefined;
   /**
    * Завести главу под ответ и связать её с ним — одним шагом истории.
    *
@@ -145,7 +140,6 @@ export interface MarkPanelProps {
    * панель не может — ей не видно ни проекта, ни истории, и не должно быть
    * видно (см. заголовок модуля).
    */
-  onBranchFromOption?: ((optionId: string) => void) | undefined;
 }
 
 export function MarkPanel({
@@ -165,8 +159,6 @@ export function MarkPanel({
   onRemove,
   onSplitAtGate,
   splitBlockedReason,
-  destinationOf,
-  onBranchFromOption,
 }: MarkPanelProps): ReactElement {
   const containerRef = useRef<HTMLElement>(null);
   const markId = mark.kind === 'gate' ? mark.gate.id : mark.slide.id;
@@ -231,8 +223,6 @@ export function MarkPanel({
             variableProblemOf={variableProblemOf}
             onSplit={onSplitAtGate}
             splitBlockedReason={splitBlockedReason}
-            destinationOf={destinationOf}
-            onBranchFromOption={onBranchFromOption}
           />
         ) : (
           <SlideMarkPanel
@@ -440,9 +430,7 @@ interface GatePanelProps {
   onSplit?: (() => void) | undefined;
   splitBlockedReason?: string | undefined;
   /** Куда ведёт вариант ответа — см. `ChoiceOptionsEditorProps`. */
-  destinationOf?: ((optionId: string) => OptionDestination) | undefined;
   /** Завести главу под ответ и связать — см. `ChoiceOptionsEditorProps`. */
-  onBranchFromOption?: ((optionId: string) => void) | undefined;
 }
 
 function GatePanel({
@@ -453,8 +441,6 @@ function GatePanel({
   variableProblemOf,
   onSplit,
   splitBlockedReason,
-  destinationOf,
-  onBranchFromOption,
 }: GatePanelProps): ReactElement {
   // Память о вопросе при переключении вида (choice/input → continue → …) —
   // забота панели, а не state/gates.ts: модуль намеренно ничего не хранит
@@ -495,11 +481,21 @@ function GatePanel({
         />
       </div>
 
-      {config.kind !== 'continue' && (
-        <div className="ed-insp-block">
-          <StringField label="Вопрос" value={config.prompt} onCommit={(prompt) => onUpdate(setPrompt(gate, prompt))} />
-        </div>
-      )}
+      {/*
+        ПОЛЕ «ВОПРОС» ОТСЮДА УБРАНО (Сессия 55): оно живёт в карточке
+        остановки, прямо над её меткой на дорожке.
+
+        Это не перенос ради вида, а устранение ДВУХ ОДИНАКОВЫХ ПОДПИСЕЙ
+        на одном экране. Карточка и панель показываются вместе — обе от
+        выбранной метки, — и пока поле было в обоих, `getByLabel('Вопрос')`
+        находил два узла. Поймал это строгий режим Playwright тестом
+        ПРО ДРУГОЕ (`mark-panel.spec.ts`), ровно как в прошлый раз с двумя
+        «Фон» на одном экране.
+
+        Дефект при этом не тестовый: два поля, правящих одно значение, —
+        это два места, куда автор может написать разное, и вопрос «какое
+        из них настоящее» у него возникает раньше, чем у теста.
+      */}
 
       {config.kind === 'choice' && (
         <StopKindEditor
@@ -517,8 +513,6 @@ function GatePanel({
           config={config}
           elements={elements}
           onUpdate={onUpdate}
-          destinationOf={destinationOf}
-          onBranchFromOption={onBranchFromOption}
         />
       )}
 
@@ -633,21 +627,19 @@ interface ChoiceOptionsEditorProps {
    * `undefined` — назначение не считали (панель зовут из места, где проекта
    * нет). Тогда строки просто нет: выдумывать за неё нечего.
    */
-  destinationOf?: ((optionId: string) => OptionDestination) | undefined;
   /**
    * Завести главу под этот ответ и связать её с ним — одним действием.
    *
    * `undefined` — панель зовут оттуда, где проекта нет, и заводить главу
    * не в чем. Тогда кнопки просто не будет.
    */
-  onBranchFromOption?: ((optionId: string) => void) | undefined;
 }
 
 /** «Не привязан» — сохраняет вариант системной кнопкой (ADR-011). */
 const UNBOUND = '';
 
 function ChoiceOptionsEditor({
-  gate, config, elements, onUpdate, destinationOf, onBranchFromOption,
+  gate, config, elements, onUpdate,
 }: ChoiceOptionsEditorProps): ReactElement {
   return (
     <div className="ed-insp-block">
@@ -658,10 +650,14 @@ function ChoiceOptionsEditor({
         // на самом обычном клике, вместо того чтобы просто не предлагать
         // недопустимый выбор.
         const takenByOthers = new Set(
-          config.options.filter((other) => other.id !== option.id).map((other) => other.id),
+          config.options
+            .filter((other) => other.id !== option.id)
+            .map((other) => other.elementId)
+            .filter((id): id is string => id !== undefined),
         );
-        const boundElementId = elements.some((element) => element.id === option.id) ? option.id : UNBOUND;
-        const destination = destinationOf?.(option.id);
+        // Привязка читается из ПОЛЯ варианта (ADR-035), а не выводится
+        // совпадением имён: совпадение больше не значит ничего.
+        const boundElementId = option.elementId ?? UNBOUND;
         const bindChoices: readonly Choice[] = [
           { value: UNBOUND, label: '— не привязан (системная кнопка) —' },
           ...elements
@@ -671,56 +667,23 @@ function ChoiceOptionsEditor({
 
         return (
           <div className="ed-insp-field" key={option.id} data-testid={`gate-option-${index}`}>
-            <StringField
-              label={`Подпись варианта ${index + 1}`}
-              value={option.label}
-              onCommit={(value) => onUpdate(setOptionLabel(gate, option.id, value))}
-              testId={`gate-option-label-${index}`}
-            />
+            {/*
+              ПОДПИСЬ ОТВЕТА, КУДА ОН ВЕДЁТ И «ЗАВЕСТИ ВЕТКУ» УБРАНЫ ОТСЮДА
+              (Сессия 55): всё это живёт в карточке остановки над её меткой,
+              там, где автор про них и спрашивает.
 
-            {/* Куда ведёт ЭТОТ вариант — сразу под его подписью.
+              Здесь остаётся только подпись ЧИТАЕМОЙ строкой — чтобы было
+              видно, к какому ответу относятся поля ниже. Не поле: два поля,
+              правящих одно значение, это два места, куда автор может
+              написать разное.
 
-                Секция «Правила выхода» остаётся полным видом и никуда
-                не девается: там правило заводят и правят. Здесь короткий
-                ответ на вопрос, который автор задаёт, глядя на вариант,
-                и ради которого сегодня ему пришлось бы держать связь
-                двух панелей в голове.
-
-                Устройство при этом не меняется ни на йоту: строка ЧИТАЕТ
-                уже принятое решение выхода главы (ADR-015), а не принимает
-                своё. Поля для ребра у остановки как не было, так и нет. */}
-            {destination ? (
-              <p
-                className={destination.via === 'none'
-                  ? 'ed-option-goto ed-option-goto--none'
-                  : 'ed-option-goto'}
-                data-testid={`gate-option-goto-${index}`}
-                data-via={destination.via}
-              >
-                {destination.text}
-              </p>
-            ) : null}
-
-            {/* «Завести ветку» — только у тупика.
-
-                Сегодня, чтобы ответ куда-то вёл, автор идёт в два места:
-                «Добавить главу» в правой колонке, потом «Правила выхода»
-                там же. Ни одно из двух не подсказано, и связь между ними
-                он держит в голове. Кнопка делает оба дела одним шагом
-                истории — Ctrl+Z отменяет их вместе, а не половину.
-
-                У варианта, который УЖЕ ведёт в главу, кнопки нет: предложить
-                завести вторую на тот же ответ значило бы предложить правило,
-                до которого рассказ никогда не дойдёт (правила читаются по
-                порядку, второе про тот же ответ мертво). */}
-            {destination?.via === 'none' && onBranchFromOption ? (
-              <Button
-                data-testid={`gate-option-branch-${index}`}
-                onClick={() => onBranchFromOption(option.id)}
-              >
-                Завести ветку под этот ответ
-              </Button>
-            ) : null}
+              Пустая подпись показывается идентификатором: ответ без имени —
+              законное состояние (его только что добавили), а безымянный
+              блок из трёх полей не отличить от соседнего.
+            */}
+            <p className="ed-option-name" data-testid={`gate-option-name-${index}`}>
+              Ответ {index + 1}: {option.label || option.id}
+            </p>
 
             {/* У развилки верного ответа нет вовсе — показывать выбор
                 «правильного» значило бы вернуть на экран ровно ту ложь,
@@ -740,7 +703,10 @@ function ChoiceOptionsEditor({
               value={boundElementId}
               choices={bindChoices}
               onCommit={(elementId) => {
-                if (elementId !== UNBOUND) onUpdate(bindOption(gate, option.id, elementId));
+                // Пустой выбор — СНЯТИЕ привязки, а не «ничего не делать».
+                // Раньше снять её было нельзя вовсе: привязка меняла имя
+                // варианта, и обратного хода у неё не было.
+                onUpdate(bindOption(gate, option.id, elementId === UNBOUND ? undefined : elementId));
               }}
               testId={`gate-option-bind-${index}`}
             />

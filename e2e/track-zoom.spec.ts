@@ -86,8 +86,8 @@ test.describe('масштаб дорожки: e2e', () => {
     const handleAt1 = await page.getByTestId('mark-transition-s-4').boundingBox();
     if (!tailAt1 || !handleAt1) throw new Error('хвост или ручка не видны при ×1');
 
-    await page.getByTestId('zoom-4').click();
-    await expect(page.getByTestId('zoom-4')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('track-zoom').selectOption('4');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('4');
 
     const tailAt4 = await page.getByTestId('mark-tail-s-4').boundingBox();
     const handleAt4 = await page.getByTestId('mark-transition-s-4').boundingBox();
@@ -99,7 +99,7 @@ test.describe('масштаб дорожки: e2e', () => {
     // а не только на большом масштабе.
     expect(handleAt4.width).toBeGreaterThanOrEqual(10);
 
-    await page.getByTestId('zoom-1').click();
+    await page.getByTestId('track-zoom').selectOption('1');
     const handleBackAt1 = await page.getByTestId('mark-transition-s-4').boundingBox();
     if (!handleBackAt1) throw new Error('ручка не видна при возврате к ×1');
     expect(handleBackAt1.width, 'ручка не должна сжиматься на узком масштабе').toBe(handleAt4.width);
@@ -117,8 +117,8 @@ test.describe('масштаб дорожки: e2e', () => {
   test('щелчок по известной секунде даёт её же ПОСЛЕ прокрутки', async ({ page }) => {
     await openEditor(page, 'transitions');
 
-    await page.getByTestId('zoom-8').click();
-    await expect(page.getByTestId('zoom-8')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('track-zoom').selectOption('8');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('8');
 
     const container = await page.locator('.ed-lane-scroll').boundingBox();
     if (!container) throw new Error('контейнер прокрутки не виден');
@@ -251,8 +251,8 @@ test.describe('масштаб дорожки: e2e', () => {
 
     const heightAt1 = await page.locator('.ed-stage-host').evaluate((node) => node.getBoundingClientRect().height);
 
-    await page.getByTestId('zoom-16').click();
-    await expect(page.getByTestId('zoom-16')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('track-zoom').selectOption('16');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('16');
     const heightAt16 = await page.locator('.ed-stage-host').evaluate((node) => node.getBoundingClientRect().height);
 
     expect(heightAt16, 'высота сцены поменялась при смене ступени').toBe(heightAt1);
@@ -272,17 +272,16 @@ test.describe('масштаб дорожки: e2e', () => {
     await page.setViewportSize({ width: 2000, height: 800 });
     await openEditor(page, 'transitions');
 
-    await page.getByTestId('zoom-16').click();
-    await expect(page.getByTestId('zoom-16')).toHaveAttribute('aria-pressed', 'true');
+    await page.getByTestId('track-zoom').selectOption('16');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('16');
 
     // Широкое окно: laneWidth вырастает настолько, что ×16 больше не влезает
     // в канву браузера (laneWidth ~5168px × 16 = 82688 > 65535), а ×8 — влезает
     // (5168 × 8 = 41344).
     await page.setViewportSize({ width: 5200, height: 800 });
     // Кадр после ResizeObserver'а и клэмпа.
-    await expect(page.getByTestId('zoom-16')).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.getByTestId('zoom-8')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('zoom-16')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('8');
+    await expect(page.locator('[data-testid=track-zoom] option[value="16"]')).toHaveAttribute('disabled', '');
 
     // Полотно волны действительно перерисовано под новую (влезающую)
     // ступень, а не просто кнопка сменила подпись — иначе «опускание»

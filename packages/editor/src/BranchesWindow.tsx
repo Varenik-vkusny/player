@@ -203,6 +203,12 @@ export function BranchesWindow(): ReactElement {
         onRename={(id, title) => clientRef.current?.rename(id, title)}
         range={durationRange(parsed.project)}
         extractReason={(ids) => extractBlockedReason(parsed.project, ids)}
+        /* Во втором окне панели глав нет: каталог живёт в главном окне,
+           на другом мониторе. Дверь ведёт туда же, куда смотрит автор, —
+           то есть никуда, и говорит об этом вслух, а не молчит. */
+        onOpenChapters={() => {
+          throw new Error('Панель глав открывается в главном окне редактора');
+        }}
         onExtract={(ids) => clientRef.current?.extract(ids)}
       />
     </div>

@@ -30,8 +30,17 @@ export type LaneName = 'ruler' | 'sound' | 'bubble' | 'slides' | 'stops' | 'word
  */
 export type TrackTier = 'full' | 'compact' | 'dense' | 'minimal';
 
-/** Панель транспорта: играть, часы, ступени масштаба, остановка. */
-export const TRANSPORT_H = 40;
+/*
+ * TRANSPORT_H УДАЛЕНА (Сессия 55): панели транспорта больше нет.
+ *
+ * Играть, часы и масштаб уехали в нижнюю полосу окна, действия — в меню
+ * правой кнопки, строка удалена из разметки целиком. Слагаемое, оставшееся
+ * в сумме высот после того, как его ряд исчез с экрана, расходится с DOM
+ * МОЛЧА: зона считала бы себя на 40 px выше, чем показывает линейка,
+ * и всплыло бы это через сессию как «внизу пустая полоса».
+ *
+ * Занулить константу было бы тем же самым, только с виду безобидным.
+ */
 
 /** Высота корешка свёрнутой дорожки: кнопка, имя звука, часы. */
 export const COLLAPSED_H = 28;
@@ -143,7 +152,7 @@ export function marksBodyHeight(tier: TrackTier): number {
 export function minHeightOf(tier: TrackTier, showBubble: boolean): number {
   const lanes = lanesOf(tier, showBubble);
   const lanesTotal = lanes.reduce((sum, lane) => sum + laneHeight(lane, tier), 0);
-  return TRANSPORT_H + lanesTotal + SEPARATOR_H * (lanes.length - 1);
+  return lanesTotal + SEPARATOR_H * (lanes.length - 1);
 }
 
 /**

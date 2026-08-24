@@ -6,8 +6,6 @@ import {
   DEFAULT_CHROME_LAYOUT,
   parseChromeLayout,
   serializeChromeLayout,
-  SIDE_WIDTH_MAX,
-  SIDE_WIDTH_MIN,
   type ChromeLayout,
 } from '../src/chrome/layoutStore.js';
 
@@ -32,8 +30,6 @@ describe('parseChromeLayout: чтение сохранённого состоя�
     const broken: ChromeLayout = {
       catalogCollapsed: false,
       catalogWidth: CATALOG_WIDTH_MAX + 1000,
-      sideCollapsed: false,
-      sideWidth: 260,
     };
     expect(parseChromeLayout(JSON.stringify(broken))).toEqual(DEFAULT_CHROME_LAYOUT);
     expect(warn).toHaveBeenCalledTimes(1);
@@ -42,14 +38,14 @@ describe('parseChromeLayout: чтение сохранённого состоя�
 
   it('число ниже минимума — тоже умолчания', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const broken = { catalogCollapsed: false, catalogWidth: 10, sideCollapsed: false, sideWidth: 260 };
+    const broken = { catalogCollapsed: false, catalogWidth: 10 };
     expect(parseChromeLayout(JSON.stringify(broken))).toEqual(DEFAULT_CHROME_LAYOUT);
     warn.mockRestore();
   });
 
   it('отсутствующее поле — умолчания и предупреждение', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const broken = { catalogCollapsed: false, catalogWidth: 300, sideCollapsed: false };
+    const broken = { catalogCollapsed: false };
     expect(parseChromeLayout(JSON.stringify(broken))).toEqual(DEFAULT_CHROME_LAYOUT);
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
@@ -57,7 +53,7 @@ describe('parseChromeLayout: чтение сохранённого состоя�
 
   it('булево поле не булево — умолчания', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const broken = { catalogCollapsed: 'да', catalogWidth: 300, sideCollapsed: false, sideWidth: 260 };
+    const broken = { catalogCollapsed: 'да', catalogWidth: 300 };
     expect(parseChromeLayout(JSON.stringify(broken))).toEqual(DEFAULT_CHROME_LAYOUT);
     warn.mockRestore();
   });
@@ -67,8 +63,6 @@ describe('parseChromeLayout: чтение сохранённого состоя�
     const good: ChromeLayout = {
       catalogCollapsed: true,
       catalogWidth: CATALOG_WIDTH_MIN,
-      sideCollapsed: false,
-      sideWidth: SIDE_WIDTH_MAX,
     };
     expect(parseChromeLayout(JSON.stringify(good))).toEqual(good);
     expect(warn).not.toHaveBeenCalled();
@@ -79,10 +73,46 @@ describe('parseChromeLayout: чтение сохранённого состоя�
     const good: ChromeLayout = {
       catalogCollapsed: false,
       catalogWidth: CATALOG_WIDTH_MAX,
-      sideCollapsed: true,
-      sideWidth: SIDE_WIDTH_MIN,
     };
     expect(parseChromeLayout(JSON.stringify(good))).toEqual(good);
+  });
+
+  /**
+   * СОВМЕСТИМОСТЬ С ЗАПИСЬЮ ПРОШЛОЙ ВЕРСИИ. В Сессии 55 из раскладки ушли
+   * два поля правой колонки — `sideCollapsed` и `sideWidth`, — потому что
+   * ушла сама колонка. У всякого, кто открывал редактор до обновления,
+   * в `localStorage` лежит запись С НИМИ.
+   *
+   * Что здесь охраняется: такая запись читается молча и своей шириной
+   * каталога, а не откатом на умолчание с предупреждением в консоли. Цена
+   * ошибки — не поломка, а тихая пропажа настройки: автор, растянувший
+   * каталог, нашёл бы его прежним и решил, что настройка не сохраняется.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: проверка стала запрещать
+   * лишние поля (например, сверкой списка ключей), либо разбор начал
+   * возвращать разобранный объект целиком — тогда мёртвые поля просочились
+   * бы обратно в состояние и уехали в следующую запись. Проверено сломом
+   * в обе стороны.
+   */
+  it('запись прошлой версии читается, а поля удалённой колонки в состояние не попадают', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const oldRecord = {
+      catalogCollapsed: false,
+      catalogWidth: 420,
+      sideCollapsed: true,
+      sideWidth: 300,
+    };
+
+    const read = parseChromeLayout(JSON.stringify(oldRecord));
+
+    expect(read, 'запись прошлой версии откатилась на умолчания').toEqual({
+      catalogCollapsed: false,
+      catalogWidth: 420,
+    });
+    expect(warn, 'законная запись прошлой версии пожаловалась в консоль').not.toHaveBeenCalled();
+    expect(Object.keys(read).sort()).toEqual(['catalogCollapsed', 'catalogWidth']);
+
+    warn.mockRestore();
   });
 });
 
@@ -91,8 +121,6 @@ describe('serializeChromeLayout ↔ parseChromeLayout: обходит без п�
     const layout: ChromeLayout = {
       catalogCollapsed: true,
       catalogWidth: 420,
-      sideCollapsed: true,
-      sideWidth: 300,
     };
     expect(parseChromeLayout(serializeChromeLayout(layout))).toEqual(layout);
   });

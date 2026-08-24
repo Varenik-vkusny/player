@@ -32,6 +32,7 @@
  *     ему оформление.
  */
 import { test, expect, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 /** Пороги WCAG 2.2 SC 1.4.3, уровень AA. */
 const NORMAL = 4.5;
@@ -198,6 +199,7 @@ for (const view of VIEWS) {
     await page.goto('/editor.html?fixture=demo', { waitUntil: 'load' });
     await expect(page.locator('[data-testid="stage-scene"]')).toBeVisible();
     // Выделение поднимает полосу свойств: без него её текст в обход охраны.
+    await openLayers(page);
     await page.getByTestId('element-row-title').click();
     await view.open(page);
 

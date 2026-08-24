@@ -10,6 +10,7 @@
  * не доказал бы: до Сессии 33 копия внутри части уже была (Ctrl+D).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 interface Geometry {
   x: number;
@@ -134,6 +135,7 @@ test.describe('редактор: буфер обмена элементов', ()
 
     // Переход во ВТОРУЮ часть — то, чего не умеет Ctrl+D.
     const targetId = before[1]!.id;
+    await openChapters(page);
     await page.getByTestId(`segment-${targetId}`).click();
     const targetBefore = (await segments(page)).find((item) => item.id === targetId)!;
 
@@ -172,6 +174,7 @@ test.describe('редактор: буфер обмена элементов', ()
     await page.keyboard.press('Control+c');
 
     const targetId = (await segments(page))[1]!.id;
+    await openChapters(page);
     await page.getByTestId(`segment-${targetId}`).click();
     const countBefore = (await segments(page)).find((item) => item.id === targetId)!.elementIds.length;
 
@@ -204,6 +207,7 @@ test.describe('редактор: буфер обмена элементов', ()
     expect(afterCut[0]!.elementIds, 'вырезанный объект остался в исходной части').not.toContain(sourceId);
 
     const targetId = afterCut[1]!.id;
+    await openChapters(page);
     await page.getByTestId(`segment-${targetId}`).click();
     const countBefore = (await segments(page)).find((item) => item.id === targetId)!.elementIds.length;
 

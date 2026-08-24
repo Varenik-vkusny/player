@@ -33,13 +33,14 @@ import {
   ungroupElements as ungroupElementsInSegment,
 } from './groupElements.js';
 import * as exits from './exits.js';
+import { setOptionLabel, setPrompt } from './gates.js';
 import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
 import { branches_title, splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
 import { bakeStyle } from './styleLink.js';
-import { applyTemplate as applyTemplateToSegment, type SceneTemplate } from './templates.js';
+import { applyTemplate as applyTemplateToSegment, askOnStage as askOnStageOnSegment, type SceneTemplate } from './templates.js';
 
 /**
  * `freeId` живёт в `elements.ts` — это модуль про элементы, а не про весь
@@ -387,6 +388,34 @@ export type EditorAction =
   // отдельными addElement/addSlide/addGate, которые historyReducer положил
   // бы в историю по одному.
   | { readonly type: 'applyTemplate'; readonly template: SceneTemplate }
+  /*
+   * «Задать вопрос с ответами» у уже стоящей остановки — кладёт вопрос
+   * НА СЦЕНУ настоящими элементами вместо служебной плашки (владелец,
+   * 21.08.2026). Один шаг истории на всё сразу — тем же доводом, что
+   * у `branchFromOption` ниже: смена вида гейта на «выбор», создание
+   * текстовых элементов и привязка вариантов к ним (`bindOption`) обязаны
+   * откатываться Ctrl+Z ЦЕЛИКОМ. Разложи это на смену вида + addElement
+   * по одному на вариант + bindOption по одному — и половинчатый откат
+   * оставил бы либо фигуры без вопроса, либо вопрос без фигур.
+   */
+  | { readonly type: 'askOnStage'; readonly gateId: string }
+  /*
+   * Текст вопроса и подписи ответов — ОДНОЙ отправкой на данные остановки
+   * и на элемент сцены, который их показывает.
+   *
+   * Раздельно было бы не «две правки», а РАСХОЖДЕНИЕ: автор правит вопрос
+   * в карточке, зритель читает старый на сцене, и оба значения по отдельности
+   * верны, поэтому ни одна проверка не покраснеет. Тот же класс, что дважды
+   * пойман в этой сессии: два поля «Вопрос» на одном экране и «строка причин»,
+   * повторяющая то, что уже сказано кнопкой.
+   */
+  | { readonly type: 'setGatePrompt'; readonly gateId: string; readonly text: string }
+  | {
+    readonly type: 'setGateOptionLabel';
+    readonly gateId: string;
+    readonly optionId: string;
+    readonly text: string;
+  }
   | { readonly type: 'addSegment' }
   | { readonly type: 'removeSegment'; readonly id: string }
   // Жёсткая копия куска (product.md §7, механика «копия блока» — не путать
@@ -399,6 +428,26 @@ export type EditorAction =
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
   | { readonly type: 'connect'; readonly when: readonly Condition[]; readonly goto: string }
+  /*
+   * Куда уводит ОДИН ответ остановки — одной отправкой (Сессия 55).
+   *
+   * Заведено под карточку остановки на дорожке, где автор выбирает цель
+   * ответа списком. Без него смена цели складывалась бы из `disconnect`
+   * и `connect`, то есть из ДВУХ шагов истории, и Ctrl+Z возвращал бы
+   * половину — ответ без выхода вовсе. Тот же довод, что у `branchFromOption`
+   * ниже.
+   *
+   * `goto: null` — «своего правила нет»: рассказ идёт запасным выходом главы.
+   * `goto`, равный текущей главе, законен и означает «пройти её заново»:
+   * механика повтора уже написана (`player/src/repeat.ts`) и решена
+   * владельцем 02.08.2026.
+   */
+  | {
+    readonly type: 'setOptionTarget';
+    readonly gateId: string;
+    readonly optionId: string;
+    readonly goto: string | null;
+  }
   // «Завести ветку» прямо от варианта ответа (Сессия 51, задача Б3).
   //
   // ОДИН шаг истории на оба дела — заведение главы и правило выхода в неё, —
@@ -1160,6 +1209,50 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return replaceSegment(state, nextSegment);
     }
 
+    case 'setGatePrompt':
+    case 'setGateOptionLabel': {
+      const segment = currentSegment(state);
+      const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
+      if (!gate) {
+        throw new Error(`Остановки «${action.gateId}» нет в текущей главе`);
+      }
+      if (gate.config.kind === 'continue') {
+        throw new Error(`У остановки «${action.gateId}» нет вопроса: это переход «Дальше»`);
+      }
+
+      // Какой элемент сцены показывает правимый текст. `undefined` — вопрос
+      // на сцену не вынесен, и правится только запись в остановке.
+      let shownBy: string | undefined;
+      let nextGate: Gate;
+      if (action.type === 'setGatePrompt') {
+        shownBy = gate.config.kind === 'choice' ? gate.config.promptElementId : undefined;
+        nextGate = setPrompt(gate, action.text);
+      } else {
+        if (gate.config.kind !== 'choice') {
+          throw new Error(`У остановки «${action.gateId}» нет вариантов ответа`);
+        }
+        shownBy = gate.config.options.find((option) => option.id === action.optionId)?.elementId;
+        nextGate = setOptionLabel(gate, action.optionId, action.text);
+      }
+
+      const gates = segment.gates.map((candidate) => (candidate.id === action.gateId ? nextGate : candidate));
+      const elements = shownBy === undefined
+        ? segment.elements
+        : segment.elements.map((element) => (
+          element.id === shownBy ? { ...element, content: action.text } : element
+        ));
+
+      return replaceSegment(state, { ...segment, gates, elements });
+    }
+
+    case 'askOnStage': {
+      // Тот же размер сцены, что и у applyTemplate: из meta проекта,
+      // а не из состояния вида.
+      const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
+      const nextSegment = askOnStageOnSegment(currentSegment(state), action.gateId, stage);
+      return replaceSegment(state, nextSegment);
+    }
+
     case 'addSegment': {
       // Дорожку новый сегмент копирует у текущего: своей автор пока
       // загрузить не может (см. state/exits.ts). Сразу становится текущим —
@@ -1228,6 +1321,28 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, project };
     }
 
+    case 'setOptionTarget': {
+      const segment = currentSegment(state);
+      const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
+      // Падаем громко: карточка показывается только у существующей остановки,
+      // и её пропажа между отрисовкой и отправкой — расхождение состояния,
+      // а не случай, который надо пережить молча.
+      if (!gate) {
+        throw new Error(`Остановки «${action.gateId}» нет в текущей главе: некуда вести ответ`);
+      }
+      const targeted = exits.setOptionTarget(
+        state.project, state.currentSegmentId, gate.recordAs, action.optionId, action.goto,
+      );
+      // Тот же довод, что у `branchFromOption`: назначив цель ОДНОМУ ответу,
+      // автор оставил бы остальных без выхода, и работа перестала бы
+      // сохраняться. Снятие цели (`goto === null`) запасного выхода
+      // не требует — правил могло не остаться вовсе.
+      const project = action.goto === null
+        ? targeted
+        : exits.ensureFallback(targeted, state.currentSegmentId, action.goto);
+      return { ...state, project };
+    }
+
     case 'branchFromOption': {
       const segment = currentSegment(state);
       const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
@@ -1252,12 +1367,23 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const titled = exits.renameSegment(
         withSegment, created.id, branches_title(gate, action.optionId, index),
       );
-      const project = exits.connect(
+      const connected = exits.connect(
         titled,
         state.currentSegmentId,
         [{ kind: 'equals', variable: gate.recordAs, value: action.optionId }],
         created.id,
       );
+      /*
+       * Остальным ответам тоже нужно куда-то идти, иначе проект перестаёт
+       * быть валидным и АВТОСОХРАНЕНИЕ ПАДАЕТ. Найдено владельцем в живом
+       * редакторе 22.08.2026: он развёл один ответ и получил красную полосу
+       * «Не удалось сохранить работу в браузере».
+       *
+       * Запасной выход ведёт в ту же новую главу, и карточка говорит об этом
+       * у каждого неразведённого ответа дословно: «пойдёт в «…», как и все
+       * остальные ответы». Автор видит и переназначает.
+       */
+      const project = exits.ensureFallback(connected, state.currentSegmentId, created.id);
 
       // Автор ОСТАЁТСЯ на месте, в отличие от обычного `addSegment`.
       // Он не просил перевести себя в новую главу — он размечал варианты

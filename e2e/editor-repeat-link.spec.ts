@@ -20,6 +20,7 @@
  * словом «повтор».
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -31,6 +32,7 @@ async function openEditor(page: Page, fixture: string): Promise<void> {
 test.describe('подсказка «повтор» в выборе цели правила выхода', () => {
   test('цель, ведущая назад, помечена словом «повтор» в разметке; ведущая вперёд — нет', async ({ page }) => {
     await openEditor(page, 'repeat');
+    await openChapters(page);
 
     // Часть B — та, у которой есть ребро назад (в A) и ребро вперёд (в конец).
     await page.getByTestId('segment-s-b').click();

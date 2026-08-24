@@ -3362,9 +3362,11 @@ var to = .6, no = [
 			options: va(z({
 				id: B,
 				label: I(),
-				when: vo.optional()
+				when: vo.optional(),
+				elementId: B.optional()
 			})).min(2),
-			correctId: B.nullable()
+			correctId: B.nullable(),
+			promptElementId: B.optional()
 		}),
 		z({
 			kind: ja("input"),
@@ -3504,7 +3506,7 @@ z({
 	segments: va(So).min(1)
 });
 var Co = z({
-	schemaVersion: ja(14),
+	schemaVersion: ja(15),
 	meta: z({
 		title: I(),
 		stageWidth: R().int().positive().default(1920),
@@ -3560,6 +3562,20 @@ var Co = z({
 			code: "custom",
 			path: r("elements"),
 			message: `Сегмент «${e.id}»: идентификатор элемента повторяется`
+		}), e.gates.forEach((n, i) => {
+			if (n.config.kind !== "choice") return;
+			let a = n.config.promptElementId;
+			a !== void 0 && !s.has(a) && t.addIssue({
+				code: "custom",
+				path: r("gates", i, "config", "promptElementId"),
+				message: `Вопрос остановки «${n.id}» показан элементом «${a}», которого нет в сегменте «${e.id}»`
+			}), n.config.options.forEach((a, o) => {
+				a.elementId !== void 0 && (s.has(a.elementId) || t.addIssue({
+					code: "custom",
+					path: r("gates", i, "config", "options", o, "elementId"),
+					message: `Ответ «${a.id}» остановки «${n.id}» назначен элементу «${a.elementId}», которого нет в сегменте «${e.id}»`
+				}));
+			});
 		});
 		let l = new Map(e.elements.map((e) => [e.id, e.type]));
 		for (let [n, i] of e.slides.entries()) for (let [e, o] of Object.entries(i.states)) {
@@ -4058,6 +4074,34 @@ var Mo = Object.freeze({
 			segments: t.segments,
 			styles: t.styles
 		};
+	},
+	14: (e) => {
+		let t = e, n = t.segments.map((e) => {
+			let t = new Set((e.elements ?? []).map((e) => e.id)), n = (e.gates ?? []).map((e) => {
+				let n = e.config;
+				return n?.kind !== "choice" || !n.options ? e : {
+					...e,
+					config: {
+						...n,
+						options: n.options.map((e) => t.has(e.id) ? {
+							...e,
+							elementId: e.id
+						} : e)
+					}
+				};
+			});
+			return {
+				...e,
+				gates: n
+			};
+		});
+		return {
+			schemaVersion: 15,
+			meta: t.meta,
+			entry: t.entry,
+			segments: n,
+			styles: t.styles
+		};
 	}
 }), Po = class extends Error {
 	found;
@@ -4073,9 +4117,9 @@ function Fo(e) {
 }
 function Io(e) {
 	let t = Fo(e);
-	if (t > 14) throw new Po(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 14. Обновите приложение.`, t);
+	if (t > 15) throw new Po(`Проект сохранён в версии схемы ${t}, а эта сборка понимает только 15. Обновите приложение.`, t);
 	let n = e;
-	for (; t < 14;) {
+	for (; t < 15;) {
 		let e = No[t];
 		if (!e) throw new Po(`Нет миграции с версии ${t} на ${t + 1}. Каждая версия схемы обязана иметь миграцию (инвариант №7).`, t);
 		n = e(n), t = Fo(n);
@@ -6383,14 +6427,14 @@ var Qu = 2, $u = .4, ed = class {
 		if (!t || t.config.kind !== "choice") return;
 		let n = e.target, r = (n instanceof HTMLElement ? n.closest("[data-id]") : null)?.dataset.id;
 		if (r === void 0) return;
-		let i = t.config.options.find((e) => e.id === r);
-		!i || !this.#P(i.when) || this.answer(r);
+		let i = t.config.options.find((e) => e.elementId === r);
+		!i || !this.#P(i.when) || this.answer(i.id);
 	};
 	#N(e) {
 		if (e.config.kind !== "choice") return [];
 		let t = [];
 		for (let n of e.config.options) {
-			let e = this.#O.get(n.id);
+			let e = n.elementId === void 0 ? void 0 : this.#O.get(n.elementId);
 			if (!this.#P(n.when)) {
 				e && (this.#v.push({
 					id: n.id,

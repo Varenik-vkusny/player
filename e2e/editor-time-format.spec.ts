@@ -62,8 +62,6 @@ async function openEditor(page: Page): Promise<void> {
 test('время для автора: все подписи секунд на экране написаны одинаково', async ({ page }) => {
   await openEditor(page);
 
-  await expect(page.getByTestId('slide-clipboard-note')).toBeVisible();
-
   /**
    * ПРИЧИНУ НАДО ВЫЗВАТЬ, А НЕ ЖДАТЬ. Куплено сломом 18.08.2026: сперва
    * тест просто читал то, что оказалось на экране, и возврат `toFixed(3)`
@@ -75,11 +73,49 @@ test('время для автора: все подписи секунд на э
    * Поэтому: выбрать слайд НЕ на нуле (иначе сработает ветка «начало главы
    * занято») и наполнить буфер. Тогда «Вставить» гаснет именно с той
    * причиной, где секунды и писались тремя знаками.
+   *
+   * С Сессии 55 путь к причине другой, а требование то же. Строки причин
+   * над лентой слайдов больше нет — она печатала три причины разом и в узкой
+   * зоне воровала у холста 16 px. Причина теперь стоит В ПУНКТЕ меню правой
+   * кнопки по метке слайда, и показывается ровно та, что мешает этому пункту.
+   * Поэтому причину надо не только вызвать, но и ОТКРЫТЬ, и держать открытой
+   * на время осмотра: закрытое меню не имеет узлов вовсе.
    */
-  await page.getByTestId('slide-node-1-slide-2').click();
-  await page.getByTestId('slide-copy').click();
+  const slideMark = page.getByTestId('mark-slide-node-1-slide-2');
+
+  /*
+   * Сперва ВЫБИРАЕМ метку обычным щелчком. Это не лишний шаг: панель метки
+   * печатает секунды слайда, и до Сессии 55 их обход давала панель слайдов
+   * (`.ed-slide-panel`, удалена вместе с правой колонкой). Без выбора метки
+   * панели на экране нет вовсе, и целый корень обхода выпал бы из проверки
+   * молча — то есть разнобой в секундах панели снова накапливался бы
+   * незамеченным, ровно как накопился в первый раз.
+   */
+  await slideMark.click();
+  await expect(page.getByTestId('mark-panel')).toBeVisible();
+
+  await slideMark.click({ button: 'right' });
+  await page.getByTestId('ctxmenu-slide-copy').click();
+  await expect(page.getByTestId('context-menu')).toHaveCount(0);
+
+  /*
+   * Причина «уже стоит слайд» — про МЕСТО, поэтому и меню нужно места,
+   * а не метки: «Вставить слайд здесь» живёт в меню пустого места
+   * (`TrackView.menuItems`). Чтобы место оказалось занятым, целимся
+   * по горизонтали в ту же секунду, где стоит метка, но по вертикали —
+   * в полосу расшифровки, где никакой кнопки нет.
+   */
+  const markBox = await slideMark.boundingBox();
+  const wordsBox = await page.getByTestId('track-words').boundingBox();
+  if (!markBox || !wordsBox) throw new Error('метка или полоса расшифровки не видны');
+  await page.mouse.click(
+    markBox.x + markBox.width / 2,
+    wordsBox.y + wordsBox.height / 2,
+    { button: 'right' },
+  );
+
   await expect(
-    page.getByTestId('slide-clipboard-note'),
+    page.getByTestId('ctxmenu-why-slide-paste'),
     'ветка «уже стоит слайд» не выполнилась — тест не дошёл до места, ради которого написан',
   ).toContainText('уже стоит слайд');
 
@@ -87,7 +123,14 @@ test('время для автора: все подписи секунд на э
     ({ source, flags }) => {
       const pattern = new RegExp(source, flags);
       const seen: { text: string; where: string }[] = [];
-      const roots = ['.ed-track-column', '.ed-slide-panel'];
+      // Меню правой кнопки — ТРЕТИЙ корень, и без него проверка потеряла бы
+      // ровно то место, ради которого написана: причина с секундами живёт
+      // теперь там. Узел меню лежит вне зоны (position: fixed на странице),
+      // поэтому обходом .ed-track-column он не достаётся.
+      // `.ed-catalog` вместо `.ed-slide-panel` (Сессия 55): панели переехали
+      // в колонку каталога и открываются по одной. Обход берёт ту, что
+      // открыта сейчас, — здесь это панель выбранной метки.
+      const roots = ['.ed-track-column', '.ed-catalog', '.ed-ctxmenu'];
       for (const root of roots) {
         const node = document.querySelector(root);
         if (!node) throw new Error(`нет узла ${root}`);

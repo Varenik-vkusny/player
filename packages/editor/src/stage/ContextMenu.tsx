@@ -31,6 +31,23 @@ export interface MenuItem {
   readonly shortcut?: string;
   /** Сейчас невозможен: показывается погашенным и не выбирается. */
   readonly disabled?: boolean;
+  /**
+   * Почему пункт сейчас невозможен — ВИДИМОЙ строкой под подписью.
+   *
+   * Не `title`: в проекте записано измерением, что на подсказки при
+   * наведении не смотрят, а пометка, положенная в подпись, находится
+   * `getByLabel` и не доходит до автора вовсе (три зелёных e2e при пустом
+   * экране). Строкой на экране причины печатать тоже нельзя — так уже было
+   * над лентой слайдов, где ТРИ причины от трёх разных кнопок печатались
+   * разом и в узкой зоне воровали у холста 16 px.
+   *
+   * Меню — третий путь: причина видна там, куда автор смотрит, и видна
+   * ТОЛЬКО та, которая сейчас мешает.
+   */
+  /* `| undefined` явно: у проекта включён exactOptionalPropertyTypes, и без
+     этого причина, приезжающая как `string | undefined` (а она всегда такая —
+     её считают функции вида splitHereProblem), не присваивается вовсе. */
+  readonly hint?: string | undefined;
   /** Разделитель ПЕРЕД этим пунктом. */
   readonly separatorBefore?: boolean;
   readonly onSelect: () => void;
@@ -103,7 +120,35 @@ export function ContextMenu({ at, items, onClose }: ContextMenuProps): React.JSX
       if (node && event.target instanceof Node && node.contains(event.target)) return;
       onClose();
     };
-    const onScroll = (): void => onClose();
+    /*
+     * ЗАКРЫВАЕМСЯ НЕ ОТ ЛЮБОЙ ПРОКРУТКИ, А ОТ ТОЙ, ЧТО ДВИГАЕТ ТОЧКУ ПРИВЯЗКИ.
+     *
+     * Меню стоит `position: fixed` в точке щелчка. Уезжает содержимое под
+     * этой точкой — меню повисает над чужим предметом, и закрыться правильно.
+     * Уезжает что-то в другом углу экрана — меню это не касается никак.
+     *
+     * Разница перестала быть теоретической в Сессии 55. Выбор метки слайда
+     * на дорожке плавно прокручивает ЛЕНТУ СЛАЙДОВ к соответствующей
+     * карточке (`SlideStrip`, `scrollTo({behavior:'smooth'})`). Слушатель
+     * в фазе перехвата ловил и её — и меню, только что открытое на дорожке,
+     * закрывалось само, посреди жеста автора, без единого следа в консоли.
+     *
+     * Проверка простая и по тем данным, что уже есть: попадает ли точка
+     * привязки внутрь прокрученного узла.
+     */
+    const onScroll = (event: Event): void => {
+      const target = event.target;
+      // Прокрутилась страница целиком (target — document): двигается всё,
+      // включая точку привязки.
+      if (!(target instanceof Element)) {
+        onClose();
+        return;
+      }
+      const box = target.getBoundingClientRect();
+      const movesAnchor =
+        at.x >= box.left && at.x <= box.right && at.y >= box.top && at.y <= box.bottom;
+      if (movesAnchor) onClose();
+    };
     const onWindowBlur = (): void => onClose();
 
     document.addEventListener('pointerdown', onPointerDown, true);
@@ -114,7 +159,7 @@ export function ContextMenu({ at, items, onClose }: ContextMenuProps): React.JSX
       window.removeEventListener('scroll', onScroll, true);
       window.removeEventListener('blur', onWindowBlur);
     };
-  }, [onClose]);
+  }, [onClose, at.x, at.y]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): void => {
     const buttons = enabledButtons();
@@ -191,6 +236,11 @@ export function ContextMenu({ at, items, onClose }: ContextMenuProps): React.JSX
             <span className="ed-ctxmenu-label">{item.label}</span>
             {item.shortcut === undefined ? null : (
               <span className="ed-ctxmenu-key">{item.shortcut}</span>
+            )}
+            {item.hint === undefined ? null : (
+              <span className="ed-ctxmenu-hint" data-testid={`ctxmenu-why-${item.id}`}>
+                {item.hint}
+              </span>
             )}
           </button>
         </div>

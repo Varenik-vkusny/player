@@ -24,6 +24,7 @@
  * обработчика — не поведенческий тест»).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 interface ProjectView {
   readonly entry: string;
@@ -48,6 +49,7 @@ async function readProject(page: Page): Promise<ProjectView> {
 test.describe('копия куска', () => {
   test('кнопка добавляет кусок в список, а автор остаётся на оригинале', async ({ page }) => {
     await openEditor(page, 'branching');
+    await openChapters(page);
 
     const before = await readProject(page);
     expect(before.segments).toHaveLength(3);
@@ -102,6 +104,7 @@ test.describe('копия куска', () => {
     context,
   }) => {
     await openEditor(page, 'branching');
+    await openChapters(page);
 
     await page.getByTestId('segment-duplicate').click();
     const after = await readProject(page);

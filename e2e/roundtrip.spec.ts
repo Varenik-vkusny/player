@@ -16,6 +16,7 @@ import pixelmatch from 'pixelmatch';
 import { PNG } from 'pngjs';
 
 import { resolveTimeRef, SCHEMA_VERSION, type Project, type Segment } from '@player/core';
+import { openSlideStrip } from './panels.js';
 
 /** Момент, на котором сравниваются картинки. Видны и текст, и фигуры. */
 const PARITY_AT = 24;
@@ -103,7 +104,10 @@ test.describe('круг: правка в редакторе — просмотр
     // панели слайдов.
     const segment = await firstSegment(page);
     const slide = slideAtOrBefore(segment, 10);
-    await page.getByTestId(`slide-${slide.id}`).click();
+    // Список слайдов `SlidePanel` удалён в Сессии 55 — карточка слайда
+    // живёт в ленте дорожки, свёрнутой по умолчанию.
+    await openSlideStrip(page);
+    await page.getByTestId(`strip-card-${slide.id}`).click();
     await expect(page.locator('.ed-stage-host [data-id="card"]')).toBeVisible();
 
     // Хватаем не за центр 'card', а за его верхний левый угол: декоративный
@@ -306,7 +310,10 @@ test.describe('круг: правка в редакторе — просмотр
     // застывший кадр в PARITY_AT (между соседними слайдами сцена неизменна).
     const segment = await firstSegment(page);
     const slide = slideAtOrBefore(segment, PARITY_AT);
-    await page.getByTestId(`slide-${slide.id}`).click();
+    // Список слайдов `SlidePanel` удалён в Сессии 55 — карточка слайда
+    // живёт в ленте дорожки, свёрнутой по умолчанию.
+    await openSlideStrip(page);
+    await page.getByTestId(`strip-card-${slide.id}`).click();
     // Синхронизация со структурной пересборкой сцены (StageView.tsx,
     // структурный useLayoutEffect срабатывает на смену currentSlide.id):
     // 'card' виден только начиная с этого слайда, дальше он не гаснет.

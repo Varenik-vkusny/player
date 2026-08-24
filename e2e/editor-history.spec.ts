@@ -7,6 +7,7 @@
  * какой узел на самом деле получил фокус (CLAUDE.md, ADR-010).
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -70,6 +71,7 @@ test.describe('отмена и повтор', () => {
     page,
   }) => {
     await openEditor(page, 'two-gates');
+    await openLayers(page);
     await page.getByTestId('element-row-question').click();
     await expect(page.getByTestId('selection-readout')).toContainText('question');
 
@@ -155,6 +157,9 @@ test.describe('работа без мыши', () => {
     page,
   }) => {
     await openEditor(page, 'two-gates');
+    // Строки списка теперь в DOM только за дверью «Слои» (Сессия 55) —
+    // без неё Tab до них никогда не доберётся.
+    await openLayers(page);
 
     let reachedRow: string | null = null;
     for (let i = 0; i < 60 && !reachedRow; i += 1) {
@@ -182,7 +187,12 @@ test.describe('работа без мыши', () => {
 
     await page.keyboard.press('Delete');
     await expect(page.locator(`.ed-stage-host [data-id="${id}"]`)).toHaveCount(0);
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+      /* Выделение снято — ПИЛЮЛИ НЕТ. Раньше здесь проверялся текст
+         «ничего не выделено», но такой надписи на экране больше нет:
+         с 20.08.2026 при пустом выделении полоса свойств пуста целиком,
+         как у натуры. Утверждение то же, просто выражено тем, что видит
+         автор, а не текстом, которого он не видит. */
+      await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
 
     await page.keyboard.press('Control+z');
     await expect(page.locator(`.ed-stage-host [data-id="${id}"]`)).toHaveCount(1);
@@ -190,7 +200,12 @@ test.describe('работа без мыши', () => {
     await page.getByTestId(`element-row-${id}`).click();
     await expect(page.getByTestId('selection-readout')).toContainText(id);
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+      /* Выделение снято — ПИЛЮЛИ НЕТ. Раньше здесь проверялся текст
+         «ничего не выделено», но такой надписи на экране больше нет:
+         с 20.08.2026 при пустом выделении полоса свойств пуста целиком,
+         как у натуры. Утверждение то же, просто выражено тем, что видит
+         автор, а не текстом, которого он не видит. */
+      await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
   });
 
   test('модуль клавиатуры не глотает Tab: обход всех элементов списка доходит до конца', async ({
@@ -200,6 +215,41 @@ test.describe('работа без мыши', () => {
     // табом не должен «застревать» — если бы Tab был съеден, фокус либо
     // завис бы на одном узле, либо ушёл бы мимо списка целиком.
     await openEditor(page, 'demo');
+    // Строки списка теперь в DOM только за дверью «Слои» (Сессия 55).
+    await openLayers(page);
+
+    /*
+     * ОБХОД НАЧИНАЕТСЯ ОТ ЗАДАННОГО ОРГАНА ПАНЕЛИ, а не «откуда придётся».
+     *
+     * Куплено замером 24.08.2026. Сперва я снимал фокус (`blur()`), считая,
+     * что обход пойдёт от начала документа. НЕ ИДЁТ: Chromium помнит точку
+     * старта обхода по месту снятого узла, и Tab продолжает ОТТУДА. Фокус
+     * после открытия двери стоял на кнопке «Слои» — в полосе над холстом, —
+     * и обход уходил в нижнюю зону, где у одной только дорожки три десятка
+     * органов (по два на каждую из пятнадцати меток слайдов). Восьмидесяти
+     * нажатий хватало, чтобы обойти зону по кругу и вернуться к началу
+     * списка, — тест видел ПЯТЬ строк из семи и обвинял в этом модуль
+     * клавиатуры, который исправен.
+     *
+     * Замер после правки: от кнопки сворачивания панели до последней строки
+     * списка — 15 нажатий, все семь строк пройдены подряд.
+     *
+     * `focus()`, а не щелчок: щелчок по этой кнопке свернул бы панель.
+     */
+    await page.evaluate(() => {
+      const start = document.querySelector('[data-testid="collapse-catalog"]');
+      if (!(start instanceof HTMLElement)) throw new Error('нет кнопки сворачивания панели');
+      start.focus();
+    });
+
+    // Положительный контроль к самой точке старта: фокус ДЕЙСТВИТЕЛЬНО там.
+    // Не встань он — обход снова пошёл бы неизвестно откуда, и красное
+    // назвало бы виноватой клавиатуру.
+    const startedAt = await page.evaluate(
+      () => (document.activeElement as HTMLElement | null)?.dataset?.['testid'],
+    );
+    expect(startedAt, 'обход начат не от панели — проверялась бы не та цепочка')
+      .toBe('collapse-catalog');
 
     const seenRows = new Set<string>();
     for (let i = 0; i < 80 && seenRows.size < 7; i += 1) {
@@ -209,6 +259,9 @@ test.describe('работа без мыши', () => {
       );
       if (testId?.startsWith('element-row-')) seenRows.add(testId);
     }
-    expect(seenRows.size, 'обход табом не дошёл до всех строк списка').toBe(7);
+    expect(
+      seenRows.size,
+      `обход табом дошёл до ${seenRows.size} строк из семи: ${[...seenRows].join(', ')}`,
+    ).toBe(7);
   });
 });

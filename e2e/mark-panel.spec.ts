@@ -10,6 +10,7 @@
  * к элементу (ADR-011), и при потерянной правке свойства анимации.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openSlideStrip } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -33,6 +34,30 @@ async function setNumberField(page: Page, label: string, value: number): Promise
 }
 
 const stateOf = (page: Page) => page.evaluate(() => document.getElementById('state')?.textContent);
+
+/**
+ * Ставит гейт под ТЕКУЩЕЙ головкой: кнопка «остановка» убрана в Сессии 55,
+ * теперь это пункт меню правой кнопки `ctxmenu-add-gate`. Правый щелчок сам
+ * перематывает головку в точку щелчка — целимся в ТУ ЖЕ секунду, где она
+ * уже стоит (обычно поставлена заранее через `__transport.seek`), чтобы
+ * не сдвинуть её повторно.
+ */
+async function addGateAtHead(page: Page): Promise<void> {
+  const box = await page.getByTestId('track-lane').boundingBox();
+  if (!box) throw new Error('дорожка не видна');
+  const duration = await page.evaluate(
+    () =>
+      (window as unknown as { __transport: { durationSeconds: number } }).__transport
+        .durationSeconds,
+  );
+  const seconds = await page.evaluate(
+    () => (window as unknown as { __transport: { positionSeconds: number } }).__transport.positionSeconds,
+  );
+  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2, {
+    button: 'right',
+  });
+  await page.getByTestId('ctxmenu-add-gate').click();
+}
 
 test.describe('панель гейта: выбор варианта', () => {
   test('гейт с вариантами, привязанными к элементам сцены, собранный в редакторе, работает в плеере', async ({
@@ -76,11 +101,16 @@ test.describe('панель гейта: выбор варианта', () => {
       (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(1);
     });
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
-    await page.getByRole('button', { name: /остановка/ }).click();
+    await addGateAtHead(page);
     await expect(page.getByTestId('mark-panel')).toBeVisible();
 
     await page.getByLabel('Вид', { exact: true }).selectOption('choice');
-    await page.getByLabel('Вопрос', { exact: true }).fill('Что было часами проекта?');
+    // Вопрос правится в КАРТОЧКЕ остановки над её меткой, а не в панели
+    // (Сессия 55). В панели этого поля больше нет намеренно: два поля на одно
+    // значение — два места, куда автор может написать разное, и строгий режим
+    // Playwright поймал их как две одинаковые подписи на одном экране.
+    await page.getByTestId('stopcard-prompt').fill('Что было часами проекта?');
+    await page.getByTestId('stopcard-prompt').blur();
 
     await page.getByTestId('gate-option-bind-0').selectOption('text-1');
     await page.getByTestId('gate-option-bind-1').selectOption('text-2');
@@ -91,14 +121,25 @@ test.describe('панель гейта: выбор варианта', () => {
         (window as unknown as { __project: { segments: { gates: unknown[] }[] } })
           .__project.segments[0]!.gates[0],
     );
+    /*
+     * ПРОВЕРЯЕТСЯ СВЯЗЬ, А НЕ ПОДМЕНА ИМЕНИ (ADR-035, схема v15).
+     *
+     * До версии 15 привязка МЕНЯЛА `id` варианта на идентификатор элемента —
+     * единственный доступный способ, потому что плеер искал узел совпадением
+     * имён. Побочные следствия были прямые: вместе с именем ехал `correctId`
+     * и условия правил выхода, ссылавшиеся на этот ответ.
+     *
+     * Теперь у варианта своё имя и явное поле. Тест утверждает именно это:
+     * имена ответов НЕ тронуты, а связь с фигурой записана.
+     */
     expect(gate).toMatchObject({
       config: {
         kind: 'choice',
         options: [
-          { id: 'text-1' },
-          { id: 'text-2' },
+          { id: 'option-1', elementId: 'text-1' },
+          { id: 'option-2', elementId: 'text-2' },
         ],
-        correctId: 'text-2',
+        correctId: 'option-2',
       },
     });
 
@@ -136,9 +177,10 @@ test.describe('панель гейта: ввод ответа', () => {
       (window as unknown as { __transport: { seek(seconds: number): void } }).__transport.seek(1);
     });
     await expect(page.getByTestId('track-clock')).toContainText('00:01', { timeout: 5_000 });
-    await page.getByRole('button', { name: /остановка/ }).click();
+    await addGateAtHead(page);
     await page.getByLabel('Вид', { exact: true }).selectOption('input');
-    await page.getByLabel('Вопрос', { exact: true }).fill('Что является часами проекта?');
+    await page.getByTestId('stopcard-prompt').fill('Что является часами проекта?');
+    await page.getByTestId('stopcard-prompt').blur();
 
     const accept = page.getByTestId('gate-accept');
     await accept.fill('аудио');
@@ -437,9 +479,24 @@ test.describe('панель слайда: каталог из восьми пр�
     await dissolveTile.click();
     await expect(dissolveTile, 'плитка «Растворение» стала выбранной').toHaveAttribute('aria-pressed', 'true');
 
-    const row = page.getByTestId(`slide-${slideId}`);
-    await expect(row, 'подпись в списке слайдов — «Растворение»').toContainText('Растворение');
-    await expect(row, 'подпись НЕ осталась словом «разрез» от старого тернарника').not.toContainText('разрез');
+    /*
+     * ГДЕ ТЕПЕРЬ ЧИТАЕТСЯ ВЫБОР. Список слайдов (`slide-<id>`) удалён
+     * в Сессии 55 вместе с правой колонкой. Приём слайда называется
+     * в подписи его МЕТКИ на дорожке (`Editor.tsx`, `title` метки).
+     *
+     * Названо прямо: это ОСЛАБЛЕНИЕ прибора. Было — видимый текст на чипе,
+     * стало — атрибут `title`, который всплывает по наведению. В проекте
+     * измерено, что пометка, спрятанная в подпись органа, до автора
+     * не доходит вовсе. Здесь это терпимо, потому что САМ ВЫБОР автор
+     * видит проверкой выше (плитка стала `aria-pressed`), а подпись метки
+     * охраняет то, ради чего тест написан: тернарник, писавший «разрез»
+     * всему подряд. Если у метки появится видимая подпись приёма — проверку
+     * надо перевести на неё.
+     */
+    const mark = page.getByTestId(`mark-slide-${slideId}`);
+    await expect(mark, 'подпись метки слайда — «растворение»').toHaveAttribute('title', /растворение/i);
+    await expect(mark, 'подпись НЕ осталась словом «разрез» от старого тернарника')
+      .not.toHaveAttribute('title', /разрез/i);
   });
 
   /**
@@ -490,7 +547,11 @@ test.describe('панель слайда: каталог из восьми пр�
           .__project.segments[0]!.slides[2]!.id,
     );
     await page.getByTestId(`mark-slide-${thirdSlideId}`).click();
-    await expect(page.getByTestId(`slide-${thirdSlideId}`)).toBeVisible();
+    // Список слайдов `SlidePanel` удалён в Сессии 55 — карточка слайда
+    // живёт теперь в ленте дорожки (`strip-card-<id>`), лента свёрнута
+    // по умолчанию.
+    await openSlideStrip(page);
+    await expect(page.getByTestId(`strip-card-${thirdSlideId}`)).toBeVisible();
 
     // И назад — панель второго слайда монтируется заново.
     await page.getByTestId(`mark-slide-${slideId}`).click();

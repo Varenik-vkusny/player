@@ -96,6 +96,46 @@ export function removeSegment(project: Project, segmentId: string): Project {
   return { ...project, segments };
 }
 
+/**
+ * Даёт главе запасной выход, если правила у неё уже есть, а выхода нет.
+ *
+ * ЗАЧЕМ. Правила выхода обязаны быть ТОТАЛЬНЫМИ: либо покрыты все исходы,
+ * либо задан `default`. Иначе ответ, не подошедший ни под одно правило,
+ * заводит зрителя в тупик — и схема такой проект не принимает.
+ *
+ * Пока веток заводили по одной из панели, промежуточное состояние жило
+ * секунды и в глаза не бросалось. С Сессии 55 ветка заводится одной кнопкой
+ * прямо в карточке остановки, и автор немедленно получал красную полосу
+ * «не удалось сохранить работу»: он развёл ОДИН ответ, а остальным идти
+ * стало некуда. Работа при этом переставала сохраняться — то есть цена
+ * промежуточного состояния была не «некрасиво», а «можно потерять сделанное».
+ *
+ * Запасной выход ведёт туда же, куда только что заведённая ветка. Это НЕ
+ * ложь о намерении: у остальных ответов своего правила действительно нет,
+ * и карточка говорит об этом дословно — «пойдёт в «…», как и все остальные
+ * ответы». Автор видит и меняет.
+ *
+ * Ничего не делает, если выход уже есть или правил ещё нет: у главы без
+ * правил `default: null` означает «конец объяснения» и вполне законен.
+ */
+export function ensureFallback(project: Project, segmentId: string, goto: string): Project {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте`);
+  }
+  if (segment.exit.default !== null || segment.exit.rules.length === 0) return project;
+  if (!project.segments.some((candidate) => candidate.id === goto)) {
+    throw new Error(`Сегмента «${goto}» нет в проекте: запасному выходу некуда вести`);
+  }
+
+  const segments = project.segments.map((candidate) => (
+    candidate.id === segmentId
+      ? { ...candidate, exit: { ...candidate.exit, default: goto } }
+      : candidate
+  ));
+  return { ...project, segments };
+}
+
 /** Переименовывает сегмент, не трогая остальное. */
 export function renameSegment(project: Project, segmentId: string, title: string): Project {
   const segment = project.segments.find((candidate) => candidate.id === segmentId);
@@ -403,6 +443,93 @@ export function disconnect(project: Project, segmentId: string, ruleId: string):
 }
 
 /**
+ * Простое правило для ответа `optionId` переменной `variable`: ровно одно
+ * условие вида «`variable` равно `optionId`». Тот же смысл «простого», что
+ * у `optionDestination` (`conditionText.ts`, случай `plain`) — записан здесь
+ * ещё раз, а не подключён оттуда: `conditionText.ts` импортирует из этого
+ * файла (`answerVariables`), и обратный импорт замкнул бы модули друг
+ * на друга. Два места обязаны понимать «простое» ОДИНАКОВО — разойдись они,
+ * `optionDestination` показывала бы автору одну цель, а эта функция меняла
+ * бы другую.
+ */
+function isSimpleOptionRule(rule: ExitRule, variable: string, optionId: string): boolean {
+  const only = rule.when.length === 1 ? rule.when[0]! : undefined;
+  return only !== undefined && only.kind === 'equals' && only.variable === variable && only.value === optionId;
+}
+
+/**
+ * Задаёт цель ОДНОГО варианта ответа одним шагом истории.
+ *
+ * Была дыра: `connect` только добавляет правило, `disconnect` только
+ * удаляет по `id` — сменить цель уже существующего ответа получалось
+ * лишь парой вызовов, то есть двумя шагами истории. Ctrl/Cmd+Z после
+ * такой пары отменил бы один из двух и оставил ответ ЛИБО без цели совсем,
+ * либо с двумя целями сразу — ни одно из состояний автор не просил.
+ *
+ * Работает только с ПРОСТЫМИ правилами (см. `isSimpleOptionRule`). Простое
+ * правило одного ответа выражается одним именем главы; всё прочее — цепочка
+ * условий через «и» или второе правило про тот же ответ — уже не сводится
+ * к одному имени, и трогать его здесь значило бы соврать о том, что делает
+ * операция. Для такого места автору назначено «Правила выхода» (`connect`/
+ * `disconnect`/`addCondition`/`removeCondition` по отдельности).
+ *
+ * `goto === null` значит «этот ответ никуда не уводит явно»: рассказ пойдёт
+ * запасным выходом главы (`Exit.default`), как и прежде для ответов без
+ * своего правила.
+ *
+ * `goto`, равный самому `segmentId`, — законное ребро назад: механика
+ * повтора куска решена владельцем 02.08.2026 (`player/src/repeat.ts`),
+ * и никакой отдельной проверки для этого случая не нужно — `goto` идёт
+ * тем же путём, что любая другая цель.
+ */
+export function setOptionTarget(
+  project: Project,
+  segmentId: string,
+  variable: string,
+  optionId: string,
+  goto: string | null,
+): Project {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте`);
+  }
+
+  const simple = segment.exit.rules.filter((rule) => isSimpleOptionRule(rule, variable, optionId));
+  if (simple.length > 1) {
+    throw new Error(
+      `Ответ «${optionId}» переменной «${variable}» уже задан ${simple.length} простыми правилами выхода `
+        + `у сегмента «${segmentId}»: одним именем главы цель не выразить, правьте в «Правилах выхода»`,
+    );
+  }
+
+  if (goto === null) {
+    // Простого правила нет — снимать нечего: убрать то, чего нет, не ошибка.
+    if (simple.length === 0) return project;
+    return disconnect(project, segmentId, simple[0]!.id);
+  }
+
+  if (simple.length === 1) {
+    // Правило уже есть — меняем только цель, id и when оставляем как были:
+    // те же проверки, что проходил связанный вид (SegmentPanel), автору
+    // ничего заново подтверждать не нужно.
+    if (!project.segments.some((candidate) => candidate.id === goto)) {
+      throw new Error(`Сегмента «${goto}» нет в проекте: правилу выхода некуда вести`);
+    }
+    const ruleId = simple[0]!.id;
+    const exit: Exit = {
+      ...segment.exit,
+      rules: segment.exit.rules.map((rule) => (rule.id === ruleId ? { ...rule, goto } : rule)),
+    };
+    const segments = project.segments.map((candidate) => (candidate.id === segmentId ? { ...candidate, exit } : candidate));
+    return { ...project, segments };
+  }
+
+  // Простого правила нет — заводим новое. `connect` уже несёт все нужные
+  // проверки (сегмент, цель, переменная) — второй копии здесь не место.
+  return connect(project, segmentId, [{ kind: 'equals', variable, value: optionId }], goto);
+}
+
+/**
  * Почему такое имя переменной принять нельзя. `undefined` — можно.
  *
  * Одна функция на две задачи, и это не удобство, а требование: панель
@@ -549,6 +676,21 @@ export function emptySegments(project: Project): readonly Segment[] {
 /** Переменная объяснения: что про неё можно спросить и чем она бывает. */
 export interface AnswerVariable {
   readonly name: string;
+  /**
+   * Вопрос остановки — человеческий текст, который зритель видит на экране
+   * («Что является часами проекта?»). Донесён сюда 20.08.2026, потому что
+   * шапка редактора показывала автору `name`, то есть ИМЯ ПЕРЕМЕННОЙ
+   * («gate-choice»): ключ из файла проекта на видном месте интерфейса.
+   *
+   * Это ровно тот дефект, который проект однажды уже чинил в другом месте
+   * (Editor.tsx: «остановка называется своим вопросом, а не ключом»);
+   * здесь он держался тем, что человеческого текста в этот тип просто
+   * не доносили, и починить его на месте показа было физически нечем.
+   *
+   * У остановки вида `continue` вопроса нет — там пустая строка, и
+   * вызывающий обязан иметь запасную подпись.
+   */
+  readonly prompt: string;
   readonly kind: 'choice' | 'input' | 'continue';
   readonly options: readonly { readonly id: string; readonly label: string }[];
   /** id верного варианта, либо null у развилки: у неё верного ответа нет. */
@@ -572,6 +714,7 @@ export function answerVariables(project: Project): readonly AnswerVariable[] {
       const config = gate.config;
       found.push({
         name: gate.recordAs,
+        prompt: 'prompt' in config ? config.prompt : '',
         kind: config.kind,
         options: config.kind === 'choice'
           ? config.options.map((option) => ({ id: option.id, label: option.label }))

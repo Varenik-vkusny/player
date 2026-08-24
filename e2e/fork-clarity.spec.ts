@@ -39,13 +39,18 @@ async function openEditor(page: Page, fixture: string): Promise<string[]> {
   return errors;
 }
 
-/** Режет текущую главу в долях её дорожки — так же, как это делает человек. */
+/**
+ * Режет текущую главу в долях её дорожки — так же, как это делает человек.
+ * Кнопка «разделить здесь» убрана в Сессии 55: разрез теперь пункт меню
+ * правой кнопки по пустому месту дорожки (`ctxmenu-split-here`), и сам
+ * правый щелчок заодно перематывает головку в точку щелчка.
+ */
 async function splitAt(page: Page, ratio: number): Promise<void> {
   const lane = await page.getByTestId('track-lane').boundingBox();
   if (!lane) throw new Error('дорожка не видна');
-  await page.mouse.click(lane.x + lane.width * ratio, lane.y + lane.height / 2);
-  await expect(page.getByTestId('split-here')).toBeEnabled();
-  await page.getByTestId('split-here').click();
+  await page.mouse.click(lane.x + lane.width * ratio, lane.y + lane.height / 2, { button: 'right' });
+  await expect(page.getByTestId('ctxmenu-split-here')).toHaveAttribute('aria-disabled', 'false');
+  await page.getByTestId('ctxmenu-split-here').click();
 }
 
 /** Размеры узла своими глазами: «нажимается ли» видимости не доказывает. */
@@ -168,7 +173,38 @@ const DEFAULT_TITLE = 'Спрашивает, куда двигаться, и ч�
 /** Открывает панель остановки, щёлкнув по её метке на дорожке. */
 async function selectGate(page: Page, gateId: string): Promise<void> {
   await page.getByTestId(`mark-gate-${gateId}`).click();
-  await expect(page.getByTestId('mark-panel')).toBeVisible();
+  // Ждём КАРТОЧКУ, а не панель: с Сессии 55 «куда ведёт ответ» и «завести
+  // ветку» живут в карточке остановки над её меткой. В панели их больше нет
+  // намеренно — два места, правящих одно значение, это два места, куда автор
+  // может написать разное.
+  await expect(page.getByTestId('stop-card')).toBeVisible();
+}
+
+/**
+ * ЧТО ВИДИТ АВТОР рядом с ответом — одной строкой, независимо от того, как
+ * это показано.
+ *
+ * У ответа со своим правилом главу называет ВЫБРАННЫЙ ПУНКТ списка; у ответа
+ * без правила — строка под списком. Проверять надо утверждение «автор видит,
+ * куда ведёт», а не то, каким органом оно показано, — иначе тест охраняет
+ * разметку вместо свойства продукта.
+ *
+ * Текст списка берётся у ВЫБРАННОГО пункта, а не у всего узла: `textContent`
+ * у `select` склеивает подписи ВСЕХ пунктов, и проверка «содержит имя главы»
+ * была бы зелёной, даже если выбрана совсем другая.
+ */
+async function gotoText(page: Page, index: number): Promise<string> {
+  const select = page.getByTestId(`stopcard-option-goto-${index}`);
+  if (await select.count()) {
+    const picked = await select.evaluate(
+      (node) => (node as HTMLSelectElement).selectedOptions[0]?.textContent ?? '',
+    );
+    const note = page.getByTestId(`stopcard-option-goto-note-${index}`);
+    const noteText = (await note.count()) ? ((await note.textContent()) ?? '') : '';
+    return `${picked} ${noteText}`.trim();
+  }
+  // Сложное условие: списка нет вовсе, стоит честная строка.
+  return (await page.getByTestId(`stopcard-option-complex-${index}`).textContent()) ?? '';
 }
 
 test.describe('Б2: у варианта ответа видно, куда он ведёт', () => {
@@ -184,14 +220,11 @@ test.describe('Б2: у варианта ответа видно, куда он �
     const errors = await openEditor(page, 'exit-branch');
     await selectGate(page, 'g-ask');
 
-    await expect(page.getByTestId('gate-option-goto-0')).toBeVisible();
-    await expect(page.getByTestId('gate-option-goto-0')).toContainText(RIGHT_TITLE);
-
-    await expect(page.getByTestId('gate-option-goto-1')).toBeVisible();
-    await expect(page.getByTestId('gate-option-goto-1')).toContainText(LEFT_TITLE);
+    expect(await gotoText(page, 0)).toContain(RIGHT_TITLE);
+    expect(await gotoText(page, 1)).toContain(LEFT_TITLE);
 
     // Слово схемы рядом с вариантом недопустимо (product.md §2).
-    await expect(page.getByTestId('gate-option-goto-0')).not.toContainText('s-right');
+    expect(await gotoText(page, 0)).not.toContain('s-right');
 
     expect(errors).toEqual([]);
   });
@@ -206,9 +239,8 @@ test.describe('Б2: у варианта ответа видно, куда он �
     const errors = await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    await expect(page.getByTestId('gate-option-goto-0')).toBeVisible();
-    await expect(page.getByTestId('gate-option-goto-0')).toContainText('никуда не ведёт');
-    await expect(page.getByTestId('gate-option-goto-1')).toContainText('никуда не ведёт');
+    expect(await gotoText(page, 0)).toContain('никуда не ведёт');
+    expect(await gotoText(page, 1)).toContain('никуда не ведёт');
 
     expect(errors).toEqual([]);
   });
@@ -227,7 +259,7 @@ test.describe('Б2: у варианта ответа видно, куда он �
     await selectGate(page, 'g-count');
 
     for (const index of [0, 1, 2]) {
-      const cell = page.getByTestId(`gate-option-goto-${index}`);
+      const cell = page.getByTestId(`stopcard-option-goto-${index}`);
       await expect(cell).toBeVisible();
       await expect(cell).toContainText(DEFAULT_TITLE);
       await expect(cell).not.toContainText('никуда не ведёт');
@@ -245,7 +277,7 @@ test.describe('Б2: у варианта ответа видно, куда он �
     await openEditor(page, 'exit-branch');
     await selectGate(page, 'g-ask');
 
-    const box = await boxOf(page, 'gate-option-goto-0');
+    const box = await boxOf(page, 'stopcard-option-goto-0');
     expect(box).not.toBeNull();
     expect(box!.display).not.toBe('none');
     expect(box!.visibility).toBe('visible');
@@ -294,12 +326,12 @@ test.describe('Б3: ветку можно завести прямо от вар�
     const errors = await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    await expect(page.getByTestId('gate-option-goto-0')).toContainText('никуда не ведёт');
+    expect(await gotoText(page, 0)).toContain('никуда не ведёт');
 
     const before = await graphOf(page);
     expect(before).toHaveLength(1);
 
-    await page.getByTestId('gate-option-branch-0').click();
+    await page.getByTestId('stopcard-option-branch-0').click();
 
     const after = await graphOf(page);
     // Глава появилась, и названа ПОДПИСЬЮ варианта — «Гейт» в этой фикстуре
@@ -309,15 +341,30 @@ test.describe('Б3: ветку можно завести прямо от вар�
     expect(created?.title).toBe('Гейт');
 
     // И связана: у главы с остановкой появилось правило именно на этот вариант.
+    // РОВНО ОДНО: заведена одна ветка, а не все сразу.
     const owner = after.find((s) => s.id === 's-explain')!;
     expect(owner.rules).toEqual([
       { goto: created!.id, when: ['equals:чем-останавливается=opt-gate'] },
     ]);
 
     // Автор видит результат немедленно, не уходя со своего места.
-    await expect(page.getByTestId('gate-option-goto-0')).toContainText('ведёт в «Гейт»');
-    // Второй вариант по-прежнему тупик: заведена ОДНА ветка, а не все.
-    await expect(page.getByTestId('gate-option-goto-1')).toContainText('никуда не ведёт');
+    expect(await gotoText(page, 0)).toContain('Гейт');
+
+    /*
+     * ВТОРОЙ ОТВЕТ БОЛЬШЕ НЕ ТУПИК, И ЭТО НАМЕРЕННО (Сессия 55, 22.08.2026).
+     *
+     * Раньше он оставался без выхода, и проект в этот момент переставал быть
+     * валидным: ответ, не подошедший ни под одно правило, завёл бы зрителя
+     * в тупик. Владелец поймал это в живом редакторе — работа перестала
+     * сохраняться, красная полоса «Не удалось сохранить работу в браузере».
+     *
+     * Теперь «Завести ветку» сразу даёт главе запасной выход в ту же новую
+     * главу. Своего правила у второго ответа по-прежнему НЕТ — проверено
+     * строкой выше, — и карточка говорит об этом дословно: «пойдёт в «…»,
+     * как и все остальные ответы».
+     */
+    expect(await gotoText(page, 1)).toContain('как и все остальные ответы');
+    expect(await gotoText(page, 1)).toContain('Гейт');
 
     expect(errors).toEqual([]);
   });
@@ -336,7 +383,7 @@ test.describe('Б3: ветку можно завести прямо от вар�
     await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    await page.getByTestId('gate-option-branch-0').click();
+    await page.getByTestId('stopcard-option-branch-0').click();
 
     // Шаг СОСТОЯЛСЯ — без этой проверки тест зелен и при неработающей кнопке.
     const made = await graphOf(page);
@@ -348,7 +395,7 @@ test.describe('Б3: ветку можно завести прямо от вар�
     const undone = await graphOf(page);
     expect(undone).toHaveLength(1);
     expect(undone[0]!.rules).toEqual([]);
-    await expect(page.getByTestId('gate-option-goto-0')).toContainText('никуда не ведёт');
+    expect(await gotoText(page, 0)).toContain('никуда не ведёт');
   });
 
   /**
@@ -360,8 +407,8 @@ test.describe('Б3: ветку можно завести прямо от вар�
     await openEditor(page, 'exit-branch');
     await selectGate(page, 'g-ask');
 
-    await expect(page.getByTestId('gate-option-goto-0')).toContainText('Направо');
-    await expect(page.getByTestId('gate-option-branch-0')).toHaveCount(0);
+    await expect(page.getByTestId('stopcard-option-goto-0')).toContainText('Направо');
+    await expect(page.getByTestId('stopcard-option-branch-0')).toHaveCount(0);
     await expect(page.getByTestId('gate-option-branch-1')).toHaveCount(0);
   });
 
@@ -375,7 +422,7 @@ test.describe('Б3: ветку можно завести прямо от вар�
     await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    const box = await boxOf(page, 'gate-option-branch-0');
+    const box = await boxOf(page, 'stopcard-option-branch-0');
     expect(box).not.toBeNull();
     expect(box!.display).not.toBe('none');
     expect(box!.visibility).toBe('visible');
@@ -386,7 +433,7 @@ test.describe('Б3: ветку можно завести прямо от вар�
     // перекрыло: `elementFromPoint` врёт в обе стороны, поэтому спрашиваем
     // его после того, как узел прокручен в видимую часть.
     const onTop = await page.evaluate(() => {
-      const node = document.querySelector<HTMLElement>('[data-testid="gate-option-branch-0"]');
+      const node = document.querySelector<HTMLElement>('[data-testid="stopcard-option-branch-0"]');
       if (!node) return 'НЕТ УЗЛА';
       node.scrollIntoView({ block: 'center' });
       const r = node.getBoundingClientRect();

@@ -23,6 +23,7 @@
  * так состояние не течёт между проверками.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -31,6 +32,7 @@ async function openWithSelection(page: Page): Promise<void> {
   await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
     timeout: 30_000,
   });
+  await openLayers(page);
   await page.getByTestId('element-row-title').click();
   await expect(page.getByTestId('propbar')).toBeVisible();
 }
@@ -93,7 +95,7 @@ test('окно 1280, каталог открыт: полоса по-прежне
   if (!catalogBox) throw new Error('у каталога нет geometry — boundingBox пуст');
   expect(
     catalogBox.width,
-    `каталог занимает ${catalogBox.width}px — не похоже на открытый (по умолчанию ~350)`,
+    `каталог занимает ${catalogBox.width}px — не похоже на открытый (по умолчанию 361)`,
   ).toBeGreaterThan(300);
 
   const size = await barSize(page);
@@ -194,6 +196,7 @@ test('панель «Объект»: при нескольких выделен�
     if (index > 0) await page.keyboard.up('Shift');
   }
   // Положительный контроль: выделены именно трое.
+  await openLayers(page);
   await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(3);
 
   await page.getByTestId('propbar-more').click();

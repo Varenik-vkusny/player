@@ -40,7 +40,7 @@ export function ElementList({
   headerAction,
 }: ElementListProps): ReactElement {
   return (
-    <div className="ed-elements" aria-label="Элементы сцены">
+    <div className="ed-elements" data-testid="element-list" aria-label="Элементы сцены">
       <Section title="Элементы" action={headerAction}>
         {rows.length === 0 ? (
           <p className="ed-elements-empty">Сцена пуста</p>

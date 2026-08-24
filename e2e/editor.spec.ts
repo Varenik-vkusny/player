@@ -17,6 +17,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
+import { openSlideStrip } from './panels.js';
+
 /** Логическая ширина сцены во всех эталонных фикстурах. */
 const STAGE_WIDTH = 1920;
 
@@ -140,7 +142,12 @@ test.describe('редактор: выделение и перетаскиван�
     await page.mouse.click(empty.x, empty.y);
 
     await expect(page.getByTestId('selection-frame')).toHaveCount(0);
-    await expect(page.getByTestId('selection-readout')).toContainText('ничего не выделено');
+    /* Выделение снято — ПИЛЮЛИ СВОЙСТВ НЕТ. Раньше здесь проверялся текст
+       «ничего не выделено»; такой надписи на экране больше нет: с 20.08.2026
+       при пустом выделении полоса свойств пуста целиком, как у натуры
+       (замер Канвы: при пустом выделении ноль узлов полосы). Утверждение
+       то же, выражено тем, что видит автор. */
+    await expect(page.getByTestId('propbar'), 'пилюля осталась при снятом выделении').toHaveCount(0);
   });
 
   test('выделяется то, что видно, а не то, что выше по zIndex', async ({ page }) => {
@@ -156,12 +163,15 @@ test.describe('редактор: выделение и перетаскиван�
     // ровно одного `currentSlide`, TrackView.seekToPointer трогает только
     // `transport`, см. `packages/editor/src/track/TrackView.tsx`). Слайд,
     // на котором карточка уже проявилась (`visible: true`), а точка ещё
-    // нет, выбирается через панель слайдов — `node-1-slide-8` на 9.2 с,
+    // нет, выбирается щелчком по карточке в ленте слайдов дорожки
+    // (панель слайдов удалена в Сессии 55 как дубликат ленты) —
+    // `node-1-slide-8` на 9.2 с,
     // это первый после начала анимации карточки (слово №20) и до начала
     // анимации точки (слово №58, ≈27.7 с). Id устойчив: он выведен из
     // структуры demo.json (кью и их порядка), а не подобран на глаз.
     await openEditor(page, 'demo');
-    await page.getByTestId('slide-node-1-slide-8').click();
+    await openSlideStrip(page);
+    await page.getByTestId('strip-card-node-1-slide-8').click();
 
     // «Видно» на этом слайде значит `visibility`, а не `opacity`: миграция
     // v1→v3 превращает кью «opacity 0→1» в `visible: false→true`

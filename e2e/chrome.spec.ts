@@ -12,6 +12,7 @@
  * автор: составом полосы и ШИРИНОЙ холста в пикселях.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -63,6 +64,7 @@ test.describe('полоса свойств над холстом', () => {
    */
   test('состав полосы зависит от типа выделенного', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
 
     await page.getByTestId('element-row-title').click();
     await expect(page.getByTestId('selection-readout')).toContainText('title');
@@ -84,6 +86,7 @@ test.describe('полоса свойств над холстом', () => {
    */
   test('«Ещё…» открывает «Объект», и там лежит то, чего нет на полосе', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
 
     await page.getByTestId('element-row-card').click();
     await expect(page.getByLabel('Ширина, px', { exact: true })).toHaveCount(0);

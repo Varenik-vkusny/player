@@ -48,6 +48,7 @@ import {
   IDENTITY_VIEW,
   panBy,
   wheelIntent,
+  openView,
   zoomAt,
   type SpaceView,
 } from './branchSpace.js';
@@ -75,6 +76,8 @@ export interface BranchesViewProps {
   readonly extractReason: (chapterIds: readonly string[]) => string | undefined;
   /** «Вынести в ветку» — выделенные подряд идущие главы становятся веткой. */
   readonly onExtract: (chapterIds: readonly string[]) => void;
+  /** Открывает панель глав: заведение, удаление и правила выхода. */
+  readonly onOpenChapters: () => void;
 }
 
 /** Длительность словами автора: «8:02», а не «482 с». */
@@ -129,7 +132,7 @@ function repeatArcPath(fromX: number, fromY: number, toX: number, toY: number): 
 }
 
 export function BranchesView({
-  lanes, currentId, onPick, onRename, range, extractReason, onExtract,
+  lanes, currentId, onPick, onRename, range, extractReason, onExtract, onOpenChapters,
 }: BranchesViewProps): ReactElement {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -253,15 +256,20 @@ export function BranchesView({
     return () => observer.disconnect();
   }, []);
 
-  // Вписывание — один раз при первом ненулевом размере окна. Дальше вид
+  // Открытие — один раз при первом ненулевом размере окна. Дальше вид
   // принадлежит автору и не прыгает сам, даже когда дерево меняется
   // (сворачивание ветки, переименование).
+  //
+  // `openView`, а не `fitView`: вписывание любой ценой давало 40 % на
+  // получасовом объяснении (подписи кеглем 4 px) и 148 % на коротком.
+  // Разбор — в `branchSpace.ts`. «Показать всё» осталось вписыванием:
+  // там автор просит обзор сознательно.
   const hasFittedRef = useRef(false);
   useEffect(() => {
     if (hasFittedRef.current) return;
     if (spaceSize.width <= 0 || spaceSize.height <= 0) return;
     hasFittedRef.current = true;
-    setView(fitView(layout.bounds, spaceSize.width, spaceSize.height));
+    setView(openView(layout.bounds, spaceSize.width, spaceSize.height));
   }, [spaceSize, layout.bounds]);
 
   const handleFit = useCallback(() => {
@@ -332,6 +340,14 @@ export function BranchesView({
   return (
     <section className="ed-branches" data-testid="branches-view" aria-label="Ветки">
       <div className="ed-branches-bar">
+        {/* ДВЕРЬ В ПАНЕЛЬ ГЛАВ (Сессия 55). Доска показывает структуру
+            и правит имена; заведение, удаление и правила выхода со сложными
+            условиями живут в панели — она переехала сюда из правой колонки,
+            которой больше нет. Дверь стоит НА ДОСКЕ, а не на рейке: панель
+            про то же, на что автор сейчас смотрит. */}
+        <button type="button" className="ed-branches-fit" data-testid="branches-open-chapters" onClick={onOpenChapters}>
+          Все главы и правила
+        </button>
         <button type="button" className="ed-branches-fit" data-testid="branches-fit" onClick={handleFit}>
           Показать всё
         </button>

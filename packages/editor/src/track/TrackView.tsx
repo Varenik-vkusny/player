@@ -10,9 +10,11 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactElement,
 } from 'react';
@@ -34,7 +36,6 @@ import {
   SEPARATOR_H,
   trackTier,
   trackDefaultHeight,
-  TRANSPORT_H,
   type LaneName,
   type TrackTier,
 } from './tiers.js';
@@ -43,7 +44,12 @@ import type { SpanRange } from './spans.js';
 import type { TransportApi } from './useTransport.js';
 import { Waveform } from './Waveform.js';
 import { clockText } from '../timeText.js';
-import { Icon } from '../ui/index.js';
+/* Меню правой кнопки берётся ГОТОВОЕ, у сцены. Второе всплывающее меню
+   в одном редакторе — это два места, где одно и то же поведение (разворот
+   у края окна, обход с клавиатуры, гашение невозможного пункта) начнёт
+   расходиться на первой же правке. */
+import { ContextMenu, type MenuItem } from '../stage/ContextMenu.js';
+import { PlainSelect } from '../ui/index.js';
 import { canvasWidth, largestFittingZoom, zoomBlockedReason, zoomFits, ZOOM_STEPS, type ZoomStep } from './zoom.js';
 
 /** Разделитель между полосами — толщиной из `tiers.ts`, который её же и складывает. */
@@ -216,6 +222,57 @@ export interface TrackViewProps {
   onEditSpan: (index: number, range: SpanRange) => void;
   onEditSpanEnd: () => void;
   onRemoveSpan: (index: number) => void;
+
+  /*
+   * Буфер слайдов приехал сюда из строки НАД дорожкой (Сессия 55).
+   *
+   * Там четыре кнопки стояли всегда, а под ними строкой печатались ТРИ
+   * причины разом — по одной от каждой погашенной. В узкой зоне строка
+   * переносилась на вторую, и замер дал прямое следствие: высота холста
+   * зависела от того, влез ли текст в ширину окна (306 -> 322, холст
+   * 344 -> 328, ровно 16 px).
+   *
+   * Теперь это пункты меню правой кнопки ПО МЕТКЕ СЛАЙДА: и действие,
+   * и его причина стоят рядом со своим предметом, и причина показывается
+   * ровно одна — та, что сейчас мешает.
+   */
+  /*
+   * СКЛАДЫВАНИЕ ПОЛОС — У САМИХ ПОЛОС (Сессия 55, по слову владельца
+   * 22.08.2026: «есть сверху кнопка слайды и кнопка озвучка… так и должно
+   * быть точно?»).
+   *
+   * Нет, не должно. Это был последний остаток строки органов над дорожкой:
+   * две кнопки, которые открывают панели СВОИХ полос, стояли в общем ряду
+   * с крошками и счётчиком, и ничто не связывало их с тем, чем они
+   * управляют. Теперь подпись полосы «Звук» и подпись полосы «Слайды» сами
+   * и есть эти кнопки.
+   */
+  soundOpen: boolean;
+  onToggleSound: () => void;
+  /**
+   * Почему складывать озвучку сейчас нельзя. `undefined` — можно.
+   *
+   * Кнопка при этом ОСТАЁТСЯ и гаснет, а не исчезает: спрятанный орган
+   * неотличим от несуществующего, и автор считает его задуманным. Это уже
+   * записанное правило проекта, и я нарушил его здесь на первой же правке —
+   * поймали три e2e, которые ищут кнопку по имени.
+   */
+  soundToggleProblem: string | undefined;
+  slidesOpen: boolean;
+  onToggleSlides: () => void;
+  /** Ставит слайд на секунде, куда показал автор. */
+  onAddSlideHere: () => void;
+  /** Убирает слайд, по метке которого открыто меню. */
+  onRemoveSlide: (slideId: string) => void;
+  /** Почему этот слайд убрать нельзя. `undefined` — можно. */
+  slideRemoveProblem: (slideId: string) => string | undefined;
+  onDuplicateSlide: () => void;
+  onCopySlide: () => void;
+  onCutSlide: () => void;
+  onPasteSlide: () => void;
+  slideCutProblem: string | undefined;
+  slideDuplicateProblem: string | undefined;
+  slidePasteProblem: string | undefined;
 }
 
 // Свой formatTime переехал в общий `clockText` (Сессия 47) вместе
@@ -252,6 +309,21 @@ export function TrackView({
   onEditSpan,
   onEditSpanEnd,
   onRemoveSpan,
+  soundOpen,
+  onToggleSound,
+  soundToggleProblem,
+  slidesOpen,
+  onToggleSlides,
+  onAddSlideHere,
+  onRemoveSlide,
+  slideRemoveProblem,
+  onDuplicateSlide,
+  onCopySlide,
+  onCutSlide,
+  onPasteSlide,
+  slideCutProblem,
+  slideDuplicateProblem,
+  slidePasteProblem,
 }: TrackViewProps): ReactElement {
   const laneRef = useRef<HTMLDivElement>(null);
   const laneScrollRef = useRef<HTMLDivElement>(null);
@@ -283,7 +355,10 @@ export function TrackView({
   const tier = trackTier(trackHeight, showBubbleLane);
   const resizeRef = useRef<{ pointerId: number; startY: number; startHeight: number } | null>(null);
 
-  const { positionSeconds, durationSeconds, peaks, failure, isPlaying } = transport;
+  // `isPlaying` здесь больше не нужен: кнопка уехала в нижнюю полосу окна
+  // вместе с часами. `failure` остался — сообщение о незагрузившейся дорожке
+  // рисуется В ПОЛОСЕ ЗВУКА, на месте волны, которой из-за него и нет.
+  const { positionSeconds, durationSeconds, peaks, failure } = transport;
 
   // Ширина видимого окна нужна и канвасу, и переводу времени в пиксели —
   // но меряется она у КОНТЕЙНЕРА прокрутки, не у полотна (.ed-lane): при
@@ -379,6 +454,233 @@ export function TrackView({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }, []);
+
+  /**
+   * МАСШТАБ ДОРОЖКИ КОЛЕСОМ С CTRL.
+   *
+   * Пять кнопок-ступеней в строке транспорта заменены на этот жест плюс
+   * один показатель в голове линейки. Жест не выдуман: Ctrl+колесо
+   * масштабирует полотно во всех монтажных программах и в Фигме — это
+   * индустриальная общность, а не чья-то собственность.
+   *
+   * `passive: false` обязателен, иначе `preventDefault` не сработает
+   * и браузер отдаст жест СТРАНИЦЕ: Ctrl+колесо у него — масштаб всего
+   * окна. Автор целился в дорожку, а уехал бы весь редактор.
+   *
+   * Обработчик вешается вручную, а не через onWheel: React вешает
+   * колесо пассивно, и preventDefault внутри него молча не действует —
+   * ровно тот случай, когда код верен, консоль чиста, а жест не работает.
+   */
+  useEffect(() => {
+    const container = laneScrollRef.current;
+    if (!container) return;
+    const onWheel = (event: WheelEvent): void => {
+      if (!event.ctrlKey && !event.metaKey) return;
+      event.preventDefault();
+      const index = ZOOM_STEPS.indexOf(zoom);
+      const next = ZOOM_STEPS[event.deltaY < 0 ? index + 1 : index - 1];
+      if (next === undefined || next === zoom) return;
+      // Та же проверка помещаемости, что стояла у кнопок: ступень, чьё
+      // полотно не влезет в канву браузера, не выбирается. Без неё волна
+      // пропадала бы МОЛЧА (замер в zoom.ts у largestFittingZoom).
+      if (zoomBlockedReason(width, next) !== undefined) return;
+      setZoom(next);
+    };
+    container.addEventListener('wheel', onWheel, { passive: false });
+    return () => container.removeEventListener('wheel', onWheel);
+  }, [zoom, width]);
+
+  /**
+   * Меню правой кнопки над дорожкой: что открыто и над чем.
+   *
+   * До Сессии 55 правой кнопки у дорожки не было вовсе — замер прямой:
+   * `onContextMenu` не стоял ни на линейке, ни на полосах меток. Действия
+   * жили кнопками в строке над дорожкой, вперемешку с навигацией
+   * и переключателем вида.
+   */
+  const [menu, setMenu] = useState<
+    { at: { x: number; y: number }; target: { kind: MarkKind | 'place'; id?: string } } | undefined
+  >(undefined);
+
+  const handleTrackContextMenu = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>): void => {
+      event.preventDefault();
+      const node = (event.target as HTMLElement).closest<HTMLElement>('[data-mark-kind]');
+      const kind = node?.dataset['markKind'];
+      const id = node?.dataset['markId'];
+      // Нажатие по метке СНАЧАЛА её выделяет — так же делает меню сцены
+      // (снято с натуры у Канвы 11.08.2026). Иначе меню действовало бы
+      // на прежнее выделение, а показано было бы над другим предметом.
+      if ((kind === 'slide' || kind === 'gate') && id !== undefined) {
+        onSelectMark(kind, id);
+        setMenu({ at: { x: event.clientX, y: event.clientY }, target: { kind, id } });
+        return;
+      }
+      /*
+       * ГОЛОВКА ЗДЕСЬ УЖЕ СТОИТ ГДЕ НАДО, И ВТОРОЙ ПЕРЕМОТКИ БЫТЬ НЕ ДОЛЖНО.
+       *
+       * Пункты «поставить здесь» и «вставить здесь» метят в позицию головки,
+       * поэтому щелчок обязан её туда привести. Приводит `pointerdown`
+       * полотна (`handleDown` → `seekToPointer`), который у правой кнопки
+       * тоже срабатывает и происходит РАНЬШЕ `contextmenu`.
+       *
+       * Своя перемотка здесь была бы не просто лишней, а ХУЖЕ: у `contextmenu`
+       * тип события `MouseEvent`, и его `clientX` целочисленный, тогда как
+       * у `pointerdown` он дробный. Замер: вторая перемотка сдвигала головку
+       * до пикселя в сторону — при масштабе ×1 это около 0.06 с, — и место
+       * под уже стоящим слайдом переставало считаться занятым. То есть более
+       * грубое измерение затирало более точное.
+       */
+      setMenu({ at: { x: event.clientX, y: event.clientY }, target: { kind: 'place' } });
+    },
+    [onSelectMark],
+  );
+
+  /**
+   * Состав меню — по тому, НА ЧТО нажали.
+   *
+   * Невозможный пункт гаснет, но остаётся: спрятать значило бы отобрать
+   * действие молча, и автор решит, что его не существует. Причина стоит
+   * ВИДИМОЙ строкой в самом пункте — не в `title`: на подсказки, как
+   * измерено в проекте, не смотрят.
+   *
+   * И причина показывается ровно одна — та, что мешает этому действию.
+   * Строка над лентой слайдов печатала три разом, от трёх разных кнопок.
+   */
+  const menuItems = useMemo((): readonly MenuItem[] => {
+    if (menu === undefined) return [];
+
+    /*
+     * ДЕЛЕНИЕ МЕНЮ ИДЁТ ПО ТОМУ, НА ЧТО ДЕЙСТВИЕ ДЕЙСТВУЕТ, а не по тому,
+     * что они «про слайды».
+     *
+     * Копировать и вырезать метят в ОБЪЕКТ — `state.currentSlideId`.
+     * Вставить и дублировать метят в МЕСТО — секунду под головкой
+     * (`headTimeRef`, Editor.tsx). Это видно прямо в их отправках:
+     * у первых двух `slideId`, у вторых `at`.
+     *
+     * Сложи их в одно меню по метке — и получится дефект по построению.
+     * Правый щелчок по метке ставит головку РОВНО на эту метку, значит
+     * место под головкой заведомо занято ею же, и «Вставить»/«Дублировать»
+     * гаснут ВСЕГДА с причиной «уже стоит слайд». Замер 21.08.2026,
+     * фикстура demo при непустом буфере: позиция после щелчка 0.7999…
+     * (секунда метки), оба пункта `aria-disabled="true"` — то есть автор
+     * не мог вставить слайд ни разу и ни при каких условиях.
+     *
+     * Поэтому объектные действия живут у метки, а местные — у пустого места.
+     */
+    if (menu.target.kind === 'slide') {
+      const slideId = menu.target.id ?? '';
+      const removeProblem = slideRemoveProblem(slideId);
+      return [
+        { id: 'slide-copy', label: 'Копировать слайд', shortcut: 'Ctrl+C', onSelect: onCopySlide },
+        { id: 'slide-cut', label: 'Вырезать слайд', shortcut: 'Ctrl+X', disabled: slideCutProblem !== undefined, hint: slideCutProblem, onSelect: onCutSlide },
+        {
+          id: 'slide-remove',
+          label: 'Удалить слайд',
+          separatorBefore: true,
+          disabled: removeProblem !== undefined,
+          hint: removeProblem,
+          onSelect: () => onRemoveSlide(slideId),
+        },
+      ];
+    }
+
+    if (menu.target.kind === 'gate') {
+      return [
+        { id: 'gate-split', label: 'Разрезать главу здесь', disabled: splitProblem !== undefined, hint: splitProblem, onSelect: onSplitHere },
+      ];
+    }
+
+    /*
+     * Пустое место дорожки. Две группы, и деление между ними — то же самое,
+     * что делит меню метки от этого: ЧТО Я ДЕЛАЮ С ТЕКУЩИМ СЛАЙДОМ и ЧТО Я
+     * КЛАДУ СЮДА.
+     *
+     * «Копировать»/«Вырезать» есть и здесь, и у метки, и это НЕ дубль:
+     * действие одно, цель одна (`state.currentSlideId`), разный только
+     * способ показать пальцем. Правый щелчок по любому месту дорожки ведёт
+     * туда головку, а головка ВЕДЁТ ТЕКУЩИЙ СЛАЙД (`Editor.tsx`, эффект
+     * `headSlideRef`), — значит после щелчка текущим становится слайд,
+     * накрывающий эту секунду.
+     *
+     * Без этого дубля пропала бы возможность, которая была до Сессии 55:
+     * ПЕРВЫЙ слайд главы стоит на нуле и ромба на дорожке не получает
+     * (решение продукта, не недосмотр). Оставь мы копирование только
+     * у метки — первый слайд стало бы нечем даже начать копировать,
+     * а раньше это делала кнопка ленты. Щелчок возле нуля возвращает
+     * ему доступ.
+     */
+    return [
+      {
+        id: 'slide-copy',
+        label: 'Копировать слайд',
+        shortcut: 'Ctrl+C',
+        onSelect: onCopySlide,
+      },
+      {
+        id: 'slide-cut',
+        label: 'Вырезать слайд',
+        shortcut: 'Ctrl+X',
+        disabled: slideCutProblem !== undefined,
+        hint: slideCutProblem,
+        onSelect: onCutSlide,
+      },
+      {
+        id: 'slide-paste',
+        label: 'Вставить слайд здесь',
+        shortcut: 'Ctrl+V',
+        separatorBefore: true,
+        disabled: slidePasteProblem !== undefined,
+        hint: slidePasteProblem,
+        onSelect: onPasteSlide,
+      },
+      {
+        /* «Сюда», а не «слайд»: дублируется ТЕКУЩИЙ слайд, а щелчок задаёт
+           только секунду, куда ляжет копия. */
+        id: 'slide-duplicate',
+        label: 'Дублировать текущий слайд сюда',
+        disabled: slideDuplicateProblem !== undefined,
+        hint: slideDuplicateProblem,
+        onSelect: onDuplicateSlide,
+      },
+      { id: 'add-slide', label: 'Поставить слайд здесь', onSelect: onAddSlideHere },
+      { id: 'add-gate', label: 'Поставить остановку здесь', onSelect: onAddGate },
+      {
+        /*
+         * «РАЗРЕЗАТЬ», А НЕ «РАЗДЕЛИТЬ» — имя исправлено в Сессии 55.
+         *
+         * Кнопка называлась «разделить здесь», и автор искал ею развилку,
+         * а получал ШОВ: вторая глава идёт сразу за первой, выбора
+         * не появляется. Продукт сам признавал это строкой после нажатия
+         * («Это шов, а не выбор»), то есть имя противоречило собственному
+         * объяснению продукта.
+         */
+        id: 'split-here',
+        label: 'Разрезать главу здесь',
+        separatorBefore: true,
+        disabled: splitProblem !== undefined,
+        hint: splitProblem,
+        onSelect: onSplitHere,
+      },
+      ...(bubble
+        ? ([{
+            id: 'bubble-lane-toggle',
+            label: bubbleLaneHidden ? 'Показать полосу капли' : 'Спрятать полосу капли',
+            separatorBefore: true,
+            hint: bubbleLaneHidden
+              ? 'Отрезки «моё» действуют и сейчас — спрятана полоса, а не владение'
+              : 'Настройка для себя: в проект она не пишется и зрителя не касается',
+            onSelect: () => setBubbleLaneHidden((hidden) => !hidden),
+          }] satisfies MenuItem[])
+        : []),
+    ];
+  }, [
+    menu, splitProblem, onSplitHere, onAddGate, onAddSlideHere, onRemoveSlide,
+    slideRemoveProblem, bubble, bubbleLaneHidden,
+    onDuplicateSlide, onCopySlide, onCutSlide, onPasteSlide,
+    slideDuplicateProblem, slideCutProblem, slidePasteProblem,
+  ]);
 
   /**
    * Ручка тяги за верхнюю кромку `.ed-track` (задача 2.2). Тот же приём из
@@ -487,11 +789,14 @@ export function TrackView({
   // от сжатия», и подсказка «потяните дорожку выше» соврала бы — тяга
   // её не вернёт, вернёт кнопка.
   const hiddenLaneCount = lanesOf('full', showBubbleLane).length - headLanes.length;
-  // Сумма высот полос БЕЗ транспорта. Считается тем же способом, что
-  // и minHeightOf() (сложением, а не числом), поэтому головы и тела сходятся
-  // на одно и то же число по построению — ту самую сходимость, ради которой
-  // marksBodyHeight() прибавляет разделитель внутри себя.
-  const lanesTotalHeight = minHeightOf(tier, showBubbleLane) - TRANSPORT_H;
+  // Сумма высот полос. Считается тем же способом, что и minHeightOf()
+  // (сложением, а не числом), поэтому головы и тела сходятся на одно и то же
+  // число по построению — ту самую сходимость, ради которой marksBodyHeight()
+  // прибавляет разделитель внутри себя.
+  //
+  // Вычитания транспорта больше нет: с Сессии 55 minHeightOf() и есть сумма
+  // полос, потому что строки транспорта не существует.
+  const lanesTotalHeight = minHeightOf(tier, showBubbleLane);
   const soundHeight = laneHeight('sound', tier);
 
   return (
@@ -538,121 +843,22 @@ export function TrackView({
         </div>
       ) : (
         <>
-      <div className="ed-transport">
-        <button
-          type="button"
-          className="ed-play"
-          onClick={transport.toggle}
-          disabled={Boolean(failure)}
-          aria-label={isPlaying ? 'Пауза' : 'Играть'}
-        >
-          {isPlaying ? '❚❚' : '▶'}
-        </button>
-        <code className="ed-clock" data-testid="track-clock">
-          {clockText(positionSeconds)} / {clockText(durationSeconds)}
-        </code>
-        {failure ? (
-          // Причина показывается дословно. Пустая волна вместо неё
-          // изображала бы тишину там, где на самом деле нет файла.
-          <span className="ed-failure" role="status" data-testid="track-failure">
-            Дорожка не загрузилась: {failure}
-          </span>
-        ) : null}
+      {/*
+        СТРОКА ТРАНСПОРТА УДАЛЕНА ЦЕЛИКОМ (Сессия 55).
 
-        {/* Ступени масштаба дорожки (track-zoom.md §§1, 8). Встают в эту же
-            строку транспорта — новой строки по высоте они не заводят.
+        В ней стояли восемь органов: воспроизведение, часы, пять ступеней
+        масштаба и две кнопки действий. Замер 21.08.2026: вместе с двумя
+        соседними строками это давало 96 px из 306 — треть зоны уходила
+        на органы прежде, чем автор видел хоть секунду дорожки.
 
-            A2: ступень, чьё полотно не поместится в канву браузера на
-            текущей ширине окна (`zoomBlockedReason`, `zoom.ts`), ГАСНЕТ —
-            остаётся в разметке с `aria-disabled` и причиной в `title`, а не
-            исчезает и не ломается молча. Клик по ней — no-op: onClick сам
-            проверяет ту же причину, `aria-disabled` — не `disabled`, кнопка
-            должна остаться фокусируемой. */}
-        <span className="ed-zoom" data-testid="zoom-controls">
-          {ZOOM_STEPS.map((zoomStep) => {
-            const blockedReason = zoomBlockedReason(width, zoomStep);
-            return (
-              <button
-                key={zoomStep}
-                type="button"
-                className="ed-zoom-step"
-                data-testid={`zoom-${zoomStep}`}
-                aria-pressed={zoomStep === zoom}
-                aria-disabled={blockedReason !== undefined}
-                onClick={() => {
-                  if (blockedReason !== undefined) return;
-                  setZoom(zoomStep);
-                }}
-                title={blockedReason ?? `Масштаб дорожки ×${zoomStep}`}
-              >
-                ×{zoomStep}
-              </button>
-            );
-          })}
-        </span>
-
-        <span className="ed-add">
-          <button
-            type="button"
-            className="ed-add-mark"
-            onClick={onAddGate}
-            // Слово схемы «гейт» пережило чистку словаря Сессии 8 именно
-            // здесь: на подсказки при наведении никто не смотрит, а автор
-            // видит их так же, как подписи (product.md §2а).
-            title="Остановка на этой секунде"
-          >
-            <Icon name="square" /> остановка
-          </button>
-          {/* Метка — стык глав (`branches.md` §2). Отдельного значка у неё
-              нет: граница между главами и есть метка, поэтому кнопка говорит
-              о ДЕЙСТВИИ, а не об объекте.
-
-              Надпись «Разделить здесь», а не «Поставить метку», намеренно:
-              слово «метка» в продукте занято дважды — ромбом слайда на дорожке
-              и якорем привязки к слову («проверьте N меток»), и `branches.md`
-              §1 называет это прямо как причину, по которой заведено слово
-              «глава». Третье значение добило бы его. Спецификация надписи
-              кнопки не диктует. */}
-          <button
-            type="button"
-            className="ed-add-mark"
-            data-testid="split-here"
-            disabled={splitProblem !== undefined}
-            onClick={onSplitHere}
-            title={splitProblem ?? 'Разделить главу надвое в этой секунде'}
-          >
-            <Icon name="scissors" /> разделить здесь
-          </button>
-
-          {/* Переключатель полосы капли. Стоит В ТРАНСПОРТЕ, а не в голове
-              самой полосы, по одной причине: спрятанной полосы в перечне нет,
-              и кнопка внутри неё исчезла бы вместе с ней — вернуть было бы
-              нечем. Управление, которое умеет только выключать, это тупик.
-
-              Показывается лишь тогда, когда в главе есть капля: кнопка,
-              включающая то, чего не существует, обещала бы автору полосу,
-              которая не появится. */}
-          {bubble ? (
-            <button
-              type="button"
-              className="ed-add-mark"
-              data-testid="bubble-lane-toggle"
-              aria-pressed={!bubbleLaneHidden}
-              onClick={() => setBubbleLaneHidden((hidden) => !hidden)}
-              title={bubbleLaneHidden
-                ? 'Показать полосу капли. Отрезки «моё» действуют и сейчас — спрятана полоса, а не владение'
-                : 'Спрятать полосу капли. Это настройка для себя: в проект она не пишется и зрителя не касается'}
-            >
-              {/* Надпись называет ДЕЙСТВИЕ, а не состояние. Одинаковый текст
-                  в обоих положениях оставил бы состояние жить только
-                  в `aria-pressed`: тест его видит, автор — нет. В проекте уже
-                  записан случай, когда пометка ушла туда, где её находит
-                  `getByLabel` и не находит человек. */}
-              {bubbleLaneHidden ? '👁 показать каплю' : '🚫 спрятать каплю'}
-            </button>
-          ) : null}
-        </span>
-      </div>
+        Куда что уехало:
+          воспроизведение и часы -> нижняя полоса окна, по центру,
+            как у Канвы (замер её таймлайна 19.08.2026);
+          ступени масштаба -> один орган в голове линейки плюс
+            Ctrl+колесо над дорожкой, как во всех монтажных программах;
+          остановка, разрез, полоса капли -> меню правой кнопки,
+            где у каждого пункта своя причина видимой строкой.
+      */}
 
       {/*
         Что получилось у последнего разреза — строкой ЗДЕСЬ, вплотную под
@@ -760,7 +966,59 @@ export function TrackView({
                 className="ed-lane-head"
                 style={{ height: `${laneHeight(lane, tier)}px`, ...(index > 0 ? SEPARATOR : {}) }}
               >
-                <span className="ed-lane-head-title">{laneTitle(lane, soundLabel)}</span>
+                {/* МАСШТАБ ДОРОЖКИ — в голове линейки, а не в строке органов.
+                    Орган стоит рядом с тем, что растягивает: линейка и есть
+                    ось, по которой масштаб действует. У головы линейки своей
+                    подписи нет (laneTitle отдаёт пустую строку), так что место
+                    было свободно и новой высоты зона не получает.
+
+                    Список, а не пять кнопок: ровно тем же органом показан
+                    масштаб ХОЛСТА в нижней полосе (ZoomBar), и два масштаба
+                    в одном редакторе обязаны выглядеть одинаково — иначе
+                    автор учит два разных способа делать одно и то же. */}
+                {isRuler ? (
+                  <PlainSelect
+                    className="ed-track-zoom"
+                    testId="track-zoom"
+                    ariaLabel="Масштаб дорожки"
+                    title="Масштаб дорожки. Ctrl+колесо над дорожкой — то же самое"
+                    value={String(zoom)}
+                    onPick={(picked) => setZoom(Number(picked) as ZoomStep)}
+                    options={ZOOM_STEPS.map((step) => ({
+                      value: String(step),
+                      label: `×${step}`,
+                      /* Ступень, чьё полотно не влезет в канву браузера,
+                         не выбирается: иначе волна пропадала бы МОЛЧА
+                         (замер в zoom.ts у largestFittingZoom). */
+                      disabled: zoomBlockedReason(width, step) !== undefined,
+                    }))}
+                  />
+                ) : lane === 'sound' ? (
+                  <button
+                    type="button"
+                    className="ed-lane-head-title ed-lane-head-button"
+                    data-testid="audio-source-toggle"
+                    aria-expanded={soundOpen}
+                    disabled={soundToggleProblem !== undefined}
+                    title={soundToggleProblem ?? (soundOpen ? 'Свернуть озвучку' : 'Развернуть озвучку')}
+                    onClick={onToggleSound}
+                  >
+                    <span aria-hidden="true">{soundOpen ? '▾' : '▸'}</span> {laneTitle(lane, soundLabel)}
+                  </button>
+                ) : lane === 'slides' ? (
+                  <button
+                    type="button"
+                    className="ed-lane-head-title ed-lane-head-button"
+                    data-testid="slide-strip-toggle"
+                    aria-expanded={slidesOpen}
+                    title={slidesOpen ? 'Свернуть ленту слайдов' : 'Развернуть ленту слайдов'}
+                    onClick={onToggleSlides}
+                  >
+                    <span aria-hidden="true">{slidesOpen ? '▾' : '▸'}</span> {laneTitle(lane, soundLabel)}
+                  </button>
+                ) : (
+                  <span className="ed-lane-head-title">{laneTitle(lane, soundLabel)}</span>
+                )}
                 {/* title дублирует подпись НЕ для красоты: голова 120 px, шрифт
                     подписи 10 px, и длинное имя звука обрезается многоточием.
                     Обрезка не роняет ничего и не подаёт сигнала — у проекта уже
@@ -798,14 +1056,47 @@ export function TrackView({
             дефект был бы виден автору и невидим всем 279 e2e разом.
             Высота-по-содержимому снимает это независимо от толщины: сколько
             скролбар займёт, на столько контейнер и вырастет. */}
-        <div className="ed-lane-scroll" ref={laneScrollRef}>
+        {/* Правая кнопка ловится на ПОЛОТНЕ, а не на всей зоне полос: событие
+            всплывает, и один обработчик не может разойтись с пятью внизу,
+            но левые головы полос в него попадать НЕ ДОЛЖНЫ.
+
+            Головы лежат вне оси времени. Попади щелчок по ним в этот
+            обработчик, `seekToPointer` посчитал бы долю левее нуля, зажал бы
+            её в ноль и перемотал бы главу в начало — то есть правый щелчок
+            по подписи «Звук» молча уводил бы автора на нулевую секунду.
+            Плюс в голове линейки стоит список масштаба, которому нужно
+            родное меню браузера, а не наше. */}
+        <div className="ed-lane-scroll" ref={laneScrollRef} onContextMenu={handleTrackContextMenu}>
           {/* laneRef стоит на ПОЛОТНЕ, а не на полосе волны: ось времени — это
               полотно целиком, и от него считают секунду все поверхности
               перемотки. Пока полос было две, `.ed-lane` совпадала с полотном
               по ширине, и разница не значила ничего; с пятью полосами такое
               совпадение — то самое необъявленное, которое однажды кончается.
               Ширина у полотна задана явно, у полос она 100% от него. */}
-          <div className="ed-lane-bodies" ref={laneRef} style={{ width: `${canvasWidthPx}px` }}>
+          {/*
+            ПЕРЕМОТКА ЩЕЛЧКОМ — НА ВСЁМ ПОЛОТНЕ, А НЕ НА ДВУХ ПОЛОСАХ.
+
+            Замер 21.08.2026: обработчики стояли только на линейке (полоска
+            24 px) и на волне. Щелчок по полосам «Слайды», «Остановки»
+            и «Расшифровка» не делал НИЧЕГО — ни перемотки, ни выделения.
+            Автор целился в дорожку и не получал отклика больше чем
+            на половине её высоты.
+
+            Один обработчик наверху вместо пяти внизу: пять экземпляров
+            одного поведения расходятся на первой же правке, а событие
+            и так всплывает. Метки при этом не мешают — MarksLane гасит
+            всплытие на своих кнопках, поэтому щелчок ПО МЕТКЕ выбирает
+            метку, а не перематывает мимо неё.
+          */}
+          <div
+            className="ed-lane-bodies"
+            ref={laneRef}
+            style={{ width: `${canvasWidthPx}px` }}
+            onPointerDown={handleDown}
+            onPointerMove={handleMove}
+            onPointerUp={handleUp}
+            onPointerCancel={handleUp}
+          >
             {bodyLanes.map((lane, index) => {
               const border = index > 0 ? SEPARATOR : {};
               if (lane === 'ruler') {
@@ -814,16 +1105,9 @@ export function TrackView({
                     key={lane}
                     className="ed-ruler-body"
                     style={{ height: `${laneHeight('ruler', tier)}px`, ...border }}
-                    // Линейка перематывает — в монтажной программе это ГЛАВНАЯ
-                    // поверхность перемотки, и до перекладки она работала
-                    // случайно: контейнер прокрутки БЫЛ полосой волны, поэтому
-                    // «щёлкнуть по дорожке» и «попасть в волну» совпадали.
-                    // Полос стало пять — совпадение кончилось, и линейка,
-                    // на которую автор целится первой, замолчала бы.
-                    onPointerDown={handleDown}
-                    onPointerMove={handleMove}
-                    onPointerUp={handleUp}
-                    onPointerCancel={handleUp}
+                    // Своих обработчиков перемотки у линейки больше нет:
+                    // с Сессии 55 они стоят один раз на полотне выше, и
+                    // перематывает ЛЮБАЯ полоса, а не только эти две.
                     data-testid="track-ruler"
                   >
                     <div className="ed-ticks" aria-hidden="true">
@@ -842,13 +1126,23 @@ export function TrackView({
                     key={lane}
                     className="ed-lane"
                     style={{ height: `${soundHeight}px`, ...border }}
-                    onPointerDown={handleDown}
-                    onPointerMove={handleMove}
-                    onPointerUp={handleUp}
-                    onPointerCancel={handleUp}
+                    // Обработчики перемотки переехали на полотно (Сессия 55).
                     data-testid="track-lane"
                   >
-                    <Waveform peaks={peaks} width={canvasWidthPx} height={soundHeight} progress={progress} />
+                    {/* Причина показывается дословно И НА МЕСТЕ ВОЛНЫ.
+                        Пустая волна вместо неё изображала бы тишину там, где
+                        на самом деле нет файла, — а место выбрано тем же
+                        правилом, что и всё остальное в этой зоне: орган (здесь
+                        — сообщение) стоит там, где предмет, о котором он
+                        говорит. Своей строки при этом не заводит: полоса звука
+                        существует всегда и высоту от сообщения не меняет. */}
+                    {failure ? (
+                      <span className="ed-failure" role="status" data-testid="track-failure">
+                        Дорожка не загрузилась: {failure}
+                      </span>
+                    ) : (
+                      <Waveform peaks={peaks} width={canvasWidthPx} height={soundHeight} progress={progress} />
+                    )}
                   </div>
                 );
               }
@@ -928,6 +1222,13 @@ export function TrackView({
         </div>
       </div>
         </>
+      )}
+
+      {/* Меню стоит ВНЕ ветки `collapsed`: свёрнутая дорожка полос не рисует,
+          и открывать над ней нечего, но узел меню принадлежит секции целиком,
+          а не одному её состоянию. */}
+      {menu === undefined ? null : (
+        <ContextMenu at={menu.at} items={menuItems} onClose={() => setMenu(undefined)} />
       )}
     </section>
   );

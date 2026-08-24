@@ -17,6 +17,7 @@
  * в editor-propbar-more.spec.ts), а не на факт вызова обработчика.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -61,6 +62,7 @@ test('погашенная кнопка «Разложить» видна и н�
   // была погашена, и это ровно тот случай, который проверяет задача.
   await clickElement(page, 'mover');
   await clickElement(page, 'leaver', true);
+  await openLayers(page);
   await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
 
   await openObjectPanel(page);
@@ -121,6 +123,7 @@ test('живая кнопка «копировать форматировани�
   // Один элемент со стилем на этом слайде — единственное состояние,
   // в котором копирование формата доступно (тот же путь, что
   // в editor-copy-format.spec.ts).
+  await openLayers(page);
   await page.getByTestId('element-row-title').click();
   await expect(page.getByTestId('selection-readout')).toContainText('title');
 
@@ -150,6 +153,7 @@ test('погашенная кнопка «копировать форматир�
   // поэтому на пачке оно погашено.
   await clickElement(page, 'mover');
   await clickElement(page, 'leaver', true);
+  await openLayers(page);
   await expect(page.locator('.ed-element-row[aria-pressed="true"]')).toHaveCount(2);
 
   await openObjectPanel(page);

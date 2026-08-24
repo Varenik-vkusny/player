@@ -20,6 +20,7 @@
  * прошло бы взаимодействие автора, минус недоступную саму системную часть.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openLayers } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<string[]> {
   const errors: string[] = [];
@@ -70,6 +71,7 @@ test.describe('секция «Вид»: правка стиля элемента
     // dot невидим на нулевой секунде (анимация появления на слове №58) —
     // выделяем через список, а не кликом по сцене, тем же приёмом, что
     // в e2e/editor-authoring.spec.ts.
+    await openLayers(page);
     await page.getByTestId('element-row-dot').click();
     await expect(page.getByTestId('selection-readout')).toContainText('dot');
 
@@ -101,6 +103,7 @@ test.describe('секция «Вид»: правка стиля элемента
     // восьми (state/style.ts). Секция обязана показать его как есть, а не
     // промолчать и не упасть.
     const errors = await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-card').click();
     await expect(page.getByTestId('selection-readout')).toContainText('card');
     expect(errors, 'панель не имеет права падать на незнакомый ключ style').toEqual([]);
@@ -111,6 +114,7 @@ test.describe('секция «Вид»: правка стиля элемента
     context,
   }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-lead').click();
     await expect(page.getByTestId('selection-readout')).toContainText('lead');
 
@@ -136,6 +140,7 @@ test.describe('секция «Вид»: правка стиля элемента
 
   test('правка выбора из списка (насыщенность шрифта) применяется к сцене', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-title').click();
     await expect(page.getByTestId('selection-readout')).toContainText('title');
 
@@ -149,6 +154,7 @@ test.describe('секция «Вид»: правка стиля элемента
 
   test('правка длины (кегль) числовым полем меняет размер шрифта на сцене', async ({ page }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-footer').click();
     await expect(page.getByTestId('selection-readout')).toContainText('footer');
 
@@ -164,6 +170,7 @@ test.describe('секция «Вид»: правка стиля элемента
     page,
   }) => {
     await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-card').click();
     await expect(page.getByTestId('selection-readout')).toContainText('card');
 
@@ -221,6 +228,7 @@ test.describe('секция «Вид»: правка стиля элемента
     page,
   }) => {
     const errors = await openEditor(page, 'demo');
+    await openLayers(page);
     await page.getByTestId('element-row-card').click();
     await expect(page.getByTestId('selection-readout')).toContainText('card');
 

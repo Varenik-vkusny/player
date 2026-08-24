@@ -1,7 +1,8 @@
 /**
  * Буфер обмена слайдов (ADR-025): «слайд переносит состояние, а не момент».
- * Кнопки ленты (`track/SlideStrip.tsx`) — Дублировать · Копировать ·
- * Вырезать · Вставить.
+ * Четыре кнопки ленты (`track/SlideStrip.tsx`) убраны в Сессии 55: теперь
+ * это пункты меню правой кнопки ПО МЕТКЕ СЛАЙДА (`TrackView.tsx`) —
+ * `ctxmenu-slide-duplicate` / `-slide-copy` / `-slide-cut` / `-slide-paste`.
  *
  * ГЛАВНОЕ ПРАВИЛО ЭТОГО ФАЙЛА — проверять СЦЕНУ, а не проект. В прошлой
  * сессии убранный со слайда элемент оставался на холсте: `states` в проекте
@@ -11,8 +12,33 @@
  * Поэтому чтение `window.__project` здесь встречается только как
  * вспомогательное (посчитать элементы части), а несущее утверждение каждого
  * теста — состав видимых `data-id` и видимый текст на сцене.
+ *
+ * ГДЕ ЖИВУТ ЭТИ ДЕЙСТВИЯ ПОСЛЕ СЕССИИ 55, и почему именно так.
+ *
+ * Меню правой кнопки делится по тому, НА ЧТО действие действует:
+ *
+ *   по метке слайда  — «Копировать» и «Вырезать»: они метят в ОБЪЕКТ
+ *                      (`state.currentSlideId`);
+ *   по пустому месту — «Вставить сюда» и «Дублировать сюда»: они метят
+ *                      в МЕСТО (секунду под головкой, `headTimeRef`),
+ *                      плюс те же «Копировать»/«Вырезать» для слайда,
+ *                      накрывающего эту секунду.
+ *
+ * Деление куплено дефектом, найденным первым же прогоном после переноса.
+ * Сложенные в одно меню метки, вставка и дублирование гасли ВСЕГДА:
+ * правый щелчок по метке ведёт головку точно на неё, значит место под
+ * головкой заведомо занято ею же. Замер: позиция после щелчка
+ * `0.7999999999999999`, оба пункта `aria-disabled="true"` с подсказкой
+ * «На 0.80 с уже стоит слайд» — то есть вставить было нельзя никогда
+ * и ничем.
+ *
+ * Второе следствие того же деления: «Копировать» есть и в меню места.
+ * Это не дубль, а единственный доступ к ПЕРВОМУ слайду главы — он стоит
+ * на нуле и ромба на дорожке не имеет (решение продукта, см. marks.spec.ts),
+ * так что щёлкать по нему было бы не по чему.
  */
 import { expect, test, type Page } from '@playwright/test';
+import { openChapters } from './panels.js';
 
 async function waitTransportReady(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -41,16 +67,30 @@ async function openEditor(page: Page, fixture: string): Promise<void> {
   await expect(page.getByTestId('slide-strip')).toBeVisible();
 }
 
-/** Перемотка нажатием по дорожке — так же, как это делает человек (см. e2e/marks.spec.ts). */
-async function seekTrack(page: Page, seconds: number): Promise<void> {
-  const box = await page.getByTestId('track-lane').boundingBox();
-  if (!box) throw new Error('дорожка не видна');
+/**
+ * Открывает меню правой кнопки на ЗАДАННОЙ секунде дорожки.
+ *
+ * Правый щелчок по пустому месту сам ведёт туда головку (Сессия 55,
+ * `TrackView.handleTrackContextMenu`), а головка ведёт текущий слайд
+ * (`Editor.tsx`, эффект `headSlideRef`). Поэтому одного жеста хватает
+ * и чтобы выбрать место, и чтобы открыть его меню.
+ *
+ * Целится в полосу расшифровки, а не в волну: обе перематывают одинаково,
+ * но на волне лежит канвас, а на метках — кнопки, и промах по ним дал бы
+ * меню другого предмета.
+ */
+async function openTrackMenuAt(page: Page, seconds: number): Promise<void> {
+  const box = await page.getByTestId('track-words').boundingBox();
+  if (!box) throw new Error('полоса расшифровки не видна');
   const duration = await page.evaluate(
     () =>
       (window as unknown as { __transport: { durationSeconds: number } }).__transport
         .durationSeconds,
   );
-  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2);
+  await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2, {
+    button: 'right',
+  });
+  await expect(page.getByTestId('context-menu')).toBeVisible();
 }
 
 /**
@@ -105,21 +145,66 @@ function stripCards(page: Page) {
   return page.locator('[data-testid^="strip-card-"]');
 }
 
+/**
+ * Открывает меню правой кнопки над меткой слайда — единственный вход
+ * в «Дублировать»/«Копировать»/«Вырезать»/«Вставить» слайд (Сессия 55,
+ * `TrackView.tsx` `menuItems`, ветка `kind === 'slide'`).
+ *
+ * Помощник оставлен с явным выбором метки ЛЕВЫМ щелчком перед правым.
+ * Причина историческая и уже устранённая в продукте: `ContextMenu`
+ * закрывался по ЛЮБОМУ событию `scroll` в фазе перехвата, включая плавную
+ * прокрутку ленты слайдов, которую запускает смена текущего слайда, — и
+ * меню, открытое на дорожке, закрывалось само. Теперь меню закрывается
+ * только от прокрутки, которая двигает точку его привязки. Порядок жестов
+ * здесь всё равно полезен: он делает шаг «слайд выбран» отдельным
+ * и проверяемым, а не спрятанным внутри открытия меню.
+ */
+async function openSlideMarkMenu(page: Page, mark: ReturnType<Page['locator']>): Promise<void> {
+  await mark.click();
+  const strip = page.getByTestId('slide-strip');
+  if (await strip.count()) {
+    await page.evaluate(() => {
+      delete (window as unknown as { __stripScrollProbe?: number }).__stripScrollProbe;
+    });
+    await page.waitForFunction((el) => {
+      const w = window as unknown as { __stripScrollProbe?: number };
+      const left = (el as HTMLElement).scrollLeft;
+      if (w.__stripScrollProbe === left) return true;
+      w.__stripScrollProbe = left;
+      return false;
+    }, await strip.elementHandle(), { timeout: 5_000, polling: 100 });
+  }
+  await mark.click({ button: 'right' });
+  await expect(page.getByTestId('context-menu')).toBeVisible();
+}
+
 test.describe('буфер обмена слайдов', () => {
   test('копия внутри части видна на сцене тем же составом элементов', async ({ page }) => {
     await openEditor(page, 'demo');
+
+    // Метка слайда — единственный вход в «Копировать» (задание, раздел
+    // «куда что переехало»). Правый щелчок по ней заодно ведёт туда головку.
+    const sourceMark = page.locator('[data-testid^="mark-slide-"]').first();
+    await openSlideMarkMenu(page, sourceMark);
 
     const originIds = await stageIds(page);
     expect(originIds.length, 'на исходном слайде нет элементов — сравнивать нечего').toBeGreaterThan(0);
     const cardsBefore = await stripCards(page).count();
 
-    await page.getByTestId('slide-copy').click();
+    await page.getByTestId('ctxmenu-slide-copy').click();
 
-    const at = await freeSlideSpotSeconds(page);
-    await seekTrack(page, at);
-    await expect(page.getByTestId('slide-paste')).toBeEnabled();
+    // Вставка метит в МЕСТО, а не в объект, поэтому её меню открывается
+    // на свободной секунде, а не на метке. Секунда посчитана геометрически
+    // по видимым ромбам, а не взята из фикстуры: числа в комментариях гниют,
+    // а дорожка не может соврать о том, где стоят её собственные метки.
+    const freeAt = await freeSlideSpotSeconds(page);
+    await openTrackMenuAt(page, freeAt);
+    await expect(
+      page.getByTestId('ctxmenu-slide-paste'),
+      'на свободной секунде «Вставить слайд здесь» обязана быть доступна',
+    ).toBeEnabled();
 
-    await page.getByTestId('slide-paste').click();
+    await page.getByTestId('ctxmenu-slide-paste').click();
 
     await expect(stripCards(page), 'слайдов в ленте обязано стать на один больше').toHaveCount(cardsBefore + 1);
     // Несущее утверждение: сцена вставленного слайда несёт РОВНО тот же
@@ -136,12 +221,38 @@ test.describe('буфер обмена слайдов', () => {
     await openEditor(page, 'repeat');
 
     // s-a — часть входа (project.entry). Её единственный слайд несёт
-    // bg-a/label-a («Кусок A»). Копируем его, пока он на экране.
+    // bg-a/label-a («Кусок A»). У s-a всего один слайд — он же первый,
+    // а первый слайд меткой на дорожке не считается (marks.spec.ts).
+    // Копировать нечего щёлкнуть — используем то, что видно на сцене,
+    // просто чтобы удостовериться в исходном составе перед переключением.
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(2);
     await expect(page.locator('.ed-stage-host')).toContainText('Кусок A');
-    await page.getByTestId('slide-copy').click();
+    // ПЕРВЫЙ СЛАЙД ГЛАВЫ РОМБА НА ДОРОЖКЕ НЕ ИМЕЕТ — это решение продукта,
+    // а не недосмотр (см. marks.spec.ts). Значит копирование НЕЛЬЗЯ вешать
+    // только на метку: у главы с единственным первым слайдом меток ноль,
+    // и щёлкнуть было бы не по чему.
+    //
+    // Проверка этого прямо здесь, положительным контролем: меток правда нет.
+    // Дальше слайд копируется через меню ЛЮБОГО места дорожки — правый
+    // щелчок ведёт головку, головка ведёт текущий слайд, а текущим здесь
+    // может быть только этот единственный.
+    await expect(
+      page.locator('[data-testid^="mark-slide-"]'),
+      'у части с единственным первым слайдом не должно быть меток — иначе тест проверяет не тот случай',
+    ).toHaveCount(0);
 
+    await openTrackMenuAt(page, 0.5);
+    await expect(
+      page.getByTestId('ctxmenu-slide-copy'),
+      'единственный слайд главы обязан копироваться, хотя ромба у него нет',
+    ).toBeEnabled();
+    await page.getByTestId('ctxmenu-slide-copy').click();
+
+    await openChapters(page);
     await page.getByTestId('segment-s-b').click();
+    // Дверь глав переключила нижнюю зону на «Ветки» — контекстное меню
+    // дорожки (openTrackMenuAt ниже) живёт в виде «Дорожки», возвращаемся.
+    await page.getByTestId('view-tracks').click();
     await waitTransportReady(page); // новый сегмент — новый источник звука, транспорт пересоздаётся
 
     // Родная сцена s-b: bg-b/label-b, «Кусок B» — до вставки её элементы не тронуты.
@@ -156,13 +267,13 @@ test.describe('буфер обмена слайдов', () => {
     expect(elementsBefore, 's-b обязана начать с двух элементов — иначе тест не про то').toBe(2);
 
     // Свободное место: у s-b всего один слайд (на нуле), поэтому подойдёт
-    // почти любая секунда внутри длительности — geometrически посчитанная,
+    // почти любая секунда внутри длительности — посчитанная геометрически,
     // а не подобранная на глаз.
-    const at = await freeSlideSpotSeconds(page);
-    await seekTrack(page, at);
-    await expect(page.getByTestId('slide-paste')).toBeEnabled();
+    const freeAt = await freeSlideSpotSeconds(page);
+    await openTrackMenuAt(page, freeAt);
+    await expect(page.getByTestId('ctxmenu-slide-paste')).toBeEnabled();
 
-    await page.getByTestId('slide-paste').click();
+    await page.getByTestId('ctxmenu-slide-paste').click();
 
     // Несущее утверждение: элемент ФИЗИЧЕСКИ нарисован на сцене, а не
     // только записан в states. Именно эту разницу прошлая сессия поймала
@@ -191,16 +302,34 @@ test.describe('буфер обмена слайдов', () => {
     await openEditor(page, 'demo');
 
     // Буфер непустой — чтобы причина отказа была ровно про место, а не
-    // смешивалась с «Буфер пуст».
-    await page.getByTestId('slide-copy').click();
+    // смешивалась с «Буфер пуст». Копируем первую метку слайда.
+    const copySource = page.locator('[data-testid^="mark-slide-"]').first();
+    await openSlideMarkMenu(page, copySource);
+    await page.getByTestId('ctxmenu-slide-copy').click();
 
-    // Второй слайд ленты: не первый (у первого своя причина «Начало части
-    // занято»), клик по карточке ведёт головку ТОЧНО на его метку
-    // (handleSelectSlide → transport.seek(markSeconds(...))).
-    await stripCards(page).nth(1).click();
+    /*
+     * Занятая секунда: целимся по горизонтали в чужую метку, а по вертикали —
+     * в полосу расшифровки. Так открывается меню МЕСТА (где живёт «Вставить
+     * слайд здесь»), но само место заведомо занято слайдом этой метки.
+     *
+     * Прямо по метке щёлкать нельзя: там откроется меню ОБЪЕКТА, в котором
+     * вставки нет вовсе, — и тест проверял бы отсутствие пункта вместо
+     * его причины.
+     */
+    const otherMark = page.locator('[data-testid^="mark-slide-"]').nth(1);
+    const markBox = await otherMark.boundingBox();
+    const wordsBox = await page.getByTestId('track-words').boundingBox();
+    if (!markBox || !wordsBox) throw new Error('метка или полоса расшифровки не видны');
+    await page.mouse.click(
+      markBox.x + markBox.width / 2,
+      wordsBox.y + wordsBox.height / 2,
+      { button: 'right' },
+    );
+    await expect(page.getByTestId('context-menu')).toBeVisible();
 
-    await expect(page.getByTestId('slide-paste')).toBeDisabled();
-    const note = page.getByTestId('slide-clipboard-note');
+    const paste = page.getByTestId('ctxmenu-slide-paste');
+    await expect(paste).toHaveAttribute('aria-disabled', 'true');
+    const note = page.getByTestId('ctxmenu-why-slide-paste');
     await expect(note).toBeVisible();
     await expect(note).toContainText('уже стоит слайд');
   });
@@ -220,20 +349,20 @@ test.describe('буфер обмена слайдов', () => {
     await openEditor(page, 'demo');
     // Буфер пуст с самого начала страницы: ничего не копировали и не вырезали.
 
-    const at = await freeSlideSpotSeconds(page);
-    await seekTrack(page, at);
+    const freeAt = await freeSlideSpotSeconds(page);
+    await openTrackMenuAt(page, freeAt);
 
     await expect(
-      page.getByTestId('slide-duplicate'),
+      page.getByTestId('ctxmenu-slide-duplicate'),
       'дублирование не читает буфер автора — обязано быть доступно и при пустом буфере',
     ).toBeEnabled();
-    await expect(page.getByTestId('slide-paste')).toBeDisabled();
-    await expect(page.getByTestId('slide-clipboard-note')).toContainText('Буфер пуст');
+    await expect(page.getByTestId('ctxmenu-slide-paste')).toHaveAttribute('aria-disabled', 'true');
+    await expect(page.getByTestId('ctxmenu-why-slide-paste')).toContainText('Буфер пуст');
 
     const idsBefore = await stageIds(page);
     const cardsBefore = await stripCards(page).count();
 
-    await page.getByTestId('slide-duplicate').click();
+    await page.getByTestId('ctxmenu-slide-duplicate').click();
 
     await expect(stripCards(page)).toHaveCount(cardsBefore + 1);
     // Дубль — точная копия того, что было на сцене до нажатия.
@@ -251,13 +380,20 @@ test.describe('буфер обмена слайдов', () => {
     const target = cards.nth(1);
     const targetTestId = await target.getAttribute('data-testid');
     if (!targetTestId) throw new Error('у карточки слайда нет data-testid');
+    // «Вырезать» не читает секунду головки (в отличие от «Вставить»
+    // и «Дублировать»): она нацелена на `state.currentSlideId`, поэтому
+    // клик по карточке ленты годится сам по себе.
     await target.click();
+    // Метка ЭТОГО ЖЕ слайда: id карточки и id метки — один и тот же id слайда.
+    const slideId = targetTestId.slice('strip-card-'.length);
+    const mark = page.getByTestId(`mark-slide-${slideId}`);
 
     const targetIds = await stageIds(page);
     expect(targetIds.length, 'у вырезаемого слайда нет элементов — сравнивать нечего').toBeGreaterThan(0);
 
-    await expect(page.getByTestId('slide-cut')).toBeEnabled();
-    await page.getByTestId('slide-cut').click();
+    await openSlideMarkMenu(page, mark);
+    await expect(page.getByTestId('ctxmenu-slide-cut')).toBeEnabled();
+    await page.getByTestId('ctxmenu-slide-cut').click();
 
     await expect(cards, 'слайдов в ленте обязано стать на один меньше').toHaveCount(cardsBefore - 1);
 

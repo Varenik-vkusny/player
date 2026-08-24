@@ -23,8 +23,12 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 
-/** Панели середины: шесть прямых детей .ed-main дают четыре видимых листа. */
-const PANELS = ['.ed-rail', '.ed-catalog', '.ed-stage-cell', '.ed-side'] as const;
+/**
+ * Панели середины. Правая колонка (.ed-side) удалена в Сессии 55 — у Канвы
+ * и КапКута справа от полотна нет ничего; проверять её отсутствие здесь
+ * нечем, зато соседи остались теми же.
+ */
+const PANELS = ['.ed-rail', '.ed-catalog', '.ed-stage-cell'] as const;
 
 async function openEditor(page: Page): Promise<void> {
   await page.goto('/editor.html?fixture=demo', { waitUntil: 'load' });
@@ -175,6 +179,34 @@ test.describe('три уровня поверхности', () => {
   test('лист сцены — карточка, колонны разделены линией', async ({ page }) => {
     await openEditor(page);
 
+    /*
+     * 20.08.2026: проверка перенацелена с `.ed-stage-cell` на сам лист.
+     *
+     * Она называлась «лист сцены — карточка», а мерила `.ed-stage-cell` —
+     * то есть КОЛОНКУ холста, а не лист. Пока у колонки были скругление
+     * и тень, разница не проявлялась, и тест выглядел правильным.
+     *
+     * Замер натуры показал, что колонка карточкой быть не должна: у Канвы
+     * панель каталога и область полотна стыкуются встык, radius 0,
+     * shadow none, а окно собрано мозаикой. Карточкой у неё остаётся ЛИСТ —
+     * белый прямоугольник с мягкой тенью (замер: rgba(64,87,109,0.3)
+     * 0 4px 32px -14px, скругление 0).
+     *
+     * Поэтому парение теперь спрашивается у `.ed-scene-backdrop` — узла
+     * ровно по кадру, который и есть лист, — а скругление не требуется
+     * вовсе: у натуры его нет. Проверка стала точнее: раньше она была бы
+     * зелёной у окна, где карточка — колонка, а лист плоский, то есть
+     * ровно наоборот против натуры.
+     */
+    const sheet = await page.evaluate(() => {
+      const el = document.querySelector('.ed-scene-backdrop');
+      if (!el) throw new Error('нет узла .ed-scene-backdrop — лист не найден');
+      const cs = getComputedStyle(el);
+      return { shadow: cs.boxShadow, bg: cs.backgroundColor };
+    });
+    expect(sheet.shadow, 'лист сцены перестал парить: тени нет').not.toBe('none');
+    expect(sheet.bg, 'у листа нет своего фона — он часть инварианта №5').not.toBe('rgba(0, 0, 0, 0)');
+
     const looks = await page.evaluate((panels) => {
       return panels.map((sel) => {
         const el = document.querySelector(sel);
@@ -196,9 +228,11 @@ test.describe('три уровня поверхности', () => {
       });
     }, PANELS);
 
+    // Колонка холста, наоборот, карточкой быть НЕ должна: у натуры области
+    // окна стыкуются встык. Проверка обратная прежней и намеренно.
     const stage = looks.find((l) => l.sel === '.ed-stage-cell')!;
-    expect(stage.radius, 'лист сцены перестал быть карточкой: нет скругления').toBeGreaterThan(0);
-    expect(stage.shadow, 'лист сцены перестал быть карточкой: нет тени').not.toBe('none');
+    expect(stage.radius, 'у колонки холста появилось скругление — окно снова стало набором карточек').toBe(0);
+    expect(stage.shadow, 'у колонки холста появилась тень — окно снова стало набором карточек').toBe('none');
 
     for (const l of looks) {
       if (l.sel === '.ed-stage-cell') continue;

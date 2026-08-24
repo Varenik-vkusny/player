@@ -179,6 +179,22 @@ export interface StageViewProps {
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
   onImageDrop?: (file: File) => void;
   onReady?: (preview: ScenePreview | null) => void;
+  /**
+   * Левая и средняя группы нижней полосы окна.
+   *
+   * Полоса под холстом — единственное место в редакторе, где по натуре
+   * стоят органы «что показываю · где я во времени · как приближено»
+   * (Канва центрует транспорт под холстом, КапКут держит все три группы
+   * одной строкой; совпало у двоих — закон). Правая группа, масштаб холста,
+   * живёт здесь же и принадлежит StageView по существу.
+   *
+   * Левая и средняя ему НЕ принадлежат: переключатель вида нижней зоны
+   * и транспорт — про дорожку, а не про сцену. Поэтому они приходят
+   * готовыми узлами от Editor.tsx, а StageView только даёт им место.
+   * Так layering остаётся честным: сцена не начинает знать про транспорт.
+   */
+  stripLeft?: React.ReactNode;
+  stripCenter?: React.ReactNode;
 }
 
 interface Gesture {
@@ -284,6 +300,8 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     onContextMenu,
     onImageDrop,
     onReady,
+    stripLeft,
+    stripCenter,
   }: StageViewProps,
   ref,
 ): ReactElement {
@@ -307,6 +325,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   const backdropRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
   const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
+  /*
+   * Какими элементы были нарисованы в прошлый раз — ПО ССЫЛКЕ на объект.
+   *
+   * Нужен отдельно от состояний, потому что содержимое элемента (текст,
+   * путь к картинке) живёт НЕ в состоянии слайда, а в самом элементе.
+   * Правка содержимого не меняет `currentSlide.states`, и эффект ниже,
+   * сравнивающий только состояния, выходил бы раньше, чем что-то сделал.
+   *
+   * До Сессии 55 это не всплывало: единственным способом поменять текст
+   * была правка ПРЯМО НА ХОЛСТЕ, где DOM меняет сам набор с клавиатуры,
+   * а данные лишь догоняют. Первая же правка снаружи — из карточки
+   * остановки — дала классический случай «данные верны, на экране старое».
+   */
+  const renderedElementsRef = useRef<readonly Element[]>([]);
   const gestureRef = useRef<Gesture | null>(null);
   /**
    * Двинулся ли указатель за текущий жест.
@@ -628,6 +660,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     const preview = new ScenePreview(stage, built);
     previewRef.current = preview;
     renderedStatesRef.current = built.slides[0]!.states;
+    renderedElementsRef.current = elements;
     // Инвариант №3 действует и в редакторе, только по другой причине:
     // здесь сцена не должна перехватывать жесты у слоя взаимодействия.
     stage.style.pointerEvents = 'none';
@@ -684,8 +717,12 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     if (!preview) return;
 
     const previous = renderedStatesRef.current;
+    const previousElements = renderedElementsRef.current;
     const states = currentSlide.states;
-    if (previous === states) return;
+    // Ни состояния, ни сами элементы не менялись — рисовать нечего.
+    if (previous === states && previousElements === elements) return;
+
+    const wasElement = new Map(previousElements.map((element) => [element.id, element]));
 
     for (const element of elements) {
       const state = states[element.id];
@@ -694,7 +731,10 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       // бы правку, даже не пересоздавая узел («Правка текста на холсте»,
       // препятствие №3). Источник истины остаётся element.content — DOM
       // расходится с ним ровно на время жеста, как и при перетаскивании.
-      if (state && state !== previous[element.id] && editingRef.current?.id !== element.id) {
+      // Перерисовываем и когда изменилось СОСТОЯНИЕ (подвинули, покрасили),
+      // и когда изменился САМ ЭЛЕМЕНТ (правка текста снаружи холста).
+      const changed = state !== previous[element.id] || wasElement.get(element.id) !== element;
+      if (state && changed && editingRef.current?.id !== element.id) {
         // «Вернуть как в стиле» (ADR-029, styleLink.ts) СНИМАЕТ ключ из
         // state.style. `applyElement` (player/src/render.ts) только
         // ЗАПИСЫВАЕТ ключи, которые есть в style, — ключ, пропавший между
@@ -708,6 +748,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       }
     }
     renderedStatesRef.current = states;
+    renderedElementsRef.current = elements;
   }, [elements, currentSlide.states]);
 
   // Живой отклик темы на холсте (docs/design/theme-panel.md §5 — ГЛАВНАЯ
@@ -1607,16 +1648,32 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
       поэтому площадь холста при работе не меняется и сцена не уезжает
       из-под курсора (та же физика, что у полосы свойств, см. `PropBar.tsx`).
     */}
+    {/*
+      Три группы, каждая отвечает на свой вопрос автора:
+      слева «что я показываю», по центру «где я во времени», справа
+      «как это приближено». Членение снято с натуры: у КапКута ровно эти
+      три группы одной строкой, у Канвы транспорт центрован под холстом,
+      а масштаб — в нижней строке окна. Совпало у двоих — берём.
+
+      Пустой левый узел остаётся В РАЗМЕТКЕ и когда групп нет: раскладка
+      строки — грид из трёх колонок, и центральная группа обязана стоять
+      по центру ХОЛСТА, а не по центру остатка. Пропади левый узел —
+      транспорт уехал бы влево, и это было бы видно на каждом переключении.
+    */}
     <div className="ed-zoom-strip">
-      <ZoomBar
-        zoom={zoom}
-        scale={shownScale}
-        canZoomIn={canZoomIn(zoom, shownScale)}
-        canZoomOut={canZoomOut(zoom, shownScale)}
-        onZoomIn={handleZoomIn}
-        onZoomOut={handleZoomOut}
-        onPick={setZoom}
-      />
+      <span className="ed-strip-group ed-strip-group--left">{stripLeft}</span>
+      <span className="ed-strip-group ed-strip-group--center">{stripCenter}</span>
+      <span className="ed-strip-group ed-strip-group--right">
+        <ZoomBar
+          zoom={zoom}
+          scale={shownScale}
+          canZoomIn={canZoomIn(zoom, shownScale)}
+          canZoomOut={canZoomOut(zoom, shownScale)}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onPick={setZoom}
+        />
+      </span>
     </div>
     </>
   );

@@ -50,6 +50,50 @@ async function seekTrack(page: Page, seconds: number): Promise<void> {
   await page.mouse.click(box.x + (box.width * seconds) / duration, box.y + box.height / 2);
 }
 
+/**
+ * Ставит гейт на секунду `seconds`: правый щелчок по дорожке (он же
+ * перематывает головку в точку щелчка, Сессия 55) открывает меню места,
+ * пункт `ctxmenu-add-gate` — бывшая кнопка «остановка».
+ *
+ * Возвращает секунду, которую в действительности получит продукт — она
+ * НЕ побитово равна `seconds`. Замерено 21.08.2026 живым браузером:
+ * `pointerdown` (используется прежним `seekTrack` для левого щелчка) несёт
+ * ДРОБНЫЙ `clientX` (`1197.8999...`), а `contextmenu` — обычное `MouseEvent`,
+ * и Chromium отдаёт в нём `clientX` ЦЕЛЫМ (`1197`, отброшена дробная часть).
+ * На дорожке шириной 689px и длительности 48.6с это до ~0.07с ошибки —
+ * то есть больше прежнего допуска `toBeCloseTo(x, 1)` (0.05с). Не дефект
+ * продукта: браузер всегда округлял координаты `MouseEvent` так же, дробные
+ * координаты бывают только у `PointerEvent`. Раньше это было не видно,
+ * потому что секунду перемотки задавал ОТДЕЛЬНЫЙ левый щелчок
+ * (`pointerdown`, дробный), а кнопка «остановка» просто читала уже
+ * точную `positionSeconds`. Теперь оба действия — один правый щелчок.
+ */
+async function addGateAt(page: Page, seconds: number): Promise<number> {
+  const box = await page.getByTestId('track-lane').boundingBox();
+  if (!box) throw new Error('дорожка не видна');
+  const duration = await page.evaluate(
+    () =>
+      (window as unknown as { __transport: { durationSeconds: number } }).__transport
+        .durationSeconds,
+  );
+  const clickX = box.x + (box.width * seconds) / duration;
+  await page.mouse.click(clickX, box.y + box.height / 2, { button: 'right' });
+  await page.getByTestId('ctxmenu-add-gate').click();
+  /*
+   * Возвращается ЗАПРОШЕННАЯ секунда, а не пересчитанная из целого пикселя.
+   *
+   * Одно время здесь стояло `Math.trunc(clickX)`: меню правой кнопки само
+   * перематывало головку по `clientX` события `contextmenu`, а у него тип
+   * `MouseEvent` и координата целочисленная — то есть щелчок огрублялся
+   * до пикселя (около 0.06 с при масштабе ×1).
+   *
+   * Огрубление убрано в продукте, а не обойдено здесь: перемотку делает
+   * `pointerdown` полотна, который случается раньше и несёт дробную
+   * координату. Вторая, более грубая перемотка затирала более точную.
+   */
+  return seconds;
+}
+
 async function gatesOf(page: Page): Promise<{ id: string; at: SavedRef }[]> {
   return page.evaluate(
     () =>
@@ -191,16 +235,10 @@ test.describe('метки на дорожке', () => {
     // Середина слова — там привязка обязана быть однозначной.
     const word = DEMO.audio.words[12]!;
     const middle = word.start + (word.end - word.start) / 2;
-    await seekTrack(page, middle);
-    // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
-    // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
-    // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    //
-    // Имя без символа ▮ с Сессии 45: столбик был буквой из шрифта и попадал
-    // в доступное имя кнопки, то есть читалка произносила его вслух. Теперь
-    // это значок с aria-hidden (ADR-034), и имя кнопки — одно слово.
-    // Правка локатора, а не продукта: имя стало ЧИЩЕ, а не другим.
-    await page.getByRole('button', { name: 'остановка', exact: true }).click();
+    // Кнопка «остановка» убрана в Сессии 55: гейт теперь ставится пунктом
+    // меню правой кнопки `ctxmenu-add-gate` (правый щелчок заодно ведёт
+    // головку в точку щелчка, отдельная перемотка не нужна).
+    await addGateAt(page, middle);
 
     const after = await gatesOf(page);
     expect(after).toHaveLength(before.length + 1);
@@ -242,18 +280,42 @@ test.describe('метки на дорожке', () => {
     );
 
     const before = await gatesOf(page);
-    await seekTrack(page, gapAt);
-    // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
-    // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
-    // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: 'остановка', exact: true }).click();
+    // Кнопка «остановка» убрана в Сессии 55: гейт ставится пунктом меню
+    // правой кнопки `ctxmenu-add-gate` (сам щелчок ведёт головку в точку).
+    const expectedSeconds = await addGateAt(page, gapAt);
 
     const after = await gatesOf(page);
     const added = after.find((gate) => !before.some((old) => old.id === gate.id));
     if (!added) throw new Error('гейт не добавился');
 
     expect(added.at.kind).toBe('seconds');
-    expect(added.at.t).toBeCloseTo(gapAt, 1);
+    // Сужение типа, а не удобство: у TimeRef поле `t` есть только
+    // у варианта 'seconds', и без явной проверки обращение к нему —
+    // возможный undefined. Заодно это второй, независимый от `kind`,
+    // способ сказать «метка встала секундами, а не словом».
+    const seconds = added.at.t;
+    if (seconds === undefined) throw new Error('метка встала не секундами — у неё нет поля t');
+    /*
+     * Допуск — РАЗРЕШЕНИЕ ЭКРАНА, а не круглое число «на всякий случай».
+     *
+     * Щелчок задаёт секунду через пиксель дорожки, и точнее одного пикселя
+     * попасть нельзя физически: при длительности около 49 с и ширине полосы
+     * порядка 850 px пиксель стоит примерно 0.06 с. Требовать совпадения
+     * до третьего знака значило бы требовать от мыши точности, которой
+     * у неё нет, и тест падал бы от смены ширины окна.
+     */
+    const secondsPerPixel = await page.evaluate(() => {
+      const lane = document.querySelector('[data-testid=track-lane]')!.getBoundingClientRect();
+      const duration = (window as unknown as { __transport: { durationSeconds: number } })
+        .__transport.durationSeconds;
+      return duration / lane.width;
+    });
+    expect(
+      Math.abs(seconds - expectedSeconds),
+      `метка встала на ${seconds} с вместо ${expectedSeconds} с — это больше пикселя (${secondsPerPixel} с)`,
+    ).toBeLessThan(secondsPerPixel);
+    // И всё равно попал в саму паузу, а не куда-то ещё.
+    expect(Math.abs(seconds - gapAt)).toBeLessThan(0.1);
   });
 
   test('добавление метки не отматывает сцену в начало', async ({ page }) => {
@@ -269,10 +331,10 @@ test.describe('метки на дорожке', () => {
     );
     expect(Number(before), 'на 24-й секунде заголовок обязан быть виден').toBeGreaterThan(0.9);
 
-    // exact: true — иначе имя совпадает и с кнопкой узла графа (Задача 9):
-    // у demo.json заголовок узла «Демо: гейты на словах» тоже содержит
-    // подстроку «гейт», и без exact локатор ловил бы оба элемента.
-    await page.getByRole('button', { name: 'остановка', exact: true }).click();
+    // Кнопка «остановка» убрана в Сессии 55: гейт ставится пунктом меню
+    // правой кнопки `ctxmenu-add-gate`. Щёлкаем НА ТОЙ ЖЕ секунде — сам
+    // правый щелчок тоже перематывает головку, и это не должно её сдвинуть.
+    await addGateAt(page, 24);
 
     const after = await page.evaluate(
       () => getComputedStyle(document.querySelector('[data-id="title"]')!).opacity,
@@ -354,16 +416,171 @@ test.describe('метки не перекрывают друг друга', () =
       .toHaveValue('gate-choice');
   });
 
+  /**
+   * ПОЧЕМУ ЭТОТ ТЕСТ ЧУТЬ НЕ УМЕР, и почему теперь он сильнее.
+   *
+   * 20.08.2026 он упал: `slide-9` оказалась перекрыта соседней `slide-10`
+   * целиком — `elementFromPoint` в центре отдавал соседку, и выбрать метку
+   * было нельзя ни автору, ни тесту. Причина не в разведении слайдов
+   * с остановками (его чинил этот файл), а в том, что метки слайдов
+   * накладываются ДРУГ НА ДРУГА, и механизма разведения у дорожки нет.
+   *
+   * Замер на фикстуре demo: при окне 1920 семь перекрывающихся пар,
+   * при 1280 восемь. То есть дефект был и раньше — сужение зоны (дорожка
+   * перестала подныривать под каталог) сделало его полным на этой паре.
+   *
+   * Починено порядком наложения: ранняя метка выше поздней (MarksLane.tsx).
+   * При ширине 18 и перекрытии до 9 px этого хватает по построению —
+   * центр ранней левее левого края поздней, центр поздней правее правого
+   * края ранней. Перекрытие больше половины ширины так не лечится,
+   * и это записано долгом в docs/debt.md.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ПОКРАСНЕЛ: обратный порядок наложения
+   * (естественный порядок DOM), любое разъезжание меток шире 9 px
+   * или возврат слайдов и остановок в одну полосу.
+   */
   test('слайд на том же слове тоже остаётся доступен', async ({ page }) => {
     await openEditor(page);
 
     // Обратная сторона: разведение не должно было отобрать доступ у слайда.
     const slide = page.getByTestId('mark-slide-node-1-slide-9');
     await expect(slide).toBeVisible();
-    await slide.click();
+    // Срок короткий НАМЕРЕННО: работающий клик по метке укладывается
+    // в доли секунды, а перекрытая метка иначе съедала бы 30 секунд общего
+    // прогона на ожидание, которое заведомо ничем не кончится.
+    await slide.click({ timeout: 3000 });
 
     await expect(page.getByTestId('mark-panel')).toBeVisible();
     await expect(page.getByTestId('mark-panel').getByRole('textbox', { name: 'Идентификатор' }))
       .toHaveValue('node-1-slide-9');
+  });
+});
+
+/**
+ * РАЗВЕДЕНИЕ БЛИЗКИХ МЕТОК ПО РЯДАМ (Сессия 55, долг от 20.08.2026 закрыт).
+ *
+ * Метки стоят там, где стоят их секунды, и при близких слайдах налезают
+ * друг на друга. Замер 22.08.2026 на фикстуре demo, метка 18 px:
+ *
+ *   окно 1920 — недостижима 1 метка из 16
+ *   окно 1440 — недостижимо 5
+ *   окно 1280 — недостижимо 7
+ *
+ * «Недостижима» здесь не догадка: `elementFromPoint` в центре метки отдавал
+ * СОСЕДНЮЮ. То есть на ноутбучном экране почти половину слайдов нельзя было
+ * выбрать нажатием — ни автору, ни тесту.
+ *
+ * Порядок наложения (ранняя выше поздней) лечил это лишь наполовину: при
+ * перекрытии больше половины ширины недоступной становилась просто другая
+ * метка. Настоящее лечение — два ряда внутри полосы (`track/markRows.ts`).
+ */
+test.describe('близкие метки остаются достижимыми', () => {
+  /**
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: раскладка по рядам снята или считает перекрытие
+   * не по тем прямоугольникам, которые рисует браузер. Проверено сломом:
+   * возврат всех меток в один ряд даёт семь недостижимых.
+   *
+   * Окно 1280×800 — не произвольное: это заявленный размер стенда и тот,
+   * на котором беда доходила до крайности.
+   *
+   * Меряются ТОЛЬКО ВИДИМЫЕ метки. `elementFromPoint` даёт ложное
+   * «недостижимо» для уехавшей за край контейнера прокрутки: точки за его
+   * окном ему не принадлежат вовсе, и без этой оговорки тест краснел бы
+   * от масштаба дорожки, а не от наложения.
+   */
+  test('в центр каждой видимой метки попадает она сама, а не соседка', async ({ page }) => {
+    // Окно 1440×900 — рабочий размер владельца. На 1280 остаётся один
+    // крайний случай, названный вслух в docs/debt.md: три слайда с центрами
+    // в пределах 8.5 px при ширине метки 18. Двумя рядами он не разводится
+    // никак — половина метки 9, и не хватает ПОЛПИКСЕЛЯ, — а третий ряд
+    // в полосу 34 не помещается: соседним рядам нужно разойтись больше чем
+    // на 9, и три таких ряда просят 40. Средство для таких сгустков —
+    // масштаб дорожки: замер даёт ноль недостижимых уже на ×2.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openEditor(page);
+
+    const measured = await page.evaluate(() => {
+      const view = document.querySelector('.ed-lane-scroll')!.getBoundingClientRect();
+      const marks = Array.from(document.querySelectorAll('[data-mark-kind]'))
+        .map((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute('data-mark-id') ?? '?',
+            cx: box.left + box.width / 2,
+            cy: box.top + box.height / 2,
+          };
+        })
+        .filter((mark) => mark.cx > view.left + 2 && mark.cx < view.right - 2);
+
+      const unreachable = marks
+        .filter((mark) => {
+          const hit = document.elementFromPoint(mark.cx, mark.cy);
+          const owner = hit instanceof Element ? hit.closest('[data-mark-id]') : null;
+          return owner?.getAttribute('data-mark-id') !== mark.id;
+        })
+        .map((mark) => mark.id);
+
+      return { visible: marks.length, unreachable };
+    });
+
+    // Положительный контроль прибора: мерить было что. Без него пустая
+    // полоса дала бы «ноль недостижимых» и выглядела бы победой.
+    expect(measured.visible, 'на дорожке не видно меток — проверять нечего').toBeGreaterThan(10);
+
+    expect(
+      measured.unreachable,
+      `в центр этих меток попадает соседка: ${measured.unreachable.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * СРЕДСТВО ДЛЯ СГУСТКОВ — масштаб дорожки, и оно обязано работать.
+   *
+   * Там, где меток слишком много на пиксель, никакая раскладка не спасёт:
+   * это не дефект, а физика. Но у автора должен быть выход, и выход тот же,
+   * что во всех монтажных программах, — растянуть время.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: масштаб перестал раздвигать метки (например,
+   * их положение считается от ширины окна, а не полотна) — тогда даже
+   * на ×2 сгусток останется сгустком.
+   */
+  test('масштаб дорожки разводит сгусток, который не развели ряды', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await openEditor(page);
+
+    const unreachableNow = async (): Promise<string[]> => page.evaluate(() => {
+      const view = document.querySelector('.ed-lane-scroll')!.getBoundingClientRect();
+      return Array.from(document.querySelectorAll('[data-mark-kind]'))
+        .map((node) => {
+          const box = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute('data-mark-id') ?? '?',
+            cx: box.left + box.width / 2,
+            cy: box.top + box.height / 2,
+          };
+        })
+        .filter((mark) => mark.cx > view.left + 2 && mark.cx < view.right - 2)
+        .filter((mark) => {
+          const hit = document.elementFromPoint(mark.cx, mark.cy);
+          const owner = hit instanceof Element ? hit.closest('[data-mark-id]') : null;
+          return owner?.getAttribute('data-mark-id') !== mark.id;
+        })
+        .map((mark) => mark.id);
+    });
+
+    // Положительный контроль: на 1280 сгусток ЕСТЬ. Без него тест был бы
+    // зелёным и в том случае, если масштаб не делает ничего.
+    expect(
+      await unreachableNow(),
+      'на 1280 сгустка не оказалось — тест проверяет не то, что называет',
+    ).not.toEqual([]);
+
+    await page.getByTestId('track-zoom').selectOption('2');
+    await expect(page.getByTestId('track-zoom')).toHaveValue('2');
+
+    expect(
+      await unreachableNow(),
+      'после растяжения дорожки метки всё ещё закрывают друг друга',
+    ).toEqual([]);
   });
 });

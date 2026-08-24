@@ -60,6 +60,14 @@ export interface LibraryItem {
    * заготовку из всех трёх панелей сразу.
    */
   readonly category: LibraryCategory;
+  /**
+   * Раздел внутри панели. Пустая строка — заготовка стоит в разделе
+   * по умолчанию (имя раздела задаёт вызывающий).
+   *
+   * Заведён 20.08.2026 вместе с разделами шаблонов: у натуры панель
+   * «Элементы» разбита на блоки, у нас была одна сетка.
+   */
+  readonly group?: string;
 }
 
 const ACCENT = '#4c8dff';
@@ -94,9 +102,105 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
     content: 'Новый текст',
     category: 'text',
   },
+  /*
+   * ТЕКСТОВЫЕ ЗАГОТОВКИ (добавлены 20.08.2026).
+   *
+   * До этого дня во вкладке «Текст» лежала ОДНА заготовка — «Новый текст»
+   * с кеглем 36. Панель была почти пустой, и это видно глазами рядом
+   * с натурой: у Канвы во вкладке «Текст» первым делом стоят «Добавить
+   * заголовок», «Добавить подзаголовок», «Добавить основной текст» —
+   * ступени размера, а не один универсальный текст.
+   *
+   * Тот же набор ступеней лежит в PowerPoint и Google Slides (Title,
+   * Subtitle, Body, Caption), то есть это отраслевой стандарт.
+   *
+   * Кегли взяты не с потолка, а от уже существующих заготовок шаблонов
+   * (state/templates.ts): заголовок 96, подзаголовок 56, основной 36,
+   * подпись 28. Так вставленный текст сразу совпадает по размеру
+   * с тем, что кладут шаблоны, и автору не приходится подгонять.
+   */
+  {
+    id: 'text-title',
+    label: 'Заголовок',
+    type: 'text',
+    width: 1400,
+    height: 220,
+    style: {
+      'font-family': 'system-ui, sans-serif',
+      'font-size': '96px',
+      'font-weight': '700',
+      color: '#f5f7fa',
+      'line-height': '1.15',
+    },
+    content: 'Заголовок',
+    category: 'text',
+  },
+  {
+    id: 'text-subtitle',
+    label: 'Подзаголовок',
+    type: 'text',
+    width: 1200,
+    height: 140,
+    style: {
+      'font-family': 'system-ui, sans-serif',
+      'font-size': '56px',
+      'font-weight': '600',
+      color: '#f5f7fa',
+      'line-height': '1.25',
+    },
+    content: 'Подзаголовок',
+    category: 'text',
+  },
+  {
+    id: 'text-body',
+    label: 'Основной текст',
+    type: 'text',
+    width: 1000,
+    height: 200,
+    style: {
+      'font-family': 'system-ui, sans-serif',
+      'font-size': '36px',
+      color: '#f5f7fa',
+      'line-height': '1.5',
+    },
+    content: 'Основной текст, который читают спокойно и целиком.',
+    category: 'text',
+  },
+  {
+    id: 'text-caption',
+    label: 'Подпись',
+    type: 'text',
+    width: 800,
+    height: 80,
+    style: {
+      'font-family': 'system-ui, sans-serif',
+      'font-size': '28px',
+      color: '#9fb0c4',
+      'line-height': '1.4',
+    },
+    content: 'Мелкая подпись',
+    category: 'text',
+  },
+  {
+    id: 'text-quote',
+    label: 'Цитата',
+    type: 'text',
+    width: 1200,
+    height: 240,
+    style: {
+      'font-family': 'system-ui, sans-serif',
+      'font-size': '64px',
+      'font-style': 'italic',
+      color: '#f5f7fa',
+      'line-height': '1.35',
+    },
+    content: '«Чужие слова, приведённые дословно»',
+    category: 'text',
+  },
   {
     id: 'shape',
     label: 'Фигура',
+    group: 'Фигуры',
     type: 'shape',
     width: 300,
     height: 300,
@@ -133,6 +237,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'circle',
     label: 'Круг',
+    group: 'Фигуры',
     type: 'shape',
     width: 240,
     height: 240,
@@ -143,6 +248,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'arrow',
     label: 'Стрелка',
+    group: 'Линии и стрелки',
     type: 'shape',
     width: 320,
     height: 120,
@@ -161,6 +267,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'frame',
     label: 'Рамка',
+    group: 'Рамки и выноски',
     type: 'shape',
     width: 400,
     height: 260,
@@ -171,6 +278,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'line',
     label: 'Линия',
+    group: 'Линии и стрелки',
     type: 'shape',
     width: 400,
     height: 6,
@@ -181,6 +289,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'bracket',
     label: 'Скобка',
+    group: 'Линии и стрелки',
     type: 'shape',
     width: 60,
     height: 300,
@@ -199,6 +308,7 @@ export const ELEMENT_LIBRARY: readonly LibraryItem[] = [
   {
     id: 'callout',
     label: 'Выноска',
+    group: 'Рамки и выноски',
     type: 'shape',
     width: 360,
     height: 160,
