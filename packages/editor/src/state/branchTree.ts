@@ -75,12 +75,14 @@ export interface BranchLane {
 }
 
 /** Плитка главы — та же форма, что кладёт в цепочку `branchChapters` (`exits.ts`). */
-function tileOf(segment: Segment): ChapterTile {
+function tileOf(segment: Segment, order: number): ChapterTile {
   return {
     id: segment.id,
     title: segment.title || segment.id,
     seconds: segment.audio.duration,
     forksAfter: segment.exit.rules.length > 0,
+    description: segment.description,
+    order,
   };
 }
 
@@ -155,7 +157,27 @@ export function branchTree(project: Project): readonly BranchLane[] {
   // Глава, уже занявшая место в какой-то полосе. Общий для ВСЕГО дерева,
   // не для одной полосы: вторая ссылка на ту же главу — это связь (п. 5
   // выше), и определить это можно только глядя на дерево целиком.
+  //
+  // ЧИТАЕТСЯ В ТРЁХ МЕСТАХ, а не в одном (правка 24.08.2026). Раньше
+  // `placed` спрашивали только у целей правил развилки, а продолжение
+  // по `default` шло мимо — и глава, в которую ветка возвращается,
+  // раскладывалась ЗАНОВО вместе со всем, что за ней. Замер на фикстуре
+  // showcase: девять плиток на четыре главы, `s-main` дважды, `s-yes`
+  // и `s-final` трижды. Владелец: «не могу понять, что за чем идёт».
   const placed = new Set<string>();
+
+  /*
+   * Сквозная нумерация глав в порядке РАСКЛАДКИ: основная ветка, затем
+   * ветки по порядку правил развилки. Считается здесь, а не в виде,
+   * потому что порядок задаёт именно обход дерева — вид его только
+   * печатает. Номер уникален по построению: главу кладут ровно один раз
+   * (см. `placed` выше).
+   */
+  let placedCount = 0;
+  const nextOrder = (): number => {
+    placedCount += 1;
+    return placedCount;
+  };
 
   function buildLane(
     startId: string,
@@ -194,14 +216,21 @@ export function branchTree(project: Project): readonly BranchLane[] {
       seenHere.add(cursor);
       placed.add(cursor);
       secondsTotal += segment.audio.duration;
-      chapters.push(tileOf(segment));
+      chapters.push(tileOf(segment, nextOrder()));
       lastPushed = cursor;
 
       if (segment.exit.rules.length === 0) {
         const next = segment.exit.default;
         // Проверка стыка — только при ПРОДОЛЖЕНИИ цепочки (в полосе уже
         // есть плитка): для головы полосы стык не проверяется вовсе (п. 6).
-        if (next !== null && isJunction(next)) {
+        //
+        // `placed` проверяется НАРАВНЕ со стыком, и это не удвоение условия.
+        // Стык считает ИСТОЧНИКИ (`incoming` — множество), поэтому две
+        // ссылки из ОДНОЙ главы (правило развилки плюс её же `default`)
+        // дают единицу и стыком не считаются. А глава, уже лежащая в другой
+        // полосе, обязана стать хвостом в любом случае: положить её второй
+        // раз значит нарисовать одну главу дважды — см. `placed` ниже.
+        if (next !== null && (isJunction(next) || placed.has(next))) {
           tail = gotoTail(next, leadsBack(project, cursor, next));
           break;
         }
@@ -243,7 +272,9 @@ export function branchTree(project: Project): readonly BranchLane[] {
 
       if (segment.exit.default !== null) {
         const next = segment.exit.default;
-        if (isJunction(next)) {
+        // То же, что и выше: уже размещённая глава становится хвостом,
+        // а не второй копией себя.
+        if (isJunction(next) || placed.has(next)) {
           tail = gotoTail(next, leadsBack(project, forkId, next));
           break;
         }

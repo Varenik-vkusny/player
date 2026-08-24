@@ -12,10 +12,16 @@ import { ARC_HEADROOM, layoutLanes, NAME_WIDTH, ROW_HEIGHT, ROW_GAP } from '../s
  * Раскладка дерева веток в координаты пространства (`design/branches.md` §5).
  * Чистая арифметика — как её соседи `branchTree.test.ts` и `chapters.test.ts`.
  *
- * Контрольные числа посчитаны РУКАМИ (длительность × PX_PER_SECOND), а не
- * взяты
- * из полей самой раскладки — иначе тест сравнивал бы формулу сама с собой
- * и был бы пуст по построению (см. предупреждение в задании).
+ * Контрольные числа посчитаны РУКАМИ, а не взяты из полей самой раскладки:
+ * иначе тест сравнивал бы формулу сама с собой и был бы пуст по построению.
+ *
+ * ФОРМУЛА ШИРИНЫ (изменена владельцем 24.08.2026, разбор у констант
+ * в `branchLayout.ts`):
+ *
+ *   width = MIN + (MAX − MIN) × √(seconds / longest),  MIN 34, MAX 260
+ *
+ * где `longest` — длительность самой длинной главы ВСЕЙ доски. Плитки идут
+ * с зазором TILE_GAP = 8.
  */
 
 const FIXTURES = fileURLToPath(new URL('../../../fixtures/projects/', import.meta.url));
@@ -34,10 +40,13 @@ const NO_COLLAPSED: ReadonlySet<string> = new Set();
 
 describe('layoutLanes', () => {
   /**
-   * split-track: s-head (2.5с) и s-tail (1.5с) в корневой полосе.
-   * 2.5×10=25, 1.5×10=15 — оба НИЖЕ MIN_TILE_PX (24), поэтому обе плитки
-   * получают пол в 24: множитель снижен 40 → 10 в Сессии 55, разбор
-   * в branchLayout.ts у самой константы.
+   * split-track: s-head (2.5 с) и s-tail (1.5 с) в корневой полосе.
+   * Самая длинная глава доски — s-head, 2.5 с, она и берёт MAX = 260.
+   *
+   *   s-head: √(2.5/2.5) = 1     → 34 + 226×1     = 260
+   *   s-tail: √(1.5/2.5) = 0.7746 → 34 + 226×0.7746 = 209.0588…
+   *
+   * Икс второй плитки — правый край первой плюс зазор: 260 + 8 = 268.
    *
    * Что сломает: любая ошибка в переводе секунд в пиксели (п. 1) или
    * в стыковке плиток (п. 2) — сдвинутся сами числа x/width.
@@ -49,49 +58,63 @@ describe('layoutLanes', () => {
     const layout = layoutLanes(lanes, NO_COLLAPSED);
     const root = rowOf(layout.rows, 's-head');
 
-    expect(root.tiles[0]).toMatchObject({ id: 's-head', x: 0, width: 25 });
-    expect(root.tiles[1]).toMatchObject({ id: 's-tail', x: 25, width: 24 });
-    // Хвост стоит за правым краем последней плитки: 25 + 24 = 49.
-    expect(root.tail).toEqual({ kind: 'end', label: 'конец', x: 49, repeat: false });
+    expect(root.tiles[0]).toMatchObject({ id: 's-head', x: 0, width: 260 });
+    expect(root.tiles[1]!.id).toBe('s-tail');
+    expect(root.tiles[1]!.x).toBe(268);
+    expect(root.tiles[1]!.width).toBeCloseTo(209.0588, 3);
+    // Хвост — за правым краем последней плитки плюс зазор:
+    // 268 + 209.0588… + 8 = 485.0588…
+    expect(root.tail.kind).toBe('end');
+    expect(root.tail.label).toBe('конец');
+    expect(root.tail.x).toBeCloseTo(485.0588, 3);
   });
 
   /**
-   * Икс начала ОБЕИХ дочерних полос обязан быть 25 — правый край плитки
-   * `s-head` (0 + 25), не левый (0) и не сумма секунд самой ветки.
+   * Икс начала ОБЕИХ дочерних полос обязан быть 260 — правый край плитки
+   * `s-head` (0 + 260), не левый (0) и не сумма секунд самой ветки.
+   *
+   *   s-left и s-right: 0.6 с, √(0.6/2.5) = 0.4899 → 34 + 226×0.4899
+   *   = 144.7169…
    *
    * Что сломает: п. 3 переписан на левый край анкер-плитки (сабораж 2
    * из задания) или на анкер-секунды вместо анкер-индекса.
    * Верно ли при любой реализации: нет — при левом крае получилось бы 0,
    * число из независимо посчитанного литерала это ловит.
    */
-  it('дочерние полосы split-track начинаются под правым краем плитки-развилки, литерал 25', () => {
+  it('дочерние полосы split-track начинаются под правым краем плитки-развилки, литерал 260', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
-    expect(rowOf(layout.rows, 's-left').startX).toBe(25);
-    expect(rowOf(layout.rows, 's-right').startX).toBe(25);
-    expect(rowOf(layout.rows, 's-left').tiles[0]).toMatchObject({ x: 25, width: 24 });
+    expect(rowOf(layout.rows, 's-left').startX).toBe(260);
+    expect(rowOf(layout.rows, 's-right').startX).toBe(260);
+    expect(rowOf(layout.rows, 's-left').tiles[0]!.x).toBe(260);
+    expect(rowOf(layout.rows, 's-left').tiles[0]!.width).toBeCloseTo(144.7169, 3);
   });
 
   /**
-   * Пустая глава (0 секунд) получает MIN_TILE_PX, а следующая плитка
-   * не наезжает на неё — начинается там, где кончилась пустая, ПО ШИРИНЕ.
-   * Собрано руками из `BranchLane`, потому что в фикстурах пустой главы,
-   * за которой сразу идёт следующая в той же полосе, нет.
+   * Пустая глава (0 секунд) получает МИНИМУМ, а следующая плитка
+   * не наезжает на неё — начинается там, где кончилась пустая, ПО ШИРИНЕ,
+   * плюс зазор. Собрано руками из `BranchLane`, потому что в фикстурах
+   * пустой главы, за которой сразу идёт следующая в той же полосе, нет.
    *
-   * Что сломает: накопление икса по секундам вместо ширины (сабораж 1
-   * из задания) — тогда обе плитки лягут на 0, наехав друг на друга.
+   * Самая длинная глава здесь — «Обычная», 1 с, она берёт MAX = 260.
+   * Пустая: √(0/1) = 0 → 34 + 226×0 = 34, ровно MIN.
+   * Икс второй: 34 + 8 = 42.
+   *
+   * Что сломает: накопление икса по секундам вместо ширины — тогда обе
+   * плитки лягут на 0, наехав друг на друга; или потерянный зазор — тогда
+   * вторая встанет на 34.
    * Верно ли при любой реализации: нет — при накоплении по секундам
-   * вторая плитка получила бы x=0, а не 24.
+   * вторая плитка получила бы x = 0, а не 42.
    */
-  it('пустая глава получает MIN_TILE_PX, следующая плитка не наезжает', () => {
+  it('пустая глава получает минимальную ширину, следующая плитка не наезжает', () => {
     const lane: BranchLane = {
       id: 'r',
       name: 'Основная',
       depth: 0,
       chapters: [
-        { id: 'c-empty', title: 'Пустая', seconds: 0, forksAfter: false },
-        { id: 'c-normal', title: 'Обычная', seconds: 1, forksAfter: false },
+        { id: 'c-empty', title: 'Пустая', seconds: 0, forksAfter: false, description: '', order: 1 },
+        { id: 'c-normal', title: 'Обычная', seconds: 1, forksAfter: false, description: '', order: 2 },
       ],
       parentLaneId: null,
       anchorIndex: -1,
@@ -107,8 +130,8 @@ describe('layoutLanes', () => {
     const layout = layoutLanes([lane], NO_COLLAPSED);
     const row = rowOf(layout.rows, 'r');
 
-    expect(row.tiles[0]).toMatchObject({ x: 0, width: 24 });
-    expect(row.tiles[1]).toMatchObject({ x: 24, width: 24 });
+    expect(row.tiles[0]).toMatchObject({ x: 0, width: 34 });
+    expect(row.tiles[1]).toMatchObject({ x: 42, width: 260 });
   });
 
   /**
@@ -141,7 +164,7 @@ describe('layoutLanes', () => {
   });
 
   /**
-   * Связка родитель→ребёнок: `x` = 25 (как startX ребёнка), `fromY` = низ
+   * Связка родитель→ребёнок: `x` = 260 (как startX ребёнка), `fromY` = низ
    * строки родителя (24+56=80), `toY` = середина строки ребёнка
    * (92+28=120).
    *
@@ -155,7 +178,7 @@ describe('layoutLanes', () => {
 
     expect(layout.connectors).toHaveLength(2);
     const toLeft = layout.connectors.find((c) => c.toLaneId === 's-left');
-    expect(toLeft).toEqual({ fromLaneId: 's-head', toLaneId: 's-left', x: 25, fromY: 80, toY: 120 });
+    expect(toLeft).toEqual({ fromLaneId: 's-head', toLaneId: 's-left', x: 260, fromY: 80, toY: 120 });
   });
 
   /**
@@ -182,17 +205,23 @@ describe('layoutLanes', () => {
   });
 
   /**
-   * repeat.json: `s-b → s-a` дуга-повтор. `s-a` 2.904с, `s-b` 2.736с,
-   * обе в одной (корневой) полосе. fromX — правый край s-b = (2.904+2.736)×10
-   * = 56.4, toX — левый край s-a = 0, обе точки на y=52 (единственная
-   * строка: ARC_HEADROOM 24 + ROW_HEIGHT/2 28).
+   * repeat.json: `s-b → s-a` дуга-повтор. `s-a` 2.904 с, `s-b` 2.736 с,
+   * обе в одной (корневой) полосе. Самая длинная глава доски — 2.904
+   * (`s-a` и `s-end` равны), она берёт MAX = 260.
+   *
+   *   s-a: √(2.904/2.904) = 1        → 260
+   *   s-b: √(2.736/2.904) = 0.97073… → 34 + 226×0.97073… = 253.3654…
+   *
+   * fromX — правый край s-b: 260 + 8 (зазор) + 253.3654… = 521.3654…
+   * toX — левый край s-a = 0. Обе точки на y = 52 (единственная строка:
+   * ARC_HEADROOM 24 + ROW_HEIGHT/2 28).
    *
    * Что сломает: перепутанные from/to края плиток (например, взять левый
-   * край s-b вместо правого) — число разошлось бы с 56.4.
-   * Верно ли при любой реализации: нет — 56.4 получается только из
-   * конкретной суммы двух длительностей, а не из произвольной точки.
+   * край s-b вместо правого) — число разошлось бы с 521.3654.
+   * Верно ли при любой реализации: нет — это число получается только
+   * из конкретных двух длительностей и зазора, а не из произвольной точки.
    */
-  it('дуга повтора repeat.json: fromX/toX против литералов 56.4 и 0', () => {
+  it('дуга повтора repeat.json: fromX/toX против литералов 521.3654 и 0', () => {
     const lanes = branchTree(loadFixture('repeat.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
@@ -201,30 +230,42 @@ describe('layoutLanes', () => {
     expect(arc.fromChapterId).toBe('s-b');
     expect(arc.toChapterId).toBe('s-a');
     expect(arc.repeat).toBe(true);
-    expect(arc.fromX).toBeCloseTo(56.4);
+    expect(arc.fromX).toBeCloseTo(521.3654, 3);
     expect(arc.toX).toBe(0);
     expect(arc.fromY).toBe(52);
     expect(arc.toY).toBe(52);
   });
 
   /**
-   * `bounds` охватывает самый правый ХВОСТ, а не только плитки: у split-track
-   * корневой хвост стоит дальше (x=160+120=280), чем хвосты веток
-   * (124+120=244), и именно он должен определить правый край коробки.
+   * `bounds` охватывает самый правый ХВОСТ, а не только плитки.
+   *
+   * Ширины (longest = 2.5 с у s-head):
+   *   s-head 260, s-tail 209.0588…, s-left и s-right по 144.7169…
+   *
+   * Корневой хвост: 260 + 8 + 209.0588… + 8 = 485.0588…, правый край
+   * с подписью 485.0588… + 120 = 605.0588…
+   * Хвост ветки:    260 + 144.7169… + 8 = 412.7169…, правый край 532.7169…
+   *
+   * Правый край коробки задаёт КОРНЕВОЙ хвост, он дальше. Ширина коробки —
+   * от левого края ярлыка имени: 605.0588… + 180 = 785.0588…
    *
    * Что сломает: расчёт `bounds` по правому краю последней ПЛИТКИ вместо
-   * хвоста — потерялся бы запас TAIL_WIDTH, число не сошлось бы с 280
-   * (и тем более с 349 для ширины).
-   * Верно ли при любой реализации: нет — числа зависят от конкретной
-   * ширины подписи хвоста (константа TAIL_WIDTH), а не любого положительного запаса.
+   * хвоста — потерялся бы запас TAIL_WIDTH; или взятие хвоста ветки вместо
+   * корневого — разница 72.34 px.
+   * Верно ли при любой реализации: нет — число зависит от конкретной
+   * ширины подписи хвоста (TAIL_WIDTH) и от зазора, а не от любого
+   * положительного запаса.
    */
-  it('bounds охватывает самый правый хвост, литералы -180/0/349/216', () => {
+  it('bounds охватывает самый правый хвост', () => {
     const lanes = branchTree(loadFixture('split-track.json'));
     const layout = layoutLanes(lanes, NO_COLLAPSED);
 
     // Высота выросла на ARC_HEADROOM: коробка по-прежнему начинается на нуле,
     // но последняя строка сдвинута вниз вместе со всеми.
-    expect(layout.bounds).toEqual({ x: -NAME_WIDTH, y: 0, width: 349, height: 216 });
+    expect(layout.bounds.x).toBe(-NAME_WIDTH);
+    expect(layout.bounds.y).toBe(0);
+    expect(layout.bounds.width).toBeCloseTo(785.0588, 3);
+    expect(layout.bounds.height).toBe(216);
   });
 
   /**

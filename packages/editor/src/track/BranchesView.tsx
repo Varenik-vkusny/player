@@ -136,6 +136,16 @@ export function BranchesView({
 }: BranchesViewProps): ReactElement {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
+  /*
+   * Плитка, чьё описание сейчас показано.
+   *
+   * Открывается ПРАВОЙ кнопкой и закрывается щелчком мимо. Решение
+   * владельца 24.08.2026: «чтобы постоянно не мешать юзеру, можно
+   * по правой кнопке сделать возможность посмотреть описание главы,
+   * чтобы понять, о чём она». Постоянно на доске описанию места нет:
+   * плитка узкая по построению, а доска показывает СТРУКТУРУ.
+   */
+  const [cardTile, setCardTile] = useState<TileBox | null>(null);
   const [draft, setDraft] = useState('');
   const [view, setView] = useState<SpaceView>(IDENTITY_VIEW);
   /**
@@ -330,6 +340,32 @@ export function BranchesView({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   }, []);
+
+  /*
+   * Закрытие карточки описания: Escape и щелчок мимо неё.
+   *
+   * Слушатели вешаются, только пока карточка открыта, — иначе доска
+   * держала бы два обработчика на документе всё время своей жизни.
+   * Щелчок ВНУТРИ карточки не закрывает: в ней есть своя кнопка закрытия,
+   * и закрываться от попытки выделить текст описания было бы враждебно.
+   */
+  useEffect(() => {
+    if (cardTile === null) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setCardTile(null);
+    };
+    const onDown = (event: PointerEvent): void => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('[data-testid="chapter-card"]')) return;
+      setCardTile(null);
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('pointerdown', onDown, true);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('pointerdown', onDown, true);
+    };
+  }, [cardTile]);
 
   // Chrome включает свою автопрокрутку по среднему клику, если не отменить
   // `auxclick` явно — иначе она конкурирует с ездой пространства.
@@ -538,9 +574,27 @@ export function BranchesView({
                       data-testid={`chapter-pick-${tile.id}`}
                       onClick={(event) => pickTile(row, tile, event.shiftKey)}
                       onDoubleClick={() => startRename(tile)}
-                      title={`${tile.title} · ${formatDuration(tile.seconds)} · двойной щелчок — переименовать, Shift-щелчок — выделить диапазон`}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setCardTile(tile);
+                      }}
+                      title={`${tile.order}. ${tile.title} · ${formatDuration(tile.seconds)} · правая кнопка — описание, двойной щелчок — переименовать`}
                     >
-                      {tile.title}
+                      {/*
+                        НОМЕР — ВСЕГДА, имя — если влезает.
+
+                        Ширина плитки говорит о длительности главы, поэтому
+                        у коротких глав места под имя нет: замер 24.08.2026
+                        дал плитки 18, 21 и 45 px при нужных под имя 22, 25
+                        и 58. Обрезка многоточием давала «О…» — обломок,
+                        по которому главу не опознать. Номер помещается
+                        всегда, и им же глава названа в хвосте соседней
+                        ветки («дальше → 2. …»).
+                      */}
+                      <span className="ed-chapter-order" data-testid={`chapter-order-${tile.id}`}>
+                        {tile.order}
+                      </span>
+                      {tile.nameFits ? <span className="ed-chapter-name">{tile.title}</span> : null}
                     </button>
                   )}
                 </div>
@@ -557,6 +611,47 @@ export function BranchesView({
           ))}
         </div>
       </div>
+
+      {/*
+        ОПИСАНИЕ ГЛАВЫ — по правой кнопке и поверх доски.
+
+        Не всплывающая подсказка `title`: в проекте измерено, что пометка,
+        спрятанная в подпись органа, до автора не доходит вовсе. Здесь автор
+        сам просит показать — и получает читаемый текст, а не всплывашку,
+        которую надо поймать курсором.
+
+        Закрывается щелчком мимо и Escape. Пустое описание названо прямо,
+        а не показано пустой карточкой: «пусто» и «не открылось» иначе
+        выглядят одинаково.
+      */}
+      {cardTile !== null && (
+        <div
+          className="ed-chapter-card"
+          data-testid="chapter-card"
+          role="dialog"
+          aria-label={`Глава ${cardTile.order}: ${cardTile.title}`}
+        >
+          <div className="ed-chapter-card-head">
+            <span className="ed-chapter-card-order">{cardTile.order}</span>
+            <strong className="ed-chapter-card-title" data-testid="chapter-card-title">
+              {cardTile.title}
+            </strong>
+            <button
+              type="button"
+              className="ed-chapter-card-close"
+              data-testid="chapter-card-close"
+              aria-label="Закрыть описание"
+              onClick={() => setCardTile(null)}
+            >
+              ✕
+            </button>
+          </div>
+          <p className="ed-chapter-card-time">{formatDuration(cardTile.seconds)}</p>
+          <p className="ed-chapter-card-text" data-testid="chapter-card-text">
+            {cardTile.description === '' ? 'Описания у этой главы нет' : cardTile.description}
+          </p>
+        </div>
+      )}
     </section>
   );
 }

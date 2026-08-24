@@ -1170,7 +1170,7 @@
             "goto": "s-no"
           }
         ],
-        "default": "s-yes"
+        "default": null
       }
     },
     {

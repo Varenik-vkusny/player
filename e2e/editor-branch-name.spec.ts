@@ -70,7 +70,11 @@ test('обрезанное имя ветки читается целиком ч�
   await input.press('Enter');
 
   // Переименование доехало до плитки главы — положительный контроль (1).
-  await expect(page.getByTestId('chapter-pick-s-end')).toHaveText(LONG_NAME);
+  // Имя — из своего узла: впереди него на плитке стоит номер главы
+  // (`ed-chapter-order`, правка 24.08.2026), и текст кнопки целиком
+  // начинался бы с цифры.
+  await expect(page.getByTestId('chapter-pick-s-end').locator('.ed-chapter-name'))
+    .toHaveText(LONG_NAME);
 
   const titleSpan = page.getByTestId('branch-title-s-end');
   await expect(titleSpan).toBeVisible();

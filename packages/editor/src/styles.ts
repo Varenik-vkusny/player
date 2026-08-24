@@ -2935,6 +2935,10 @@ export const EDITOR_STYLES = `
   min-width: 0;
   min-height: 0;
   background: var(--ui-surface-panel);
+  /* Якорь для .ed-chapter-card — карточки описания главы. Без него она
+     ушла бы искать позиционированного предка выше и встала бы у края окна,
+     а не у края доски. */
+  position: relative;
 }
 
 /* Верхняя полоса — вне пространства: НЕ ездит и НЕ масштабируется вместе
@@ -3228,6 +3232,9 @@ export const EDITOR_STYLES = `
 .ed-chapter-pick {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 0 6px;
   border: 0;
   background: transparent;
@@ -3237,8 +3244,100 @@ export const EDITOR_STYLES = `
   text-align: left;
   cursor: pointer;
   overflow: hidden;
+  white-space: nowrap;
+}
+
+/* НОМЕР главы. Не сжимается и не обрезается никогда: на узкой плитке он —
+   единственное, чем глава опознаётся, и обломок номера не значит ничего.
+   Имя рядом обрезается, если вдруг не влезло, но саму раскладку это уже
+   не подводит: раскладка печатает имя только на плитках от 110 px
+   (branchLayout.ts, NAME_FITS_FROM). */
+.ed-chapter-order {
+  flex: 0 0 auto;
+  min-width: 16px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--ui-content-fg-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-chapter-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Карточка описания главы: по правой кнопке, поверх доски.
+   Прижата к низу зоны и по центру: доска ездит и масштабируется, и карточка,
+   привязанная к плитке, уезжала бы вместе с ней прямо во время чтения. */
+.ed-chapter-card {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 6;
+  box-sizing: border-box;
+  width: min(420px, calc(100% - 32px));
+  padding: 12px 14px;
+  border-radius: var(--ui-radius-l);
+  background: var(--ui-surface-panel);
+  border: 1px solid var(--ui-line);
+  box-shadow: var(--ui-shadow-overlay);
+  color: var(--ui-content-fg);
+}
+
+.ed-chapter-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ed-chapter-card-order {
+  flex: 0 0 auto;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--ui-radius-s);
+  background: var(--ui-action-selected-bg);
+  color: var(--ui-action-selected-line);
+  font-size: var(--ui-type-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.ed-chapter-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--ui-type-m);
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ed-chapter-card-close {
+  flex: 0 0 auto;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ui-content-fg-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.ed-chapter-card-time {
+  margin: 6px 0 0;
+  font-size: var(--ui-type-xs);
+  color: var(--ui-content-fg-tertiary);
+}
+
+.ed-chapter-card-text {
+  margin: 8px 0 0;
+  font-size: var(--ui-type-s);
+  color: var(--ui-content-fg-secondary);
+  white-space: pre-wrap;
 }
 
 .ed-chapter-rename {
