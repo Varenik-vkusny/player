@@ -895,12 +895,12 @@
           "id": "m-3",
           "at": {
             "kind": "word",
-            "wordIndex": 40,
+            "wordIndex": 62,
             "offset": 0,
             "anchor": {
-              "text": "зрителя",
-              "before": "мимо",
-              "after": "ровным"
+              "text": "и",
+              "before": "ждет",
+              "after": "внимание"
             }
           },
           "transition": "slide",
@@ -1004,12 +1004,12 @@
           "id": "m-4",
           "at": {
             "kind": "word",
-            "wordIndex": 58,
+            "wordIndex": 89,
             "offset": 0,
             "anchor": {
-              "text": "звук",
-              "before": "сверху",
-              "after": "замирает"
+              "text": "энергия",
+              "before": "фразы",
+              "after": "зрителя"
             }
           },
           "transition": "morph",
@@ -1114,12 +1114,12 @@
           "id": "g-ask",
           "at": {
             "kind": "word",
-            "wordIndex": 70,
+            "wordIndex": 99,
             "offset": 0,
             "anchor": {
-              "text": "экране",
-              "before": "на",
-              "after": "когда"
+              "text": "интерфейсом",
+              "before": "с",
+              "after": ""
             }
           },
           "recordAs": "otvet",
