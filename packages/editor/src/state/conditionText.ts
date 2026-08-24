@@ -41,6 +41,40 @@ export function optionLabelAnywhere(project: Project, variable: string, optionId
 }
 
 /**
+ * КОРОТКОЕ имя условия — то, что автор прочитает с одного взгляда.
+ *
+ * `conditionText` рядом даёт полную запись со ссылкой на переменную:
+ * «otvet» = «Останавливается и ждёт». Она верна и нужна там, где условий
+ * несколько и надо понимать, о какой переменной речь.
+ *
+ * На доске веток она вредна: имя ветки стоит под своей развилкой, автор
+ * и так видит, из какого вопроса ветка вышла, а имя переменной — слово
+ * схемы, не его. Остаётся то, что он выбирал руками: подпись ответа.
+ *
+ * Разбирать строку `conditionText` обратно было бы вторым парсером своего
+ * же формата — поэтому короткая форма строится из тех же данных, а не
+ * из готового текста.
+ */
+export function conditionAnswer(condition: Condition, project: Project): string {
+  switch (condition.kind) {
+    case 'equals':
+      return optionLabelAnywhere(project, condition.variable, condition.value);
+    case 'notEquals':
+      return `не ${optionLabelAnywhere(project, condition.variable, condition.value)}`;
+    case 'correct':
+      return 'верный ответ';
+    case 'wrong':
+      return 'неверный ответ';
+    case 'compare':
+      return `${OP_SIGN[condition.op]} ${condition.value}`;
+    default: {
+      const unreachable: never = condition;
+      throw new Error(`Неизвестный вид условия: ${JSON.stringify(unreachable)}`);
+    }
+  }
+}
+
+/**
  * Человеческое описание ОДНОГО условия.
  *
  * Значение показывается ПОДПИСЬЮ варианта, а не его id: «opt-skip» — слово

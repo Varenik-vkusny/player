@@ -464,7 +464,7 @@ export function BranchesView({
           {layout.rows.map((row) => (
             <div
               key={row.laneId}
-              className={row.depth > 0 ? 'ed-branch-row ed-branch-row--nested' : 'ed-branch-row'}
+              className="ed-branch-row"
               data-testid={`branch-row-${row.laneId}`}
               style={{
                 left: `${row.startX}px`,
@@ -515,24 +515,26 @@ export function BranchesView({
                      «Основная / 8:02» — двумя строками, а не одной.
                 */}
                 <div className="ed-branch-name-body">
+                  {/*
+                    ИМЯ ВЕТКИ — ЭТО ОТВЕТ, и второй строки условия под ним
+                    больше нет (25.08.2026).
+
+                    Строка условия печатала «otvet» = «Останавливается и
+                    ждёт», то есть дословно повторяла имя, стоящее прямо над
+                    ней, плюс имя переменной — слово схемы, а не автора.
+                    Полная запись осталась в подсказке: она нужна редко,
+                    когда в проекте несколько вопросов с одинаковыми
+                    подписями ответов, и по требованию достаётся наведением.
+                  */}
                   <span
                     className="ed-branch-title"
                     data-testid={`branch-title-${row.laneId}`}
-                    title={row.name}
+                    title={entryConditions.get(row.laneId) ?? row.name}
                   >
                     {row.name}
                   </span>
                   <span className="ed-branch-meta">
                     <span className="ed-branch-duration">{formatDuration(row.seconds)}</span>
-                    {entryConditions.get(row.laneId) != null ? (
-                      <span
-                        className="ed-branch-condition"
-                        data-testid={`branch-condition-${row.laneId}`}
-                        title={entryConditions.get(row.laneId)!}
-                      >
-                        {entryConditions.get(row.laneId)}
-                      </span>
-                    ) : null}
                   </span>
                 </div>
                 {orphans.has(row.laneId) ? (
@@ -581,20 +583,27 @@ export function BranchesView({
                       title={`${tile.order}. ${tile.title} · ${formatDuration(tile.seconds)} · правая кнопка — описание, двойной щелчок — переименовать`}
                     >
                       {/*
-                        НОМЕР — ВСЕГДА, имя — если влезает.
+                        НА ПЛИТКЕ ТОЛЬКО НОМЕР. Имени нет вовсе.
 
-                        Ширина плитки говорит о длительности главы, поэтому
-                        у коротких глав места под имя нет: замер 24.08.2026
-                        дал плитки 18, 21 и 45 px при нужных под имя 22, 25
-                        и 58. Обрезка многоточием давала «О…» — обломок,
-                        по которому главу не опознать. Номер помещается
-                        всегда, и им же глава названа в хвосте соседней
-                        ветки («дальше → 2. …»).
+                        Владелец 25.08.2026: «там текст абсолютно не нужен,
+                        визуально очень шумно из-за него на самом-то деле,
+                        и это всё руинит».
+
+                        Он прав по делу, а не по вкусу. Имя главы на плитке
+                        было ТРЕТЬИМ повторением одной строки: то же имя
+                        стояло ярлыком ветки слева и в хвосте соседней ветки.
+                        А влезало оно только на широких плитках — ширина
+                        равна длительности, — поэтому на узких давало обломок
+                        «Ответ «оста…», по которому главу не опознать.
+
+                        Номер решает обе беды сразу: он помещается всегда,
+                        не повторяет ничего и совпадает с числом в хвосте
+                        («дальше → 3»). Имя и описание достаются правой
+                        кнопкой и подсказкой — по требованию, а не всегда.
                       */}
                       <span className="ed-chapter-order" data-testid={`chapter-order-${tile.id}`}>
                         {tile.order}
                       </span>
-                      {tile.nameFits ? <span className="ed-chapter-name">{tile.title}</span> : null}
                     </button>
                   )}
                 </div>
@@ -604,6 +613,7 @@ export function BranchesView({
                 className={row.tail.kind === 'goto' && row.tail.repeat ? 'ed-branch-tail ed-branch-tail--repeat' : 'ed-branch-tail'}
                 data-testid={`branch-tail-${row.laneId}`}
                 style={{ left: `${row.tail.x - row.startX}px` }}
+                title={row.tail.kind === 'goto' ? `${tailText(row)}: ${row.tail.toTitle}` : 'Рассказ на этой ветке кончается'}
               >
                 {tailText(row)}
               </span>

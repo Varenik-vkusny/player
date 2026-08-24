@@ -11,7 +11,7 @@
  */
 import type { Project, Segment } from '@player/core';
 
-import { conditionText } from './conditionText.js';
+import { conditionAnswer, conditionText } from './conditionText.js';
 import { type ChapterTile, leadsBack } from './exits.js';
 
 /**
@@ -187,6 +187,7 @@ export function branchTree(project: Project): readonly BranchLane[] {
     anchorSeconds: number,
     orphan: boolean,
     entryCondition: string | null,
+    entryAnswer: string | null,
   ): { lane: BranchLane; descendants: readonly BranchLane[] } {
     const laneId = startId;
     const chapters: ChapterTile[] = [];
@@ -265,7 +266,10 @@ export function branchTree(project: Project): readonly BranchLane[] {
         // а искать его заново по `laneId`/`anchorIndex` значило бы завести
         // второй способ той же арифметики.
         const entryCondition = rule.when.map((condition) => conditionText(condition, project)).join(' и ');
-        const built = buildLane(target, depth + 1, laneId, forkIndex, forkSeconds, orphan, entryCondition);
+        // Короткое имя ветки — сам ОТВЕТ, который в неё ведёт. Полная запись
+        // условия остаётся рядом, второй строкой (см. `entryCondition`).
+        const entryAnswer = rule.when.map((condition) => conditionAnswer(condition, project)).join(' и ');
+        const built = buildLane(target, depth + 1, laneId, forkIndex, forkSeconds, orphan, entryCondition, entryAnswer);
         children.push(built.lane);
         descendants.push(built.lane, ...built.descendants);
       }
@@ -303,7 +307,21 @@ export function branchTree(project: Project): readonly BranchLane[] {
 
     const lane: BranchLane = {
       id: laneId,
-      name: depth === 0 ? 'Основная' : chapters[0]!.title,
+      /*
+       * ИМЯ ВЕТКИ — ОТВЕТ, КОТОРЫЙ В НЕЁ ВЕДЁТ, а не заголовок её первой главы.
+       *
+       * Было: `chapters[0].title`. Тот же самый заголовок стоял и на плитке
+       * первой главы, в двадцати сантиметрах правее, — одна строка дважды
+       * на одном экране. Владелец 24.08.2026: «оно просто дублирует что-то
+       * откуда-то, и мне это показалось непонятным».
+       *
+       * Ответ короче заголовка и отвечает на вопрос, который автор и задаёт,
+       * глядя на доску: «куда попадёт тот, кто ответил вот так».
+       *
+       * У СИРОТЫ ответа нет: в неё не ведёт ни одно правило. Там заголовок
+       * первой главы — единственное, чем ветка вообще названа, и он остаётся.
+       */
+      name: depth === 0 ? 'Основная' : (entryAnswer ?? chapters[0]!.title),
       depth,
       chapters,
       parentLaneId,
@@ -318,7 +336,7 @@ export function branchTree(project: Project): readonly BranchLane[] {
     return { lane, descendants };
   }
 
-  const root = buildLane(project.entry, 0, null, -1, 0, false, null);
+  const root = buildLane(project.entry, 0, null, -1, 0, false, null, null);
   const reachable = [root.lane, ...root.descendants];
 
   // Второй проход: главы, не занявшие места ни в одной достижимой полосе.
@@ -329,7 +347,7 @@ export function branchTree(project: Project): readonly BranchLane[] {
   const orphans: BranchLane[] = [];
   for (const segment of project.segments) {
     if (placed.has(segment.id)) continue;
-    const built = buildLane(segment.id, 0, null, -1, 0, true, null);
+    const built = buildLane(segment.id, 0, null, -1, 0, true, null, null);
     orphans.push(built.lane, ...built.descendants);
   }
 

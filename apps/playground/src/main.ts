@@ -202,7 +202,16 @@ async function main(): Promise<void> {
     onGateOpen: (gate, unboundOptions) => showGate(gate, unboundOptions),
     onGateResolved: (attempt) => showResult(attempt),
     onRevealOpen: (reveal) => showReveal(reveal),
-  }, undefined, assumption);
+    /*
+      СТЕНД: перемотка разрешена (ADR-036).
+
+      Признак ставится ЗДЕСЬ, на странице-стенде, и только здесь. Голый хост
+      (`bare.html`) его не передаёт, и `seek` там бросает — это проверяется
+      отдельным e2e. То есть «у зрителя перемотки нет» остаётся свойством
+      устройства, а не обещанием: чтобы её включить, надо дописать признак
+      в вызов конструктора, и это видно в диффе.
+    */
+  }, undefined, { ...assumption, standSeek: true });
 
   // Метки гейтов на дорожке: видно, куда плеер приедет.
   for (const gate of segment.gates) {
@@ -216,6 +225,29 @@ async function main(): Promise<void> {
 
   await player.load();
   playButton.addEventListener('click', () => { void player.play(); });
+
+  /*
+    ПЕРЕМОТКА ЩЕЛЧКОМ ПО ДОРОЖКЕ — орган СТЕНДА, не зрителя.
+
+    Владелец 24.08.2026: «добавь, чтобы можно было перематывать мне пока
+    что… зрителю эту возможность потом уберём». Убрать её потом — это снять
+    признак `standSeek` выше и этот обработчик; в самом плеере трогать
+    нечего.
+
+    Целимся по доле ширины: дорожка уже нарисована во всю ширину и на ней
+    уже стоят метки остановок, поэтому автор видит, куда попадёт, ДО щелчка.
+
+    Остановки при этом ведут себя по правилу ADR-036: перемотал за неё —
+    она не откроется, перемотал назад — снова откроется, когда дойдёшь.
+  */
+  track.addEventListener('click', (event) => {
+    const box = track.getBoundingClientRect();
+    if (box.width <= 0) return;
+    const share = Math.min(Math.max((event.clientX - box.left) / box.width, 0), 1);
+    player.seek(share * duration);
+  });
+  track.style.cursor = 'pointer';
+  track.title = 'Стенд автора: щелчок перематывает. У зрителя этого нет (ADR-036)';
 
   function syncButton(state: string): void {
     playButton.disabled = state !== 'ready' && state !== 'ended';

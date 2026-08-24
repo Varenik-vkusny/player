@@ -233,12 +233,13 @@ test.describe('плитки глав: длиннее глава — шире п�
     await input.press('Enter');
 
     // Имя видно на плитке...
-    // Имя берётся из СВОЕГО узла, а не из всей кнопки: с 24.08.2026 на плитке
-    // впереди имени стоит номер главы (`ed-chapter-order`), и текст кнопки
-    // целиком читается как «1Введение».
-    await expect(
-      page.getByTestId(`chapter-pick-${before.id}`).locator('.ed-chapter-name'),
-    ).toHaveText('Введение');
+    // Имя читается из ПОДСКАЗКИ плитки: с 25.08.2026 на самой плитке текста
+    // нет вовсе, только номер (решение владельца — имя там было третьим
+    // повторением одной строки и на узких плитках давало обломок).
+    // Полное имя достаётся подсказкой и карточкой по правой кнопке;
+    // карточку отдельно охраняет `editor-branch-name.spec.ts`.
+    await expect(page.getByTestId(`chapter-pick-${before.id}`))
+      .toHaveAttribute('title', /Введение/);
     // ...и доехало до проекта, а не осталось в поле ввода.
     const after = (await segmentsOf(page)).find((segment) => segment.id === before.id)!;
     expect(after.title, 'имя не доехало до проекта').toBe('Введение');

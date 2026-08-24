@@ -33,7 +33,7 @@ async function openEditor(page: Page, fixture: string): Promise<void> {
  * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: `branchTree.ts` вернуть
  * `entryCondition: null` у дочерних полос (как в юнит-тестовом сломе того
  * же понятия), либо `BranchesView.tsx` перестать рисовать
- * `.ed-branch-condition`, либо спрятать её тем же приёмом, которым однажды
+ * имя ветки, либо спрятать его тем же приёмом, которым однажды
  * уже была спрятана подпись поля на полосе свойств (`clip-path`,
  * `scrollWidth` без видимого места) — поэтому проверяется ВИДИМОСТЬ
  * (ненулевой размер на экране), а не только присутствие в DOM.
@@ -49,11 +49,21 @@ test('у веток видна разная строка условия вход
   await expect(page.getByTestId('branch-row-n-yes')).toBeVisible();
   await expect(page.getByTestId('branch-row-n-no')).toBeVisible();
 
-  const yesCondition = page.getByTestId('branch-condition-n-yes');
-  const noCondition = page.getByTestId('branch-condition-n-no');
+  /*
+    С 25.08.2026 условие входа читается ИЗ ИМЕНИ ВЕТКИ, а не из отдельной
+    строки под ним. Имя теперь и есть ответ, который в ветку ведёт
+    (`branchTree.ts`), а прежняя строка «otvet» = «Да» дословно повторяла
+    его же и была убрана как шум по слову владельца.
 
-  await expect(yesCondition, 'условие входа полосы «Концовка: да» не найдено').toBeVisible();
-  await expect(noCondition, 'условие входа полосы «Концовка: нет» не найдено').toBeVisible();
+    Утверждение теста не изменилось ни на букву: автор ВИДИТ, при каком
+    ответе играет каждая ветка, и у разных веток это разное. Изменился
+    только узел, который это несёт.
+  */
+  const yesCondition = page.getByTestId('branch-title-n-yes');
+  const noCondition = page.getByTestId('branch-title-n-no');
+
+  await expect(yesCondition, 'имя полосы «да» не найдено').toBeVisible();
+  await expect(noCondition, 'имя полосы «нет» не найдено').toBeVisible();
 
   // Видимость — размером на экране, не только присутствием в DOM: обрезка
   // без места (`scrollWidth` при `clientWidth 1`) уже один раз давала три
@@ -81,8 +91,10 @@ test('у веток видна разная строка условия вход
   expect(yesText, 'у обеих полос одна и та же строка условия').not.toBe(noText);
 
   // Полоса «Основная» (корневая, `n-start`) — в неё не ведёт никакое
-  // правило выхода, условия входа у неё нет и быть не может.
-  await expect(page.getByTestId('branch-condition-n-start')).toHaveCount(0);
+  // правило выхода, условия входа у неё нет и быть не может. Поэтому
+  // и названа она не ответом, а словом «Основная»: если бы имя строилось
+  // из условия вслепую, здесь вышла бы пустота или чужой ответ.
+  await expect(page.getByTestId('branch-title-n-start')).toHaveText('Основная');
 
   expect(errors, 'на странице не должно быть ошибок').toEqual([]);
 });

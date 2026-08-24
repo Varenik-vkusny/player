@@ -1,24 +1,22 @@
 /**
- * Имя ВЕТКИ в виде «Ветки» можно прочитать целиком, даже когда оно обрезано
- * (Сессия 48, задача A).
+ * Имя главы, которого НА ПЛИТКЕ НЕТ, достаётся целиком — подсказкой
+ * и карточкой описания.
  *
- * ⚠️ План сессии ошибался: у плиток глав (`.ed-chapter-pick`) атрибут
- * `title` уже стоит с Сессии 43 — там всё в порядке, и этот файл их
- * не трогает. Сломан именно ЯРЛЫК ВЕТКИ: `<span className="ed-branch-title">`
- * в `packages/editor/src/track/BranchesView.tsx`. У него в `styles.ts`
- * `overflow: hidden; text-overflow: ellipsis; white-space: nowrap`, ширина
- * ограничена `NAME_WIDTH = 180` px, а атрибута `title` не было ни у него,
- * ни у родителя.
+ * ПЕРЕНАЦЕЛЕН 25.08.2026. Прежде файл охранял ярлык ВЕТКИ: имя ветки было
+ * заголовком её первой главы, ярлык шириной 180 px его обрезал, и полное
+ * имя нигде не читалось. Обе посылки изменились по слову владельца:
  *
- * Имя ветки — это имя её первой главы (`branchTree.ts`: «"Основная" у
- * корневой; иначе — имя первой главы полосы»), и меняет его автор ТЕМ ЖЕ
- * двойным щелчком по плитке первой главы, каким переименовывает саму главу.
- * То есть путь до дефекта — обычная работа автора, а не редкий случай.
+ *   • имя ветки теперь не заголовок главы, а ОТВЕТ, который в неё ведёт;
+ *   • на плитке главы текста нет вовсе — только номер.
  *
- * Фикстура `repeat`: корневая полоса `s-a` (имя всегда «Основная», не зависит
- * от заголовка) → дочерняя полоса `s-end`, чьё имя — заголовок её единственной
- * главы «Конец объяснения». Переименовываем именно ЭТУ главу — только у
- * дочерней полосы имя вообще меняется от переименования главы.
+ * От этого гарантия не ослабла, а стала нужнее: раньше имя было обрезано,
+ * теперь его на плитке нет СОВСЕМ. Значит достать его полностью обязано
+ * быть где-то ещё, и «где-то ещё» — ровно два места: подсказка плитки
+ * и карточка по правой кнопке. Оба и проверяются.
+ *
+ * Ожидаемое взято ИЗ ДРУГОГО ИСТОЧНИКА, чем полученное: ожидаемое — строка
+ * `LONG_NAME`, которую тест сам вписал в поле переименования; полученное —
+ * атрибут `title` и текст карточки, прочитанные из DOM.
  */
 import { expect, test, type Page } from '@playwright/test';
 
@@ -52,7 +50,7 @@ const LONG_NAME =
  * `textContent` (React отрисовал бы обрезанный текст И такой же обрезанный
  * `title` одной и той же неисправной строкой).
  */
-test('обрезанное имя ветки читается целиком через title', async ({ page }) => {
+test('имя главы, скрытое с плитки, читается целиком подсказкой и карточкой', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
 
@@ -60,7 +58,6 @@ test('обрезанное имя ветки читается целиком ч�
   await page.getByTestId('view-branches').click();
   await expect(page.getByTestId('branches-view')).toBeVisible();
 
-  // Дочерняя полоса `s-end`: её имя — заголовок её же единственной главы.
   await expect(page.getByTestId('branch-row-s-end')).toBeVisible();
   await page.getByTestId('chapter-pick-s-end').dblclick();
 
@@ -69,30 +66,37 @@ test('обрезанное имя ветки читается целиком ч�
   await input.fill(LONG_NAME);
   await input.press('Enter');
 
-  // Переименование доехало до плитки главы — положительный контроль (1).
-  // Имя — из своего узла: впереди него на плитке стоит номер главы
-  // (`ed-chapter-order`, правка 24.08.2026), и текст кнопки целиком
-  // начинался бы с цифры.
-  await expect(page.getByTestId('chapter-pick-s-end').locator('.ed-chapter-name'))
-    .toHaveText(LONG_NAME);
+  // Положительный контроль: переименование ДОЕХАЛО до проекта. Без него
+  // «имя не показано» и «имя не сохранилось» выглядели бы одинаково.
+  const saved = await page.evaluate(
+    () => (window as unknown as { __project: { segments: { id: string; title: string }[] } })
+      .__project.segments.find((segment) => segment.id === 's-end')?.title,
+  );
+  expect(saved, 'переименование не доехало до проекта').toBe(LONG_NAME);
 
-  const titleSpan = page.getByTestId('branch-title-s-end');
-  await expect(titleSpan).toBeVisible();
+  const pick = page.getByTestId('chapter-pick-s-end');
 
-  const box = await titleSpan.evaluate((node) => ({
-    scrollWidth: node.scrollWidth,
-    clientWidth: node.clientWidth,
-  }));
-  // Положительный контроль (2): обрезка на экране действительно есть.
+  // 1. На плитке имени НЕТ — только номер. Это и есть та тишина, ради
+  // которой имя убрали: длинная строка на узкой плитке давала обломок.
+  const shown = (await pick.textContent())!.trim();
   expect(
-    box.scrollWidth,
-    `имя не обрезано на экране: scrollWidth ${box.scrollWidth} <= clientWidth ${box.clientWidth} — `
-      + 'проверять читаемость обрезанного текста не на чем',
-  ).toBeGreaterThan(box.clientWidth);
+    shown,
+    `на плитке напечатано «${shown}» — там обязан быть только номер главы`,
+  ).toMatch(/^\d+$/);
 
-  const domTitle = await titleSpan.getAttribute('title');
-  expect(domTitle, 'у ярлыка ветки нет атрибута title вовсе').not.toBeNull();
-  expect(domTitle, 'title содержит не то полное имя, которое было вписано').toBe(LONG_NAME);
+  // 2. Подсказка плитки несёт полное имя.
+  const tileTitle = await pick.getAttribute('title');
+  expect(tileTitle, 'у плитки нет атрибута title вовсе').not.toBeNull();
+  expect(
+    tileTitle,
+    `подсказка плитки не содержит полного имени: «${tileTitle}»`,
+  ).toContain(LONG_NAME);
+
+  // 3. Карточка по правой кнопке показывает имя целиком, а не обрезком.
+  await pick.click({ button: 'right' });
+  const cardTitle = page.getByTestId('chapter-card-title');
+  await expect(cardTitle, 'правая кнопка не открыла карточку главы').toBeVisible();
+  await expect(cardTitle, 'в карточке имя главы не полное').toHaveText(LONG_NAME);
 
   expect(errors, 'на странице не должно быть ошибок').toEqual([]);
 });

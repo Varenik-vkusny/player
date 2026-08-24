@@ -17,7 +17,7 @@ import {
 import {
   applyOwnership, bubbleElementOf, clearOwnership, ownerAt, type ViewerState,
 } from './bubble.js';
-import { AudioClocks, type Clock, type ClockSource } from './clock.js';
+import { AudioClocks, type Clock, type ClockSource, type EditorClock } from './clock.js';
 import { applyFit } from './render.js';
 import { allSegments, entrySegmentOf, segmentOf, type Segment } from './preview.js';
 import { answersToClear, openableGates } from './repeat.js';
@@ -240,6 +240,9 @@ export class Player {
   /** Играет ли сейчас уже слышанный кусок — для надписи зрителю (`isRepeating`). */
   #repeating = false;
 
+  /** Стенд автора: разрешена ли перемотка (ADR-036). У зрителя всегда false. */
+  #standSeek = false;
+
   /**
    * Часы передаются четвёртым аргументом со значением по умолчанию.
    *
@@ -271,9 +274,19 @@ export class Player {
     assume: {
       readonly answers?: Readonly<Record<string, Answer>>;
       readonly startSegmentId?: string;
+      /**
+       * СТЕНД АВТОРА: разрешить перемотку (ADR-036).
+       *
+       * У зрителя всегда пусто, и это не договорённость, а устройство:
+       * без признака `seek` БРОСАЕТ. Чтобы перемотка появилась у зрителя,
+       * надо переписать вызов конструктора — то есть это видно в диффе,
+       * а не прячется в поведении.
+       */
+      readonly standSeek?: boolean;
     } = {},
   ) {
     this.#answers = { ...assume.answers };
+    this.#standSeek = assume.standSeek === true;
     this.#host = host;
     this.#clocks = clocks;
     // Единственная точка чтения project.audio и project.scene (ADR-003,
@@ -899,6 +912,69 @@ export class Player {
       // сам: знание о том, что уже готово, принадлежит ему, а не плееру.
       this.#clocks.warm(segmentOf(this.#project, target).source);
     }
+  }
+
+  /**
+   * ПЕРЕМОТКА СТЕНДА (ADR-036). У зрителя её нет.
+   *
+   * Работает, только если плеер создан с `standSeek`. Без признака —
+   * БРОСАЕТ, а не молчит и не игнорирует: молчаливый отказ был бы ровно
+   * тем «нарисовано, но не работает», из-за которого в этом проекте
+   * заведена половина правил.
+   *
+   * ЧТО ПРОИСХОДИТ С ОСТАНОВКАМИ. Решение владельца 24.08.2026: остановка
+   * спрашивается, только если головка дошла до неё естественным ходом.
+   * Перемотал вперёд за остановку — она не откроется; перемотал назад —
+   * снова откроется, когда до неё дойдёшь.
+   *
+   * Выражено ОДНИМ действием: ближайшей становится первая остановка, чьё
+   * время больше новой позиции. Списка «уже спрошенных» и флагов
+   * у остановок нет — рассогласовать нечего.
+   *
+   * Позиция — В ВРЕМЕНИ СЕГМЕНТА, как и `positionSeconds`. Перевод в время
+   * дорожки делает `#toClockTime`: у главы с ненулевым окном эти шкалы
+   * различаются, и путаница между ними уже роняла редактор (см. разбор
+   * у `#toSegmentTime`).
+   */
+  seek(position: number): void {
+    if (!this.#standSeek) {
+      throw new Error(
+        'Перемотка доступна только на стенде автора: плеер создан без признака standSeek (ADR-036)',
+      );
+    }
+    if (!Number.isFinite(position)) {
+      throw new RangeError(`Позиция перемотки не число: ${String(position)}`);
+    }
+
+    const clock = this.#requireClock();
+    /*
+     * `Clock` НАМЕРЕННО не умеет перематывать: перемотка объявлена
+     * в `EditorClock`, и это и есть структурная опора — хост, держащий
+     * `Clock`, перемотать не может ничем (clock.ts, шапка `EditorClock`).
+     * Интерфейс не расширяется даже теперь: сужение делается здесь,
+     * с проверкой, и проверка БРОСАЕТ, а не тихо ничего не делает.
+     *
+     * Обе живые реализации (`AudioClock`, `SilentClock`) перемотку умеют,
+     * поэтому ветка отказа — про будущие часы, а не про сегодняшние.
+     */
+    const seekable = clock as Partial<EditorClock>;
+    if (typeof seekable.seek !== 'function') {
+      throw new Error('Часы этой главы не умеют перематывать: перемотка стенда недоступна');
+    }
+    const clamped = Math.min(Math.max(position, 0), this.#segment.duration);
+    seekable.seek(this.#toClockTime(clamped));
+
+    // Сцена и видео догоняют СРАЗУ, а не следующим кадром: в паузе кадров
+    // нет вовсе, и без этого автор перемотал бы в тишину и смотрел на кадр
+    // с прежней секунды.
+    this.#requireSlides().seekSeconds(clamped);
+    syncVideos(collectVideos(this.#stage), clock.position);
+
+    // Ближайшая остановка — первая, до которой ещё НЕ дошли.
+    this.#nextGateIndex = this.#gates.findIndex((scheduled) => scheduled.at > clamped);
+    if (this.#nextGateIndex < 0) this.#nextGateIndex = this.#gates.length;
+
+    this.#events.onFrame?.(clamped);
   }
 
   /**

@@ -63,15 +63,6 @@ export const MAX_TILE_W = 260;
  */
 export const TILE_GAP = 8;
 
-/**
- * С какой ширины плитки на ней печатается ИМЯ главы, а не только номер.
- *
- * 110 px — замер 24.08.2026: на меньшей ширине от имени остаётся обломок
- * вроде «Ответ «оста…», по которому главу не опознать, а место он съедает.
- * Ниже порога плитка несёт только номер: он помещается всегда и работает
- * так же, как номер в хвосте «назад → 2».
- */
-export const NAME_FITS_FROM = 110;
 
 /**
  * Ширина плитки по её длительности и длительности самой длинной главы доски.
@@ -119,18 +110,6 @@ export interface TileBox {
   readonly order: number;
   /** Описание главы: показывается по правой кнопке, на плитке его нет. */
   readonly description: string;
-  /**
-   * Помещается ли имя главы в плитку.
-   *
-   * Считается ЗДЕСЬ, а не в CSS: ширина плитки — число этой раскладки,
-   * и решать по нему обязана она же. В CSS такого условия не выразить
-   * (контейнерные запросы не видят собственный контейнер), а обрезка
-   * многоточием даёт «О…» — обломок, который не опознаёт ничего.
-   *
-   * Порог — ширина, на которой умещается хотя бы несколько знаков сверх
-   * номера. Само имя всегда достаётся правой кнопкой.
-   */
-  readonly nameFits: boolean;
 }
 
 export interface LaneRow {
@@ -145,7 +124,15 @@ export interface LaneRow {
   /** Есть ли у полосы свёрнутые дети (их строк в раскладке нет). */
   readonly collapsed: boolean;
   readonly hasChildren: boolean;
-  readonly tail: { readonly kind: 'end' | 'goto'; readonly label: string; readonly x: number; readonly repeat: boolean };
+  readonly tail: {
+    readonly kind: 'end' | 'goto';
+    /** Что печатается: «конец» или «дальше → 3». Коротко, номером. */
+    readonly label: string;
+    /** Полное имя главы-цели — только для подсказки, на экране его нет. */
+    readonly toTitle: string;
+    readonly x: number;
+    readonly repeat: boolean;
+  };
 }
 
 /** Линия от метки родителя вниз к началу дочерней полосы. */
@@ -278,7 +265,6 @@ export function layoutLanes(lanes: readonly BranchLane[], collapsed: ReadonlySet
         forksAfter: chapter.forksAfter,
         order: chapter.order,
         description: chapter.description,
-        nameFits: width >= NAME_FITS_FROM,
       });
       cursorX += width + TILE_GAP;
     }
@@ -286,16 +272,23 @@ export function layoutLanes(lanes: readonly BranchLane[], collapsed: ReadonlySet
     const tailX = tiles.length > 0 ? cursorX : startX;
     const tail =
       lane.tail.kind === 'end'
-        ? { kind: 'end' as const, label: 'конец', x: tailX, repeat: false }
+        ? { kind: 'end' as const, label: 'конец', toTitle: '', x: tailX, repeat: false }
         : {
           kind: 'goto' as const,
-          // Номер впереди имени: он же стоит на плитке, и по нему глаз
-          // находит, куда ведёт хвост, не читая имени целиком.
+          /*
+            ТОЛЬКО НОМЕР, без имени главы.
+
+            Имя тут было третьим повторением одной строки на экране: оно уже
+            стоит ярлыком ветки и стояло на плитке. Владелец 25.08.2026:
+            «текст абсолютно не нужен, визуально очень шумно из-за него».
+            Номер — то же указание, но читается за один взгляд и совпадает
+            с числом на самой плитке. Полное имя остаётся в подсказке хвоста.
+          */
           label: (() => {
             const order = orderById.get(lane.tail.toChapterId);
-            const name = lane.tail.toTitle;
-            return order === undefined ? `дальше → ${name}` : `дальше → ${order}. ${name}`;
+            return order === undefined ? 'дальше' : `дальше → ${order}`;
           })(),
+          toTitle: lane.tail.toTitle,
           x: tailX,
           repeat: lane.tail.repeat,
         };
