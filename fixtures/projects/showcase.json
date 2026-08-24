@@ -1,0 +1,1452 @@
+{
+  "schemaVersion": 15,
+  "meta": {
+    "title": "Показ: остановка, вопрос и ветки",
+    "stageWidth": 1920,
+    "stageHeight": 1080
+  },
+  "entry": "s-main",
+  "styles": [
+    {
+      "id": "heading",
+      "name": "Заголовок",
+      "type": "text",
+      "props": {
+        "font-size": "88px",
+        "font-weight": "700",
+        "color": "var(--scene-ink, #e8eef6)"
+      }
+    },
+    {
+      "id": "quiet",
+      "name": "Тихий",
+      "type": "text",
+      "props": {
+        "font-size": "44px",
+        "color": "var(--scene-ink-muted, #93a4b8)"
+      }
+    },
+    {
+      "id": "answer",
+      "name": "Кнопка ответа",
+      "type": "text",
+      "props": {
+        "font-size": "44px",
+        "border-radius": "18px",
+        "padding": "40px"
+      }
+    }
+  ],
+  "segments": [
+    {
+      "id": "s-main",
+      "title": "Как работает остановка",
+      "speech": "Представь что ты смотришь объяснение и в какой-то момент оно останавливается.",
+      "audio": {
+        "src": "/audio/demo.mp3",
+        "offset": 0,
+        "duration": 48.6,
+        "words": [
+          {
+            "text": "Представь",
+            "start": 0.1,
+            "end": 0.7,
+            "source": "tts"
+          },
+          {
+            "text": "что",
+            "start": 0.85,
+            "end": 1.063,
+            "source": "tts"
+          },
+          {
+            "text": "ты",
+            "start": 1.063,
+            "end": 1.175,
+            "source": "tts"
+          },
+          {
+            "text": "смотришь",
+            "start": 1.175,
+            "end": 1.613,
+            "source": "tts"
+          },
+          {
+            "text": "объяснение",
+            "start": 1.613,
+            "end": 2.362,
+            "source": "tts"
+          },
+          {
+            "text": "и",
+            "start": 2.362,
+            "end": 2.462,
+            "source": "tts"
+          },
+          {
+            "text": "в",
+            "start": 2.462,
+            "end": 2.5,
+            "source": "tts"
+          },
+          {
+            "text": "какой-то",
+            "start": 2.5,
+            "end": 2.938,
+            "source": "tts"
+          },
+          {
+            "text": "момент",
+            "start": 2.938,
+            "end": 3.475,
+            "source": "tts"
+          },
+          {
+            "text": "оно",
+            "start": 3.475,
+            "end": 3.712,
+            "source": "tts"
+          },
+          {
+            "text": "останавливается",
+            "start": 3.712,
+            "end": 4.775,
+            "source": "tts"
+          },
+          {
+            "text": "Не",
+            "start": 5.638,
+            "end": 5.862,
+            "source": "tts"
+          },
+          {
+            "text": "потому",
+            "start": 5.862,
+            "end": 6.175,
+            "source": "tts"
+          },
+          {
+            "text": "что",
+            "start": 6.175,
+            "end": 6.338,
+            "source": "tts"
+          },
+          {
+            "text": "закончилось",
+            "start": 6.338,
+            "end": 7.088,
+            "source": "tts"
+          },
+          {
+            "text": "а",
+            "start": 7.225,
+            "end": 7.313,
+            "source": "tts"
+          },
+          {
+            "text": "потому",
+            "start": 7.313,
+            "end": 7.612,
+            "source": "tts"
+          },
+          {
+            "text": "что",
+            "start": 7.612,
+            "end": 7.85,
+            "source": "tts"
+          },
+          {
+            "text": "автор",
+            "start": 7.85,
+            "end": 8.2,
+            "source": "tts"
+          },
+          {
+            "text": "поставил",
+            "start": 8.2,
+            "end": 8.7,
+            "source": "tts"
+          },
+          {
+            "text": "здесь",
+            "start": 8.7,
+            "end": 8.988,
+            "source": "tts"
+          },
+          {
+            "text": "вопрос",
+            "start": 8.988,
+            "end": 9.575,
+            "source": "tts"
+          },
+          {
+            "text": "Пока",
+            "start": 10.425,
+            "end": 10.75,
+            "source": "tts"
+          },
+          {
+            "text": "ты",
+            "start": 10.75,
+            "end": 10.863,
+            "source": "tts"
+          },
+          {
+            "text": "не",
+            "start": 10.863,
+            "end": 10.975,
+            "source": "tts"
+          },
+          {
+            "text": "ответишь",
+            "start": 10.975,
+            "end": 11.575,
+            "source": "tts"
+          },
+          {
+            "text": "дальше",
+            "start": 11.738,
+            "end": 12.15,
+            "source": "tts"
+          },
+          {
+            "text": "не",
+            "start": 12.15,
+            "end": 12.25,
+            "source": "tts"
+          },
+          {
+            "text": "поедет",
+            "start": 12.25,
+            "end": 12.925,
+            "source": "tts"
+          },
+          {
+            "text": "Это",
+            "start": 13.787,
+            "end": 14.175,
+            "source": "tts"
+          },
+          {
+            "text": "и",
+            "start": 14.175,
+            "end": 14.25,
+            "source": "tts"
+          },
+          {
+            "text": "есть",
+            "start": 14.25,
+            "end": 14.537,
+            "source": "tts"
+          },
+          {
+            "text": "главная",
+            "start": 14.537,
+            "end": 15.1,
+            "source": "tts"
+          },
+          {
+            "text": "идея",
+            "start": 15.1,
+            "end": 15.438,
+            "source": "tts"
+          },
+          {
+            "text": "нашего",
+            "start": 15.438,
+            "end": 15.8,
+            "source": "tts"
+          },
+          {
+            "text": "формата",
+            "start": 15.8,
+            "end": 16.462,
+            "source": "tts"
+          },
+          {
+            "text": "Обычное",
+            "start": 17.337,
+            "end": 17.975,
+            "source": "tts"
+          },
+          {
+            "text": "видео",
+            "start": 17.975,
+            "end": 18.313,
+            "source": "tts"
+          },
+          {
+            "text": "течёт",
+            "start": 18.313,
+            "end": 18.688,
+            "source": "tts"
+          },
+          {
+            "text": "мимо",
+            "start": 18.688,
+            "end": 18.938,
+            "source": "tts"
+          },
+          {
+            "text": "зрителя",
+            "start": 18.938,
+            "end": 19.337,
+            "source": "tts"
+          },
+          {
+            "text": "ровным",
+            "start": 19.337,
+            "end": 19.65,
+            "source": "tts"
+          },
+          {
+            "text": "потоком",
+            "start": 19.65,
+            "end": 20.163,
+            "source": "tts"
+          },
+          {
+            "text": "и",
+            "start": 20.45,
+            "end": 20.55,
+            "source": "tts"
+          },
+          {
+            "text": "проверить",
+            "start": 20.55,
+            "end": 21.038,
+            "source": "tts"
+          },
+          {
+            "text": "понимание",
+            "start": 21.038,
+            "end": 21.613,
+            "source": "tts"
+          },
+          {
+            "text": "негде",
+            "start": 21.613,
+            "end": 22.087,
+            "source": "tts"
+          },
+          {
+            "text": "Здесь",
+            "start": 22.925,
+            "end": 23.325,
+            "source": "tts"
+          },
+          {
+            "text": "же",
+            "start": 23.325,
+            "end": 23.438,
+            "source": "tts"
+          },
+          {
+            "text": "остановка",
+            "start": 23.438,
+            "end": 24,
+            "source": "tts"
+          },
+          {
+            "text": "встроена",
+            "start": 24,
+            "end": 24.413,
+            "source": "tts"
+          },
+          {
+            "text": "в",
+            "start": 24.413,
+            "end": 24.45,
+            "source": "tts"
+          },
+          {
+            "text": "саму",
+            "start": 24.45,
+            "end": 24.725,
+            "source": "tts"
+          },
+          {
+            "text": "дорожку",
+            "start": 24.725,
+            "end": 25.238,
+            "source": "tts"
+          },
+          {
+            "text": "а",
+            "start": 25.462,
+            "end": 25.587,
+            "source": "tts"
+          },
+          {
+            "text": "не",
+            "start": 25.587,
+            "end": 25.688,
+            "source": "tts"
+          },
+          {
+            "text": "приклеена",
+            "start": 25.688,
+            "end": 26.212,
+            "source": "tts"
+          },
+          {
+            "text": "сверху",
+            "start": 26.212,
+            "end": 26.775,
+            "source": "tts"
+          },
+          {
+            "text": "Звук",
+            "start": 27.675,
+            "end": 28.075,
+            "source": "tts"
+          },
+          {
+            "text": "замирает",
+            "start": 28.075,
+            "end": 28.7,
+            "source": "tts"
+          },
+          {
+            "text": "картинка",
+            "start": 28.8,
+            "end": 29.313,
+            "source": "tts"
+          },
+          {
+            "text": "ждёт",
+            "start": 29.313,
+            "end": 29.712,
+            "source": "tts"
+          },
+          {
+            "text": "и",
+            "start": 30.025,
+            "end": 30.087,
+            "source": "tts"
+          },
+          {
+            "text": "внимание",
+            "start": 30.087,
+            "end": 30.55,
+            "source": "tts"
+          },
+          {
+            "text": "возвращается",
+            "start": 30.55,
+            "end": 31.2,
+            "source": "tts"
+          },
+          {
+            "text": "к",
+            "start": 31.2,
+            "end": 31.25,
+            "source": "tts"
+          },
+          {
+            "text": "тому",
+            "start": 31.25,
+            "end": 31.575,
+            "source": "tts"
+          },
+          {
+            "text": "что",
+            "start": 31.813,
+            "end": 31.975,
+            "source": "tts"
+          },
+          {
+            "text": "происходит",
+            "start": 31.975,
+            "end": 32.563,
+            "source": "tts"
+          },
+          {
+            "text": "на",
+            "start": 32.563,
+            "end": 32.663,
+            "source": "tts"
+          },
+          {
+            "text": "экране",
+            "start": 32.663,
+            "end": 33.188,
+            "source": "tts"
+          },
+          {
+            "text": "Когда",
+            "start": 34.038,
+            "end": 34.45,
+            "source": "tts"
+          },
+          {
+            "text": "ответ",
+            "start": 34.45,
+            "end": 34.813,
+            "source": "tts"
+          },
+          {
+            "text": "дан",
+            "start": 34.813,
+            "end": 35.125,
+            "source": "tts"
+          },
+          {
+            "text": "воспроизведение",
+            "start": 35.25,
+            "end": 36.138,
+            "source": "tts"
+          },
+          {
+            "text": "продолжается",
+            "start": 36.138,
+            "end": 36.8,
+            "source": "tts"
+          },
+          {
+            "text": "ровно",
+            "start": 36.8,
+            "end": 37.063,
+            "source": "tts"
+          },
+          {
+            "text": "с",
+            "start": 37.063,
+            "end": 37.125,
+            "source": "tts"
+          },
+          {
+            "text": "той",
+            "start": 37.125,
+            "end": 37.263,
+            "source": "tts"
+          },
+          {
+            "text": "секунды",
+            "start": 37.263,
+            "end": 37.813,
+            "source": "tts"
+          },
+          {
+            "text": "на",
+            "start": 38.063,
+            "end": 38.15,
+            "source": "tts"
+          },
+          {
+            "text": "которой",
+            "start": 38.15,
+            "end": 38.525,
+            "source": "tts"
+          },
+          {
+            "text": "прервалось",
+            "start": 38.525,
+            "end": 39.212,
+            "source": "tts"
+          },
+          {
+            "text": "Никакой",
+            "start": 40.063,
+            "end": 40.638,
+            "source": "tts"
+          },
+          {
+            "text": "перемотки",
+            "start": 40.638,
+            "end": 41.25,
+            "source": "tts"
+          },
+          {
+            "text": "никакого",
+            "start": 41.4,
+            "end": 41.862,
+            "source": "tts"
+          },
+          {
+            "text": "повторения",
+            "start": 41.862,
+            "end": 42.487,
+            "source": "tts"
+          },
+          {
+            "text": "последней",
+            "start": 42.487,
+            "end": 42.987,
+            "source": "tts"
+          },
+          {
+            "text": "фразы",
+            "start": 42.987,
+            "end": 43.487,
+            "source": "tts"
+          },
+          {
+            "text": "Энергия",
+            "start": 44.388,
+            "end": 44.95,
+            "source": "tts"
+          },
+          {
+            "text": "зрителя",
+            "start": 44.95,
+            "end": 45.362,
+            "source": "tts"
+          },
+          {
+            "text": "тратится",
+            "start": 45.362,
+            "end": 45.8,
+            "source": "tts"
+          },
+          {
+            "text": "на",
+            "start": 45.8,
+            "end": 45.9,
+            "source": "tts"
+          },
+          {
+            "text": "смысл",
+            "start": 45.9,
+            "end": 46.362,
+            "source": "tts"
+          },
+          {
+            "text": "а",
+            "start": 46.625,
+            "end": 46.7,
+            "source": "tts"
+          },
+          {
+            "text": "не",
+            "start": 46.7,
+            "end": 46.788,
+            "source": "tts"
+          },
+          {
+            "text": "на",
+            "start": 46.788,
+            "end": 46.875,
+            "source": "tts"
+          },
+          {
+            "text": "борьбу",
+            "start": 46.875,
+            "end": 47.237,
+            "source": "tts"
+          },
+          {
+            "text": "с",
+            "start": 47.237,
+            "end": 47.325,
+            "source": "tts"
+          },
+          {
+            "text": "интерфейсом",
+            "start": 47.325,
+            "end": 48.1,
+            "source": "tts"
+          }
+        ]
+      },
+      "elements": [
+        {
+          "id": "bg",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "content": "Остановка, которая ждёт ответа"
+        },
+        {
+          "id": "lead",
+          "type": "text",
+          "content": "Плеер встаёт на месте. Не перемотка — пауза внутри дорожки."
+        },
+        {
+          "id": "question",
+          "type": "text",
+          "content": "Что делает объяснение, когда доходит до остановки?"
+        },
+        {
+          "id": "answer-stop",
+          "type": "text",
+          "content": "Останавливается и ждёт"
+        },
+        {
+          "id": "answer-go",
+          "type": "text",
+          "content": "Едет дальше сама"
+        }
+      ],
+      "slides": [
+        {
+          "id": "m-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "cut",
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "title": {
+              "x": 160,
+              "y": 380,
+              "width": 1600,
+              "height": 200,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "88px",
+                "font-weight": "700"
+              }
+            },
+            "lead": {
+              "x": 160,
+              "y": 620,
+              "width": 1400,
+              "height": 140,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink-muted, #93a4b8)",
+                "font-size": "44px"
+              }
+            },
+            "question": {
+              "x": 160,
+              "y": 300,
+              "width": 1600,
+              "height": 180,
+              "rotation": 0,
+              "zIndex": 3,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "64px",
+                "font-weight": "700"
+              }
+            },
+            "answer-stop": {
+              "x": 220,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-accent-ink, #06121f)",
+                "background": "var(--scene-accent, #4c8dff)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            },
+            "answer-go": {
+              "x": 1000,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "background": "var(--scene-surface, #1b2430)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            }
+          }
+        },
+        {
+          "id": "m-2",
+          "at": {
+            "kind": "word",
+            "wordIndex": 12,
+            "offset": 0,
+            "anchor": {
+              "text": "потому",
+              "before": "не",
+              "after": "что"
+            }
+          },
+          "transition": "dissolve",
+          "transitionSeconds": 0.6,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "title": {
+              "x": 160,
+              "y": 380,
+              "width": 1600,
+              "height": 200,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "88px",
+                "font-weight": "700"
+              }
+            },
+            "lead": {
+              "x": 160,
+              "y": 620,
+              "width": 1400,
+              "height": 140,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink-muted, #93a4b8)",
+                "font-size": "44px"
+              }
+            },
+            "question": {
+              "x": 160,
+              "y": 300,
+              "width": 1600,
+              "height": 180,
+              "rotation": 0,
+              "zIndex": 3,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "64px",
+                "font-weight": "700"
+              }
+            },
+            "answer-stop": {
+              "x": 220,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-accent-ink, #06121f)",
+                "background": "var(--scene-accent, #4c8dff)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            },
+            "answer-go": {
+              "x": 1000,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "background": "var(--scene-surface, #1b2430)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            }
+          }
+        },
+        {
+          "id": "m-3",
+          "at": {
+            "kind": "word",
+            "wordIndex": 40,
+            "offset": 0,
+            "anchor": {
+              "text": "зрителя",
+              "before": "мимо",
+              "after": "ровным"
+            }
+          },
+          "transition": "slide",
+          "transitionDirection": "left",
+          "transitionSeconds": 0.8,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "title": {
+              "x": 160,
+              "y": 380,
+              "width": 1600,
+              "height": 200,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "88px",
+                "font-weight": "700"
+              }
+            },
+            "lead": {
+              "x": 160,
+              "y": 620,
+              "width": 1400,
+              "height": 140,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink-muted, #93a4b8)",
+                "font-size": "44px"
+              }
+            },
+            "question": {
+              "x": 160,
+              "y": 300,
+              "width": 1600,
+              "height": 180,
+              "rotation": 0,
+              "zIndex": 3,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "64px",
+                "font-weight": "700"
+              }
+            },
+            "answer-stop": {
+              "x": 220,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-accent-ink, #06121f)",
+                "background": "var(--scene-accent, #4c8dff)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            },
+            "answer-go": {
+              "x": 1000,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "background": "var(--scene-surface, #1b2430)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            }
+          }
+        },
+        {
+          "id": "m-4",
+          "at": {
+            "kind": "word",
+            "wordIndex": 58,
+            "offset": 0,
+            "anchor": {
+              "text": "звук",
+              "before": "сверху",
+              "after": "замирает"
+            }
+          },
+          "transition": "morph",
+          "transitionSeconds": 0.5,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "title": {
+              "x": 160,
+              "y": 380,
+              "width": 1600,
+              "height": 200,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "88px",
+                "font-weight": "700"
+              }
+            },
+            "lead": {
+              "x": 160,
+              "y": 620,
+              "width": 1400,
+              "height": 140,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": false,
+              "style": {
+                "color": "var(--scene-ink-muted, #93a4b8)",
+                "font-size": "44px"
+              }
+            },
+            "question": {
+              "x": 160,
+              "y": 300,
+              "width": 1600,
+              "height": 180,
+              "rotation": 0,
+              "zIndex": 3,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "64px",
+                "font-weight": "700"
+              }
+            },
+            "answer-stop": {
+              "x": 220,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-accent-ink, #06121f)",
+                "background": "var(--scene-accent, #4c8dff)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            },
+            "answer-go": {
+              "x": 1000,
+              "y": 640,
+              "width": 700,
+              "height": 160,
+              "rotation": 0,
+              "zIndex": 4,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "background": "var(--scene-surface, #1b2430)",
+                "font-size": "44px",
+                "border-radius": "18px",
+                "padding": "40px"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [
+        {
+          "id": "g-ask",
+          "at": {
+            "kind": "word",
+            "wordIndex": 70,
+            "offset": 0,
+            "anchor": {
+              "text": "экране",
+              "before": "на",
+              "after": "когда"
+            }
+          },
+          "recordAs": "otvet",
+          "onWrong": "continue",
+          "maxAttempts": null,
+          "config": {
+            "kind": "choice",
+            "prompt": "Что делает объяснение, когда доходит до остановки?",
+            "promptElementId": "question",
+            "correctId": null,
+            "options": [
+              {
+                "id": "stop",
+                "label": "Останавливается и ждёт",
+                "elementId": "answer-stop"
+              },
+              {
+                "id": "go",
+                "label": "Едет дальше сама",
+                "elementId": "answer-go"
+              }
+            ]
+          }
+        }
+      ],
+      "exit": {
+        "rules": [
+          {
+            "id": "r-stop",
+            "when": [
+              {
+                "kind": "equals",
+                "variable": "otvet",
+                "value": "stop"
+              }
+            ],
+            "goto": "s-yes"
+          },
+          {
+            "id": "r-go",
+            "when": [
+              {
+                "kind": "equals",
+                "variable": "otvet",
+                "value": "go"
+              }
+            ],
+            "goto": "s-no"
+          }
+        ],
+        "default": "s-yes"
+      }
+    },
+    {
+      "id": "s-yes",
+      "title": "Ответ «останавливается»: дальше",
+      "audio": {
+        "src": "/audio/branch-yes.mp3",
+        "offset": 0,
+        "duration": 2.736,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "bg",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "ok",
+          "type": "text",
+          "content": "Да. Пока не ответишь — дальше не поедет."
+        }
+      ],
+      "slides": [
+        {
+          "id": "y-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "circle",
+          "transitionSeconds": 0.5,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "ok": {
+              "x": 200,
+              "y": 440,
+              "width": 1520,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-accent, #4c8dff)",
+                "font-size": "72px",
+                "font-weight": "700"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": {
+        "rules": [],
+        "default": "s-final"
+      }
+    },
+    {
+      "id": "s-no",
+      "title": "Ответ «едет дальше»: пройти заново",
+      "audio": {
+        "src": "/audio/branch-no.mp3",
+        "offset": 0,
+        "duration": 2.4,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "bg",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "again",
+          "type": "text",
+          "content": "Нет. Смотрим главу заново."
+        }
+      ],
+      "slides": [
+        {
+          "id": "n-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "wipe",
+          "transitionDirection": "right",
+          "transitionSeconds": 0.5,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "again": {
+              "x": 200,
+              "y": 440,
+              "width": 1520,
+              "height": 220,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "72px",
+                "font-weight": "700"
+              }
+            }
+          }
+        }
+      ],
+      "gates": [],
+      "exit": {
+        "rules": [],
+        "default": "s-main"
+      }
+    },
+    {
+      "id": "s-final",
+      "title": "Конец — немая глава",
+      "audio": {
+        "offset": 0,
+        "duration": 6,
+        "words": []
+      },
+      "elements": [
+        {
+          "id": "bg",
+          "type": "shape",
+          "content": ""
+        },
+        {
+          "id": "end",
+          "type": "text",
+          "content": "Спасибо"
+        },
+        {
+          "id": "dot",
+          "type": "shape",
+          "content": ""
+        }
+      ],
+      "slides": [
+        {
+          "id": "f-1",
+          "at": {
+            "kind": "seconds",
+            "t": 0
+          },
+          "transition": "dissolve",
+          "transitionSeconds": 0.8,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "end": {
+              "x": 200,
+              "y": 460,
+              "width": 1520,
+              "height": 180,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "96px",
+                "font-weight": "700"
+              }
+            },
+            "dot": {
+              "x": 910,
+              "y": 720,
+              "width": 100,
+              "height": 100,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 0,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-accent, #4c8dff)",
+                "border-radius": "50%"
+              }
+            }
+          }
+        },
+        {
+          "id": "f-2",
+          "at": {
+            "kind": "seconds",
+            "t": 3
+          },
+          "transition": "scale",
+          "transitionSeconds": 0.6,
+          "states": {
+            "bg": {
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080,
+              "rotation": 0,
+              "zIndex": 0,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-bg, #0f1620)"
+              }
+            },
+            "end": {
+              "x": 200,
+              "y": 460,
+              "width": 1520,
+              "height": 180,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "color": "var(--scene-ink, #e8eef6)",
+                "font-size": "96px",
+                "font-weight": "700"
+              }
+            },
+            "dot": {
+              "x": 910,
+              "y": 720,
+              "width": 100,
+              "height": 100,
+              "rotation": 0,
+              "zIndex": 2,
+              "opacity": 1,
+              "visible": true,
+              "style": {
+                "background": "var(--scene-accent, #4c8dff)",
+                "border-radius": "50%"
+              }
+            }
+          }
+        }
+      ],
+      "exit": {
+        "rules": [],
+        "default": null
+      }
+    }
+  ]
+}

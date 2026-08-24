@@ -4496,6 +4496,7 @@ var ls = class {
 		return t ? new ls(this.#r(), t) : null;
 	}
 	warm(e) {
+		if (e.kind === "silent") return;
 		let t = cs(e);
 		if (this.#t.has(t) || this.#n.has(t)) return;
 		let n = this.clockFor(e).catch(() => void 0).finally(() => {
