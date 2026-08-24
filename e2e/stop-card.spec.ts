@@ -298,4 +298,78 @@ test.describe('карточка остановки', () => {
     await page.locator('[data-mark-kind="gate"]').first().click();
     await expect(page.getByTestId('stop-card')).toBeVisible();
   });
+
+  /**
+   * НЕСУЩИЙ ТЕСТ, куплен вопросом владельца 24.08.2026: «я ответил, а меня
+   * никуда не перекинуло».
+   *
+   * ЧТО ЗА ЭТИМ СТОЯЛО. В словаре продукта вопрос и развилка — разные вещи
+   * (`product.md` §2а): вопрос стоит посреди главы и рассказ после него
+   * идёт дальше, развилка стоит В КОНЦЕ и делит рассказ. Ответ сам никуда
+   * не ведёт: остановка записывает его в переменную, а переход решает выход
+   * главы, когда дорожка доиграла. Значит развилку мало объявить — главу
+   * надо РАЗРЕЗАТЬ.
+   *
+   * А карточка до 24.08.2026 предлагала только «Завести ветку под этот
+   * ответ» и не предлагала ни выбора вида, ни разреза: выход лежал в панели
+   * свойств, куда автор не заходит. То есть единственный видимый путь вёл
+   * ровно в яму, из которой владелец и написал.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: из карточки убрали выбор
+   * вида или кнопку разреза — путь снова становится непроходимым, не покидая
+   * дорожки. Проверено сломом.
+   *
+   * Проверяется РЕЗУЛЬТАТ В ПРОЕКТЕ (глав стало больше, у головы появились
+   * правила выхода), а не то, что кнопки нажались.
+   */
+  test('развилка и разрез главы делаются, не покидая карточки', async ({ page }) => {
+    const errors = await openEditor(page);
+
+    const chaptersBefore = await page.evaluate(
+      () => (window as unknown as { __project: { segments: unknown[] } }).__project.segments.length,
+    );
+
+    await addStopAt(page, 0.55);
+    const card = page.getByTestId('stop-card');
+    await expect(card).toBeVisible();
+    await card.getByTestId('stopcard-make-question').click();
+
+    // Вид остановки — В КАРТОЧКЕ. Ищем внутри неё намеренно: найдись орган
+    // где-то ещё, тест обязан этого не заметить, потому что охраняет он
+    // путь автора, а не наличие узла на странице.
+    await card.getByTestId('stop-kind').locator('select').selectOption('fork');
+    await expect(card.getByTestId('fork-hint'), 'карточка молчит о том, чем развилка отличается')
+      .toBeVisible();
+
+    const split = card.getByTestId('gate-split');
+    await expect(split, 'в карточке нет разреза — развилку объявить можно, а сделать нельзя')
+      .toBeVisible();
+    await expect(split, 'разрез погашен там, где делить есть что').toBeEnabled();
+    await split.click();
+
+    const after = await page.evaluate(() => {
+      const project = (window as unknown as {
+        __project: {
+          segments: { id: string; audio: { src?: string; duration: number }; exit: { rules: unknown[] } }[];
+        };
+      }).__project;
+      const head = project.segments[0]!;
+      return {
+        глав: project.segments.length,
+        правилВыходаУГоловы: head.exit.rules.length,
+        немыхВеток: project.segments.filter((s) => s.audio.src === undefined).length,
+      };
+    });
+
+    // Голова обрывается на развилке и ведёт по правилу на каждый ответ.
+    expect(after.правилВыходаУГоловы, 'у головы не появилось правил выхода — разрез не состоялся')
+      .toBe(2);
+    // Две ветки плюс продолжение.
+    expect(after.глав, 'глав не прибавилось на две ветки и продолжение')
+      .toBe(chaptersBefore + 3);
+    // Ветки немые: чужую дорожку им не отдают (см. split.test.ts).
+    expect(after.немыхВеток, 'ветки получили чужую дорожку вместо немой').toBe(2);
+
+    expect(errors).toEqual([]);
+  });
 });

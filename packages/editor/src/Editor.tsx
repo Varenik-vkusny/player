@@ -2621,12 +2621,6 @@ export function Editor({
                 onRenameVariable={handleRenameVariable}
                 variableProblemOf={variableProblemOf}
                 onRemove={handleRemoveMark}
-                onSplitAtGate={markData.kind === 'gate'
-                  ? () => handleSplitAtGate(markData.gate.id)
-                  : undefined}
-                splitBlockedReason={markData.kind === 'gate'
-                  ? splitBlockedReason(markData.gate, segment.words)
-                  : undefined}
               />
             ) : panelId === 'mark' ? (
               /*
@@ -3047,6 +3041,11 @@ export function Editor({
           anchor={stopCardAnchor}
           onUpdateGate={handleUpdateGate}
           onAskOnStage={() => dispatch({ type: 'askOnStage', gateId: stopCardGate.id })}
+          /* Разрез главы по развилке — та же отправка, что у кнопки в панели
+             свойств. Второй реализации нет: карточка и панель зовут один
+             и тот же `handleSplitAtGate`. */
+          onSplit={() => handleSplitAtGate(stopCardGate.id)}
+          splitBlockedReason={splitBlockedReason(stopCardGate, segment.words)}
           onPromptChange={(text) => dispatch({
             type: 'setGatePrompt', gateId: stopCardGate.id, text,
           })}

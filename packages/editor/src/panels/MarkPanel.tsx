@@ -30,7 +30,6 @@ import {
   setAccept,
   setCaseSensitive,
   setCorrect,
-  setFork,
   setGateKind,
   setMaxAttempts,
   setOnWrong,
@@ -117,14 +116,12 @@ export interface MarkPanelProps {
    * Автор должен иметь возможность объявить развилку, посмотреть и передумать,
    * не перестраивая объяснение движением мыши по выпадающему списку.
    */
-  onSplitAtGate?: (() => void) | undefined;
   /**
    * Почему разрез сейчас невозможен. `undefined` — возможен.
    *
    * Строкой, а не булевым: запрещённая кнопка без причины — это тупик,
    * в котором автор не понимает, что он сделал не так.
    */
-  splitBlockedReason?: string | undefined;
   /**
    * Куда ведёт вариант ответа — готовым ответом на каждый `optionId`.
    *
@@ -157,8 +154,6 @@ export function MarkPanel({
   onRenameVariable,
   variableProblemOf,
   onRemove,
-  onSplitAtGate,
-  splitBlockedReason,
 }: MarkPanelProps): ReactElement {
   const containerRef = useRef<HTMLElement>(null);
   const markId = mark.kind === 'gate' ? mark.gate.id : mark.slide.id;
@@ -221,8 +216,6 @@ export function MarkPanel({
             onUpdate={onUpdateGate}
             onRenameVariable={onRenameVariable}
             variableProblemOf={variableProblemOf}
-            onSplit={onSplitAtGate}
-            splitBlockedReason={splitBlockedReason}
           />
         ) : (
           <SlideMarkPanel
@@ -427,8 +420,6 @@ interface GatePanelProps {
   onUpdate: (gate: Gate) => void;
   onRenameVariable: (name: string) => void;
   variableProblemOf: (name: string) => string | undefined;
-  onSplit?: (() => void) | undefined;
-  splitBlockedReason?: string | undefined;
   /** Куда ведёт вариант ответа — см. `ChoiceOptionsEditorProps`. */
   /** Завести главу под ответ и связать — см. `ChoiceOptionsEditorProps`. */
 }
@@ -439,8 +430,6 @@ function GatePanel({
   onUpdate,
   onRenameVariable,
   variableProblemOf,
-  onSplit,
-  splitBlockedReason,
 }: GatePanelProps): ReactElement {
   // Память о вопросе при переключении вида (choice/input → continue → …) —
   // забота панели, а не state/gates.ts: модуль намеренно ничего не хранит
@@ -495,17 +484,14 @@ function GatePanel({
         Дефект при этом не тестовый: два поля, правящих одно значение, —
         это два места, куда автор может написать разное, и вопрос «какое
         из них настоящее» у него возникает раньше, чем у теста.
-      */}
 
-      {config.kind === 'choice' && (
-        <StopKindEditor
-          gate={gate}
-          config={config}
-          onUpdate={onUpdate}
-          onSplit={onSplit}
-          splitBlockedReason={splitBlockedReason}
-        />
-      )}
+        ТУДА ЖЕ УБРАН ВЫБОР ВИДА ОСТАНОВКИ И РАЗРЕЗ (24.08.2026), и по тому
+        же доводу. Я добавил их в карточку, оставив здесь, — и строгий режим
+        Playwright снова нашёл два «Что это за остановка» на одном экране,
+        снова тестом про другое (`fork-split.spec.ts`). Второй раз тот же
+        урок: орган живёт в ОДНОМ месте, и это место — карточка, потому что
+        она стоит у самой метки.
+      */}
 
       {config.kind === 'choice' && (
         <ChoiceOptionsEditor
@@ -545,73 +531,6 @@ function GatePanel({
 type ChoiceConfig = Extract<Gate['config'], { kind: 'choice' }>;
 type InputConfig = Extract<Gate['config'], { kind: 'input' }>;
 
-/**
- * Две остановки продукта, названные так, как их называет автор.
- *
- * Вопрос — остановка ПОСРЕДИ части: зритель отвечает, повествование
- * продолжается здесь же. Развилка — остановка В КОНЦЕ: она делит
- * объяснение на части.
- *
- * В схеме это одно и то же поле `correctId`, и различие выражено его
- * значением. Автору же про `correctId`, `exit` и «правила выхода» знать
- * незачем: он ставит развилку, а правила появляются сами.
- */
-const STOP_KIND_CHOICES: readonly Choice[] = [
-  // Коротко, потому что это выпадающий список: длинную подпись он обрезает,
-  // и автор видит обрывок фразы. Полное объяснение — в подсказке ниже.
-  { value: 'question', label: 'Вопрос — рассказ идёт дальше' },
-  { value: 'fork', label: 'Развилка — рассказ делится' },
-];
-
-interface StopKindEditorProps {
-  gate: Gate;
-  config: ChoiceConfig;
-  onUpdate: (gate: Gate) => void;
-  onSplit?: (() => void) | undefined;
-  splitBlockedReason?: string | undefined;
-}
-
-function StopKindEditor({ gate, config, onUpdate, onSplit, splitBlockedReason }: StopKindEditorProps): ReactElement {
-  const isFork = config.correctId === null;
-
-  return (
-    <div className="ed-insp-block" data-testid="stop-kind">
-      <ChoiceField
-        label="Что это за остановка"
-        value={isFork ? 'fork' : 'question'}
-        choices={STOP_KIND_CHOICES}
-        onCommit={(value) => {
-          if (value !== 'question' && value !== 'fork') {
-            throw new Error(`Неизвестный тип остановки «${value}»`);
-          }
-          onUpdate(setFork(gate, value === 'fork'));
-        }}
-      />
-
-      {isFork && (
-        <>
-          <p className="ed-insp-hint" data-testid="fork-hint">
-            У развилки нет верного ответа: ветки равноправны. Чтобы каждый ответ
-            повёл зрителя своей дорогой, разделите повествование здесь — рассказ
-            после этой точки станет отдельной главой, а на каждый вариант появится
-            своя.
-          </p>
-          <Button
-            data-testid="gate-split"
-            disabled={splitBlockedReason !== undefined || onSplit === undefined}
-            title={splitBlockedReason ?? 'Разделить повествование по этой развилке'}
-            onClick={() => onSplit?.()}
-          >
-            Разделить повествование здесь
-          </Button>
-          {splitBlockedReason !== undefined && (
-            <p className="ed-insp-hint" data-testid="split-blocked">{splitBlockedReason}</p>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
 
 interface ChoiceOptionsEditorProps {
   gate: Gate;
