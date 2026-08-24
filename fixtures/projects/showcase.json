@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 15,
+  "schemaVersion": 16,
   "meta": {
     "title": "Показ: остановка, вопрос и ветки",
     "stageWidth": 1920,
@@ -1171,6 +1171,9 @@
           }
         ],
         "default": null
+      },
+      "badge": {
+        "color": "blue"
       }
     },
     {
@@ -1239,6 +1242,10 @@
       "exit": {
         "rules": [],
         "default": "s-final"
+      },
+      "badge": {
+        "color": "green",
+        "text": "Да"
       }
     },
     {
@@ -1308,6 +1315,10 @@
       "exit": {
         "rules": [],
         "default": "s-main"
+      },
+      "badge": {
+        "color": "red",
+        "text": "Нет"
       }
     },
     {
@@ -1446,6 +1457,10 @@
       "exit": {
         "rules": [],
         "default": null
+      },
+      "badge": {
+        "color": "gray",
+        "text": "Кон"
       }
     }
   ]

@@ -259,3 +259,88 @@ test.describe('плитки глав: длиннее глава — шире п�
     expect(after.title, 'пробелы приняты за имя').toBe(before.title);
   });
 });
+
+/**
+ * МЕТКА ГЛАВЫ: автор сам красит плитку и даёт ей знак (схема v16).
+ *
+ * Решение владельца 25.08.2026: «нужно научить юзера самому отличать плитки
+ * как ему надо, чтобы он мог сам красить или не красить и сам давать имена,
+ * а мы будем просто такой вот как сейчас дефолт давать».
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ: правка метки перестаёт
+ * доходить до проекта; цвет не доезжает до плитки (класс есть, а заливка
+ * прежняя — так уже было: базовое правило стояло НИЖЕ цветных и молча
+ * их перебивало); знак не заменяет номер. Проверено сломом.
+ *
+ * Проверяется И проект, И экран. Только проект — и «покрасил» осталось бы
+ * зелёным при невидимом цвете; только экран — и правка могла бы не дойти
+ * до файла.
+ */
+test.describe('метка главы: цвет и знак', () => {
+  test('автор красит плитку и подписывает её, и это доходит до проекта и до экрана', async ({ page }) => {
+    const errors = await openEditor(page, 'showcase');
+    await page.getByTestId('view-branches').click();
+    await expect(page.getByTestId('branches-view')).toBeVisible();
+
+    // Заранее снимаем метку, чтобы тест не зависел от того, что лежит
+    // в фикстуре: он проверяет ДЕЙСТВИЕ автора, а не начальное состояние.
+    await page.getByTestId('chapter-pick-s-yes').click({ button: 'right' });
+    await expect(page.getByTestId('chapter-card')).toBeVisible();
+    await page.getByTestId('chapter-color-none').click();
+    await page.getByTestId('chapter-badge-text').fill('');
+    await page.getByTestId('chapter-badge-text').blur();
+
+    const cleared = await badgeOf(page, 's-yes');
+    expect(cleared, 'метка не снялась — дальше проверялось бы не то').toBeNull();
+    const plainFill = await fillOf(page, 's-yes');
+    await expect(
+      page.getByTestId('chapter-pick-s-yes'),
+      'без метки на плитке обязан остаться номер',
+    ).toHaveText(/^\d+$/);
+
+    // Красим и подписываем.
+    await page.getByTestId('chapter-color-violet').click();
+    await page.getByTestId('chapter-badge-text').fill('Ага');
+    await page.getByTestId('chapter-badge-text').blur();
+
+    // 1. Доехало до проекта — обе половины сразу, а не по одной.
+    const saved = await badgeOf(page, 's-yes');
+    expect(saved, 'метка не доехала до проекта').toEqual({ color: 'violet', text: 'Ага' });
+
+    // 2. Доехало до экрана: знак вместо номера.
+    await expect(
+      page.getByTestId('chapter-pick-s-yes'),
+      'знак автора не заменил номер на плитке',
+    ).toHaveText('Ага');
+
+    // 3. Доехало до экрана: заливка ДЕЙСТВИТЕЛЬНО сменилась. Сравнение
+    // с прежним фоном, а не с записанным цветом: записанный оттенок
+    // закрепил бы сегодняшнюю тему как требование.
+    const paintedFill = await fillOf(page, 's-yes');
+    expect(
+      paintedFill,
+      `заливка не изменилась: было ${plainFill}, стало ${paintedFill} — класс цвета есть, а цвета нет`,
+    ).not.toBe(plainFill);
+
+    expect(errors).toEqual([]);
+  });
+});
+
+/** Метка главы из живого проекта. `null` — метки нет. */
+async function badgeOf(page: Page, id: string): Promise<unknown> {
+  return page.evaluate((segmentId) => {
+    const project = (window as unknown as {
+      __project: { segments: { id: string; badge?: unknown }[] };
+    }).__project;
+    return project.segments.find((segment) => segment.id === segmentId)?.badge ?? null;
+  }, id);
+}
+
+/** Вычисленная заливка плитки — то, что видит автор, а не то, что записано. */
+async function fillOf(page: Page, id: string): Promise<string> {
+  return page.evaluate((segmentId) => {
+    const tile = document.querySelector(`[data-testid="chapter-tile-${segmentId}"]`);
+    if (!tile) throw new Error(`плитки «${segmentId}» нет на доске`);
+    return getComputedStyle(tile).backgroundColor;
+  }, id);
+}

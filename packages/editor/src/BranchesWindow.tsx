@@ -201,6 +201,7 @@ export function BranchesWindow(): ReactElement {
         currentId={parsed.currentSegmentId}
         onPick={(id) => clientRef.current?.pick(id)}
         onRename={(id, title) => clientRef.current?.rename(id, title)}
+        onBadge={(id, badge) => clientRef.current?.badge(id, badge)}
         range={durationRange(parsed.project)}
         extractReason={(ids) => extractBlockedReason(parsed.project, ids)}
         /* Во втором окне панели глав нет: каталог живёт в главном окне,

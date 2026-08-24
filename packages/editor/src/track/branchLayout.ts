@@ -15,6 +15,7 @@
  * сумма ширин плиток может уйти далеко за пределы экрана, и это законно.
  */
 import type { Box } from './branchSpace.js';
+import type { ChapterBadge } from '@player/core';
 import type { BranchLane } from '../state/branchTree.js';
 
 /**
@@ -110,6 +111,10 @@ export interface TileBox {
   readonly order: number;
   /** Описание главы: показывается по правой кнопке, на плитке его нет. */
   readonly description: string;
+  /** Метка автора: цвет и короткий знак (схема v16). */
+  readonly badge: ChapterBadge | undefined;
+  /** Заготовка: ни звука, ни элементов. Считается по данным, не автором. */
+  readonly blank: boolean;
 }
 
 export interface LaneRow {
@@ -265,6 +270,8 @@ export function layoutLanes(lanes: readonly BranchLane[], collapsed: ReadonlySet
         forksAfter: chapter.forksAfter,
         order: chapter.order,
         description: chapter.description,
+        badge: chapter.badge,
+        blank: chapter.blank,
       });
       cursorX += width + TILE_GAP;
     }

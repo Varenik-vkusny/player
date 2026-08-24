@@ -40,6 +40,9 @@ import {
   type ReactElement,
 } from 'react';
 
+import { CHAPTER_COLORS, type ChapterBadge, type ChapterColor } from '@player/core';
+
+import { StringField } from '../ui/index.js';
 import type { BranchLane } from '../state/branchTree.js';
 import type { DurationRange } from '../state/durationRange.js';
 import { layoutLanes, NAME_WIDTH, ROW_HEIGHT, TAIL_WIDTH, type LaneRow, type TileBox } from './branchLayout.js';
@@ -62,6 +65,14 @@ export interface BranchesViewProps {
   readonly onPick: (id: string) => void;
   /** Двойной щелчок и правка имени. Пустое имя не принимается. */
   readonly onRename: (id: string, title: string) => void;
+  /**
+   * Правка метки главы: цвет и короткий знак (схема v16).
+   *
+   * Одна отправка на оба поля, а не две: метка — одно понятие, и «покрасил,
+   * но подпись не доехала» было бы состоянием, которого в данных нет.
+   * `undefined` в поле означает «снять», а не «оставить как было».
+   */
+  readonly onBadge: (id: string, badge: ChapterBadge | undefined) => void;
   /**
    * Вилка длительностей объяснения (`branches.md` §8). Одного числа
    * у объяснения нет: ветки разной длины — у разных зрителей разное время,
@@ -104,6 +115,44 @@ function elbowPath(fromX: number, fromY: number, toX: number, toY: number): stri
 }
 
 /**
+ * Русские имена цветов метки — для подсказки на образце.
+ *
+ * Схема хранит английские ключи (`CHAPTER_COLORS`): они уезжают в файл
+ * проекта и обязаны быть устойчивы к смене языка интерфейса. Автор же
+ * читает слова, а не ключи. Разведено здесь, а не в схеме, ровно поэтому.
+ */
+const CHAPTER_COLOR_TITLES: Readonly<Record<(typeof CHAPTER_COLORS)[number], string>> = {
+  gray: 'Серый',
+  blue: 'Синий',
+  green: 'Зелёный',
+  amber: 'Янтарный',
+  red: 'Красный',
+  violet: 'Фиолетовый',
+  teal: 'Бирюзовый',
+  pink: 'Розовый',
+};
+
+/**
+ * Метка после правки одного поля.
+ *
+ * Возвращает `undefined`, когда не осталось ни цвета, ни знака: пустая
+ * метка и отсутствие метки — одно и то же состояние, и хранить в проекте
+ * пустой объект значило бы завести второе имя одному смыслу.
+ */
+function badgeWith(
+  badge: ChapterBadge | undefined,
+  patch: { color?: ChapterColor | undefined; text?: string | undefined },
+): ChapterBadge | undefined {
+  const color = 'color' in patch ? patch.color : badge?.color;
+  const text = 'text' in patch ? patch.text : badge?.text;
+  if (color === undefined && text === undefined) return undefined;
+  return {
+    ...(color === undefined ? {} : { color }),
+    ...(text === undefined ? {} : { text }),
+  };
+}
+
+/**
  * Дуга повтора — кривая ВВЕРХ над строками, чтобы не путать с обычной
  * ломаной вниз.
  *
@@ -132,7 +181,7 @@ function repeatArcPath(fromX: number, fromY: number, toX: number, toY: number): 
 }
 
 export function BranchesView({
-  lanes, currentId, onPick, onRename, range, extractReason, onExtract, onOpenChapters,
+  lanes, currentId, onPick, onRename, onBadge, range, extractReason, onExtract, onOpenChapters,
 }: BranchesViewProps): ReactElement {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
@@ -145,7 +194,7 @@ export function BranchesView({
    * чтобы понять, о чём она». Постоянно на доске описанию места нет:
    * плитка узкая по построению, а доска показывает СТРУКТУРУ.
    */
-  const [cardTile, setCardTile] = useState<TileBox | null>(null);
+  const [cardId, setCardId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [view, setView] = useState<SpaceView>(IDENTITY_VIEW);
   /**
@@ -156,6 +205,26 @@ export function BranchesView({
   const [selection, setSelection] = useState<readonly string[]>([]);
 
   const layout = useMemo(() => layoutLanes(lanes, collapsed), [lanes, collapsed]);
+
+  /*
+   * Плитка карточки берётся ИЗ ЖИВОЙ РАСКЛАДКИ по идентификатору, а не
+   * хранится снимком.
+   *
+   * Куплено пробой 25.08.2026. Сперва в состоянии лежал сам `TileBox`,
+   * и это молча теряло правки: автор выбирал цвет, потом вписывал знак —
+   * а знак отправлялся вместе со СТАРОЙ меткой из снимка, и цвет пропадал.
+   * В проекте оставалось `badge: { text: 'Нет' }` без цвета. Ни ошибки,
+   * ни предупреждения: карточка показывала снимок, и он выглядел правдой.
+   *
+   * `null`, если главы больше нет (автор удалил её, пока карточка открыта) —
+   * карточка тогда просто закрывается сама.
+   */
+  const cardTile = useMemo(
+    () => (cardId === null
+      ? null
+      : layout.rows.flatMap((row) => row.tiles).find((tile) => tile.id === cardId) ?? null),
+    [cardId, layout],
+  );
 
   /**
    * Признак сироты берётся у полосы, а не у строки раскладки: раскладке он
@@ -350,14 +419,14 @@ export function BranchesView({
    * и закрываться от попытки выделить текст описания было бы враждебно.
    */
   useEffect(() => {
-    if (cardTile === null) return undefined;
+    if (cardId === null) return undefined;
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setCardTile(null);
+      if (event.key === 'Escape') setCardId(null);
     };
     const onDown = (event: PointerEvent): void => {
       const target = event.target;
       if (target instanceof Element && target.closest('[data-testid="chapter-card"]')) return;
-      setCardTile(null);
+      setCardId(null);
     };
     document.addEventListener('keydown', onKey);
     document.addEventListener('pointerdown', onDown, true);
@@ -365,7 +434,7 @@ export function BranchesView({
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('pointerdown', onDown, true);
     };
-  }, [cardTile]);
+  }, [cardId]);
 
   // Chrome включает свою автопрокрутку по среднему клику, если не отменить
   // `auxclick` явно — иначе она конкурирует с ездой пространства.
@@ -421,6 +490,21 @@ export function BranchesView({
         ) : null}
       </div>
 
+      {/*
+        Полотно и карточка — В ОДНОЙ СТРОКЕ, карточка колонкой справа.
+
+        Куплено пробой 25.08.2026. Сперва карточка висела НАД полотном
+        (absolute), и это давало тупик: плитка под ней переставала
+        нажиматься вовсе — щелчок попадал в карточку. Playwright доложил
+        дословно «chapter-card-text intercepts pointer events», и перенос
+        карточки в угол ничего не решил: дерево ездит и оказывается где
+        угодно.
+
+        Колонкой карточка отнимает у полотна ширину, а не накрывает его.
+        Ничего закрыть она физически не может — тот же приём, которым
+        в этом проекте решён каждый спор органа с содержимым.
+      */}
+      <div className="ed-branches-body">
       <div
         className="ed-branches-space"
         data-testid="branches-space"
@@ -553,6 +637,11 @@ export function BranchesView({
                   key={tile.id}
                   className={[
                     'ed-chapter-tile',
+                    // Цвет метки — раньше признаков состояния: состояние
+                    // (текущая, выделенная) обязано перекрывать метку, иначе
+                    // раскрашенная глава перестанет показывать, что открыта.
+                    tile.badge?.color ? `ed-chapter-tile--c-${tile.badge.color}` : '',
+                    tile.blank ? 'ed-chapter-tile--blank' : '',
                     tile.id === currentId ? 'ed-chapter-tile--current' : '',
                     selection.includes(tile.id) ? 'ed-chapter-tile--picked' : '',
                   ].filter(Boolean).join(' ')}
@@ -578,7 +667,7 @@ export function BranchesView({
                       onDoubleClick={() => startRename(tile)}
                       onContextMenu={(event) => {
                         event.preventDefault();
-                        setCardTile(tile);
+                        setCardId(tile.id);
                       }}
                       title={`${tile.order}. ${tile.title} · ${formatDuration(tile.seconds)} · правая кнопка — описание, двойной щелчок — переименовать`}
                     >
@@ -601,8 +690,17 @@ export function BranchesView({
                         («дальше → 3»). Имя и описание достаются правой
                         кнопкой и подсказкой — по требованию, а не всегда.
                       */}
+                      {/*
+                        ЗНАК АВТОРА ВМЕСТО НОМЕРА, если автор его задал.
+
+                        Номер отвечает «какая по счёту», знак — «про что».
+                        Второе автор знает, первое считает доска, и держать
+                        оба на плитке значило бы вернуть тот же текстовый шум,
+                        ради снятия которого номер и появился. Номер остаётся
+                        в подсказке и в карточке, поэтому порядок не теряется.
+                      */}
                       <span className="ed-chapter-order" data-testid={`chapter-order-${tile.id}`}>
-                        {tile.order}
+                        {tile.badge?.text ?? tile.order}
                       </span>
                     </button>
                   )}
@@ -635,7 +733,7 @@ export function BranchesView({
         выглядят одинаково.
       */}
       {cardTile !== null && (
-        <div
+        <aside
           className="ed-chapter-card"
           data-testid="chapter-card"
           role="dialog"
@@ -651,17 +749,70 @@ export function BranchesView({
               className="ed-chapter-card-close"
               data-testid="chapter-card-close"
               aria-label="Закрыть описание"
-              onClick={() => setCardTile(null)}
+              onClick={() => setCardId(null)}
             >
               ✕
             </button>
           </div>
-          <p className="ed-chapter-card-time">{formatDuration(cardTile.seconds)}</p>
+          <p className="ed-chapter-card-time">
+            {formatDuration(cardTile.seconds)}
+            {cardTile.blank ? ' · заготовка: ни звука, ни элементов' : ''}
+          </p>
           <p className="ed-chapter-card-text" data-testid="chapter-card-text">
             {cardTile.description === '' ? 'Описания у этой главы нет' : cardTile.description}
           </p>
-        </div>
+
+          {/*
+            МЕТКА ГЛАВЫ — здесь, а не отдельной панелью.
+
+            Карточка уже открыта по правой кнопке ровно на этой главе:
+            автор смотрит на неё и тут же решает, чем её отличать. Отдельная
+            панель заставила бы выбрать главу дважды — на доске и в панели, —
+            и первое из двух выделений оказалось бы лишним.
+
+            Цветов ровно восемь, и они закрыты схемой: свободная палитра
+            на два десятка глав даёт радугу, в которой цвет не значит ничего.
+          */}
+          <div className="ed-chapter-card-badge" data-testid="chapter-card-badge">
+            <div className="ed-chapter-swatches" role="group" aria-label="Цвет метки главы">
+              <button
+                type="button"
+                className={`ed-chapter-swatch ed-chapter-swatch--none${cardTile.badge?.color ? '' : ' ed-chapter-swatch--on'}`}
+                data-testid="chapter-color-none"
+                aria-pressed={cardTile.badge?.color === undefined}
+                title="Без цвета"
+                onClick={() => onBadge(cardTile.id, badgeWith(cardTile.badge, { color: undefined }))}
+              />
+              {CHAPTER_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={`ed-chapter-swatch ed-chapter-swatch--${color}${cardTile.badge?.color === color ? ' ed-chapter-swatch--on' : ''}`}
+                  data-testid={`chapter-color-${color}`}
+                  aria-pressed={cardTile.badge?.color === color}
+                  title={CHAPTER_COLOR_TITLES[color]}
+                  onClick={() => onBadge(cardTile.id, badgeWith(cardTile.badge, { color }))}
+                />
+              ))}
+            </div>
+            <StringField
+              label="Знак на плитке"
+              value={cardTile.badge?.text ?? ''}
+              testId="chapter-badge-text"
+              onCommit={(text) => {
+                const trimmed = text.trim().slice(0, 4);
+                onBadge(cardTile.id, badgeWith(cardTile.badge, {
+                  text: trimmed === '' ? undefined : trimmed,
+                }));
+              }}
+            />
+            <p className="ed-chapter-card-hint">
+              Пусто — на плитке останется номер {cardTile.order}.
+            </p>
+          </div>
+        </aside>
       )}
+      </div>
     </section>
   );
 }

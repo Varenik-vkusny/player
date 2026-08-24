@@ -1659,6 +1659,8 @@ export function Editor({
       if (gesture.kind === 'pick') dispatch({ type: 'selectSegment', id: gesture.chapterId });
       else if (gesture.kind === 'rename') {
         dispatch({ type: 'renameSegment', id: gesture.chapterId, title: gesture.title });
+      } else if (gesture.kind === 'badge') {
+        dispatch({ type: 'setSegmentBadge', id: gesture.chapterId, badge: gesture.badge });
       } else if (gesture.kind === 'extract') {
         dispatch({ type: 'extractToBranch', chapterIds: gesture.chapterIds });
       }
@@ -2906,6 +2908,7 @@ export function Editor({
             currentId={state.currentSegmentId}
             onPick={handleSelectSegment}
             onRename={handleRenameSegment}
+            onBadge={(id, badge) => dispatch({ type: 'setSegmentBadge', id, badge })}
             range={durationSpread}
             extractReason={(ids) => extractBlockedReason(currentProject, ids)}
             onExtract={(chapterIds) => dispatch({ type: 'extractToBranch', chapterIds })}

@@ -38,6 +38,8 @@ export type MainMessage =
   | { readonly kind: 'state'; readonly text: string; readonly currentSegmentId: string }
   | { readonly kind: 'closing' };
 
+import type { ChapterBadge } from '@player/core';
+
 /**
  * Что второе окно шлёт главному.
  *
@@ -48,6 +50,15 @@ export type WindowMessage =
   | { readonly kind: 'hello' }
   | { readonly kind: 'pick'; readonly chapterId: string }
   | { readonly kind: 'rename'; readonly chapterId: string; readonly title: string }
+  /**
+   * Метка главы: цвет и знак на плитке (схема v16). Как и всё остальное,
+   * второе окно только ПРОСИТ — правку делает главное.
+   */
+  | {
+    readonly kind: 'badge';
+    readonly chapterId: string;
+    readonly badge: ChapterBadge | undefined;
+  }
   /**
    * «Вынести в ветку». Правку делает ГЛАВНОЕ окно — второе только просит,
    * ровно как с `pick` и `rename`. Своих правок второе окно не применяет
@@ -156,6 +167,7 @@ export function createBranchesHost(
 export interface BranchesClient {
   pick(chapterId: string): void;
   rename(chapterId: string, title: string): void;
+  badge(chapterId: string, badge: ChapterBadge | undefined): void;
   extract(chapterIds: readonly string[]): void;
   close(): void;
 }
@@ -187,6 +199,9 @@ export function createBranchesClient(
     },
     rename(chapterId, title) {
       send({ kind: 'rename', chapterId, title });
+    },
+    badge(chapterId, badge) {
+      send({ kind: 'badge', chapterId, badge });
     },
     close() {
       channel.close();

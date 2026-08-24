@@ -125,6 +125,26 @@ export const EDITOR_STYLES = `
   --ui-action-selected-bg: #e8f0ff;
   --ui-focus-ring: #4c8dff88;
 
+  /* ЦВЕТА МЕТОК ГЛАВ (схема v16, CHAPTER_COLORS).
+
+     Восемь ролей, а не палитра: перечень закрыт в схеме, и здесь ему
+     отвечает ровно столько же значений. Значения ТЁМНЫЕ, потому что
+     единственное место, где они рисуются, — доска веток внутри нижней
+     зоны, а зона тёмная по построению. Светлая заливка там читалась бы
+     как выделение, а не как метка.
+
+     Тон подобран так, чтобы обычные чернила зоны держали порог WCAG
+     на любой из восьми: цвет несёт РАЗЛИЧЕНИЕ, а не текст, и жертвовать
+     ради него читаемостью номера нельзя. */
+  --ui-chapter-gray: #3a424f;
+  --ui-chapter-blue: #1d4a7a;
+  --ui-chapter-green: #1c5a40;
+  --ui-chapter-amber: #6b4a12;
+  --ui-chapter-red: #6e2a2f;
+  --ui-chapter-violet: #4a2f7a;
+  --ui-chapter-teal: #12545c;
+  --ui-chapter-pink: #6e2a55;
+
   /* Направляющая — НЕ синяя, в отличие от рамки выделения и рамки обведения.
      Синяя линия рядом с синей рамкой читается как ещё одна граница элемента,
      а не как подсказка о выравнивании. Тем же приёмом разводят их Canva
@@ -3049,6 +3069,11 @@ export const EDITOR_STYLES = `
 .ed-branches-space {
   position: relative;
   overflow: hidden;
+  /* Ширина — ВЕСЬ остаток строки: с 25.08.2026 полотно делит ряд
+     с карточкой главы, и без явного роста оно получало ноль. Замер:
+     тело 1001 px, полотно 0, плитки в DOM есть, на экране нет. */
+  flex: 1 1 auto;
+  min-width: 0;
   height: 55vh;
   /* min-height был 280px и ОТМЕНЯЛ ПОТОЛОК ЗОНЫ (Сессия 48). У ребёнка
      флекса min-height сильнее max-height родителя: полотно упиралось
@@ -3221,6 +3246,63 @@ export const EDITOR_STYLES = `
   background: var(--ui-action-selected-bg);
 }
 
+/* ПОРЯДОК ЭТИХ ПРАВИЛ НЕСУЩИЙ. Селекторы одноклассовые, специфичность
+   равная — решает тот, кто ниже. Сперва цветные классы стояли ВЫШЕ базового
+   правила плитки, и базовая заливка молча перебивала их все: класс
+   в разметке был, цвет на экране — нет. Замер: у плитки с зелёным классом
+   вычисленный фон совпадал с обычным. Наступал на это в проекте
+   не впервые: «порядок листов стилей решает» проверен в обе стороны ещё
+   в разборе стилей сцены. */
+
+/* Заливка по метке автора. Знак на цветной плитке печатается ОСНОВНЫМИ
+   чернилами, а не приглушёнными: приглушённые рассчитаны на серую заливку
+   и на цветной теряют порог контраста. Проверяется охраной контраста
+   на всех восьми цветах разом.
+
+   Класс, а не инлайн-стиль: цвет — роль темы,
+   и подставлять её значение в разметку значило бы протащить оформление
+   туда, где ему не место. Перечень закрыт схемой, поэтому и классов
+   ровно восемь. */
+.ed-chapter-tile--c-gray,
+.ed-chapter-tile--c-blue,
+.ed-chapter-tile--c-green,
+.ed-chapter-tile--c-amber,
+.ed-chapter-tile--c-red,
+.ed-chapter-tile--c-violet,
+.ed-chapter-tile--c-teal,
+.ed-chapter-tile--c-pink { color: var(--ui-content-fg); }
+
+.ed-chapter-tile--c-gray .ed-chapter-order,
+.ed-chapter-tile--c-blue .ed-chapter-order,
+.ed-chapter-tile--c-green .ed-chapter-order,
+.ed-chapter-tile--c-amber .ed-chapter-order,
+.ed-chapter-tile--c-red .ed-chapter-order,
+.ed-chapter-tile--c-violet .ed-chapter-order,
+.ed-chapter-tile--c-teal .ed-chapter-order,
+.ed-chapter-tile--c-pink .ed-chapter-order { color: var(--ui-content-fg); }
+
+.ed-chapter-tile--c-gray { background: var(--ui-chapter-gray); }
+.ed-chapter-tile--c-blue { background: var(--ui-chapter-blue); }
+.ed-chapter-tile--c-green { background: var(--ui-chapter-green); }
+.ed-chapter-tile--c-amber { background: var(--ui-chapter-amber); }
+.ed-chapter-tile--c-red { background: var(--ui-chapter-red); }
+.ed-chapter-tile--c-violet { background: var(--ui-chapter-violet); }
+.ed-chapter-tile--c-teal { background: var(--ui-chapter-teal); }
+.ed-chapter-tile--c-pink { background: var(--ui-chapter-pink); }
+
+/* ЗАГОТОВКА — глава без звука и без единого элемента.
+
+   Пунктир, а не цвет: цвет отдан автору под метки, и занимать один
+   из восьми служебным смыслом значило бы отобрать его у автора навсегда.
+   Пунктирная рамка говорит «здесь ещё ничего нет» на любом цвете метки
+   и не спорит ни с одним из них. */
+.ed-chapter-tile--blank {
+  border-style: dashed;
+  border-color: var(--ui-line-strong);
+  background: transparent;
+}
+
+
 /* Выделение диапазона под «вынести в ветку» — ОТДЕЛЬНЫЙ признак от «эта
    глава открыта на холсте». Их легко было бы слить в один класс, и тогда
    автор, выделив три главы, увидел бы три «текущих» — то есть соврали бы
@@ -3293,22 +3375,28 @@ export const EDITOR_STYLES = `
   color: var(--ui-content-fg);
 }
 
-/* Карточка описания главы: по правой кнопке, поверх доски.
-   Прижата к низу зоны и по центру: доска ездит и масштабируется, и карточка,
-   привязанная к плитке, уезжала бы вместе с ней прямо во время чтения. */
+/* Полотно и карточка стоят в один ряд: карточка отнимает ширину, а не
+   ложится поверх. Разбор — в BranchesView.tsx у самого узла. */
+.ed-branches-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+/* Карточка главы: колонка справа от полотна, открывается правой кнопкой.
+
+   НЕ ПРИВЯЗАНА К ПЛИТКЕ и не висит над ней: доска ездит и масштабируется,
+   и карточка, привязанная к плитке, уезжала бы вместе с ней прямо во время
+   чтения, а лежащая поверх — закрывала бы соседние главы от нажатия. */
 .ed-chapter-card {
-  position: absolute;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  z-index: 6;
+  flex: 0 0 300px;
+  min-width: 0;
+  overflow-y: auto;
   box-sizing: border-box;
-  width: min(420px, calc(100% - 32px));
+  border-left: 1px solid var(--ui-line);
   padding: 12px 14px;
-  border-radius: var(--ui-radius-l);
   background: var(--ui-surface-panel);
-  border: 1px solid var(--ui-line);
-  box-shadow: var(--ui-shadow-overlay);
   color: var(--ui-content-fg);
 }
 
@@ -3363,6 +3451,73 @@ export const EDITOR_STYLES = `
   font-size: var(--ui-type-s);
   color: var(--ui-content-fg-secondary);
   white-space: pre-wrap;
+}
+
+/* Правка метки главы в карточке: образцы цвета и поле знака. */
+.ed-chapter-card-badge {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-line);
+  display: grid;
+  gap: 8px;
+}
+
+.ed-chapter-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* Образец — круг, а не квадрат: квадрат того же размера читался бы как
+   ещё одна маленькая плитка, а плитки на этом экране значат другое. */
+.ed-chapter-swatch {
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  background: var(--ui-chapter-gray);
+}
+
+/* Выбранный обведён кольцом ТОГО ЖЕ цвета, что и рамка выделения в остальном
+   хроме: «выбрано» на всём экране показывается одинаково. */
+.ed-chapter-swatch--on {
+  border-color: var(--ui-action-selected-line);
+}
+
+/* «Без цвета» — перечёркнутый образец. Пустой кружок читался бы как ещё
+   один цвет, совпавший с фоном. */
+.ed-chapter-swatch--none {
+  background: var(--ui-surface-panel);
+  position: relative;
+  overflow: hidden;
+}
+.ed-chapter-swatch--none::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--ui-content-fg-tertiary);
+  transform: rotate(45deg);
+}
+
+.ed-chapter-swatch--gray { background: var(--ui-chapter-gray); }
+.ed-chapter-swatch--blue { background: var(--ui-chapter-blue); }
+.ed-chapter-swatch--green { background: var(--ui-chapter-green); }
+.ed-chapter-swatch--amber { background: var(--ui-chapter-amber); }
+.ed-chapter-swatch--red { background: var(--ui-chapter-red); }
+.ed-chapter-swatch--violet { background: var(--ui-chapter-violet); }
+.ed-chapter-swatch--teal { background: var(--ui-chapter-teal); }
+.ed-chapter-swatch--pink { background: var(--ui-chapter-pink); }
+
+.ed-chapter-card-hint {
+  margin: 0;
+  font-size: var(--ui-type-xs);
+  color: var(--ui-content-fg-tertiary);
 }
 
 .ed-chapter-rename {

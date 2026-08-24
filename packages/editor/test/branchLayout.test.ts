@@ -113,8 +113,8 @@ describe('layoutLanes', () => {
       name: 'Основная',
       depth: 0,
       chapters: [
-        { id: 'c-empty', title: 'Пустая', seconds: 0, forksAfter: false, description: '', order: 1 },
-        { id: 'c-normal', title: 'Обычная', seconds: 1, forksAfter: false, description: '', order: 2 },
+        { id: 'c-empty', title: 'Пустая', seconds: 0, forksAfter: false, description: '', badge: undefined, blank: false, order: 1 },
+        { id: 'c-normal', title: 'Обычная', seconds: 1, forksAfter: false, description: '', badge: undefined, blank: false, order: 2 },
       ],
       parentLaneId: null,
       anchorIndex: -1,

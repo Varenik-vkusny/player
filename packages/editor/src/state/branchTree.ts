@@ -82,6 +82,12 @@ function tileOf(segment: Segment, order: number): ChapterTile {
     seconds: segment.audio.duration,
     forksAfter: segment.exit.rules.length > 0,
     description: segment.description,
+    badge: segment.badge,
+    // Заготовка: ни звука, ни элементов. Считается ЗДЕСЬ, из тех же данных,
+    // что и всё остальное о плитке, — второго источника у вида нет.
+    blank: segment.audio.src === undefined
+      && segment.audio.fileId === undefined
+      && segment.elements.length === 0,
     order,
   };
 }

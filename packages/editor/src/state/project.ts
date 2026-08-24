@@ -13,7 +13,7 @@
  * сегменты/слайды, сцена будет пересобираться целиком на каждое движение мыши.
  */
 import type {
-  Condition, Element, ElementState, Gate, Project, Segment, Slide, Style, Theme, TimeRef,
+  ChapterBadge, Condition, Element, ElementState, Gate, Project, Segment, Slide, Style, Theme, TimeRef,
   TransitionDirection, Word,
 } from '@player/core';
 import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
@@ -425,6 +425,12 @@ export type EditorAction =
   // переменную по всему проекту, поэтому копия остановки получает своё имя).
   | { readonly type: 'duplicateSegment'; readonly segmentId: string }
   | { readonly type: 'renameSegment'; readonly id: string; readonly title: string }
+  | {
+    readonly type: 'setSegmentBadge';
+    readonly id: string;
+    /** `undefined` снимает метку целиком. */
+    readonly badge: ChapterBadge | undefined;
+  }
   | { readonly type: 'renameVariable'; readonly gateId: string; readonly name: string }
   | { readonly type: 'selectSegment'; readonly id: string }
   | { readonly type: 'connect'; readonly when: readonly Condition[]; readonly goto: string }
@@ -1291,6 +1297,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'renameSegment': {
       const project = exits.renameSegment(state.project, action.id, action.title);
+      return project === state.project ? state : { ...state, project };
+    }
+
+    case 'setSegmentBadge': {
+      const project = exits.setSegmentBadge(state.project, action.id, action.badge);
       return project === state.project ? state : { ...state, project };
     }
 

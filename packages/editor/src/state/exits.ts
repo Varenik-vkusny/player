@@ -16,7 +16,7 @@
  * к структуре хребта (`project.segments`, `project.entry`) и к полям
  * сегмента (`segment.exit`, `segment.gates`), а не к слайдам или элементам.
  */
-import type { Condition, Exit, ExitRule, Gate, Project, Segment } from '@player/core';
+import type { ChapterBadge, Condition, Exit, ExitRule, Gate, Project, Segment } from '@player/core';
 import { DEFAULT_TRANSITION_SECONDS, findSegment } from '@player/core';
 
 import { freeId } from './elements.js';
@@ -149,6 +149,42 @@ export function renameSegment(project: Project, segmentId: string, title: string
 }
 
 /**
+ * Ставит или снимает метку главы (цвет и знак на доске, схема v16).
+ *
+ * `undefined` СНИМАЕТ поле целиком, а не пишет пустой объект: пустая метка
+ * и отсутствие метки — одно состояние, и два способа его записать разошлись
+ * бы в файле проекта молча.
+ *
+ * Возвращает тот же объект, если ничего не изменилось: доска перерисовывается
+ * от смены ссылки, и лишняя новая ссылка стоила бы перерисовки всего дерева
+ * на каждом щелчке по уже выбранному цвету.
+ */
+export function setSegmentBadge(
+  project: Project,
+  segmentId: string,
+  badge: ChapterBadge | undefined,
+): Project {
+  const segment = project.segments.find((candidate) => candidate.id === segmentId);
+  if (!segment) {
+    throw new Error(`Сегмента «${segmentId}» нет в проекте`);
+  }
+
+  const same = (segment.badge?.color ?? null) === (badge?.color ?? null)
+    && (segment.badge?.text ?? null) === (badge?.text ?? null);
+  if (same) return project;
+
+  const segments = project.segments.map((candidate) => {
+    if (candidate.id !== segmentId) return candidate;
+    if (badge === undefined) {
+      const { badge: _dropped, ...rest } = candidate;
+      return rest;
+    }
+    return { ...candidate, badge };
+  });
+  return { ...project, segments };
+}
+
+/**
  * Сегменты, достижимые из `startId` (по умолчанию — из `project.entry`),
  * включая сам старт.
  *
@@ -211,6 +247,20 @@ export interface ChapterTile {
   readonly seconds: number;
   /** Кончается ли ветка развилкой: у такой главы есть правила выхода. */
   readonly forksAfter: boolean;
+  /**
+   * Метка автора: цвет и короткий знак (схема v16). Пусто — автор
+   * не размечал, и доска показывает главу как по умолчанию.
+   */
+  readonly badge: ChapterBadge | undefined;
+  /**
+   * ЗАГОТОВКА: у главы нет ни звука, ни единого элемента.
+   *
+   * Не настройка автора, а ФАКТ о главе, и потому считается сам. Так
+   * выглядит ветка сразу после разреза: немая дорожка на пять секунд
+   * и пустая сцена. Без признака такая ветка на доске неотличима
+   * от готовой, и автор узнаёт о пустоте, только открыв её.
+   */
+  readonly blank: boolean;
   /**
    * Описание главы, как его написал автор (`schema`, `Segment.description`).
    * Пустая строка законна: описания может не быть.
@@ -279,6 +329,10 @@ export function branchChapters(project: Project, startId?: string): readonly Cha
       seconds: segment.audio.duration,
       forksAfter: segment.exit.rules.length > 0,
       description: segment.description,
+      badge: segment.badge,
+      blank: segment.audio.src === undefined
+        && segment.audio.fileId === undefined
+        && segment.elements.length === 0,
       order: tiles.length + 1,
     });
 
