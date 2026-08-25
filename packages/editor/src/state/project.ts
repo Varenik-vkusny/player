@@ -18,7 +18,7 @@ import type {
 } from '@player/core';
 import { findSegment, resolveTimeRef, ThemeSchema } from '@player/core';
 
-import { markSeconds, retargetMark } from '../track/marks.js';
+import { markSeconds, retargetMark, timeRefAt } from '../track/marks.js';
 import { insertionIndex } from '../track/spans.js';
 import { copySegment } from './duplicate.js';
 import { duplicateElements as duplicateElementsOnSlide } from './duplicateElements.js';
@@ -1159,7 +1159,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (segment.slides[0]?.id === action.id) {
         throw new Error('Нельзя сдвинуть первый слайд: он обязан стоять на нуле — это стартовый вид сегмента');
       }
-      const slides = replaceAt(segment.slides, action.id, (slide) => ({ ...slide, at: action.at }));
+      /*
+       * ЖЕСТ НЕ ИМЕЕТ ПРАВА ИСПОРТИТЬ ПРОЕКТ. Слайд прилипает к границе
+       * законного отрезка, а не перепрыгивает соседа — см. комментарий
+       * clampSlideSeconds в state/slides.ts, там же замер и жалоба.
+       */
+      const words = segment.audio.words;
+      const asked = resolveTimeRef(action.at, words);
+      const allowed = slidesApi.clampSlideSeconds(segment, action.id, asked);
+      const at = allowed === asked ? action.at : timeRefAt(words, allowed);
+      const slides = replaceAt(segment.slides, action.id, (slide) => ({ ...slide, at }));
       return replaceSegment(state, { ...segment, slides });
     }
 

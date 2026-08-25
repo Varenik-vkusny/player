@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { loadProject, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, ElementState, Project, Segment, Slide, TimeRef } from '@player/core';
 
-import { addProblem, addSlide, setElementState, copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
+import { addProblem, addSlide, clampSlideSeconds, setElementState, copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
 import { serializeProject } from '../src/state/save.js';
 
 function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
@@ -543,5 +543,69 @@ describe('правка катится вперёд, пока значение с
     const after = setElementState(before, 's2', 'shape-1', { x: 400 });
 
     expect(xs(after)).toEqual([0, 400, 400]);
+  });
+});
+
+/**
+ * ЖЕСТ НЕ ИМЕЕТ ПРАВА ИСПОРТИТЬ ПРОЕКТ.
+ *
+ * Куплено нерабочим проектом 25.08.2026: владелец перетащил ромб слайда
+ * к самому началу, где уже стоит первый кадр, — жест разрешили, состояние
+ * испортили, а сказали ПОТОМ, при сохранении:
+ *
+ *   Проект не прошёл валидацию: Сегмент «s-1»: два слайда на одной секунде
+ *   (0.000) — какой из них показывать, неизвестно
+ *
+ * Схема требует СТРОГОГО порядка слайдов и запрещает две метки на одной
+ * секунде. Значит законный отрезок для перетаскиваемого слайда — между
+ * соседями, не касаясь их.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ. Верни в moveMark запись at без clampSlideSeconds —
+ * покраснеет первый тест (слайд встанет ровно на 0). Убери зазор
+ * MARK_HIT_SECONDS — покраснеет тест про зазор: метка встанет вплотную
+ * к соседней и станет от неё неотличима.
+ */
+describe('clampSlideSeconds: слайд не перепрыгивает соседей', () => {
+  /** Кадры на 0, 3 и 6; тащим средний. Дорожка 10 с. */
+  function threeSlides(): Segment {
+    const base = baseSegment();
+    return {
+      ...base,
+      slides: [
+        { id: 's1', at: seconds(0), transition: 'cut', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+        { id: 's2', at: seconds(3), transition: 'cut', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+        { id: 's3', at: seconds(6), transition: 'cut', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+      ],
+    };
+  }
+
+  it('случай владельца: тяга к нулю НЕ кладёт слайд на первый кадр', () => {
+    const got = clampSlideSeconds(threeSlides(), 's2', 0);
+    expect(got, 'слайд встал на секунду первого кадра — проект перестанет сохраняться')
+      .toBeGreaterThan(0);
+  });
+
+  it('между соседями остаётся зазор, а не касание', () => {
+    expect(clampSlideSeconds(threeSlides(), 's2', 0)).toBe(MARK_HIT_SECONDS);
+    expect(clampSlideSeconds(threeSlides(), 's2', 99)).toBe(6 - MARK_HIT_SECONDS);
+  });
+
+  it('внутри законного отрезка секунда не трогается', () => {
+    expect(clampSlideSeconds(threeSlides(), 's2', 4.2)).toBe(4.2);
+  });
+
+  it('у последнего слайда потолок — длина дорожки', () => {
+    expect(clampSlideSeconds(threeSlides(), 's3', 99)).toBe(10);
+  });
+
+  it('когда соседи стоят теснее двух зазоров, слайд не двигается вовсе', () => {
+    const base = threeSlides();
+    const slides = base.slides.slice();
+    slides[0] = { ...slides[0]!, at: seconds(3 - MARK_HIT_SECONDS / 2) };
+    slides[2] = { ...slides[2]!, at: seconds(3 + MARK_HIT_SECONDS / 2) };
+    const tight: Segment = { ...base, slides };
+
+    expect(clampSlideSeconds(tight, 's2', 0)).toBe(3);
+    expect(clampSlideSeconds(tight, 's2', 99)).toBe(3);
   });
 });

@@ -685,3 +685,80 @@ test.describe('правая кнопка по метке', () => {
     ).toBeCloseTo(before + missBy, 0);
   });
 });
+
+/**
+ * ЖЕСТ НЕ ДЕЛАЕТ ПРОЕКТ НЕСОХРАНЯЕМЫМ.
+ *
+ * Куплено 25.08.2026. Владелец перетащил ромб слайда к самому началу —
+ * туда, где стоит первый кадр, — и получил во всю ширину окна:
+ *
+ *   Не удалось сохранить работу в браузере: Проект не прошёл валидацию:
+ *   Сегмент «s-1»: два слайда на одной секунде (0.000)
+ *
+ * Жест разрешили, состояние испортили, сказали ПОТОМ. Схема требует
+ * строгого порядка слайдов, значит проверять надо в момент жеста.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: убери clampSlideSeconds из moveMark
+ * (state/project.ts) — метка встанет на ноль и полоса ошибки появится.
+ *
+ * Проверяется ПО ПРОЕКТУ и по отсутствию полосы, а не «метка выглядит
+ * не там»: на глаз разница между 0.000 и 0.010 не видна вовсе, а именно
+ * она и решает, сохранится работа или нет.
+ */
+test.describe('перетаскивание метки слайда', () => {
+  test('тяга к самому началу не кладёт слайд на первый кадр', async ({ page }) => {
+    await page.goto('/editor.html?fixture=sandbox', { waitUntil: 'load' });
+    await page.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
+      timeout: 30_000,
+    });
+
+    // Заготовка «Обложка» даёт ровно натуру владельца: кадр на нуле
+    // и кадр на 0.5 с, у второго свой ромб.
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    /* Ссылка на время бывает ДВУХ видов (инвариант №10): секунды или слово
+       с офсетом. `timeRefAt` привязывается к слову, когда расшифровка есть,
+       а у пустой фикстуры она есть — читать только `at.t` значило бы всегда
+       получать «нет значения» и объявлять зелень ни на чём. */
+    const secondsOf = async (): Promise<number[]> => page.evaluate(() => {
+      const segment = (window as unknown as {
+        __project: {
+          segments: {
+            audio: { words: { start: number }[] };
+            slides: { at: { kind: string; t?: number; wordIndex?: number; offset?: number } }[];
+          }[];
+        };
+      }).__project.segments[0]!;
+      return segment.slides.map((slide) => {
+        if (slide.at.kind === 'seconds') return slide.at.t!;
+        const word = segment.audio.words[slide.at.wordIndex!];
+        if (!word) throw new Error('ссылка на слово, которого нет в расшифровке');
+        return word.start + (slide.at.offset ?? 0);
+      });
+    });
+
+    const before = await secondsOf();
+    expect(before, 'заготовка не завела второй кадр — тащить нечего').toHaveLength(2);
+    expect(before[0]).toBe(0);
+
+    const mark = page.locator('[data-testid^="mark-slide-"]').first();
+    const box = await mark.boundingBox();
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!box || !lane) throw new Error('метка или полоса не видны');
+
+    // Тянем ЗА левый край полосы — как рука, которая метит «в самое начало».
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(lane.x + 20, box.y + box.height / 2);
+    await page.mouse.move(lane.x - 40, box.y + box.height / 2);
+    await page.mouse.up();
+
+    const after = await secondsOf();
+    expect(after[0], 'первый кадр обязан остаться на нуле').toBe(0);
+    expect(after[1], 'второй кадр встал на секунду первого — работа перестанет сохраняться')
+      .toBeGreaterThan(0);
+
+    // И главное, что видит автор: полосы «не удалось сохранить» нет.
+    await expect(page.getByTestId('workspace-error')).toHaveCount(0);
+  });
+});

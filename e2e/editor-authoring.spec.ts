@@ -484,6 +484,73 @@ test.describe('перетаскивание картинки на холст', (
     await expect(page.getByTestId('image-drop-error')).toContainText('заметка.txt');
     await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(0);
   });
+
+  /**
+   * ПОЛОСА СООБЩЕНИЯ НЕ ОТБИРАЕТ РАБОЧУЮ ОБЛАСТЬ.
+   *
+   * Куплено 25.08.2026, владелец написал про это ДВАЖДЫ: «что за хуйня
+   * сверху такая широкая, она тоже всё ломает». Сетка .ed-root раскладывала
+   * детей по строкам, и 1fr доставался ПОЛОСЕ, а рабочая область уезжала
+   * в строку auto. Строки auto считаются первыми, fr берёт остаток —
+   * поэтому на одном окне полоса выходила 37 px, а на другом 465 при том же
+   * тексте, и холст оставался высотой в несколько десятков пикселей.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: верни .ed-root к grid-template-rows: auto 1fr auto
+   * или вынь полосы из постоянного узла .ed-notices.
+   *
+   * Окно нарочно НИЗКОЕ: у высокого рабочая область успевает набрать высоту
+   * содержимым и остатка полосе почти не достаётся — дефект прячется.
+   */
+  test('полоса сообщения занимает свою строку, а не половину экрана', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 620 });
+    await openEditor(page, 'empty');
+
+    const stageBox = await page.locator('.ed-stage-host').boundingBox();
+    if (!stageBox) throw new Error('сцена не видна');
+    const center = { x: stageBox.x + stageBox.width / 2, y: stageBox.y + stageBox.height / 2 };
+
+    await page.evaluate(({ x, y }) => {
+      const target = document.elementFromPoint(x, y);
+      if (!target) throw new Error('нет элемента под курсором');
+      const data = new DataTransfer();
+      data.items.add(new File(['не картинка'], 'заметка.txt', { type: 'text/plain' }));
+      target.dispatchEvent(new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data }));
+      target.dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data }));
+    }, center);
+
+    // Положительный контроль: полоса ДЕЙСТВИТЕЛЬНО на экране. Без него
+    // проверка ниже была бы зелёной просто потому, что полосы нет вовсе.
+    await expect(page.getByTestId('image-drop-error')).toBeVisible();
+
+    const sizes = await page.evaluate(() => {
+      const box = (selector: string): number => {
+        const node = document.querySelector(selector);
+        return node ? node.getBoundingClientRect().height : 0;
+      };
+      return {
+        место: box('.ed-notices'),
+        полоса: box('[data-testid="image-drop-error"]'),
+        работа: box('.ed-main'),
+        окно: window.innerHeight,
+      };
+    });
+
+    /*
+     * ДВА УТВЕРЖДЕНИЯ, И ОНИ ЛОВЯТ РАЗНОЕ — проверено сломом порознь.
+     *
+     * Первое: полосе ОТДАНА её высота. При прежних строках место под неё
+     * получало ноль, полоса обрезалась контейнером прокрутки, и автор
+     * не видел сообщения ВООБЩЕ. Замер слома: место 0 при полосе 37.
+     *
+     * Второе: рабочая область высоту не отдала. Это тот случай, о котором
+     * написал владелец: полоса на 465 px и холст в несколько десятков.
+     */
+    expect(sizes.место, 'полоса обрезана — автор не увидит сообщения')
+      .toBeGreaterThanOrEqual(sizes.полоса);
+    expect(sizes.полоса, 'полоса выросла до половины экрана').toBeLessThan(sizes.окно * 0.2);
+    expect(sizes.работа, 'рабочая область отдала полосе свою высоту')
+      .toBeGreaterThan(sizes.окно * 0.7);
+  });
 });
 
 /**
