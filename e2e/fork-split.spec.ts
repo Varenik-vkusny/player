@@ -16,7 +16,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 import { loadProject } from '@player/core';
-import { openChapters } from './panels.js';
+import { openChapters, splitChapterAtGate } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -41,7 +41,17 @@ async function selectFork(page: Page): Promise<void> {
   await expect(page.getByTestId('mark-panel')).toBeVisible();
 }
 
-test.describe('панель остановки говорит про вопрос и развилку', () => {
+/** Какой вариант отмечен верным в ПРОЕКТЕ. `null` — верного нет. */
+async function correctIdOf(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const segment = (window as unknown as {
+      __project: { segments: { id: string; gates: { id: string; config: { correctId?: string | null } }[] }[] };
+    }).__project.segments.find((candidate) => candidate.id === 's-ask')!;
+    return segment.gates.find((gate) => gate.id === 'g-ask')!.config.correctId ?? null;
+  });
+}
+
+test.describe('метка с вариантами ответа', () => {
   test('панель называется «Остановка», а не внутренним словом', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await selectFork(page);
@@ -51,51 +61,83 @@ test.describe('панель остановки говорит про вопро�
     await expect(page.getByTestId('mark-panel')).not.toContainText('Гейт');
   });
 
-  test('остановка без верного ответа показана как развилка', async ({ page }) => {
+  /**
+   * ТРЕБОВАНИЕ ИЗМЕНИЛОСЬ 25.08.2026, решение владельца.
+   *
+   * Здесь стояли два теста про список «Что это за остановка»
+   * (вопрос / развилка): что он виден у метки без верного ответа и что
+   * переключение в «вопрос» возвращает выбор верного варианта.
+   *
+   * Списка больше нет. Владелец: «есть варианты ответа — значит развилка,
+   * и объявлять это отдельно не надо». Структуру решают варианты, а «верный
+   * ответ» стал галочкой у одного из них — свойством ОТВЕТА, а не видом
+   * метки. Оба утверждения ниже проверяют это новое правило.
+   */
+  test('карточка не спрашивает, что это за метка — варианты и есть развилка', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await selectFork(page);
 
-    // exit-branch хранит correctId: null — это развилка, и панель обязана
-    // показать именно её, а не «вопрос, у которого почему-то нет верного».
-    await expect(page.getByTestId('stop-kind')).toBeVisible();
-    await expect(page.getByTestId('fork-hint')).toBeVisible();
+    for (const gone of ['stop-kind', 'fork-hint', 'gate-split', 'split-blocked']) {
+      await expect(
+        page.getByTestId(gone),
+        `орган «${gone}» вернулся: автор снова обязан объявлять развилку руками`,
+      ).toHaveCount(0);
+    }
+    // Положительный контроль: карточка ЕСТЬ и показывает варианты ответа —
+    // иначе ноль органов означал бы «карточки нет вовсе».
+    await expect(page.getByTestId('gate-option-0')).toBeVisible();
   });
 
-  test('у развилки не предлагают выбрать правильный вариант', async ({ page }) => {
+  test('верный ответ — галочка у варианта, и её можно снять', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await selectFork(page);
 
-    // Ровно та ложь, которую версия 4 убрала из данных: показывать её
-    // на экране значило бы вернуть обратно.
-    await expect(page.getByTestId('gate-option-correct-0')).toHaveCount(0);
-  });
+    // exit-branch хранит correctId: null — верного ответа нет.
+    const mark = page.getByTestId('gate-option-correct-0');
+    await expect(mark, 'галочка верного ответа обязана быть видна всегда').toBeVisible();
+    await expect(mark).not.toBeChecked();
 
-  test('переключение в «вопрос» возвращает выбор верного варианта', async ({ page }) => {
-    await openEditor(page, 'exit-branch');
-    await selectFork(page);
+    await mark.check();
+    await expect(mark).toBeChecked();
+    // Имя варианта берём ИЗ ПРОЕКТА, а не литералом: подписи и id вариантов
+    // фикстуры менялись, и литерал здесь врал бы про исправный код.
+    const firstOptionId = await page.evaluate(() => (window as unknown as {
+      __project: { segments: { id: string; gates: { id: string; config: { options?: { id: string }[] } }[] }[] };
+    }).__project.segments.find((c) => c.id === 's-ask')!.gates
+      .find((g) => g.id === 'g-ask')!.config.options![0]!.id);
+    expect(await correctIdOf(page), 'галочка не доехала до проекта').toBe(firstOptionId);
 
-    // По значению, а не по подписи: подпись — текст для человека, её правят
-    // ради ясности, и тест не должен от этого краснеть.
-    await page.getByLabel('Что это за остановка', { exact: true }).selectOption('question');
-
-    await expect(page.getByTestId('gate-option-correct-0')).toBeVisible();
-    await expect(page.getByTestId('fork-hint')).toHaveCount(0);
+    await mark.uncheck();
+    await expect(mark).not.toBeChecked();
+    expect(await correctIdOf(page), 'снятие галочки не доехало до проекта').toBeNull();
   });
 });
 
 test.describe('разрез повествования по развилке', () => {
-  test('кнопка разреза делит часть: появляются ветки и продолжение', async ({ page }) => {
+  /**
+   * ЖЕСТ СМЕНИЛСЯ 25.08.2026, утверждение — нет. Кнопки «Разделить
+   * повествование здесь» в карточке больше нет: разрез по развилке живёт
+   * в меню правой кнопки по метке, рядом с остальными действиями над ней.
+   *
+   * И это РАЗНЫЕ разрезы, что стоило отдельного замера: разрез по времени
+   * уводит правила выхода в продолжение, у головы их остаётся ноль, —
+   * то есть развилка ломается молча. У метки с вариантами меню зовёт
+   * разрез по развилке, и правила остаются там, где сработают.
+   */
+  test('разрез по метке делит главу: появляются ветки и продолжение', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await selectFork(page);
 
     const before = await segmentsOf(page);
     expect(before.map((s) => s.id)).toEqual(['s-ask', 's-right', 's-left']);
 
-    await page.getByTestId('gate-split').click();
+    await splitChapterAtGate(page, 'mark-gate-g-ask');
 
     const after = await segmentsOf(page);
     // Исходная часть, две ветки, продолжение — и прежние две концовки.
     expect(after.length).toBe(before.length + 3);
+    // Голова обязана КОНЧАТЬСЯ на развилке — ради этого разрез и нужен.
+    expect(after.find((segment) => segment.id === 's-ask')!.duration).toBeCloseTo(2, 3);
   });
 
   /**
@@ -104,22 +146,34 @@ test.describe('разрез повествования по развилке', (
    * обязано появиться ровно в тот момент, когда автор нажал «разделить»,
    * а не когда-нибудь потом при попытке публикации.
    */
-  test('после разреза автор видит, что новые ветки пусты', async ({ page }) => {
-    await openEditor(page, 'exit-branch');
+  /**
+   * ПЕРЕПИСАН 25.08.2026 НА НОВЫЙ ЖЕСТ. Раньше ветки рождала кнопка
+   * «Разделить повествование здесь»; её больше нет — ветки рождает то же
+   * нажатие, которым задают вопрос. Утверждение прежнее и решение [Р]
+   * (`product.md` §2б) тоже: ветки рождаются пустыми ПО ПОСТРОЕНИЮ,
+   * значит предупреждение обязано появиться в тот же момент, а не когда-то
+   * потом при попытке публикации.
+   *
+   * Фикстура сменилась на пустую: у `exit-branch` ветки уже есть, и рождать
+   * там нечего.
+   */
+  test('после вопроса автор видит, что новые ветки пусты', async ({ page }) => {
+    await openEditor(page, 'sandbox');
+    // Пустая фикстура пуста буквально: без содержимого «нет пустых глав»
+    // не было бы верно ещё ДО вопроса, и контроль ниже ничего бы не значил.
+    await page.getByRole('button', { name: 'Обложка' }).click();
 
-    // «Пустые главы» живут в панели «Главы» — открываем её ДО выбора метки:
-    // «Разрезать» стоит в панели «Метка», а панель — общий слот с «Главами»
-    // (см. e2e/panels.ts), и обе двери подряд не открыть — вторая сгонит
-    // первую. Выбор метки ниже сам переключит слот на «Метку».
     await openChapters(page);
+    await expect(page.getByTestId('empty-segments'))
+      .toContainText('Во всех главах что-то есть');
 
-    // До разреза пустых частей в этой фикстуре нет: у концовок есть элементы.
-    await expect(page.getByTestId('empty-segments')).toContainText('Во всех главах что-то есть');
-
-    // Метка живёт в виде «Дорожки» — «Главы» его подменили выше.
     await page.getByTestId('view-tracks').click();
-    await selectFork(page);
-    await page.getByTestId('gate-split').click();
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.locator('[data-testid^="mark-gate-"]').first().click();
+    await page.getByTestId('stopcard-make-question').click();
 
     const created = await page.evaluate(
       () =>
@@ -131,15 +185,12 @@ test.describe('разрез повествования по развилке', (
           .filter((s) => s.elements.length === 0 && s.slides.length === 1 && s.gates.length === 0)
           .map((s) => s.id),
     );
-    expect(created.length, 'разрез создал пустые ветки').toBeGreaterThan(0);
+    expect(created.length, 'вопрос не завёл пустых веток').toBeGreaterThan(0);
 
-    // Разрез открыл «Метку» — снова «Главы», тем же слотом.
     await openChapters(page);
 
-    // Предупреждение видно, и названа причина, а не просто счётчик.
     await expect(page.getByTestId('empty-segments')).toContainText('здесь пока ничего нет');
     await expect(page.getByTestId('empty-segments')).toContainText('публиковать нельзя');
-    // И каждая такая часть помечена прямо в списке частей.
     for (const id of created) {
       await expect(page.getByTestId(`segment-empty-${id}`)).toBeVisible();
     }
@@ -148,7 +199,7 @@ test.describe('разрез повествования по развилке', (
   test('продолжение звучит со своего окна того же файла', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await selectFork(page);
-    await page.getByTestId('gate-split').click();
+    await splitChapterAtGate(page, 'mark-gate-g-ask');
 
     const after = await segmentsOf(page);
     const head = after.find((segment) => segment.id === 's-ask')!;
@@ -166,7 +217,7 @@ test.describe('разрез повествования по развилке', (
 
     await openEditor(page, 'exit-branch');
     await selectFork(page);
-    await page.getByTestId('gate-split').click();
+    await splitChapterAtGate(page, 'mark-gate-g-ask');
 
     // Проект прогоняется через НАСТОЯЩУЮ загрузку, а не через флаг на window:
     // «спросить страницу, всё ли хорошо» — это проверка, которая зелена

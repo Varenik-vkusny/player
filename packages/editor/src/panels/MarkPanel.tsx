@@ -30,6 +30,7 @@ import {
   setAccept,
   setCaseSensitive,
   setCorrect,
+  setFork,
   setGateKind,
   setMaxAttempts,
   setOnWrong,
@@ -46,7 +47,6 @@ import {
   NumberField,
   RangeField,
   ReadonlyField,
-  Radio,
   ValidatedStringField,
   type Choice,
 } from '../ui/fields.js';
@@ -607,15 +607,30 @@ function ChoiceOptionsEditor({
             {/* У развилки верного ответа нет вовсе — показывать выбор
                 «правильного» значило бы вернуть на экран ровно ту ложь,
                 которую версия 4 убрала из данных. */}
-            {config.correctId !== null && (
-              <Radio
-                label="Правильный вариант"
-                name={`gate-correct-${gate.id}`}
-                checked={option.id === config.correctId}
-                onSelect={() => onUpdate(setCorrect(gate, option.id))}
-                testId={`gate-option-correct-${index}`}
-              />
-            )}
+            {/*
+              ВЕРНЫЙ ОТВЕТ — СВОЙСТВО ОТВЕТА, А НЕ ВИД МЕТКИ.
+              Переделано 25.08.2026 вместе с уходом списка «Что это
+              за остановка» (вопрос / развилка).
+
+              Раньше отметка появлялась, только если метка уже объявлена
+              «вопросом», а объявляли это отдельным списком в двух местах.
+              Автор сначала должен был угадать вид, и лишь потом получал
+              право сказать, какой ответ верный. Владелец на этом списке
+              и споткнулся: «есть варианты ответа — значит развилка».
+
+              Теперь наоборот: варианты решают структуру, а «верный» — просто
+              галочка у одного из них. Снять её можно тем же нажатием: метка
+              возвращается к «верного нет», и это законное состояние,
+              а не полусостояние.
+            */}
+            <Checkbox
+              label="Это верный ответ"
+              checked={option.id === config.correctId}
+              onChange={(checked) => onUpdate(
+                checked ? setCorrect(gate, option.id) : setFork(gate, true),
+              )}
+              testId={`gate-option-correct-${index}`}
+            />
 
             <ChoiceField
               label="Элемент сцены, служащий этим вариантом"

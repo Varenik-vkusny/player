@@ -86,3 +86,24 @@ export async function openSlideStrip(page: Page): Promise<void> {
   }
   await expect(page.getByTestId('slide-strip')).toBeVisible();
 }
+
+/**
+ * Разрезает главу по метке — меню правой кнопки по её ромбу.
+ *
+ * ЗАВЕДЁН 25.08.2026. До этого разрез вызывали кнопкой «Разделить
+ * повествование здесь» в карточке метки. Кнопки больше нет: по решению
+ * владельца метка с вариантами ответа и ЕСТЬ развилка, а разрез делает
+ * то же нажатие, которым задают вопрос, и кнопка «Завести ветку под этот
+ * ответ». Отдельным жестом разрез остался ровно там, где живут остальные
+ * действия над меткой, — в меню дорожки.
+ *
+ * Помощник нужен затем же, зачем и остальные двери в этом файле: следующий
+ * перенос облика иначе превратится в десяток одинаковых правок, часть
+ * которых забудут.
+ */
+export async function splitChapterAtGate(page: Page, markTestId: string): Promise<void> {
+  const box = await page.getByTestId(markTestId).boundingBox();
+  if (!box) throw new Error(`метки «${markTestId}» не видно — разрезать нечего`);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+  await page.getByRole('menuitem', { name: 'Разрезать главу здесь' }).click();
+}

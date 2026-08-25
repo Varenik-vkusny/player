@@ -18,7 +18,7 @@
  * `MIN_TAIL_SECONDS`, значит продолжение действительно родится.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { openChapters } from './panels.js';
+import { openChapters, splitChapterAtGate } from './panels.js';
 
 async function openEditor(page: Page, fixture: string): Promise<void> {
   await page.goto(`/editor.html?fixture=${fixture}`, { waitUntil: 'load' });
@@ -83,7 +83,7 @@ test.describe('разрез без расшифровки: автор узнаё
 
     await page.getByTestId('mark-gate-g-ask').click();
     await expect(page.getByTestId('mark-panel')).toBeVisible();
-    await page.getByTestId('gate-split').click();
+    await splitChapterAtGate(page, 'mark-gate-g-ask');
 
     // Предупреждение живёт в панели «Главы» (Editor.tsx, panelId === 'chapters'),
     // а после разреза открыта осталась «Метка» — дверь та же, что у списка глав.
@@ -102,7 +102,7 @@ test.describe('разрез без расшифровки: автор узнаё
 
     await page.getByTestId('mark-gate-g-ask').click();
     await expect(page.getByTestId('mark-panel')).toBeVisible();
-    await page.getByTestId('gate-split').click();
+    await splitChapterAtGate(page, 'mark-gate-g-ask');
 
     await expect(page.getByTestId('speech-split-warning')).toHaveCount(0);
   });

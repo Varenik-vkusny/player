@@ -9,6 +9,7 @@
  * `pnpm check` незачем, а забыть выключить — легко.
  */
 import { mkdirSync } from 'node:fs';
+import { splitChapterAtGate } from './panels.js';
 
 import { expect, test, type Page } from '@playwright/test';
 
@@ -46,7 +47,7 @@ test.describe('@shots снимки продукта', () => {
   test('после разреза: части на месте', async ({ page }) => {
     await openEditor(page, 'exit-branch');
     await page.getByTestId('mark-gate-g-ask').click();
-    await page.getByTestId('gate-split').click();
+    await splitChapterAtGate(page, 'mark-gate-g-ask');
     await page.screenshot({ path: `${OUT}/after-split.png` });
   });
 

@@ -33,12 +33,12 @@ import {
   ungroupElements as ungroupElementsInSegment,
 } from './groupElements.js';
 import * as exits from './exits.js';
-import { setOptionLabel, setPrompt } from './gates.js';
+import { setFork, setOptionLabel, setPrompt } from './gates.js';
 import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
 import type { SlideClipboard } from './slides.js';
-import { branches_title, splitAtTimeBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
+import { branches_title, splitAtTimeBlockedReason, splitBlockedReason, splitSegmentAtGate, splitSegmentAtTime } from './split.js';
 import { bakeStyle } from './styleLink.js';
 import { applyTemplate as applyTemplateToSegment, askOnStage as askOnStageOnSegment, type SceneTemplate } from './templates.js';
 
@@ -1286,8 +1286,79 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Тот же размер сцены, что и у applyTemplate: из meta проекта,
       // а не из состояния вида.
       const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
-      const nextSegment = askOnStageOnSegment(currentSegment(state), action.gateId, stage);
-      return replaceSegment(state, nextSegment);
+      const asked = askOnStageOnSegment(currentSegment(state), action.gateId, stage);
+
+      /*
+       * ЕСТЬ ВАРИАНТЫ ОТВЕТА — ЗНАЧИТ РАССКАЗ ЗДЕСЬ ДЕЛИТСЯ.
+       *
+       * Решение владельца 25.08.2026, дословно: «можно поставить метку
+       * и оставить её без вопросов, либо можно создать метку но с вопросами,
+       * и соответственно там будет развилка, потому что там есть варианты
+       * ответа, и соответственно сама развилка появится и под ней ветки».
+       *
+       * ЧТО БЫЛО. Одно намерение автора требовало ЧЕТЫРЁХ нажатий в трёх
+       * разных органах: задать вопрос, потом выбрать в списке «Что это
+       * за остановка» → «Развилка», потом нажать «Разделить повествование
+       * здесь», и только потом ветки. Пропустишь любой шаг — зритель
+       * ответит, а рассказ пойдёт ещё полглавы, глядя на его же кнопки.
+       * Владелец прошёл этот путь и написал: «я не понял пайплайн,
+       * я не понял абсолютно нихуя».
+       *
+       * ТЕПЕРЬ одно нажатие: вопрос на сцене, глава разрезана по метке,
+       * под каждым вариантом своя ветка, за развилкой — продолжение.
+       *
+       * Верного ответа у такой метки нет (`setFork`): раз ответ ведёт
+       * в свою ветку, «правильность» решает не он, а автор, — и остаётся
+       * отдельным свойством, а не признаком, от которого зависит структура.
+       *
+       * Разрез невозможен только в трёх случаях (`splitBlockedReason`):
+       * метка не с вариантами, метка потеряла своё слово в расшифровке,
+       * метка стоит на нуле. Тогда вопрос всё равно ставится — просто
+       * без разреза, и автор видит его на сцене.
+       */
+      const gate = asked.gates.find((candidate) => candidate.id === action.gateId);
+      if (!gate) {
+        throw new Error(`Метки «${action.gateId}» нет после постановки вопроса`);
+      }
+      const forked = { ...asked, gates: replaceAt(asked.gates, gate.id, () => setFork(gate, true)) };
+      const withQuestion = replaceSegment(state, forked);
+
+      const forkedGate = forked.gates.find((candidate) => candidate.id === action.gateId)!;
+      if (splitBlockedReason(forkedGate, forked.audio.words) !== undefined) return withQuestion;
+
+      const project = splitAtGate(withQuestion.project, state.currentSegmentId, action.gateId);
+      const head = requireSegment(project, state.currentSegmentId);
+      /*
+       * Автор остаётся ТАМ, ГДЕ ВОПРОС, а не в начале главы.
+       *
+       * Разрез уводит на первый кадр — так было у кнопки «Разделить»,
+       * и для неё это верно: автор объявлял развилку, а не просил себя
+       * куда-то перевести. Здесь иначе: он только что создал вопрос
+       * и ответы, они лежат на кадре у метки, и увести его от них значит
+       * показать пустую сцену вместо сделанной работы.
+       */
+      /*
+       * Метку ищем В ГОЛОВЕ ПОСЛЕ РАЗРЕЗА, а не берём ту, что была до него.
+       *
+       * Разрез перепривязывает ссылки на время к своему окну расшифровки:
+       * у головы после него СВОЙ список слов, и тот же `wordIndex` означает
+       * в нём другое слово. Замер 25.08.2026: с ссылкой «до разреза» автора
+       * уносило на кадр 15.14 при метке на 26.73 — то есть он не видел
+       * ни вопроса, ни ответов, которые только что создал.
+       */
+      const headGate = head.gates.find((candidate) => candidate.id === action.gateId);
+      if (!headGate) {
+        throw new Error(`Метка «${action.gateId}» пропала из главы после разреза`);
+      }
+      const atGate = slidesApi.slideAt(
+        head, resolveTimeRef(headGate.at, head.audio.words), head.audio.words,
+      );
+      return {
+        ...withQuestion,
+        project,
+        currentSlideId: atGate.id,
+        selectedIds: [],
+      };
     }
 
     case 'addSegment': {
@@ -1386,17 +1457,65 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'branchFromOption': {
-      const segment = currentSegment(state);
+      /*
+       * ВЕТКА ПОД ОТВЕТОМ САМА РЕЖЕТ ГЛАВУ, ЕСЛИ ТА ЕЩЁ НЕ РАЗРЕЗАНА.
+       *
+       * Без этого ветка получалась недостижимой по смыслу: зритель отвечает
+       * на метке, а рассказ идёт ДО КОНЦА ГЛАВЫ и только потом уходит
+       * в ветку. Владелец наткнулся на это первым же вопросом сессии:
+       * «я вот в плеер ответил на вопрос, а по итогу меня никуда
+       * не перекинуло». Прыжка из середины дорожки не бывает — он рвал звук
+       * (ADR-013), поэтому единственный честный ответ это разрез.
+       *
+       * Признак «уже разрезана» — метка стоит на конце дорожки: `splitAtGate`
+       * ровно это и делает, оставляя голову длиной до метки. Второй разрез
+       * той же метки поэтому не наступает.
+       *
+       * Разрез невозможен в трёх случаях (`splitBlockedReason`) — тогда
+       * ветка всё равно заводится, просто рассказ дойдёт до неё позже.
+       */
+      const before = currentSegment(state);
+      const beforeGate = before.gates.find((candidate) => candidate.id === action.gateId);
+      if (beforeGate && splitBlockedReason(beforeGate, before.audio.words) === undefined) {
+        const gateSeconds = resolveTimeRef(beforeGate.at, before.audio.words);
+        if (gateSeconds < before.audio.duration - slidesApi.MARK_HIT_SECONDS) {
+          /*
+           * ГЛАВА ЕЩЁ НЕ РАЗРЕЗАНА — РЕЖЕМ, И ЭТОГО ДОСТАТОЧНО.
+           *
+           * Разрез сам заводит ветку под КАЖДЫЙ ответ, включая этот.
+           * Заводить сверху ещё одну значило бы дать одному ответу два
+           * правила, из которых второе недостижимо: правила читаются
+           * по порядку. Замер 25.08.2026 на фикстуре inline-explain —
+           * получалось пять глав вместо двух и два правила на «opt-gate».
+           *
+           * Без разреза ветка была бы недостижима по смыслу: зритель
+           * отвечает на метке, а рассказ идёт до конца главы и только потом
+           * уходит в ветку. Владелец наткнулся на это первым же вопросом
+           * сессии: «я ответил на вопрос, а меня никуда не перекинуло».
+           */
+          const cut = splitAtGate(state.project, state.currentSegmentId, action.gateId);
+          const cutHead = requireSegment(cut, state.currentSegmentId);
+          return {
+            ...state,
+            project: cut,
+            currentSlideId: requireFirstSlide(cutHead).id,
+            selectedIds: [],
+          };
+        }
+      }
+
+      const state1 = state;
+      const segment = currentSegment(state1);
       const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
       if (!gate) {
-        throw new Error(`Остановки «${action.gateId}» нет в текущей главе: не от чего вести ветку`);
+        throw new Error(`Метки «${action.gateId}» нет в текущей главе: не от чего вести ветку`);
       }
       if (gate.config.kind !== 'choice') {
-        throw new Error(`Остановка «${action.gateId}» без вариантов: ветку вести не от чего`);
+        throw new Error(`У метки «${action.gateId}» нет вариантов ответа: ветку вести не от чего`);
       }
       const index = gate.config.options.findIndex((option) => option.id === action.optionId);
       if (index < 0) {
-        throw new Error(`Варианта «${action.optionId}» нет у остановки «${action.gateId}»`);
+        throw new Error(`Варианта «${action.optionId}» нет у метки «${action.gateId}»`);
       }
 
       // Порядок обязателен: `connect` отказывается вести правило в главу,
@@ -1405,13 +1524,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // а нам нужна подпись варианта — тем же правилом, каким называет
       // ветки разрез по развилке (`split.ts`, `branches_title`).
       const { project: withSegment, segment: created } =
-        exits.addSegment(state.project, state.currentSegmentId);
+        exits.addSegment(state1.project, state1.currentSegmentId);
       const titled = exits.renameSegment(
         withSegment, created.id, branches_title(gate, action.optionId, index),
       );
       const connected = exits.connect(
         titled,
-        state.currentSegmentId,
+        state1.currentSegmentId,
         [{ kind: 'equals', variable: gate.recordAs, value: action.optionId }],
         created.id,
       );
@@ -1425,7 +1544,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
        * у каждого неразведённого ответа дословно: «пойдёт в «…», как и все
        * остальные ответы». Автор видит и переназначает.
        */
-      const project = exits.ensureFallback(connected, state.currentSegmentId, created.id);
+      const project = exits.ensureFallback(connected, state1.currentSegmentId, created.id);
 
       // Автор ОСТАЁТСЯ на месте, в отличие от обычного `addSegment`.
       // Он не просил перевести себя в новую главу — он размечал варианты
@@ -1433,7 +1552,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // он работает. Тот же довод, что у `splitAtGate` и `duplicateSegment`.
       // Результат он видит немедленно: строка под вариантом меняется
       // с «никуда не ведёт» на «ведёт в «…»».
-      return { ...state, project };
+      return { ...state1, project };
     }
 
     case 'disconnect': {

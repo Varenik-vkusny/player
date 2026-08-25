@@ -78,7 +78,7 @@ import { extractBlockedReason } from './state/extractBranch.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupElements.js';
 import { optionDestination } from './state/conditionText.js';
-import { speechLossWarning, splitAtTimeNotice, splitBlockedReason } from './state/split.js';
+import { speechLossWarning, splitAtTimeNotice } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, splitHereProblem, type MarkKind } from './state/project.js';
@@ -568,11 +568,16 @@ export function Editor({
    */
   const [speechSplitWarning, setSpeechSplitWarning] = useState<string | undefined>(undefined);
 
-  const handleSplitAtGate = useCallback(
+  /*
+   * Предупреждение о потере расшифровки считается ПЕРЕД тем нажатием,
+   * которое режет главу. Кнопки «Разделить повествование здесь» больше нет
+   * (25.08.2026): режет то же нажатие, которым задают вопрос, — поэтому
+   * и считаем здесь, у него.
+   */
+  const warnBeforeSplit = useCallback(
     (gateId: string) => {
       const gate = currentSegment.gates.find((candidate) => candidate.id === gateId);
       setSpeechSplitWarning(gate ? speechLossWarning(currentSegment, gate) : undefined);
-      dispatch({ type: 'splitAtGate', gateId });
     },
     [currentSegment],
   );
@@ -682,6 +687,28 @@ export function Editor({
     headSlideRef.current = slide.id;
     dispatch({ type: 'selectSlide', id: slide.id });
   }, [transport.positionSeconds, currentSegment, segment.words]);
+
+  /**
+   * Куда встать после того, как вопрос разрезал главу.
+   *
+   * Разрез меняет ОКНО дорожки, и часы начинают заново — замер 25.08.2026:
+   * головка после разреза 0 при метке на 26.73. А слайд на сцене ведёт
+   * именно головка (эффект выше), поэтому автор оказывался в начале главы
+   * и не видел вопроса, который только что создал.
+   *
+   * Ссылку кладём в ref, а не в состояние: она не должна вызывать отрисовку
+   * сама по себе. Следующая отрисовка приходит от самой правки — и эффект
+   * ниже видит уже РАЗРЕЗАННУЮ главу.
+   */
+  const seekToMarkRef = useRef<string | null>(null);
+  useEffect(() => {
+    const gateId = seekToMarkRef.current;
+    if (gateId === null) return;
+    const gate = currentSegment.gates.find((candidate) => candidate.id === gateId);
+    if (!gate) return;
+    seekToMarkRef.current = null;
+    transport.seek(markSeconds(gate.at, segment.words));
+  }, [currentSegment, segment.words, transport]);
 
   const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
 
@@ -3006,6 +3033,12 @@ export function Editor({
           slideCount={segment.slides.length}
           onAddGate={handleAddGate}
           onSplitHere={handleSplitHere}
+          onSplitAtGate={(gateId) => {
+            warnBeforeSplit(gateId);
+            dispatch({ type: 'splitAtGate', gateId });
+          }}
+          hasOptions={(gateId) => currentSegment.gates
+            .some((gate) => gate.id === gateId && gate.config.kind === 'choice')}
           splitProblem={splitProblem}
           splitNotice={splitNotice}
           colorOrphanCount={colorOrphanCount}
@@ -3087,12 +3120,12 @@ export function Editor({
           )}
           anchor={stopCardAnchor}
           onUpdateGate={handleUpdateGate}
-          onAskOnStage={() => dispatch({ type: 'askOnStage', gateId: stopCardGate.id })}
-          /* Разрез главы по развилке — та же отправка, что у кнопки в панели
-             свойств. Второй реализации нет: карточка и панель зовут один
-             и тот же `handleSplitAtGate`. */
-          onSplit={() => handleSplitAtGate(stopCardGate.id)}
-          splitBlockedReason={splitBlockedReason(stopCardGate, segment.words)}
+          onAskOnStage={() => {
+            warnBeforeSplit(stopCardGate.id);
+            // Головку вернуть на метку — вопрос лежит на её кадре.
+            seekToMarkRef.current = stopCardGate.id;
+            dispatch({ type: 'askOnStage', gateId: stopCardGate.id });
+          }}
           onPromptChange={(text) => dispatch({
             type: 'setGatePrompt', gateId: stopCardGate.id, text,
           })}

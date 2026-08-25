@@ -27,9 +27,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactEl
 import type { Gate } from '@player/core';
 
 import type { OptionDestination } from '../state/conditionText.js';
-import { addOption, setFork } from '../state/gates.js';
+import { addOption } from '../state/gates.js';
 import { secondsText } from '../timeText.js';
-import { Button, ChoiceField, PlainSelect, StringField } from '../ui/index.js';
+import { Button, PlainSelect, StringField } from '../ui/index.js';
 
 /** «Никуда»: рассказ на этом ответе идёт запасным выходом главы. */
 const NOWHERE = '';
@@ -129,39 +129,10 @@ export interface StopCardProps {
   readonly onOptionLabelChange: (optionId: string, text: string) => void;
   readonly onOptionTarget: (optionId: string, goto: string | null) => void;
   readonly onBranchFromOption: (optionId: string) => void;
-  /**
-   * Разрезать главу по этой развилке.
-   *
-   * ЗАЧЕМ ЭТО В КАРТОЧКЕ, А НЕ ТОЛЬКО В ПАНЕЛИ. Развилка по продукту —
-   * остановка В КОНЦЕ главы: «рассказ делится» (`product.md` §2а). Ответ
-   * не перекидывает сам, решение о переходе принимает выход главы, когда
-   * дорожка доиграла. Поставив развилку в середине и заведя ветки, автор
-   * получает то, что выглядит рабочим и ведёт себя иначе: зритель отвечает,
-   * а рассказ идёт ещё полминуты, глядя на его же кнопки.
-   *
-   * До 24.08.2026 карточка предлагала «Завести ветку под этот ответ» и НЕ
-   * предлагала ни выбора вида, ни разреза — то есть вела ровно в эту яму,
-   * а выход из неё лежал в панели, куда автор не заходит. Найдено владельцем:
-   * «ответил, а меня никуда не перекинуло».
-   */
-  readonly onSplit: (() => void) | undefined;
-  /** Почему разрезать нельзя. `undefined` — можно. */
-  readonly splitBlockedReason: string | undefined;
-  readonly onCommitHistory: () => void;
+      readonly onCommitHistory: () => void;
   readonly onClose: () => void;
 }
 
-/**
- * Подписи видов остановки. Совпадают со списком в `panels/MarkPanel.tsx`
- * ДОСЛОВНО и намеренно: это один и тот же выбор, показанный в двух местах,
- * и разные слова читались бы автором как разные вещи. Само правило —
- * какое значение `correctId` что означает — живёт в одном месте
- * (`state/gates.ts`, `setFork`), и здесь его копии нет.
- */
-const STOP_KIND_CHOICES = [
-  { value: 'question', label: 'Вопрос — рассказ идёт дальше' },
-  { value: 'fork', label: 'Развилка — рассказ делится' },
-] as const;
 
 export function StopCard({
   gate,
@@ -176,8 +147,6 @@ export function StopCard({
   onOptionLabelChange,
   onOptionTarget,
   onBranchFromOption,
-  onSplit,
-  splitBlockedReason,
   onCommitHistory,
   onClose,
 }: StopCardProps): ReactElement {
@@ -266,65 +235,24 @@ export function StopCard({
         }}
       />
 
-      {config.kind === 'choice' && (
-        <>
-          {/*
-            ВИД ОСТАНОВКИ — здесь, а не только в панели свойств.
+      {/*
+        ЗДЕСЬ БЫЛИ ТРИ ОРГАНА, И ВСЕ ТРИ УБРАНЫ 25.08.2026: список «Что это
+        за остановка» (вопрос / развилка), пояснение «Развилка делит рассказ»
+        и кнопка «Разделить повествование здесь».
 
-            Это не дубль органа, а перенос его к предмету: вид решает, где
-            остановка вообще имеет право стоять. Вопрос живёт посреди главы
-            и рассказ после него продолжается; развилка обязана быть
-            последней, потому что срабатывает на конце дорожки
-            (`product.md` §2а, ADR-018).
-          */}
-          {/*
-            Имена `data-testid` — ПРЕЖНИЕ (`stop-kind`, `fork-hint`,
-            `gate-split`, `split-blocked`), хотя органы переехали сюда
-            из панели свойств. Имя называет орган, а не его место: тесты,
-            писавшиеся про «переключатель вида остановки» и «разрез
-            по развилке», продолжают охранять ровно то же самое. Новые
-            имена заставили бы переписать шесть тестов и потерять их
-            историю ради нуля новой правды.
-          */}
-          <div data-testid="stop-kind">
-            <ChoiceField
-              label="Что это за остановка"
-              value={config.correctId === null ? 'fork' : 'question'}
-              choices={STOP_KIND_CHOICES}
-              onCommit={(value) => {
-                if (value !== 'question' && value !== 'fork') {
-                  throw new Error(`Неизвестный вид остановки «${value}»`);
-                }
-                onUpdateGate(setFork(gate, value === 'fork'));
-                onCommitHistory();
-              }}
-            />
-          </div>
+        Решение владельца: раз у метки есть варианты ответа — рассказ здесь
+        делится, и объявлять это отдельно не надо. Разрез и ветки теперь
+        делает то же нажатие, которым задают вопрос (редьюсер, case
+        'askOnStage'), одним шагом истории.
 
-          {config.correctId === null && (
-            <>
-              <p className="ed-stopcard-plain" data-testid="fork-hint">
-                Развилка делит рассказ. Пока глава не разрезана, зритель ответит,
-                а рассказ пойдёт дальше до конца главы — и только потом уйдёт
-                в ветку.
-              </p>
-              <Button
-                data-testid="gate-split"
-                disabled={splitBlockedReason !== undefined || onSplit === undefined}
-                title={splitBlockedReason ?? 'Разделить повествование по этой развилке'}
-                onClick={() => onSplit?.()}
-              >
-                Разделить повествование здесь
-              </Button>
-              {splitBlockedReason !== undefined && (
-                <p className="ed-stopcard-plain" data-testid="split-blocked">
-                  {splitBlockedReason}
-                </p>
-              )}
-            </>
-          )}
-        </>
-      )}
+        Его слова: «я не понял пайплайн… куда денется остальная часть видео,
+        я не понял абсолютно нихуя». Четыре нажатия в трёх органах ради
+        одного намерения — это и был пайплайн.
+
+        Имена `data-testid` `stop-kind`, `fork-hint`, `gate-split`
+        и `split-blocked` исчезли вместе с органами; тесты, которые их
+        искали, переписаны на то, что проверяет новое поведение.
+      */}
 
       {config.kind === 'input' ? (
         <p className="ed-stopcard-plain">
@@ -415,12 +343,29 @@ export function StopCard({
                   </p>
                 )}
 
-                {/* «Завести ветку» — только у тупика, и та же отправка, что
-                    в панели: глава и правило в неё одним шагом истории.
-                    У ответа, который уже куда-то ведёт, кнопки нет: вторая
-                    ветка на тот же ответ была бы правилом, до которого
-                    рассказ никогда не дойдёт (правила читаются по порядку). */}
-                {destination.via === 'none' ? (
+                {/*
+                  «Завести ветку» — у каждого ответа, У КОТОРОГО НЕТ СВОЕГО
+                  ПРАВИЛА. Вторая ветка на тот же ответ была бы правилом,
+                  до которого рассказ никогда не дойдёт (правила читаются
+                  по порядку), — поэтому у ответа с правилом кнопки нет.
+
+                  ПОЧЕМУ НЕ ТОЛЬКО У ТУПИКА. Куплено 25.08.2026, владелец:
+                  «я сейчас завожу под одним вариантом ответа ветку, а под
+                  вторым уже не могу, это так по дефолту типа или что?».
+
+                  Замер: после ветки под первым ответом выход главы получает
+                  и правило, и ЗАПАСНОЙ выход в ту же ветку —
+                    Моя первая глава: option-1 → Вариант 1 / иначе → Вариант 1
+                  Запасной ставится нарочно: без него остальным ответам идти
+                  некуда и проект перестаёт сохраняться (найдено владельцем
+                  же 22.08.2026). Но после него второй ответ переставал быть
+                  тупиком, кнопка исчезала, и завести ветку под ним было
+                  НЕЧЕМ — при том что своего правила у него по-прежнему нет.
+
+                  «Пойдёт туда же, как и все остальные» — это не выбор автора
+                  для ЭТОГО ответа, а то, что осталось от чужого выбора.
+                */}
+                {destination.via !== 'rule' ? (
                   <Button
                     data-testid={`stopcard-option-branch-${index}`}
                     onClick={() => onBranchFromOption(option.id)}

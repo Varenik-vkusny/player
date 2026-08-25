@@ -169,6 +169,10 @@ export interface TrackViewProps {
    * когда автор её двигает.
    */
   onSplitHere: () => void;
+  /** Разрезать главу по развилке — у метки, у которой есть варианты ответа. */
+  onSplitAtGate: (gateId: string) => void;
+  /** Есть ли у метки варианты ответа: от этого зависит, каким будет разрез. */
+  hasOptions: (gateId: string) => boolean;
   /**
    * Почему разрез сейчас невозможен. Считает ОДНА функция на весь редактор
    * (`state/project.ts`, `splitHereProblem`), и та же, которой отказывает
@@ -307,6 +311,8 @@ export function TrackView({
   slideCount,
   onAddGate,
   onSplitHere,
+  onSplitAtGate,
+  hasOptions,
   splitProblem,
   splitNotice,
   colorOrphanCount = 0,
@@ -596,8 +602,29 @@ export function TrackView({
     }
 
     if (menu.target.kind === 'gate') {
+      /*
+       * РАЗРЕЗ ПО МЕТКЕ С ВАРИАНТАМИ — НЕ ТО ЖЕ, ЧТО РАЗРЕЗ ПО ВРЕМЕНИ.
+       *
+       * Замер 25.08.2026 на фикстуре exit-branch: разрез по времени уводит
+       * ПРАВИЛА ВЫХОДА в продолжение — у головы их остаётся ноль. Для метки
+       * с ответами это молча ломает развилку: зритель отвечает, ответ
+       * записан, а решает по нему уже конец продолжения.
+       *
+       * Поэтому у метки с вариантами зовётся `onSplitAtGate` — он режет
+       * главу по развилке и оставляет правила там, где они сработают.
+       * У метки без вариантов делить по развилке нечего, и остаётся
+       * обычный разрез по времени.
+       */
+      const gateId = menu.target.id;
+      const forked = gateId !== undefined && hasOptions(gateId);
       return [
-        { id: 'gate-split', label: 'Разрезать главу здесь', disabled: splitProblem !== undefined, hint: splitProblem, onSelect: onSplitHere },
+        {
+          id: 'gate-split',
+          label: 'Разрезать главу здесь',
+          disabled: splitProblem !== undefined,
+          hint: splitProblem,
+          onSelect: forked ? () => onSplitAtGate(gateId) : onSplitHere,
+        },
       ];
     }
 
@@ -691,7 +718,7 @@ export function TrackView({
         : []),
     ];
   }, [
-    menu, splitProblem, onSplitHere, onAddGate, onAddSlideHere, onRemoveSlide,
+    menu, splitProblem, onSplitHere, onSplitAtGate, hasOptions, onAddGate, onAddSlideHere, onRemoveSlide,
     slideRemoveProblem, bubble, bubbleLaneHidden,
     onDuplicateSlide, onCopySlide, onCutSlide, onPasteSlide,
     slideDuplicateProblem, slideCutProblem, slidePasteProblem,

@@ -97,33 +97,45 @@ test.describe('карточка остановки', () => {
     await page.getByTestId('stopcard-option-label-0').fill('Первый');
     await page.getByTestId('stopcard-option-label-0').blur();
 
-    // До нажатия ответ никуда своего не ведёт — иначе кнопки ветки не было бы,
-    // и тест проверял бы не то, что называет.
-    const branch = page.getByTestId('stopcard-option-branch-0');
-    await expect(branch, 'у свежего ответа обязан быть тупик — иначе ветку заводить не от чего').toBeVisible();
-    await branch.click();
-
+    /*
+     * ПОРЯДОК, КОТОРЫЙ ВИДИТ АВТОР — переделан 25.08.2026, решение владельца.
+     *
+     * БЫЛО: поставить метку → задать вопрос → выбрать в списке «Что это
+     * за остановка» → нажать «Разделить повествование здесь» → и только
+     * потом заводить ветки, по одной, кнопкой у каждого ответа. Пять шагов
+     * в трёх органах, и пропуск любого давал тихо неработающую развилку.
+     *
+     * СТАЛО: поставить метку → задать вопрос. Всё. Одно нажатие делает
+     * ровно то, что автор и имел в виду: вопрос на сцене, глава кончается
+     * на метке, под каждым ответом своя ветка, за развилкой продолжение.
+     *
+     * Поэтому здесь больше нет ни кнопки «Завести ветку», ни ожидания
+     * тупика: правила у обоих ответов уже есть.
+     */
     const rulesAfter = await rulesOf(page);
     expect(
       rulesAfter.length,
-      'правил выхода не прибавилось — ветка не завелась, сколько бы кнопок ни нажалось',
-    ).toBe(rulesBefore.length + 1);
+      'вопрос не завёл правил выхода — развилки не получилось',
+    ).toBe(rulesBefore.length + 2);
 
-    const added = rulesAfter[rulesAfter.length - 1]!;
-    expect(added.when).toHaveLength(1);
-    expect(added.goto, 'правило ведёт в никуда').toBeTruthy();
+    for (const rule of rulesAfter.slice(rulesBefore.length)) {
+      expect(rule.when).toHaveLength(1);
+      expect(rule.goto, 'правило ведёт в никуда').toBeTruthy();
 
-    // Ветка ДЕЙСТВИТЕЛЬНО появилась в проекте, а не только в правиле:
-    // правило, ведущее в несуществующую главу, схема бы не пропустила,
-    // но проверить это здесь дешевле, чем узнать при сохранении.
-    const chapterExists = await page.evaluate(
-      (goto) =>
-        (window as unknown as { __project: { segments: { id: string }[] } }).__project.segments.some(
-          (segment) => segment.id === goto,
-        ),
-      added.goto,
-    );
-    expect(chapterExists, `глава «${added.goto}» из правила не найдена в проекте`).toBe(true);
+      // Ветка ДЕЙСТВИТЕЛЬНО появилась в проекте, а не только в правиле.
+      const chapterExists = await page.evaluate(
+        (goto) => (window as unknown as { __project: { segments: { id: string }[] } })
+          .__project.segments.some((segment) => segment.id === goto),
+        rule.goto,
+      );
+      expect(chapterExists, `глава «${rule.goto}» из правила не найдена в проекте`).toBe(true);
+    }
+
+    // И кнопки «завести ветку» больше нет — заводить нечего, ветки уже есть.
+    await expect(
+      page.getByTestId('stopcard-option-branch-0'),
+      'кнопка ветки осталась там, где ветка уже заведена',
+    ).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
@@ -190,13 +202,36 @@ test.describe('карточка остановки', () => {
     await page.getByTestId('stopcard-make-question').click();
     await expect(page.getByTestId('stopcard-prompt')).toBeVisible();
 
-    // На сцене прибавилось РОВНО: вопрос плюс по элементу на ответ.
-    const options = await page.getByTestId('stopcard-prompt').evaluate(
-      () => (window as unknown as {
-        __project: { segments: { gates: { config: { options: unknown[] } }[] }[] };
-      }).__project.segments[0]!.gates.at(-1)!.config.options.length,
-    );
-    await expect(page.locator('.ed-stage-host [data-id]')).toHaveCount(before + 1 + options);
+    /*
+     * ПРОВЕРЯЕТСЯ ПО ИМЕНАМ, А НЕ ПО СЧЁТУ. Считать перестало быть можно
+     * с 25.08.2026: то же нажатие режет главу по развилке, и часть элементов
+     * законно уезжает в продолжение — счёт на сцене меняется в обе стороны.
+     * Утверждение теста от этого не зависит: вопрос и КАЖДЫЙ ответ обязаны
+     * лежать на сцене настоящими узлами, которые автор может подвинуть.
+     */
+    expect(before, 'на сцене нечему было лежать до вопроса').toBeGreaterThanOrEqual(0);
+    const onStage = await page.evaluate(() => {
+      const project = (window as unknown as {
+        __project: {
+          segments: {
+            gates: { config: { kind: string; promptElementId?: string; options?: { elementId?: string }[] } }[];
+          }[];
+        };
+      }).__project;
+      const gate = project.segments[0]!.gates.at(-1)!;
+      const config = gate.config;
+      const wanted = [config.promptElementId, ...(config.options ?? []).map((o) => o.elementId)]
+        .filter((id): id is string => typeof id === 'string');
+      return wanted.map((id) => ({
+        id,
+        наСцене: document.querySelector(`.ed-stage-host [data-id="${id}"]`) !== null,
+      }));
+    });
+    expect(onStage.length, 'у вопроса нет ни текста, ни ответов — проверять нечего')
+      .toBeGreaterThan(1);
+    for (const item of onStage) {
+      expect(item.наСцене, `элемент «${item.id}» не лёг на сцену`).toBe(true);
+    }
 
     const gate = await page.evaluate(
       () => (window as unknown as {
@@ -334,18 +369,23 @@ test.describe('карточка остановки', () => {
     await expect(card).toBeVisible();
     await card.getByTestId('stopcard-make-question').click();
 
-    // Вид остановки — В КАРТОЧКЕ. Ищем внутри неё намеренно: найдись орган
-    // где-то ещё, тест обязан этого не заметить, потому что охраняет он
-    // путь автора, а не наличие узла на странице.
-    await card.getByTestId('stop-kind').locator('select').selectOption('fork');
-    await expect(card.getByTestId('fork-hint'), 'карточка молчит о том, чем развилка отличается')
-      .toBeVisible();
-
-    const split = card.getByTestId('gate-split');
-    await expect(split, 'в карточке нет разреза — развилку объявить можно, а сделать нельзя')
-      .toBeVisible();
-    await expect(split, 'разрез погашен там, где делить есть что').toBeEnabled();
-    await split.click();
+    /*
+     * ПУТЬ СОКРАЩЁН ДО ОДНОГО НАЖАТИЯ 25.08.2026, решение владельца.
+     *
+     * Здесь стояли ещё два шага: выбрать в списке «Что это за остановка» →
+     * «Развилка», потом нажать «Разделить повествование здесь». Обоих
+     * органов больше нет — метка с вариантами ответа и ЕСТЬ развилка,
+     * и разрез делает то же нажатие, которым задают вопрос.
+     *
+     * Утверждение теста не изменилось: развилка и разрез делаются,
+     * не покидая карточки. Изменилось только, сколько это стоит автору.
+     */
+    for (const gone of ['stop-kind', 'fork-hint', 'gate-split']) {
+      await expect(
+        card.getByTestId(gone),
+        `орган «${gone}» вернулся: путь автора снова длиннее одного нажатия`,
+      ).toHaveCount(0);
+    }
 
     const after = await page.evaluate(() => {
       const project = (window as unknown as {
