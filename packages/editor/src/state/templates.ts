@@ -12,26 +12,20 @@
  * **Появление во времени в схеме v3.** Кью больше нет — появление элемента
  * выражается тем, что на СЛАЙДЕ появления его состояние отличается от
  * состояния на предыдущем слайде (плеер анимирует переход сам, FLIP).
- * У элемента без `preset` или с `atSeconds: 0` появляться неоткуда: слайд
- * на нуле — стартовый вид сегмента, морфить в него не из чего. Поэтому:
+ * Элементы заготовки ложатся на кадры главы КАК ЕСТЬ, в своём финальном
+ * виде. Появления у заготовок больше нет — решение владельца 25.08.2026,
+ * разбор в комментарии к `SceneTemplate.elements` ниже.
  *
- *   - элементы без preset или с atSeconds === 0 получают финальное
- *     состояние сразу на первом слайде сегмента;
- *   - элементы с preset и atSeconds > 0 получают на первом слайде состояние
- *     С ПАТЧЕМ заготовки появления (`AnimationPreset`, `state/library.ts`),
- *     а на новом слайде, вставленном в момент atSeconds, — обычное
- *     финальное состояние. Между ними и есть появление.
- *
- * `applyTemplate` — единственная функция этого модуля, которая трогает
- * `Segment`. Она ДОБАВЛЯЕТ к сегменту, а не заменяет его: у автора уже
- * могло что-то лежать (см. комментарий самой функции).
+ * Гейт — другое дело: у него свой момент (`TemplateGate.atSeconds`), это
+ * секунда ОСТАНОВКИ. Вопрос выносится на сцену к этой секунде отдельной
+ * механикой (`askOnStage`), и она использует `insertOrPatchSlideAt`.
  */
 import { DEFAULT_TRANSITION_SECONDS, resolveTimeRef } from '@player/core';
 import type { Element, ElementState, Gate, Segment, Slide, TimeRef, Word } from '@player/core';
 
 import { freeId } from './elements.js';
 import { bindOption, setGateKind } from './gates.js';
-import { animationPreset, libraryItem, type AnimationPreset } from './library.js';
+import { libraryItem } from './library.js';
 
 /** Что шаблон кладёт на сцену: элемент из библиотеки со сдвигом и своим текстом. */
 export interface TemplateElement {
@@ -44,10 +38,26 @@ export interface TemplateElement {
   readonly height?: number;
   readonly content?: string;
   readonly style?: Readonly<Record<string, string | number>>;
-  /** id заготовки появления из ANIMATION_PRESETS. undefined — без появления. */
-  readonly preset?: string;
-  /** Когда появляется, секунды от начала сегмента. Не длиннее 3 с (см. applyTemplate). */
-  readonly atSeconds: number;
+  /*
+   * ПОЛЕЙ ПОЯВЛЕНИЯ У ЭЛЕМЕНТА ЗАГОТОВКИ БОЛЬШЕ НЕТ. Решение владельца
+   * 25.08.2026: плитка кладёт ровно то, что на ней нарисовано, одним
+   * кадром — без второго кадра, без ромбика и без анимации.
+   *
+   * Было иначе: почти каждая заготовка объявляла отложенное появление
+   * (0.2 / 0.4 / 0.5 / 0.6 / 0.8 / 1.0 / 1.2 с), и автор, нажав плитку
+   * «Название объяснения», получал вдобавок кадр на 0.5 с и морфинг
+   * на 0.6 с. На плитке не было показано ни одного из трёх: снимок
+   * плитки рисуется по нулевой секунде, где второй текст ещё скрыт.
+   *
+   * Владелец упёрся в это трижды и сказал прямо: «какого хуя, если я
+   * создал слайд с заголовком с первой секунды, то почему подзаголовок
+   * появляется только после него».
+   *
+   * Появление никуда не делось как механика — его включает АВТОР, когда
+   * захочет: разница между соседними кадрами и есть анимация.
+   * У гейта своё `atSeconds` (TemplateGate ниже) и оно остаётся:
+   * это момент ОСТАНОВКИ, а не появление элемента.
+   */
 }
 
 /**
@@ -121,8 +131,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           color: WHITE,
           'text-align': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0,
       },
     ],
   },
@@ -145,8 +153,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           color: WHITE,
           'text-align': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0,
       },
       {
         item: 'text',
@@ -162,8 +168,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           'line-height': '1.5',
           'text-align': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0.6,
       },
     ],
   },
@@ -181,8 +185,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         width: 720,
         height: 640,
         style: { background: PANEL, 'border-radius': '20px' },
-        preset: 'fade-in',
-        atSeconds: 0,
       },
       {
         item: 'shape',
@@ -191,8 +193,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         width: 720,
         height: 640,
         style: { background: PANEL, 'border-radius': '20px' },
-        preset: 'fade-in',
-        atSeconds: 0.2,
       },
       {
         item: 'text',
@@ -202,8 +202,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 120,
         content: 'Вариант A',
         style: { 'font-family': SANS, 'font-size': '44px', 'font-weight': '700', color: WHITE, 'text-align': 'center' },
-        preset: 'fade-in',
-        atSeconds: 0.4,
       },
       {
         item: 'text',
@@ -213,8 +211,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 120,
         content: 'Вариант Б',
         style: { 'font-family': SANS, 'font-size': '44px', 'font-weight': '700', color: WHITE, 'text-align': 'center' },
-        preset: 'fade-in',
-        atSeconds: 0.6,
       },
       {
         item: 'text',
@@ -224,8 +220,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 400,
         content: 'Описание первого варианта.',
         style: { 'font-family': SANS, 'font-size': '28px', color: MUTED, 'line-height': '1.5', 'text-align': 'center' },
-        preset: 'fade-in',
-        atSeconds: 0.8,
       },
       {
         item: 'text',
@@ -235,8 +229,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 400,
         content: 'Описание второго варианта.',
         style: { 'font-family': SANS, 'font-size': '28px', color: MUTED, 'line-height': '1.5', 'text-align': 'center' },
-        preset: 'fade-in',
-        atSeconds: 1,
       },
     ],
   },
@@ -259,8 +251,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           color: WHITE,
           'text-align': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0,
       },
       {
         item: 'text',
@@ -270,8 +260,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 100,
         content: 'Первый пункт.',
         style: { 'font-family': SANS, 'font-size': '36px', color: WHITE, 'text-align': 'center' },
-        preset: 'slide-in-left',
-        atSeconds: 0.4,
       },
       {
         item: 'text',
@@ -281,8 +269,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 100,
         content: 'Второй пункт.',
         style: { 'font-family': SANS, 'font-size': '36px', color: WHITE, 'text-align': 'center' },
-        preset: 'slide-in-left',
-        atSeconds: 0.8,
       },
       {
         item: 'text',
@@ -292,8 +278,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         height: 100,
         content: 'Третий пункт.',
         style: { 'font-family': SANS, 'font-size': '36px', color: WHITE, 'text-align': 'center' },
-        preset: 'slide-in-left',
-        atSeconds: 1.2,
       },
     ],
   },
@@ -316,8 +300,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           color: WHITE,
           'text-align': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0,
       },
       {
         item: 'text',
@@ -337,8 +319,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           'align-items': 'center',
           'justify-content': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0.4,
       },
       {
         item: 'text',
@@ -358,8 +338,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
           'align-items': 'center',
           'justify-content': 'center',
         },
-        preset: 'fade-in',
-        atSeconds: 0.6,
       },
     ],
     // Варианты привязаны к элементам сцены (индексы 1 и 2, ADR-035): зритель
@@ -412,8 +390,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     {
       item: 'text',
@@ -428,8 +404,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: MUTED,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.5,
     },
     ],
   },
@@ -445,7 +419,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
       width: 1920,
       height: 1080,
       style: { background: PANEL, 'border-radius': '0px' },
-      atSeconds: 0.0,
     },
     {
       item: 'text',
@@ -461,8 +434,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.2,
     },
     ],
   },
@@ -486,8 +457,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         'text-align': 'center',
         'line-height': '1.2',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     ],
   },
@@ -511,8 +480,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         'text-align': 'center',
         'line-height': '1.35',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     {
       item: 'text',
@@ -527,8 +494,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: MUTED,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.5,
     },
     ],
   },
@@ -551,8 +516,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: ACCENT_TEXT,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     {
       item: 'text',
@@ -567,8 +530,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: MUTED,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.4,
     },
     ],
   },
@@ -591,8 +552,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     {
       item: 'text',
@@ -607,8 +566,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'line-height': '1.5',
       },
-      preset: 'fade-in',
-      atSeconds: 0.4,
     },
     {
       item: 'text',
@@ -623,8 +580,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'line-height': '1.5',
       },
-      preset: 'fade-in',
-      atSeconds: 0.7,
     },
     ],
   },
@@ -640,8 +595,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
       width: 1100,
       height: 620,
       style: { background: PANEL, 'border-radius': '24px' },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     {
       item: 'text',
@@ -656,8 +609,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: MUTED,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.4,
     },
     ],
   },
@@ -679,8 +630,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'line-height': '1.4',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     {
       item: 'shape',
@@ -689,8 +638,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
       width: 800,
       height: 560,
       style: { background: PANEL, 'border-radius': '24px' },
-      preset: 'fade-in',
-      atSeconds: 0.4,
     },
     ],
   },
@@ -713,8 +660,6 @@ export const SCENE_TEMPLATES: readonly SceneTemplate[] = [
         color: WHITE,
         'text-align': 'center',
       },
-      preset: 'fade-in',
-      atSeconds: 0.0,
     },
     ],
   },
@@ -821,24 +766,6 @@ function insertOrPatchSlideAt(
   return next;
 }
 
-/**
- * Патч состояния «до появления» — накладывается на финальное состояние,
- * чтобы получить состояние элемента на первом слайде сегмента (см. описание
- * заготовок появления в `state/library.ts`). `dx`/`dy` заготовки в патч
- * не входят — они считаются относительно финального `x`/`y`, которого
- * этот патч не знает, и накладываются вызывающим (`applyTemplate`) отдельно.
- */
-function startPatch(preset: AnimationPreset): Partial<ElementState> {
-  const patch: Partial<ElementState> = {};
-  if (preset.hiddenAtStart) patch.visible = false;
-  if (preset.growFrom === 'both') {
-    patch.width = 0;
-    patch.height = 0;
-  } else if (preset.growFrom === 'width') {
-    patch.width = 0;
-  }
-  return patch;
-}
 
 /**
  * Применяет шаблон к сегменту — добавляет элементы, их появление и, если он
@@ -872,76 +799,29 @@ export function applyTemplate(
    * Состояние элементов заготовки ДО их появления. Ложится на КАЖДЫЙ кадр
    * главы, а не только на первый, — см. разбор ниже.
    */
-  const beforeAppearance: Record<string, ElementState> = {};
-  // Момент появления → состояние, которое нужно с этого момента и дальше.
-  const laterPatches = new Map<number, Record<string, ElementState>>();
+  /** Состояния, которые заготовка кладёт на КАЖДЫЙ кадр главы. */
+  const added: Record<string, ElementState> = {};
 
   template.elements.forEach((te, index) => {
     const zIndex = startZ + index;
     const { element, final } = instantiateTemplateElement(te, elements, zIndex, stage);
     elements.push(element);
     newElements.push(element);
-
-    if (te.preset === undefined || te.atSeconds <= 0) {
-      // Без появления или появление прямо на старте: морфить не из чего,
-      // кладём сразу финальное состояние.
-      beforeAppearance[element.id] = final;
-      return;
-    }
-
-    const preset = animationPreset(te.preset);
-    const patch = startPatch(preset);
-    if (preset.dx !== undefined) patch.x = final.x + preset.dx;
-    if (preset.dy !== undefined) patch.y = final.y + preset.dy;
-    beforeAppearance[element.id] = { ...final, ...patch };
-
-    const bucket = laterPatches.get(te.atSeconds) ?? {};
-    bucket[element.id] = final;
-    laterPatches.set(te.atSeconds, bucket);
+    added[element.id] = final;
   });
-
-  const words = segment.audio.words;
 
   /*
    * ЗАГОТОВКА КЛАДЁТ СВОИ ЭЛЕМЕНТЫ НА ВСЕ КАДРЫ ГЛАВЫ, А НЕ НА ПЕРВЫЙ.
    *
-   * Куплено 25.08.2026. Раньше состояния писались только в `slides[0]`,
-   * а кадр появления получал их ПОБОЧНО: он рождается копией предыдущего
-   * кадра, и на пустой главе предыдущим оказывался как раз первый.
-   *
-   * Стоило кадрам появиться раньше заготовки — и элементы не доезжали
-   * никуда. Замер: глава из трёх кадров (0 / 0.5 / 20), нажата плитка
-   * «Заголовок» — `text-3` лёг ТОЛЬКО на кадр 0. То есть заголовок был
-   * виден полсекунды и пропадал навсегда. То же самое давало второе
-   * нажатие любой плитки: кадр появления к тому времени уже существовал.
-   *
-   * Владелец описал это как «полный бред»: на дорожке один ромбик,
-   * до него видно одно, после — другое, и объяснить нечем.
-   *
-   * Элемента НЕТ в состояниях кадра означает «его нет на сцене» (ADR-015),
-   * поэтому «положить на все кадры» — это и есть «элемент на сцене»,
-   * а не оптимизация.
+   * «Элемента нет в состояниях кадра» означает «его нет на сцене»
+   * (ADR-015). Писали раньше только в `slides[0]`, и заготовка, положенная
+   * в главу с готовыми кадрами, исчезала на следующем же: замер 25.08.2026
+   * на трёх кадрах (0 / 0.5 / 20) — элемент лёг только на нулевой.
    */
-  let slides: Slide[] = segment.slides.map((slide) => ({
+  const slides: Slide[] = segment.slides.map((slide) => ({
     ...slide,
-    states: { ...slide.states, ...beforeAppearance },
+    states: { ...slide.states, ...added },
   }));
-
-  /*
-   * Кадры появления — по возрастанию времени. Финальное состояние ложится
-   * не только НА кадр появления, но и на все кадры ПОСЛЕ него: иначе
-   * элемент проявился бы и снова пропал на первом же кадре, который автор
-   * поставил дальше по главе.
-   */
-  for (const atSeconds of [...laterPatches.keys()].sort((a, b) => a - b)) {
-    const patch = laterPatches.get(atSeconds)!;
-    slides = insertOrPatchSlideAt(slides, atSeconds, patch, words);
-    slides = slides.map((slide) => (
-      resolveTimeRef(slide.at, words) >= atSeconds
-        ? { ...slide, states: { ...slide.states, ...patch } }
-        : slide
-    ));
-  }
 
   let gates = segment.gates;
   if (template.gate) {

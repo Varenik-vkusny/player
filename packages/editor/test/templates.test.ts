@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { ProjectSchema, resolveTimeRef, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Project, Segment } from '@player/core';
 
-import { ANIMATION_PRESETS, ELEMENT_LIBRARY } from '../src/state/library.js';
+import { ELEMENT_LIBRARY } from '../src/state/library.js';
 import { historyReducer, initialHistoryState } from '../src/state/editorHistory.js';
 import { applyTemplate, askOnStage, SCENE_TEMPLATES, sceneTemplate, type SceneTemplate } from '../src/state/templates.js';
 import { connect, uncoveredOutcomes } from '../src/state/exits.js';
@@ -154,11 +154,10 @@ describe('SCENE_TEMPLATES: ссылки на библиотеки существ
           expect(ELEMENT_LIBRARY.some((item) => item.id === te.item)).toBe(true);
         });
 
-        if (te.preset !== undefined) {
-          it(`preset «${te.preset}» есть в ANIMATION_PRESETS`, () => {
-            expect(ANIMATION_PRESETS.some((preset) => preset.id === te.preset)).toBe(true);
-          });
-        }
+        /* Проверки «preset заготовки есть в ANIMATION_PRESETS» больше нет:
+           поля `preset` у элемента заготовки не существует с 25.08.2026.
+           Плитка кладёт всё сразу, одним кадром — решение владельца,
+           разбор в комментарии к SceneTemplate.elements. */
       }
     });
   }

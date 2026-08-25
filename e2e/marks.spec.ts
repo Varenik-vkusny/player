@@ -712,9 +712,13 @@ test.describe('перетаскивание метки слайда', () => {
       timeout: 30_000,
     });
 
-    // Заготовка «Обложка» даёт ровно натуру владельца: кадр на нуле
-    // и кадр на 0.5 с, у второго свой ромб.
+    /* Натура владельца: кадр на нуле и второй кадр со своим ромбом.
+       Второй ставим РУКОЙ — с 25.08.2026 заготовки кадров не заводят. */
     await page.getByRole('button', { name: 'Обложка' }).click();
+    const laneBox = await page.getByTestId('marks-lane').boundingBox();
+    if (!laneBox) throw new Error('полосы меток не видно');
+    await page.mouse.click(laneBox.x + laneBox.width * 0.4, laneBox.y + laneBox.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить слайд здесь' }).click();
 
     /* Ссылка на время бывает ДВУХ видов (инвариант №10): секунды или слово
        с офсетом. `timeRefAt` привязывается к слову, когда расшифровка есть,
@@ -738,7 +742,7 @@ test.describe('перетаскивание метки слайда', () => {
     });
 
     const before = await secondsOf();
-    expect(before, 'заготовка не завела второй кадр — тащить нечего').toHaveLength(2);
+    expect(before, 'второй кадр не поставился — тащить нечего').toHaveLength(2);
     expect(before[0]).toBe(0);
 
     const mark = page.locator('[data-testid^="mark-slide-"]').first();

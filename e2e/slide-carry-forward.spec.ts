@@ -39,19 +39,30 @@ test.describe('правка катится вперёд', () => {
     await page.getByRole('button', { name: 'Обложка' }).click();
 
     /*
-     * ПРЕДЫДУЩИЙ ШАГ СОСТОЯЛСЯ, и проверить это обязательно: не примени
-     * заготовка второй кадр — сползать было бы нечему, и тест остался бы
-     * зелёным при полностью выключенном правиле.
+     * Второй кадр ставим РУКОЙ и головку возвращаем в начало.
+     *
+     * С 25.08.2026 заготовки своих кадров не заводят — плитка кладёт всё
+     * сразу (решение владельца). Проверяемое здесь свойство от того, кто
+     * поставил кадр, не зависит: важно, что кадр впереди держит ТО ЖЕ
+     * положение заголовка, что и кадр под головкой.
+     *
+     * Головка ровно в начало полосы: пиксель промаха — это 0.037 с, а метка
+     * накрывает секунду с точностью 0.01, и промах родил бы лишний кадр.
+     */
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.4, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить слайд здесь' }).click();
+    await page.mouse.click(lane.x, lane.y + lane.height * 0.75);
+
+    /*
+     * ПРЕДЫДУЩИЕ ШАГИ СОСТОЯЛИСЬ, и проверить это обязательно: не окажись
+     * второго кадра — сползать было бы нечему, и тест остался бы зелёным
+     * при полностью выключенном правиле.
      */
     const before = await slidesOf(page);
-    expect(before, 'заготовка не завела второй кадр — тесту нечего проверять').toHaveLength(2);
+    expect(before, 'второй кадр не поставился — тесту нечего проверять').toHaveLength(2);
     expect(before[0]!.states['text-1']!.y).toBe(before[1]!.states['text-1']!.y);
-
-    // Второй кадр заготовка завела РАДИ ПОДЗАГОЛОВКА, и это его единственная
-    // работа. Если различие пропадёт, кадр станет пустой копией, и правило
-    // будет проверяться на бессмысленной натуре.
-    expect(before[0]!.states['text-2']!.visible).toBe(false);
-    expect(before[1]!.states['text-2']!.visible).toBe(true);
 
     const title = await page.evaluate(() => {
       const rect = document.querySelector('.ed-stage-scroll [data-id="text-1"]')!.getBoundingClientRect();
@@ -76,41 +87,42 @@ test.describe('правка катится вперёд', () => {
     expect(second, 'на втором кадре заголовок остался на старом месте: он съедет туда при показе')
       .toBe(first);
 
-    // Подзаголовок правку не получал — его появление обязано уцелеть.
-    expect(after[0]!.states['text-2']!.visible).toBe(false);
-    expect(after[1]!.states['text-2']!.visible).toBe(true);
+    // Подзаголовок правку не получал — его положение обязано уцелеть.
+    expect(after[0]!.states['text-2']!.y).toBe(before[0]!.states['text-2']!.y);
+    expect(after[1]!.states['text-2']!.y).toBe(before[1]!.states['text-2']!.y);
   });
 
   test('слайд, поставленный автором, рождается мгновенным — хвоста у метки нет', async ({ page }) => {
     await openSandbox(page);
 
     await page.getByRole('button', { name: 'Обложка' }).click();
-    await expect(page.locator('[data-testid^="mark-slide-"]')).toHaveCount(1);
+    /* Заготовка кадров больше не заводит — ромбов на полосе ноль. */
+    await expect(page.locator('[data-testid^="mark-slide-"]')).toHaveCount(0);
 
-    /*
-     * Хвост рисуется только там, где `morphSeconds > 0` (MarksLane), а тот
-     * равен нулю ровно при `cut` (`morphSecondsFor`). Значит отсутствие узла
-     * хвоста и есть «анимации нет», а не «хвост спрятали стилем».
-     *
-     * У кадра ЗАГОТОВКИ хвост как раз есть и должен быть: заготовка объявила
-     * появление. Он и служит положительным контролем — без него зелень
-     * означала бы «хвосты не рисуются вовсе».
-     */
-    const templateSlide = (await slidesOf(page))[1]!;
-    expect(templateSlide.transition, 'кадр заготовки обязан остаться плавным').toBe('morph');
-    await expect(page.locator(`[data-testid="mark-tail-${templateSlide.id}"]`)).toBeVisible();
-
-    // Теперь ставим свой кадр: правый щелчок по пустому месту дорожки.
     const lane = await page.getByTestId('marks-lane').boundingBox();
     if (!lane) throw new Error('полосы меток не видно');
     await page.mouse.click(lane.x + lane.width * 0.4, lane.y + lane.height * 0.75, { button: 'right' });
     await page.getByRole('menuitem', { name: 'Поставить слайд здесь' }).click();
 
     const slides = await slidesOf(page);
-    expect(slides, 'слайд не поставился — проверять нечего').toHaveLength(3);
-    const mine = slides.find((slide) => slide.id !== 'first' && slide.id !== templateSlide.id)!;
+    expect(slides, 'слайд не поставился — проверять нечего').toHaveLength(2);
+    const mine = slides[1]!;
 
+    /*
+     * Хвост рисуется только там, где morphSeconds > 0 (MarksLane), а тот
+     * равен нулю ровно при cut (morphSecondsFor). Значит отсутствие узла
+     * хвоста и есть «анимации нет», а не «хвост спрятали стилем».
+     */
     expect(mine.transition).toBe('cut');
     await expect(page.locator(`[data-testid="mark-tail-${mine.id}"]`)).toHaveCount(0);
+
+    /*
+     * ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ: включаем автором плавность у ТОЙ ЖЕ метки —
+     * хвост обязан появиться. Без него зелень выше означала бы в том числе
+     * «хвосты не рисуются вовсе», и тест был бы декоративным.
+     */
+    await page.locator(`[data-testid="mark-slide-${mine.id}"]`).click();
+    await page.getByTestId('transition-morph').click();
+    await expect(page.locator(`[data-testid="mark-tail-${mine.id}"]`)).toBeVisible();
   });
 });

@@ -68,6 +68,20 @@ test.describe('шаблоны сцены', () => {
  * теста ниже, каждый на своём пути: повторное нажатие и заготовка поверх
  * уже собранной главы.
  */
+/**
+ * Поставить кадр рукой — меню дорожки, как это делает автор.
+ *
+ * Понадобился 25.08.2026: до этого второй кадр в тестах давала заготовка,
+ * а заготовки его больше не заводят (решение владельца — плитка кладёт всё
+ * сразу). Кадр нужен многим проверкам, и способ должен быть один.
+ */
+async function addSlideByHand(page: Page, at = 0.4): Promise<void> {
+  const lane = await page.getByTestId('marks-lane').boundingBox();
+  if (!lane) throw new Error('полосы меток не видно');
+  await page.mouse.click(lane.x + lane.width * at, lane.y + lane.height * 0.75, { button: 'right' });
+  await page.getByRole('menuitem', { name: 'Поставить слайд здесь' }).click();
+}
+
 test.describe('заготовка поверх уже собранной главы', () => {
   const idsPerSlide = async (page: Page): Promise<string[][]> => page.evaluate(() => {
     const segment = (window as unknown as {
@@ -80,8 +94,13 @@ test.describe('заготовка поверх уже собранной гла�
     await openEditor(page, 'sandbox');
 
     await page.getByRole('button', { name: 'Обложка' }).click();
+    /* Второй кадр ставим РУКОЙ: с 25.08.2026 заготовки кладут всё сразу,
+       одним кадром, и своего кадра больше не заводят. Проверяемое здесь
+       свойство — «элементы доезжают до кадров, которые УЖЕ БЫЛИ», — от
+       того, кто эти кадры поставил, не зависит. */
+    await addSlideByHand(page);
     const afterFirst = await idsPerSlide(page);
-    expect(afterFirst, 'заготовка не завела второй кадр — проверять нечего').toHaveLength(2);
+    expect(afterFirst, 'кадр рукой не поставился — проверять нечего').toHaveLength(2);
 
     await page.getByRole('button', { name: 'Обложка' }).click();
     const afterSecond = await idsPerSlide(page);
@@ -98,11 +117,9 @@ test.describe('заготовка поверх уже собранной гла�
 
     await page.getByRole('button', { name: 'Обложка' }).click();
 
-    // Автор ставит свой кадр дальше по главе — обычное дело.
-    const lane = await page.getByTestId('marks-lane').boundingBox();
-    if (!lane) throw new Error('полосы меток не видно');
-    await page.mouse.click(lane.x + lane.width * 0.4, lane.y + lane.height * 0.75, { button: 'right' });
-    await page.getByRole('menuitem', { name: 'Поставить слайд здесь' }).click();
+    // Автор ставит свои кадры дальше по главе — обычное дело.
+    await addSlideByHand(page, 0.4);
+    await addSlideByHand(page, 0.6);
 
     const before = await idsPerSlide(page);
     expect(before, 'кадров должно стать три').toHaveLength(3);
@@ -141,10 +158,23 @@ test('фигура, положенная автором, остаётся на �
 
   await page.getByRole('button', { name: 'Обложка' }).click();
 
+  await addSlideByHand(page);
+  /* Головку возвращаем в начало: элемент ложится на кадр ПОД ГОЛОВКОЙ
+     и на все следующие, а правый щелчок меню увёл её на 40 %. Без возврата
+     фигура легла бы во второй кадр, и проверка «есть на следующем» стала
+     бы проверкой «есть на самом себе». */
+  const lane = await page.getByTestId('marks-lane').boundingBox();
+  if (!lane) throw new Error('полосы меток не видно');
+  // РОВНО в начало полосы: один пиксель — это 0.037 с при масштабе x1,
+  // а метка накрывает секунду с точностью 0.01. Промах в пиксель родил бы
+  // ТРЕТИЙ кадр на 0.14 с, и тест проверял бы совсем другую натуру
+  // (замерено: головка 0.141, кадров стало три).
+  await page.mouse.click(lane.x, lane.y + lane.height * 0.75);
+
   const before = await page.evaluate(() =>
     (window as unknown as { __project: { segments: { slides: unknown[] }[] } })
       .__project.segments[0]!.slides.length);
-  expect(before, 'заготовка не завела второй кадр — исчезать было бы негде').toBe(2);
+  expect(before, 'кадр рукой не поставился — исчезать было бы негде').toBe(2);
 
   await page.getByTestId('rail-shapes').click();
   await page.getByTestId('insert-shape').click();
