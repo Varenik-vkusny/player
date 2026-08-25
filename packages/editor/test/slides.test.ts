@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { loadProject, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, ElementState, Project, Segment, Slide, TimeRef } from '@player/core';
 
-import { addProblem, addSlide, copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
+import { addProblem, addSlide, setElementState, copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
 import { serializeProject } from '../src/state/save.js';
 
 function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
@@ -418,5 +418,130 @@ describe('addProblem: там, где addSlide бросает, у меню ест
   it('раньше первого слайда — своя причина, а не та же самая', () => {
     expect(addProblem(baseSegment(), seconds(0)))
       .toBe('Раньше первого слайда поставить нельзя: он держит начало главы');
+  });
+});
+
+/**
+ * ПРАВКА КАТИТСЯ ВПЕРЁД — решение владельца 25.08.2026.
+ *
+ * Куплено сюрпризом, который он описал дословно: «поставил заголовок сверху,
+ * чуть-чуть передвинул, и он съехал резко на середину». Замер на пустой
+ * фикстуре, заготовка «Обложка»: автор поднял заголовок на первом кадре
+ * (y 360 → 67.82), а второй кадр — заведённый заготовкой РАДИ ПОДЗАГОЛОВКА —
+ * держал y 360, и плеер честно исполнял разницу как переезд.
+ *
+ * Правило: правка едет по следующим кадрам, пока значение на них СОВПАДАЕТ
+ * с тем, что было до правки, и упирается в первый кадр, где стоит другое.
+ * «Другое» и означает «автор поставил здесь иначе».
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ. Убери вызов `carryForward` — покраснеет первый тест.
+ * Сделай признак общим на всё состояние вместо покойного разбора —
+ * покраснеет тест про разные свойства. Сравнивай ссылками вместо
+ * `sameStateValue` — покраснеет тест про стиль, и ТОЛЬКО он: слайды
+ * рождаются с глубокой копией стиля, ссылки на нём не совпадают никогда.
+ */
+describe('правка катится вперёд, пока значение совпадает', () => {
+  /** Три кадра, элемент везде на x = 0 — то есть значение унаследовано. */
+  function threeSlides(): Segment {
+    const base = baseSegment();
+    return {
+      ...base,
+      slides: [
+        { id: 's1', at: seconds(0), transition: 'cut', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+        { id: 's2', at: seconds(3), transition: 'cut', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+        { id: 's3', at: seconds(6), transition: 'cut', transitionSeconds: 0.6, states: { 'shape-1': state() } },
+      ],
+    };
+  }
+
+  const xs = (segment: Segment): number[] =>
+    segment.slides.map((slide) => slide.states['shape-1']!.x);
+
+  it('случай владельца: правка на первом кадре доезжает до следующего', () => {
+    const before = threeSlides();
+    expect(xs(before), 'фикстура сломана: кадры должны начинаться одинаковыми').toEqual([0, 0, 0]);
+
+    const after = setElementState(before, 's1', 'shape-1', { x: 400 });
+
+    expect(xs(after)).toEqual([400, 400, 400]);
+  });
+
+  it('кадр, где автор поставил своё, останавливает правку — и всё за ним тоже', () => {
+    const base = threeSlides();
+    const slides = base.slides.slice();
+    // Автор намеренно увёл элемент на втором кадре: это и есть анимация.
+    slides[1] = { ...slides[1]!, states: { 'shape-1': state({ x: 900 }) } };
+    const before: Segment = { ...base, slides };
+
+    const after = setElementState(before, 's1', 'shape-1', { x: 400 });
+
+    // Третий кадр НЕ трогается, хотя x на нём совпадал с исходным: за
+    // намеренной правкой автора мы не лезем — иначе анимация «в сторону
+    // и обратно» чинилась бы сама и молча.
+    expect(xs(after)).toEqual([400, 900, 0]);
+  });
+
+  /*
+   * ВОТ ЭТОТ тест и есть про «порознь». Патч из ДВУХ ключей, и кадр впереди
+   * совпадает по одному и расходится по другому: без покойного разбора
+   * доедут либо оба, либо ни одного.
+   *
+   * Соседний тест ниже (про чужой цвет) на этом сломе оставался зелёным
+   * и назывался «порознь» зря: патч в нём из одного ключа, и расходиться
+   * там нечему. Имя ему исправлено на то, что он правда проверяет.
+   */
+  it('в патче из двух свойств доезжает то, которому не мешают', () => {
+    const base = threeSlides();
+    const slides = base.slides.slice();
+    slides[1] = { ...slides[1]!, states: { 'shape-1': state({ y: 999 }) } };
+    const before: Segment = { ...base, slides };
+
+    const after = setElementState(before, 's1', 'shape-1', { x: 400, y: 200 });
+
+    const second = after.slides[1]!.states['shape-1']!;
+    expect(second.x, 'переезд по x не доехал, хотя по x кадр совпадал').toBe(400);
+    expect(second.y, 'переезд по y затёр авторское значение').toBe(999);
+  });
+
+  it('чужое значение в НЕправленом свойстве переезду не мешает', () => {
+    const base = threeSlides();
+    const slides = base.slides.slice();
+    slides[1] = { ...slides[1]!, states: { 'shape-1': state({ style: { color: 'red' } }) } };
+    const before: Segment = { ...base, slides };
+
+    const after = setElementState(before, 's1', 'shape-1', { x: 400 });
+
+    expect(xs(after), 'цвет на втором кадре остановил переезд, хотя правили не цвет').toEqual([400, 400, 400]);
+    expect(after.slides[1]!.states['shape-1']!.style).toEqual({ color: 'red' });
+  });
+
+  it('стиль катится тоже, хотя это вложенный объект', () => {
+    const before = threeSlides();
+
+    const after = setElementState(before, 's1', 'shape-1', { style: { color: 'blue' } });
+
+    expect(after.slides.map((slide) => slide.states['shape-1']!.style))
+      .toEqual([{ color: 'blue' }, { color: 'blue' }, { color: 'blue' }]);
+  });
+
+  it('кадр без элемента останавливает правку: сказать «то же самое» там нечем', () => {
+    const base = threeSlides();
+    const slides = base.slides.slice();
+    slides[1] = { ...slides[1]!, states: {} };
+    const before: Segment = { ...base, slides };
+
+    const after = setElementState(before, 's1', 'shape-1', { x: 400 });
+
+    expect(after.slides[0]!.states['shape-1']!.x).toBe(400);
+    expect(after.slides[1]!.states['shape-1']).toBeUndefined();
+    expect(after.slides[2]!.states['shape-1']!.x, 'правка перепрыгнула через кадр без элемента').toBe(0);
+  });
+
+  it('назад правка не катится', () => {
+    const before = threeSlides();
+
+    const after = setElementState(before, 's2', 'shape-1', { x: 400 });
+
+    expect(xs(after)).toEqual([0, 400, 400]);
   });
 });

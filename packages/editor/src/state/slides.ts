@@ -133,7 +133,26 @@ export function addSlide(segment: Segment, afterSlideId: string, at: TimeRef): S
   const slide: Slide = {
     id: freeId('slide', segment.slides),
     at,
-    transition: 'morph',
+    /*
+     * МГНОВЕННЫЙ, А НЕ МОРФИНГ. Решение владельца 25.08.2026, дословно:
+     * «нахуя вот этот хвостик анимации, если у слайда я ещё не поставил
+     * никакой анимации и её по факту ещё нет».
+     *
+     * Он прав буквально: хвост у метки рисуется от `morphSeconds`, а тот
+     * считается `morphSecondsFor` и равен нулю ровно при `cut`. То есть
+     * хвост был не украшением, а настоящими 0.6 с движения, которых автор
+     * не заказывал, — и именно они превращали правку соседнего кадра
+     * в плавный переезд элемента через полсцены.
+     *
+     * Теперь хвост на дорожке означает ровно одно: «здесь автор поставил
+     * анимацию». Ставится она у метки, панелью «Метка».
+     *
+     * Слайды ЗАГОТОВОК сюда не приходят: у них своё рождение
+     * (`insertOrPatchSlideAt` в state/templates.ts), и там морфинг стоит
+     * намеренно — заготовка объявляет появление (`preset: 'fade-in'`),
+     * а появление это и есть плавное изменение видимости.
+     */
+    transition: 'cut',
     transitionSeconds: DEFAULT_TRANSITION_SECONDS,
     states: cloneStates(anchor.states),
   };
@@ -326,6 +345,24 @@ export function setTransitionSeconds(segment: Segment, slideId: string, transiti
  * Ссылочная целостность: слайды и элементы, которых правка не коснулась,
  * остаются теми же объектами по ссылке.
  */
+/**
+ * Равны ли два значения состояния. `style` — вложенный объект, и сравнение
+ * ссылок на нём даёт «не равны» всегда: слайды рождаются через `cloneStates`,
+ * то есть с ГЛУБОКОЙ копией стиля. Без разбора по ключам правка стиля
+ * не катилась бы вперёд никогда, а правка положения — катилась, и автор
+ * получил бы правило, работающее через раз.
+ */
+function sameStateValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  const keysA = Object.keys(a as object);
+  const keysB = Object.keys(b as object);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every(
+    (key) => (a as Record<string, unknown>)[key] === (b as Record<string, unknown>)[key],
+  );
+}
+
 export function setElementState(
   segment: Segment,
   slideId: string,
@@ -346,12 +383,83 @@ export function setElementState(
   }
 
   const next: ElementState = { ...current, ...patch };
-  const changed = (Object.keys(patch) as (keyof ElementState)[]).some((key) => next[key] !== current[key]);
-  if (!changed) return segment;
+  const changedKeys = (Object.keys(patch) as (keyof ElementState)[])
+    .filter((key) => !sameStateValue(next[key], current[key]));
+  if (changedKeys.length === 0) return segment;
 
   const slides = segment.slides.slice();
   slides[index] = { ...slide, states: { ...slide.states, [elementId]: next } };
+
+  carryForward(slides, index, elementId, current, next, changedKeys);
   return { ...segment, slides };
+}
+
+/**
+ * ПРАВКА КАТИТСЯ ВПЕРЁД. Решение владельца 25.08.2026.
+ *
+ * ЧТО БЫЛО. Слайд — снимок сцены целиком (ADR-015), поэтому у КАЖДОГО слайда
+ * есть значение для каждого элемента. Но значение попадает туда двумя разными
+ * путями: автор его поставил или оно скопировалось при рождении слайда.
+ * Различить их модель не умеет, и оба выглядели одинаково авторскими.
+ *
+ * Отсюда сюрприз, который владелец описал дословно: «поставил заголовок
+ * сверху, чуть-чуть передвинул, и он съехал резко на середину». Замер
+ * на пустой фикстуре, заготовка «Обложка»:
+ *
+ * | кадр | секунда | y заголовка |
+ * |---|---|---|
+ * | first | 0.0 | 67.82 — куда поставил автор |
+ * | slide-1 | 0.5 | 360 — что положила заготовка |
+ *
+ * Второй кадр заготовка завела РАДИ ПОДЗАГОЛОВКА (`visible` false→true),
+ * про заголовок он мнения не имел вовсе. А плеер честно исполнял разницу:
+ * полсекунды заголовок наверху, потом 0.6 с сползания вниз.
+ *
+ * ПРАВИЛО. Правка едет по следующим кадрам, пока значение на них СОВПАДАЕТ
+ * с тем, что было до правки, и упирается в первый кадр, где стоит другое.
+ * «Другое» и означает «автор поставил здесь иначе» — то есть намеренное
+ * движение переживает правку, а унаследованная копия ей уступает.
+ *
+ * ПО КАЖДОМУ СВОЙСТВУ ОТДЕЛЬНО, а не по состоянию целиком. Автор мог
+ * намеренно перекрасить элемент на третьем кадре, не трогая положения:
+ * общий признак остановил бы и переезд тоже, и правка молча не доехала бы
+ * туда, где ей ничего не мешало.
+ *
+ * ЧЕГО ПРАВИЛО НЕ ДЕЛАЕТ. Назад не катится и через кадр, где элемента нет
+ * вовсе, не перепрыгивает: пропуск означает, что элемент оттуда ушёл или
+ * ещё не пришёл, и что там «то же самое», сказать нечем.
+ */
+function carryForward(
+  slides: Slide[],
+  fromIndex: number,
+  elementId: string,
+  before: ElementState,
+  after: ElementState,
+  keys: readonly (keyof ElementState)[],
+): void {
+  const pending = new Set(keys);
+
+  for (let i = fromIndex + 1; i < slides.length && pending.size > 0; i += 1) {
+    const later = slides[i]!;
+    const laterState = later.states[elementId];
+    if (!laterState) return;
+
+    const carry: Record<string, unknown> = {};
+    for (const key of [...pending]) {
+      if (sameStateValue(laterState[key], before[key])) {
+        carry[key] = after[key];
+      } else {
+        // Автор поставил здесь своё — дальше это свойство не едет.
+        pending.delete(key);
+      }
+    }
+
+    if (Object.keys(carry).length === 0) continue;
+    slides[i] = {
+      ...later,
+      states: { ...later.states, [elementId]: { ...laterState, ...carry } as ElementState },
+    };
+  }
 }
 
 /**

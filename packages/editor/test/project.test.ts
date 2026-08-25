@@ -423,7 +423,11 @@ describe('буфер обмена слайдов: copySlide / cutSlide / pasteSl
 
     expect(next.project).toBe(state.project);
     expect(next.slideClipboard).toBeDefined();
-    expect(next.slideClipboard!.transition).toBe('morph');
+    // Буфер несёт переход ИСХОДНОГО слайда, каким бы тот ни был. Раньше
+    // здесь стояло литеральное 'morph' — и тест покраснел 25.08.2026, когда
+    // умолчание сменилось на 'cut', хотя проверял он совсем не умолчание.
+    expect(next.slideClipboard!.transition)
+      .toBe(segmentOf(state.project).slides[1]!.transition);
   });
 
   it('pasteSlide вставляет слайд из буфера и делает его текущим', () => {
@@ -599,9 +603,20 @@ describe('setSlideTransition', () => {
     expect(segmentOf(back.project).slides[1]!.transition).toBe('morph');
   });
 
-  it('новый слайд по умолчанию плавный — дефолт схемы менять не пришлось', () => {
+  /**
+   * ТРЕБОВАНИЕ ИЗМЕНИЛОСЬ 25.08.2026, решение владельца. Раньше тест
+   * назывался «новый слайд по умолчанию плавный» и закреплял морфинг.
+   *
+   * Владелец: «нахуя вот этот хвостик анимации, если у слайда я ещё
+   * не поставил никакой анимации и её по факту ещё нет». Хвост у метки
+   * рисуется от `morphSeconds`, а тот равен нулю ровно при `cut`, — то есть
+   * хвост был настоящими 0.6 с движения, которых никто не заказывал.
+   *
+   * Теперь хвост означает ровно одно: здесь автор поставил анимацию сам.
+   */
+  it('новый слайд рождается МГНОВЕННЫМ: анимацию автор включает сам', () => {
     const { state } = stateWithSecondSlide();
-    expect(segmentOf(state.project).slides[1]!.transition).toBe('morph');
+    expect(segmentOf(state.project).slides[1]!.transition).toBe('cut');
   });
 
   it('соседний слайд остаётся тем же объектом по ссылке', () => {

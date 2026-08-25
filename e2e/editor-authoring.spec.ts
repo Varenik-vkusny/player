@@ -350,13 +350,58 @@ test.describe('слайд рождается при первой правке', 
       );
     expect(Math.abs(bornSeconds - head), 'метка встала не на головку').toBeLessThan(0.01);
 
-    // Главное: НИ ОДИН прежний слайд не тронут. Это и есть §14.9 — до неё
-    // правка ложилась в слайд, чья метка стоит раньше головки.
+    /*
+     * Главное у §14.9: правка НЕ ложится в слайд, чья метка стоит РАНЬШЕ
+     * головки. Именно это до неё и ломалось — правка молча портила картинку
+     * на всём отрезке между метками.
+     *
+     * ТРЕБОВАНИЕ УТОЧНЕНО 25.08.2026. Раньше здесь стояло «ни один прежний
+     * слайд не тронут» — удобная замена настоящему правилу, и она перестала
+     * быть верной: по решению владельца правка КАТИТСЯ ВПЕРЁД на кадры,
+     * которые держали то же значение (`carryForward` в state/slides.ts).
+     * Замер этого падения: `title` на `node-1-slide-11` переехал
+     * (140,130) → (310,240), ровно на жест.
+     *
+     * Поэтому проверяется точнее и строже, чем прежде:
+     *   — кадры ДО рождённого неприкосновенны по ссылке;
+     *   — на кадрах ПОСЛЕ не тронут никто, кроме правленого элемента:
+     *     правка не имеет права расплескаться на соседей по сцене.
+     */
+    const bornIndex = afterFirst.findIndex((slide) => slide.id === born.id);
+    expect(bornIndex, 'рождённого слайда нет в списке').toBeGreaterThanOrEqual(0);
+
     for (const old of before) {
       const same = afterFirst.find((slide) => slide.id === old.id);
-      expect(same?.states, `слайд «${old.id}» изменился, хотя правка шла не в него`)
-        .toBe(old.states);
+      if (!same) throw new Error(`слайд «${old.id}» исчез`);
+      const index = afterFirst.indexOf(same);
+
+      if (index < bornIndex) {
+        expect(same.states, `слайд «${old.id}» ДО головки изменился — это и есть дефект §14.9`)
+          .toBe(old.states);
+        continue;
+      }
+
+      // `states` здесь — JSON-СТРОКА (см. `slidesOf` выше), поэтому сравнение
+      // поэлементно идёт через разбор, а не по ссылкам.
+      const was = JSON.parse(old.states) as Record<string, unknown>;
+      const now = JSON.parse(same.states) as Record<string, unknown>;
+      for (const id of Object.keys(was)) {
+        if (id === 'title') continue;
+        expect(JSON.stringify(now[id]), `на слайде «${old.id}» тронут «${id}», хотя правили «title»`)
+          .toBe(JSON.stringify(was[id]));
+      }
     }
+
+    // Положительный контроль к предыдущему: правка ДОЛЖНА была докатиться
+    // хотя бы до одного кадра впереди. Без него цикл выше остался бы зелёным
+    // и в том случае, если правило не сработало вовсе.
+    const titleOf = (slide: { states: string }): unknown =>
+      (JSON.parse(slide.states) as Record<string, unknown>)['title'];
+    const bornTitle = JSON.stringify(titleOf(born));
+    const carried = afterFirst
+      .slice(bornIndex + 1)
+      .some((slide) => JSON.stringify(titleOf(slide)) === bornTitle);
+    expect(carried, 'правка не докатилась ни до одного кадра впереди').toBe(true);
 
     // И правка действительно записана — на рождённом слайде, а не в никуда.
     const sourceStates = before.map((slide) => slide.states);
