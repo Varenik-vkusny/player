@@ -86,7 +86,9 @@ import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, splitHereProblem,
 import { colorOrphans } from './state/colorOrphans.js';
 import { paletteById } from './state/palettes.js';
 import { propbarStyleFields } from './state/propbar.js';
-import { cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark } from './state/slides.js';
+import {
+  addProblem as slideAddProblem, cutProblem as slideCutProblem, slideAt as slideAtSeconds, slideOnMark,
+} from './state/slides.js';
 import {
   commonStyleValue,
   setStyleValue,
@@ -804,6 +806,13 @@ export function Editor({
    * по-настоящему, здесь нет.
    */
   const currentSlideCutProblem = slideCutProblem(currentSegment, state.currentSlideId);
+
+  /*
+   * Можно ли поставить слайд в секунду головки. Считается ТЕМ ЖЕ правилом,
+   * которым `addSlide` отказывает, — и потому пункт меню не может предложить
+   * действие, которое уронит редактор (см. `addProblem` в state/slides.ts).
+   */
+  const currentAddSlideProblem = slideAddProblem(currentSegment, headTimeRef());
 
   /**
    * Позиция, замороженная на время жеста.
@@ -2984,6 +2993,7 @@ export function Editor({
           slidesOpen={!slidesCollapsed}
           onToggleSlides={() => setSlidesCollapsed((was) => !was)}
           onAddSlideHere={handleAddSlideHere}
+          addSlideProblem={currentAddSlideProblem}
           onRemoveSlide={handleRemoveSlide}
           slideRemoveProblem={(slideId) => slideCutProblem(currentSegment, slideId)}
           onDuplicateSlide={handleDuplicateSlide}

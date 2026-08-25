@@ -198,4 +198,74 @@ test.describe('правая кнопка не двигает объект', () =
 
     expect(after).toBe(before);
   });
+
+  /**
+   * ТО ЖЕ САМОЕ, НО НА РУЧКАХ РАМКИ. Тест выше жил с Сессии 44 и стерёг
+   * ТЕЛО элемента; ручки размера и поворота остались без проверки кнопки
+   * и с ней же дефектом — вскрылось прогоном руками 25.08.2026.
+   *
+   * Замер на фикстуре two-gates: правый нажим на ручке поворота и протяжка
+   * на 90×70 px развернули элемент, бокс 501.7×71.7 стал 116.8×506.1 —
+   * почти четверть оборота. Автор целился в меню.
+   *
+   * Читаем ПОВОРОТ ИЗ ПРОЕКТА, а не бокс из DOM: бокс меняется и от
+   * размера, и от поворота, и совпадение двух правок дало бы зелень
+   * не по той причине.
+   *
+   * Положительный контроль левой кнопкой стоит в том же тесте: без него
+   * зелень означала бы в том числе «поворот сломан целиком».
+   */
+  test('нажатие правой на ручке поворота НЕ поворачивает элемент, левой — поворачивает', async ({
+    page,
+  }) => {
+    await openEditor(page);
+
+    const rotationOf = async (): Promise<number> => page.evaluate(() => {
+      const project = (window as unknown as {
+        __project: { segments: { slides: { states: Record<string, { rotation: number }> }[] }[] };
+      }).__project;
+      return project.segments[0]!.slides[0]!.states['mover']!.rotation;
+    });
+
+    /*
+     * Рамка берётся ЗАНОВО перед каждым жестом. Правый нажим теперь
+     * проваливается в сцену и открывает НАШЕ меню, а закрывающий его
+     * Escape снимает и выделение — рамки с ручками после него нет вовсе,
+     * и левый жест тянул бы пустоту. Тест был бы красным на исправном коде.
+     */
+    const takeGrip = async (): Promise<{ cx: number; cy: number }> => {
+      const center = await centerOf(page, 'mover');
+      await page.mouse.click(center.x, center.y);
+      await expect(page.getByTestId('selection-frame')).toBeVisible();
+      return page.evaluate(() => {
+        const node = document.querySelector('.ed-frame .ed-grip-rotate');
+        if (!node) throw new Error('ручки поворота нет в рамке');
+        const rect = node.getBoundingClientRect();
+        return { cx: rect.x + rect.width / 2, cy: rect.y + rect.height / 2 };
+      });
+    };
+
+    const before = await rotationOf();
+
+    const shakyDrag = async (button: 'left' | 'right'): Promise<void> => {
+      const grip = await takeGrip();
+      await page.mouse.move(grip.cx, grip.cy);
+      await page.mouse.down({ button });
+      for (let step = 1; step <= 6; step += 1) {
+        await page.mouse.move(grip.cx + (90 * step) / 6, grip.cy + (70 * step) / 6);
+      }
+      await page.mouse.up({ button });
+    };
+
+    await shakyDrag('right');
+    expect(await rotationOf(), 'правая кнопка повернула элемент').toBe(before);
+
+    await page.keyboard.press('Escape');
+
+    await shakyDrag('left');
+    expect(
+      await rotationOf(),
+      'левая кнопка перестала поворачивать — зелень выше ничего не значит',
+    ).not.toBe(before);
+  });
 });

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { loadProject, SCHEMA_VERSION, ThemeSchema } from '@player/core';
 import type { Element, ElementState, Project, Segment, Slide, TimeRef } from '@player/core';
 
-import { copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
+import { addProblem, addSlide, copySlideToClipboard, cutProblem, duplicateSlideAt, MARK_HIT_SECONDS, pasteProblem, pasteSlide, removeSlide, setTransition, setTransitionDirection, type SlideClipboard } from '../src/state/slides.js';
 import { serializeProject } from '../src/state/save.js';
 
 function el(id: string, type: Element['type'] = 'shape', content = ''): Element {
@@ -330,5 +330,93 @@ describe('направление перехода: смена приёма не 
     };
 
     expect(() => loadProject(JSON.parse(serializeProject(project)))).not.toThrow();
+  });
+});
+
+/**
+ * Меню не предлагает того, что редьюсер отвергнет.
+ *
+ * КУПЛЕНО ПАДЕНИЕМ РЕДАКТОРА 25.08.2026. Пункт «Поставить слайд здесь» был
+ * единственным в меню дорожки без проверки: он звал `addSlide` вслепую,
+ * и когда на секунде уже стоял слайд, бросок прилетал ИЗНУТРИ редьюсера —
+ * то есть уносил всё дерево редактора, а не одно действие. Владелец описал
+ * это словами «получилось случайно три слайда, после этого я никакой из них
+ * не смог даже удалить»: удалять было нечем, полосы дорожки на экране
+ * больше не существовало.
+ *
+ * УТВЕРЖДЕНИЕ ОДНОСТОРОННЕЕ, И ЭТО НАРОЧНО. `addProblem` строже редьюсера
+ * (см. её комментарий), поэтому равенства между ними быть не должно —
+ * должно быть включение: бросок ⇒ причина. Проверять равенство значило бы
+ * закрепить тестом ровно ту дыру, из-за которой всё и упало.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ. Убери у `addProblem` проверку
+ * занятого места — и на секунде слайда появится бросок без причины. Убери
+ * проверку первого слайда — покраснеет отрицательная секунда. Тождеством
+ * это не является: `addSlide` знает правило отказом, `addProblem` — словами,
+ * и написаны они порознь.
+ *
+ * Якорь берётся так же, как его берёт меню (`handleAddSlideHere`):
+ * последний слайд СТРОГО раньше новой секунды. Это часть проверяемого
+ * утверждения — меню и правило обязаны целиться в одно место.
+ */
+describe('addProblem: там, где addSlide бросает, у меню есть причина', () => {
+  /** Как ставит слайд меню: якорь — последний слайд строго раньше секунды. */
+  function addHere(segment: Segment, at: TimeRef): void {
+    const t = (at as { kind: 'seconds'; t: number }).t;
+    const before = [...segment.slides]
+      .filter((slide) => slideSeconds(slide) < t)
+      .sort((a, b) => slideSeconds(b) - slideSeconds(a))[0];
+    if (!before) throw new Error('Некуда поставить слайд: до этой секунды нет ни одного');
+    addSlide(segment, before.id, at);
+  }
+
+  /* Слайды фикстуры стоят на 0 и 5, дорожка 10 с. Выборка нарочно накрывает
+     обе границы вплотную: занятые секунды, соседние с ними и промежутки. */
+  const sweep = [-1, 0, 0.001, 2.5, 4.999, 5, 5.001, 7.5, 9.9];
+
+  for (const t of sweep) {
+    it(`секунда ${t}: если addSlide отказывает, причина названа`, () => {
+      const segment = baseSegment();
+      const at = seconds(t);
+
+      let threw = false;
+      try {
+        addHere(segment, at);
+      } catch {
+        threw = true;
+      }
+
+      if (threw) expect(addProblem(segment, at)).toBeTypeOf('string');
+    });
+  }
+
+  it('ни одна секунда дорожки не роняет редьюсер молча', () => {
+    const segment = baseSegment();
+    const survivors: number[] = [];
+
+    // Шаг 1 мс — мельче, чем окно MARK_HIT_SECONDS (10 мс), иначе выборка
+    // проскочила бы мимо него и объявила зелень, ничего не проверив.
+    for (let ms = -100; ms <= 10_000; ms += 1) {
+      const at = seconds(ms / 1000);
+      if (addProblem(segment, at) !== undefined) continue;
+      try {
+        addHere(baseSegment(), at);
+      } catch {
+        survivors.push(ms / 1000);
+      }
+    }
+
+    expect(survivors).toEqual([]);
+  });
+
+  it('на занятой секунде причина названа ВРЕМЕНЕМ, тем же текстом, что у «Вставить»', () => {
+    const segment = baseSegment();
+    const at = seconds(5);
+    expect(addProblem(segment, at)).toBe(pasteProblem(segment, at));
+  });
+
+  it('раньше первого слайда — своя причина, а не та же самая', () => {
+    expect(addProblem(baseSegment(), seconds(0)))
+      .toBe('Раньше первого слайда поставить нельзя: он держит начало главы');
   });
 });

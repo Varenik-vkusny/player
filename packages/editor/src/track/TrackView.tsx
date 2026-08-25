@@ -271,6 +271,14 @@ export interface TrackViewProps {
   onCutSlide: () => void;
   onPasteSlide: () => void;
   slideCutProblem: string | undefined;
+  /**
+   * Почему нельзя поставить слайд в секунду головки. `undefined` — можно.
+   *
+   * До 25.08.2026 пункт «Поставить слайд здесь» был ЕДИНСТВЕННЫМ в этом
+   * меню без проверки — и ронял редактор броском изнутри редьюсера,
+   * когда на секунде уже стоял слайд.
+   */
+  addSlideProblem: string | undefined;
   slideDuplicateProblem: string | undefined;
   slidePasteProblem: string | undefined;
 }
@@ -322,6 +330,7 @@ export function TrackView({
   onCutSlide,
   onPasteSlide,
   slideCutProblem,
+  addSlideProblem,
   slideDuplicateProblem,
   slidePasteProblem,
 }: TrackViewProps): ReactElement {
@@ -644,7 +653,13 @@ export function TrackView({
         hint: slideDuplicateProblem,
         onSelect: onDuplicateSlide,
       },
-      { id: 'add-slide', label: 'Поставить слайд здесь', onSelect: onAddSlideHere },
+      {
+        id: 'add-slide',
+        label: 'Поставить слайд здесь',
+        disabled: addSlideProblem !== undefined,
+        hint: addSlideProblem,
+        onSelect: onAddSlideHere,
+      },
       { id: 'add-gate', label: 'Поставить остановку здесь', onSelect: onAddGate },
       {
         /*

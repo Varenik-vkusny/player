@@ -584,3 +584,104 @@ test.describe('близкие метки остаются достижимыми
     ).toEqual([]);
   });
 });
+
+/**
+ * Правая кнопка открывает меню и НЕ двигает метку.
+ *
+ * КУПЛЕНО ЗАМЕРОМ 25.08.2026 на пустой фикстуре. Ромб слайда стоял на
+ * x 577.36; правый щелчок с указателем в 571.36 — то есть в шести пикселях
+ * левее центра, но внутри восемнадцатипиксельного ромба, — переставлял
+ * слайд на 571.36. Сдвиг 6 px = 0.22 с при масштабе ×1 и втрое больше
+ * на вписанном.
+ *
+ * Физика дефекта: `pointerdown` в `MarksLane.handleDown` начинал жест
+ * независимо от кнопки, а первый же `pointermove` коммитил новое время.
+ * Рука человека дрожит на пару пикселей всегда, поэтому промахнуться было
+ * невозможно. Автор жал правую кнопку РАДИ МЕНЮ — чаще всего чтобы слайд
+ * удалить, — и получал молча переставленный слайд: ни ошибки, ни отмены,
+ * правка ложилась в историю как обычная.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ, ЧТОБЫ ТЕСТ ПОКРАСНЕЛ. Сними проверку кнопки
+ * в `handleDown` — и метка снова уедет под указатель. Юнит-тестом это
+ * не выражается вовсе: `event.button` живёт только в настоящем браузере.
+ *
+ * ПОЛОЖИТЕЛЬНЫЙ КОНТРОЛЬ ОБЯЗАТЕЛЕН и стоит в том же тесте: левой кнопкой
+ * та же метка обязана уехать. Без него зелень означала бы в том числе
+ * «перетаскивание меток сломано целиком», и отличить одно от другого
+ * было бы нечем.
+ */
+test.describe('правая кнопка по метке', () => {
+  test('открывает меню, но не переставляет слайд; левая — переставляет', async ({ page }) => {
+    await openEditor(page);
+
+    /* Метка нужна та, что не закрыта соседями: иначе нажатие уедет в чужой
+       узел и тест проверит поведение другой метки. Тот же приём, что
+       в проверке сгустка выше. */
+    const target = await page.evaluate(() => {
+      const view = document.documentElement.getBoundingClientRect();
+      return [...document.querySelectorAll('[data-testid^="mark-slide-"]')]
+        .map((node) => {
+          const rect = node.getBoundingClientRect();
+          return {
+            id: node.getAttribute('data-testid')!,
+            cx: rect.x + rect.width / 2,
+            cy: rect.y + rect.height / 2,
+            w: rect.width,
+          };
+        })
+        .filter((mark) => mark.cx > view.left + 40 && mark.cx < view.right - 40)
+        .find((mark) => {
+          const hit = document.elementFromPoint(mark.cx, mark.cy);
+          return hit instanceof Element && hit.closest('[data-testid]')?.getAttribute('data-testid') === mark.id;
+        });
+    });
+    if (!target) throw new Error('не нашлось метки слайда, достижимой указателем');
+
+    const centreOf = async (): Promise<number> => page.evaluate((id) => {
+      const rect = document.querySelector(`[data-testid="${id}"]`)!.getBoundingClientRect();
+      return rect.x + rect.width / 2;
+    }, target.id);
+
+    const before = await centreOf();
+
+    /*
+     * ЖЕСТ ПИШЕТСЯ ТАК, КАК ЕГО ДЕЛАЕТ РУКА: нажал, дрогнул, отпустил.
+     * `page.mouse.click` не годится — он шлёт `mousemove` ДО нажатия, после
+     * нажатия не двигается вовсе, и метка не уедет даже у сломанного кода.
+     * Проверено сломом 25.08.2026: с `click` тест оставался зелёным при
+     * ПОЛНОСТЬЮ снятой проверке кнопки, то есть не проверял ничего.
+     *
+     * Промах — треть ширины ромба, и ВПРАВО: слева к ромбу примыкает ручка
+     * стыка (`mark-transition-*`), у неё своих пунктов меню нет вовсе,
+     * и промах влево ронял бы тест, обвиняя исправный код.
+     */
+    const missBy = target.w / 3;
+
+    const shakyPress = async (button: 'left' | 'right'): Promise<void> => {
+      await page.mouse.move(before, target.cy);
+      await page.mouse.down({ button });
+      await page.mouse.move(before + missBy, target.cy);
+      await page.mouse.up({ button });
+    };
+
+    await shakyPress('right');
+    await expect(page.getByRole('menuitem', { name: 'Удалить слайд' })).toBeVisible();
+
+    expect(
+      await centreOf(),
+      'правый щелчок переставил слайд под указатель',
+    ).toBeCloseTo(before, 1);
+
+    await page.keyboard.press('Escape');
+
+    // Положительный контроль: тот же жест, тот же промах, отличается ТОЛЬКО
+    // кнопка. Без него зелень выше означала бы в том числе «перетаскивание
+    // меток сломано целиком», и отличить одно от другого было бы нечем.
+    await shakyPress('left');
+
+    expect(
+      await centreOf(),
+      'левая кнопка перестала тянуть метку — зелень выше ничего не значит',
+    ).toBeCloseTo(before + missBy, 0);
+  });
+});
