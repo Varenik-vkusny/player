@@ -868,8 +868,12 @@ export function applyTemplate(
 
   const elements = segment.elements.slice();
   const newElements: Element[] = [];
-  let nextStartStates = startStates;
-  // Момент появления → состояние, которое нужно на слайде в этот момент.
+  /*
+   * Состояние элементов заготовки ДО их появления. Ложится на КАЖДЫЙ кадр
+   * главы, а не только на первый, — см. разбор ниже.
+   */
+  const beforeAppearance: Record<string, ElementState> = {};
+  // Момент появления → состояние, которое нужно с этого момента и дальше.
   const laterPatches = new Map<number, Record<string, ElementState>>();
 
   template.elements.forEach((te, index) => {
@@ -879,9 +883,9 @@ export function applyTemplate(
     newElements.push(element);
 
     if (te.preset === undefined || te.atSeconds <= 0) {
-      // Без появления или появление прямо на старте: слайду на нуле морфить
-      // не из чего, кладём сразу финальное состояние.
-      nextStartStates = { ...nextStartStates, [element.id]: final };
+      // Без появления или появление прямо на старте: морфить не из чего,
+      // кладём сразу финальное состояние.
+      beforeAppearance[element.id] = final;
       return;
     }
 
@@ -889,22 +893,54 @@ export function applyTemplate(
     const patch = startPatch(preset);
     if (preset.dx !== undefined) patch.x = final.x + preset.dx;
     if (preset.dy !== undefined) patch.y = final.y + preset.dy;
-    const start: ElementState = { ...final, ...patch };
-    nextStartStates = { ...nextStartStates, [element.id]: start };
+    beforeAppearance[element.id] = { ...final, ...patch };
 
     const bucket = laterPatches.get(te.atSeconds) ?? {};
     bucket[element.id] = final;
     laterPatches.set(te.atSeconds, bucket);
   });
 
-  let slides = segment.slides.slice();
-  slides[0] = nextStartStates === startStates ? firstSlide : { ...firstSlide, states: nextStartStates };
-
-  // Слайды появления — по возрастанию времени, каждый копией предыдущего
-  // плюс патч элементов, которые появляются именно в этот момент.
   const words = segment.audio.words;
+
+  /*
+   * ЗАГОТОВКА КЛАДЁТ СВОИ ЭЛЕМЕНТЫ НА ВСЕ КАДРЫ ГЛАВЫ, А НЕ НА ПЕРВЫЙ.
+   *
+   * Куплено 25.08.2026. Раньше состояния писались только в `slides[0]`,
+   * а кадр появления получал их ПОБОЧНО: он рождается копией предыдущего
+   * кадра, и на пустой главе предыдущим оказывался как раз первый.
+   *
+   * Стоило кадрам появиться раньше заготовки — и элементы не доезжали
+   * никуда. Замер: глава из трёх кадров (0 / 0.5 / 20), нажата плитка
+   * «Заголовок» — `text-3` лёг ТОЛЬКО на кадр 0. То есть заголовок был
+   * виден полсекунды и пропадал навсегда. То же самое давало второе
+   * нажатие любой плитки: кадр появления к тому времени уже существовал.
+   *
+   * Владелец описал это как «полный бред»: на дорожке один ромбик,
+   * до него видно одно, после — другое, и объяснить нечем.
+   *
+   * Элемента НЕТ в состояниях кадра означает «его нет на сцене» (ADR-015),
+   * поэтому «положить на все кадры» — это и есть «элемент на сцене»,
+   * а не оптимизация.
+   */
+  let slides: Slide[] = segment.slides.map((slide) => ({
+    ...slide,
+    states: { ...slide.states, ...beforeAppearance },
+  }));
+
+  /*
+   * Кадры появления — по возрастанию времени. Финальное состояние ложится
+   * не только НА кадр появления, но и на все кадры ПОСЛЕ него: иначе
+   * элемент проявился бы и снова пропал на первом же кадре, который автор
+   * поставил дальше по главе.
+   */
   for (const atSeconds of [...laterPatches.keys()].sort((a, b) => a - b)) {
-    slides = insertOrPatchSlideAt(slides, atSeconds, laterPatches.get(atSeconds)!, words);
+    const patch = laterPatches.get(atSeconds)!;
+    slides = insertOrPatchSlideAt(slides, atSeconds, patch, words);
+    slides = slides.map((slide) => (
+      resolveTimeRef(slide.at, words) >= atSeconds
+        ? { ...slide, states: { ...slide.states, ...patch } }
+        : slide
+    ));
   }
 
   let gates = segment.gates;

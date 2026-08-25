@@ -691,8 +691,30 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Появление элемента — такая же правка сцены, как и его перемещение:
       // на голом месте дорожки оно тоже рождает слайд.
       const { segment, slideId } = slideForEdit(currentSegment(state), action.at);
+      /*
+       * ЭЛЕМЕНТ ПРИХОДИТ НА СЦЕНУ И ОСТАЁТСЯ НА НЕЙ — то есть ложится
+       * на кадр под головкой И НА ВСЕ КАДРЫ ПОСЛЕ НЕГО.
+       *
+       * Куплено 25.08.2026. Раньше состояние писалось в ОДИН кадр, а
+       * «элемента нет в состояниях кадра» означает «его нет на сцене»
+       * (ADR-015) — значит на следующем кадре элемент попросту исчезал.
+       *
+       * Замер: глава, собранная плиткой «Обложка» (кадры 0 и 0.5), автор
+       * кладёт фигуру на нуле. Было `first: text-1,text-2,shape-1`
+       * и `slide-1: text-1,text-2` — фигура пропадала через полсекунды.
+       * То есть ЛЮБОЙ элемент, положенный автором, исчезал почти сразу,
+       * и это была первая же вещь, которую делает новый автор.
+       *
+       * Назад элемент не кладётся намеренно: головку автор привёл сам,
+       * и «пришёл здесь» — это ровно то, что он показал. Приход элемента
+       * позже начала главы и есть механика появления (ADR-015).
+       */
+      const bornAt = resolveTimeRef(
+        segment.slides.find((slide) => slide.id === slideId)!.at,
+        segment.audio.words,
+      );
       const slides = segment.slides.map((slide) =>
-        slide.id === slideId
+        resolveTimeRef(slide.at, segment.audio.words) >= bornAt
           ? { ...slide, states: { ...slide.states, [action.element.id]: action.state } }
           : slide,
       );
