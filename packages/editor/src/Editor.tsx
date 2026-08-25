@@ -53,7 +53,6 @@ import { Inspector } from './panels/Inspector.js';
 import { InsertPanel } from './panels/InsertPanel.js';
 import { TextStylesPanel } from './panels/TextStylesPanel.js';
 import { MarkPanel, type SelectedMarkData } from './panels/MarkPanel.js';
-import { formatRemovalMessage, statesOnSlides } from './panels/removalMessage.js';
 import { StylesPanel } from './panels/StylesPanel.js';
 import { TemplatesPanel } from './panels/TemplatesPanel.js';
 import { ThemePanel } from './panels/ThemePanel.js';
@@ -563,7 +562,7 @@ export function Editor({
   /**
    * Предупреждение ADR-022: развилка режется без расшифровки, а у части
    * есть текст озвучки — продолжение родится без него (см. `speechLossWarning`,
-   * `state/split.ts`). Состояние вида, как `removalMessage`/`imageDropError`
+   * `state/split.ts`). Состояние вида, как `imageDropError`
    * ниже: считается ДО разреза, потому что после него исходного сегмента уже
    * нет и считать не по чему.
    */
@@ -1205,21 +1204,25 @@ export function Editor({
    * вещей, и это выглядит как баг редактора, а не как его собственное
    * действие. Считается ДО удаления: после него считать уже не по чему.
    */
-  const [removalMessage, setRemovalMessage] = useState<string | undefined>(undefined);
-
+  /*
+   * СООБЩЕНИЯ ОБ УДАЛЕНИИ БОЛЬШЕ НЕТ. Убрано 25.08.2026 по прямому слову
+   * владельца: «это сообщение в принципе никому не нужно».
+   *
+   * Оно докладывало об УСПЕШНОМ действии автора — «удалён элемент, вместе
+   * с ним состояния на N слайдах», — а успешное удаление и так видно
+   * на холсте. При этом оно занимало полосу во всю ширину окна и отжимало
+   * вниз всю рабочую область: на снимке владельца полоса съела около
+   * 215 px, и холст остался высотой в несколько десятков.
+   *
+   * Отказы остались: `imageDropError` рядом — это «почему картинка
+   * не легла», то есть действие, которое НЕ состоялось. О таком молчать
+   * нельзя, а об удавшемся — нужно.
+   */
   const handleDeleteSelected = useCallback(() => {
     const ids = state.selectedIds;
     if (ids.length === 0) return;
-    // Сообщение о каскаде — про один элемент. При пачке оно не собирается:
-    // сложить три отчёта в одну строку значит выдумать формулировку,
-    // которой автор ещё не видел. Пачка удаляется молча, поштучно — с отчётом.
-    setRemovalMessage(
-      ids.length === 1
-        ? formatRemovalMessage(ids[0]!, statesOnSlides(segment.slides, ids[0]!))
-        : undefined,
-    );
     dispatch({ type: 'removeElement', ids });
-  }, [state.selectedIds, segment.slides]);
+  }, [state.selectedIds]);
 
   /**
    * Меню правой кнопки: где оно открыто, либо `undefined` — закрыто.
@@ -1727,7 +1730,7 @@ export function Editor({
   );
 
   /**
-   * Что автор прочитает после разреза. Состояние вида, как `removalMessage`
+   * Что автор прочитает после разреза. Состояние вида, как `imageDropError`
    * и `speechSplitWarning`: считается ДО разреза, потому что после него
    * исходной главы уже нет и считать не по чему.
    */
@@ -2459,11 +2462,6 @@ export function Editor({
         Прятать их в панель было бы хуже прежнего: панель открыта не всегда,
         а картинку бросают на холст, глядя на холст.
       */}
-      {removalMessage ? (
-        <div className="ed-workspace-error" role="status" data-testid="removal-message">
-          {removalMessage}
-        </div>
-      ) : null}
       {imageDropError ? (
         <div className="ed-workspace-error" role="alert" data-testid="image-drop-error">
           {imageDropError}
@@ -2645,10 +2643,25 @@ export function Editor({
                 автооткрытия выше): захлопывать её самой значило бы отбирать
                 у автора место, которое он только что смотрел.
               */
-              <EmptyState
-                title="Метка не выбрана"
-                hint="Выберите остановку или слайд на дорожке — их свойства появятся здесь"
-              />
+              /*
+                ПАНЕЛЬ НЕ ПРЕДЛАГАЕТ НЕВОЗМОЖНОГО. Куплено 25.08.2026:
+                владелец сидел в виде «Ветки», где дорожки на экране НЕТ
+                вовсе, а панель писала «выберите слайд на дорожке». Он
+                честно искал — и написал «какого хуя я всё ещё не могу
+                удалять слайды». Метки слайдов живут только на дорожке,
+                и это единственная дверь к их удалению.
+              */
+              bottomView === 'branches' ? (
+                <EmptyState
+                  title="Дорожка сейчас скрыта"
+                  hint="Метки слайдов и остановок живут на дорожке. Переключите нижнюю зону на «Дорожки» — кнопка слева под холстом. Удалить слайд можно правой кнопкой по его ромбу."
+                />
+              ) : (
+                <EmptyState
+                  title="Метка не выбрана"
+                  hint="Выберите остановку или слайд на дорожке — их свойства появятся здесь. Удалить слайд можно правой кнопкой по его ромбу."
+                />
+              )
             ) : (
               // panelId === 'object': панель свойств выделенного элемента —
               // переехала сюда с правой колонки (Сессия 30, задача «полоса
