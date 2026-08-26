@@ -527,3 +527,130 @@ test.describe('второй вопрос на ветке', () => {
     expect(new Set(titles).size, 'в проекте две главы с одинаковым именем').toBe(titles.length);
   });
 });
+
+/**
+ * ОСТАНОВКА НА САМОМ КОНЦЕ ГЛАВЫ ВСЁ РАВНО СРАБАТЫВАЕТ.
+ *
+ * Куплено 26.08.2026, владелец: «я всё поставил как надо, а в плеере
+ * вопроса не показало, сразу кинуло в вариант».
+ *
+ * Разрез по развилке оставляет метку РОВНО на конце головы — в этом весь
+ * его смысл: ответить и уйти в ветку, не дослушивая. А конец главы плеер
+ * проверял с допуском 0.02 с, то есть РАНЬШЕ, чем `position >= gate.at`.
+ * Метка не срабатывала никогда.
+ *
+ * Замер до починки: глава 24.300 с, метка на 24.300 с, разница 0.000;
+ * плеер доходил до состояния `ended`, вопрос не открывался.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать в `#startFrameLoop` проверку «осталась
+ * неотработанная метка в пределах главы» — плеер снова проскочит мимо.
+ *
+ * Проверяется В ПЛЕЕРЕ, на объяснении, собранном руками в редакторе:
+ * зелёный редактор ничего не говорит о том, что увидит зритель.
+ */
+test.describe('вопрос на конце главы', () => {
+  test('плеер встаёт на нём, а не проскакивает в ветку', async ({ page, context }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.locator('[data-testid^="mark-gate-"]').last().click();
+    await page.getByTestId('stopcard-make-question').click();
+
+    // ПРЕДЫДУЩИЙ ШАГ СОСТОЯЛСЯ, и это несущая проверка: метка обязана стоять
+    // ровно на конце главы — иначе тест охранял бы совсем другой случай.
+    const numbers = await page.evaluate(() => {
+      const project = (window as unknown as {
+        __project: {
+          segments: {
+            audio: { duration: number; words: { start: number }[] };
+            gates: { at: { kind: string; t?: number; wordIndex?: number; offset?: number } }[];
+          }[];
+        };
+      }).__project;
+      const head = project.segments[0]!;
+      const gate = head.gates[0]!;
+      const at = gate.at.kind === 'seconds'
+        ? gate.at.t!
+        : (head.audio.words[gate.at.wordIndex!]?.start ?? -1) + (gate.at.offset ?? 0);
+      return { duration: head.audio.duration, at };
+    });
+    expect(numbers.at, 'метка не на конце главы — проверяется не тот случай')
+      .toBeCloseTo(numbers.duration, 2);
+
+    const [player] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByRole('button', { name: 'Открыть в плеере' }).click(),
+    ]);
+    await player.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
+      timeout: 30_000,
+    });
+
+    // Перемотка стенда — чтобы не сидеть 24 секунды (ADR-036).
+    await player.evaluate(
+      (t) => (window as unknown as { __player: { seek(seconds: number): void } }).__player.seek(t),
+      numbers.duration - 0.8,
+    );
+    await player.getByRole('button', { name: 'Играть' }).click();
+
+    await expect
+      .poll(
+        () => player.evaluate(() => document.getElementById('state')?.textContent),
+        { timeout: 15_000, message: 'плеер не встал на вопросе' },
+      )
+      .toBe('at-gate');
+
+    const position = await player.evaluate(
+      () => (window as unknown as { __player: { positionSeconds: number } }).__player.positionSeconds,
+    );
+    expect(position, 'встал не на метке').toBeCloseTo(numbers.at, 1);
+  });
+});
+
+/**
+ * ОСИРОТЕВШАЯ ВЕТКА УХОДИТ ВМЕСТЕ С ПЕРЕНАПРАВЛЕНИЕМ.
+ *
+ * Владелец, увидев три лишних главы на доске: «почему тут столько веток
+ * посторонних висит… если я выбрал, что вариант ответа — это пересмотр
+ * или переход на уже существующую главу, то этих веток призраков быть
+ * не должно».
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать уборку сирот в `setOptionTarget` —
+ * ветка под перенаправленным ответом снова останется висеть.
+ */
+test.describe('перенаправленный ответ', () => {
+  test('уносит свою ветку, и Ctrl+Z возвращает её', async ({ page }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.locator('[data-testid^="mark-gate-"]').last().click();
+    await page.getByTestId('stopcard-make-question').click();
+
+    const titlesOf = async (): Promise<string[]> => page.evaluate(() =>
+      (window as unknown as { __project: { segments: { title: string }[] } })
+        .__project.segments.map((s) => s.title));
+
+    const before = await titlesOf();
+    expect(before, 'развилка не собралась — призракам неоткуда взяться').toHaveLength(4);
+
+    // Второй ответ — на повтор этой же главы. Его ветка становится ничьей.
+    const headId = await page.evaluate(() =>
+      (window as unknown as { __project: { segments: { id: string }[] } }).__project.segments[0]!.id);
+    await page.getByTestId('stopcard-option-goto-1').selectOption(headId);
+
+    const after = await titlesOf();
+    expect(after, 'ветка под перенаправленным ответом осталась висеть').toHaveLength(3);
+    expect(after, 'убрали не ту ветку').toContain('Вариант 1');
+    expect(after).not.toContain('Вариант 2');
+
+    await page.keyboard.press('Control+z');
+    expect(await titlesOf(), 'Ctrl+Z вернул не всё').toEqual(before);
+  });
+});

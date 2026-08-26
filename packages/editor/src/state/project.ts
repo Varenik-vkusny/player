@@ -1523,9 +1523,38 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // автор оставил бы остальных без выхода, и работа перестала бы
       // сохраняться. Снятие цели (`goto === null`) запасного выхода
       // не требует — правил могло не остаться вовсе.
-      const project = action.goto === null
+      const withFallback = action.goto === null
         ? targeted
         : exits.ensureFallback(targeted, state.currentSegmentId, action.goto);
+
+      /*
+       * ОСИРОТЕВШАЯ ВЕТКА УХОДИТ ВМЕСТЕ С ПЕРЕНАПРАВЛЕНИЕМ.
+       *
+       * Развилка рождает ветку под КАЖДЫЙ ответ ([Р] 13.08.2026). Но стоит
+       * автору сказать «этот ответ ведёт на повтор главы» или «в уже
+       * существующую главу» — ветка, заведённая под него, остаётся главой,
+       * в которую больше никто не заходит.
+       *
+       * Владелец увидел три такие на доске и написал: «почему тут столько
+       * веток посторонних висит… если я выбрал, что вариант ответа — это
+       * пересмотр или переход на уже существующую главу, то этих веток
+       * призраков быть не должно».
+       *
+       * Правило то же, что у `removeGateOption`: сносим только то, куда
+       * после правки не ведёт ни один путь от входа. Ветка могла быть общей
+       * целью двух ответов или целью правила из другой главы — снести её
+       * тогда значило бы сломать чужой путь. Стартовую главу не трогаем
+       * никогда: она обязательна схемой.
+       *
+       * Одним шагом истории: Ctrl+Z возвращает и правило, и главу.
+       */
+      const reachable = exits.reachableFrom(withFallback);
+      let project = withFallback;
+      for (const candidate of withFallback.segments) {
+        if (candidate.id === withFallback.entry) continue;
+        if (reachable.has(candidate.id)) continue;
+        project = exits.removeSegment(project, candidate.id);
+      }
       return { ...state, project };
     }
 
