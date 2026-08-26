@@ -6608,13 +6608,13 @@ var $u = 2, ed = .4, td = class {
 		}
 		let r = (this.#p.get(n.id) ?? 0) + 1;
 		this.#p.set(n.id, r);
-		let i = nd(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o;
-		o = i || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
-		let s = {
+		let i = nd(n, e), a = n.maxAttempts !== null && r >= n.maxAttempts, o = n.config.kind === "choice" && n.config.correctId === null, s;
+		s = i || o || n.onWrong === "continue" ? "continue" : n.onWrong === "inline-explain" || n.onWrong === "inline-hint" || a ? "reveal" : "retry";
+		let c = {
 			gate: n,
 			correct: i,
 			attemptsUsed: r,
-			outcome: o
+			outcome: s
 		};
 		return this.#c = {
 			...this.#c,
@@ -6622,7 +6622,7 @@ var $u = 2, ed = .4, td = class {
 				value: e ?? "",
 				correct: i
 			}
-		}, this.#w.add(n.id), this.#r.onGateResolved?.(s), o === "continue" ? await this.#Y() : o === "reveal" && this.#J(n), s;
+		}, this.#w.add(n.id), this.#r.onGateResolved?.(c), s === "continue" ? await this.#Y() : s === "reveal" && this.#J(n), c;
 	}
 	#J(e) {
 		this.#I(), this.#t.style.pointerEvents = "none";

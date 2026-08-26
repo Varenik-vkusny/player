@@ -718,3 +718,91 @@ test.describe('уборка сирот', () => {
     ).toHaveCount(1);
   });
 });
+
+/**
+ * НАЖАЛ ВАРИАНТ — РАССКАЗ ПОШЁЛ ДАЛЬШЕ.
+ *
+ * Куплено 26.08.2026 прогоном руками: «нажал на вариант и нихрена
+ * не сработало». Плеер оставался на том же вопросе, сколько ни нажимай.
+ *
+ * ПРИЧИНА. С тех пор как метка с вариантами стала развилкой
+ * (`correctId: null`), `isCorrect` не засчитывает НИ ОДИН ответ —
+ * засчитывать не с чем. А `onWrong` у только что поставленной метки равен
+ * `retry`. Каждый ответ считался неверным, и вопрос открывался заново.
+ *
+ * Правильность и ход рассказа — разные вещи: «верного ответа нет» означает
+ * «любой ответ засчитан», а не «любой ответ неверен».
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать `nothingToGrade` из `answer` — плеер снова
+ * встанет в петлю на том же вопросе.
+ *
+ * Проверяется В ПЛЕЕРЕ, настоящим нажатием по фигуре ответа, на объяснении,
+ * собранном руками в редакторе.
+ */
+test.describe('ответ в плеере', () => {
+  test('нажатие по варианту уводит из вопроса, а не открывает его заново', async ({
+    page,
+    context,
+  }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.locator('[data-testid^="mark-gate-"]').last().click();
+    await page.getByTestId('stopcard-make-question').click();
+
+    // Метка обязана быть развилкой с «переспросить» — то самое сочетание,
+    // на котором плеер зацикливался. Без этой проверки тест охранял бы
+    // случай, которого в продукте не бывает.
+    const gate = await page.evaluate(() => {
+      const head = (window as unknown as {
+        __project: { segments: { audio: { duration: number }; gates: { onWrong: string; config: { correctId?: string | null } }[] }[] };
+      }).__project.segments[0]!;
+      return { correctId: head.gates[0]!.config.correctId ?? null, onWrong: head.gates[0]!.onWrong, duration: head.audio.duration };
+    });
+    expect(gate.correctId, 'метка не развилка — проверяется не тот случай').toBeNull();
+    expect(gate.onWrong, 'у метки не «переспросить» — петли бы и не было').toBe('retry');
+
+    const [player] = await Promise.all([
+      context.waitForEvent('page'),
+      page.getByRole('button', { name: 'Открыть в плеере' }).click(),
+    ]);
+    await player.waitForFunction(() => document.documentElement.dataset['ready'] === '1', null, {
+      timeout: 30_000,
+    });
+
+    await player.evaluate(
+      (t) => (window as unknown as { __player: { seek(seconds: number): void } }).__player.seek(t),
+      gate.duration - 0.8,
+    );
+    await player.getByRole('button', { name: 'Играть' }).click();
+
+    await expect
+      .poll(() => player.evaluate(() => document.getElementById('state')?.textContent), {
+        timeout: 15_000,
+        message: 'плеер не дошёл до вопроса',
+      })
+      .toBe('at-gate');
+
+    // Нажимаем по ВИДИМОЙ фигуре ответа, а не зовём answer(): проверка
+    // «вызвался ли обработчик» была бы зелёной и при перекрытой фигуре.
+    const optionId = await player.evaluate(() => {
+      const gates = (window as unknown as {
+        __player: { currentGate?: { config: { options?: { elementId?: string }[] } } };
+      }).__player.currentGate;
+      return gates?.config.options?.[0]?.elementId ?? null;
+    });
+    expect(optionId, 'у варианта нет фигуры на сцене — нажимать не по чему').toBeTruthy();
+    await player.locator(`[data-id="${optionId}"]`).click();
+
+    await expect
+      .poll(() => player.evaluate(() => document.getElementById('state')?.textContent), {
+        timeout: 15_000,
+        message: 'после ответа плеер остался на том же вопросе — петля',
+      })
+      .not.toBe('at-gate');
+  });
+});

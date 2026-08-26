@@ -1032,8 +1032,25 @@ export class Player {
     const correct = isCorrect(gate, value);
     const exhausted = gate.maxAttempts !== null && used >= gate.maxAttempts;
 
+    /*
+     * У РАЗВИЛКИ НЕТ НЕВЕРНОГО ОТВЕТА, ЗНАЧИТ НЕЧЕГО И ПЕРЕСПРАШИВАТЬ.
+     *
+     * Куплено 26.08.2026 прогоном руками. С тех пор как метка с вариантами
+     * стала развилкой (`correctId: null`), `isCorrect` не засчитывает
+     * НИ ОДИН ответ — засчитывать не с чем. А `onWrong` у только что
+     * поставленной метки равен `retry`, и зритель попадал в петлю: нажал
+     * вариант, вопрос открылся заново, и так без конца. Владелец: «нажал
+     * на вариант и нихрена не сработало».
+     *
+     * Правильность и ход рассказа — разные вещи: «верного ответа нет»
+     * означает «любой ответ засчитан», а не «любой ответ неверен».
+     * Поле `correct` при этом остаётся false честно: ничего не проверяли.
+     */
+    const nothingToGrade = gate.config.kind === 'choice' && gate.config.correctId === null;
+
     let outcome: GateAttempt['outcome'];
     if (correct) outcome = 'continue';
+    else if (nothingToGrade) outcome = 'continue';
     else if (gate.onWrong === 'continue') outcome = 'continue';
     else if (gate.onWrong === 'inline-explain' || gate.onWrong === 'inline-hint') outcome = 'reveal';
     else outcome = exhausted ? 'reveal' : 'retry';
