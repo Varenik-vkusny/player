@@ -33,7 +33,7 @@ import {
   ungroupElements as ungroupElementsInSegment,
 } from './groupElements.js';
 import * as exits from './exits.js';
-import { setFork, setOptionLabel, setPrompt } from './gates.js';
+import { removeOption, setFork, setOptionLabel, setPrompt } from './gates.js';
 import { extractToBranch } from './extractBranch.js';
 import { retargetByAlignment, type RetargetReport } from './retarget.js';
 import * as slidesApi from './slides.js';
@@ -311,6 +311,14 @@ export type EditorAction =
   | { readonly type: 'duplicateSlide'; readonly slideId: string; readonly at: TimeRef }
   | { readonly type: 'addGate'; readonly gate: Gate }
   | { readonly type: 'updateGate'; readonly gate: Gate }
+  /**
+   * Убрать вариант ответа ВМЕСТЕ с его веткой.
+   *
+   * Отдельным действием, а не через `updateGate`: правка расходится за
+   * пределы метки — уходит правило выхода, а за ним и глава, в которую
+   * больше некому вести. Панель этого не видит и собрать такое не может.
+   */
+  | { readonly type: 'removeGateOption'; readonly gateId: string; readonly optionId: string }
   /**
    * Стили проекта (схема v12, ADR-029).
    *
@@ -1055,6 +1063,66 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         throw new Error(`Гейт «${action.gate.id}» уже есть: идентификаторы обязаны быть уникальны`);
       }
       return replaceSegment(state, { ...segment, gates: [...segment.gates, action.gate] });
+    }
+
+    case 'removeGateOption': {
+      /*
+       * УБИРАЯ ОТВЕТ, УБИРАЕМ И ЕГО ВЕТКУ. Решение владельца 25.08.2026:
+       * «надо обеспечить, чтобы ветки удалялись, если я удаляю вариант
+       * ответа».
+       *
+       * Раньше уходил только вариант. Правило выхода на него оставалось
+       * висеть — условие про значение, которого больше никто не запишет, —
+       * а ветка оставалась главой, в которую нельзя попасть. Доска «Ветки»
+       * честно помечала её «зритель не попадёт», но убирать автору
+       * приходилось руками, и он про это не знал.
+       *
+       * ГЛАВА СНОСИТСЯ, ТОЛЬКО ЕСЛИ В НЕЁ БОЛЬШЕ НЕКОМУ ВЕСТИ. Ветка могла
+       * быть общей целью двух ответов или целью правила из другой главы —
+       * снести её тогда значило бы сломать чужой путь.
+       *
+       * Всё вместе — ОДИН шаг истории: Ctrl+Z возвращает и вариант,
+       * и правило, и главу. Половина отката отдала бы автору состояние,
+       * которого он не собирал.
+       */
+      const segment = currentSegment(state);
+      const gate = segment.gates.find((candidate) => candidate.id === action.gateId);
+      if (!gate) {
+        throw new Error(`Метки «${action.gateId}» нет в текущей главе: нечего править`);
+      }
+      if (gate.config.kind !== 'choice') {
+        throw new Error(`У метки «${action.gateId}» нет вариантов ответа`);
+      }
+
+      // Правила, ведущие ИМЕННО по этому ответу. Сравниваем по переменной
+      // метки и значению варианта — так же, как их заводит `connect`.
+      const doomed = segment.exit.rules.filter((rule) => rule.when.some(
+        (condition) => condition.kind === 'equals'
+          && condition.variable === gate.recordAs
+          && condition.value === action.optionId,
+      ));
+
+      const withoutOption = replaceAt(
+        segment.gates, gate.id, () => removeOption(gate, action.optionId),
+      );
+      let project = replaceSegment(state, { ...segment, gates: withoutOption }).project;
+
+      for (const rule of doomed) {
+        project = exits.disconnect(project, state.currentSegmentId, rule.id);
+      }
+
+      // Осиротевшие ветки — те, куда после этого не ведёт ни один путь
+      // от входа. Стартовую главу `removeSegment` снести не даст, и это
+      // правильно: она обязательна схемой.
+      const reachable = exits.reachableFrom(project);
+      for (const rule of doomed) {
+        const target = project.segments.find((candidate) => candidate.id === rule.goto);
+        if (!target || target.id === project.entry) continue;
+        if (reachable.has(target.id)) continue;
+        project = exits.removeSegment(project, target.id);
+      }
+
+      return { ...state, project };
     }
 
     case 'updateGate': {

@@ -413,3 +413,69 @@ test.describe('карточка остановки', () => {
     expect(errors).toEqual([]);
   });
 });
+
+/**
+ * УБИРАЯ ОТВЕТ, УБИРАЕМ И ЕГО ВЕТКУ.
+ *
+ * Решение владельца 25.08.2026: «надо обеспечить, чтобы ветки удалялись,
+ * если я удаляю вариант ответа, соответственно чтобы можно было это делать».
+ *
+ * Раньше уходил только вариант. Правило выхода на него оставалось висеть —
+ * условие про значение, которого больше никто не запишет, — а ветка
+ * оставалась главой, в которую нельзя попасть. Доска «Ветки» честно писала
+ * «зритель не попадёт», но убирать приходилось руками, и автор про это
+ * не знал.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: вернуть в кнопку простой `removeOption` вместо
+ * действия `removeGateOption` — ветка и правило останутся висеть.
+ */
+test.describe('убрать ответ', () => {
+  test('уходит вместе со своей веткой и правилом, и Ctrl+Z возвращает всё', async ({ page }) => {
+    const errors = await openEditor(page);
+
+    await addStopAt(page, 0.55);
+    await page.getByTestId('stopcard-make-question').click();
+    // Третий вариант: у выбора обязаны остаться минимум два, иначе кнопка
+    // погашена — и тест проверял бы отказ, а не удаление.
+    await page.getByTestId('stopcard-add-option').click();
+
+    const before = await page.evaluate(() => {
+      const p = (window as unknown as {
+        __project: { segments: { id: string; title: string; exit: { rules: unknown[] } }[] };
+      }).__project;
+      return { глав: p.segments.length, правил: p.segments[0]!.exit.rules.length,
+        имена: p.segments.map((s) => s.title) };
+    });
+    expect(before.правил, 'правил меньше двух — убирать нечего').toBeGreaterThanOrEqual(2);
+
+    const remove = page.getByTestId('stopcard-option-remove-1');
+    await expect(remove, 'кнопки «Убрать ответ» нет в карточке').toBeVisible();
+    await expect(remove, 'кнопка погашена там, где вариантов больше двух').toBeEnabled();
+    await remove.click();
+
+    const after = await page.evaluate(() => {
+      const p = (window as unknown as {
+        __project: { segments: { id: string; title: string; exit: { rules: unknown[] } }[] };
+      }).__project;
+      return { глав: p.segments.length, правил: p.segments[0]!.exit.rules.length };
+    });
+    expect(after.глав, 'ветка осталась висеть главой, в которую некому вести')
+      .toBe(before.глав - 1);
+    expect(after.правил, 'правило на убранный ответ осталось').toBe(before.правил - 1);
+
+    // ОДИН шаг истории: возвращается и вариант, и правило, и глава.
+    await page.keyboard.press('Control+z');
+    const undone = await page.evaluate(() => {
+      const p = (window as unknown as {
+        __project: { segments: { id: string; title: string; exit: { rules: unknown[] } }[] };
+      }).__project;
+      return { глав: p.segments.length, правил: p.segments[0]!.exit.rules.length,
+        имена: p.segments.map((s) => s.title) };
+    });
+    expect(undone.глав, 'Ctrl+Z вернул не всё: главы нет').toBe(before.глав);
+    expect(undone.правил, 'Ctrl+Z вернул не всё: правила нет').toBe(before.правил);
+    expect(undone.имена).toEqual(before.имена);
+
+    expect(errors).toEqual([]);
+  });
+});

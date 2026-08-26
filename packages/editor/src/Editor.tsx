@@ -710,6 +710,22 @@ export function Editor({
     transport.seek(markSeconds(gate.at, segment.words));
   }, [currentSegment, segment.words, transport]);
 
+  /**
+   * Меню правой кнопки по КАРТОЧКЕ ленты слайдов.
+   *
+   * Заведено 25.08.2026: владелец «именно на ромбик обязан нажать».
+   * Ромб на дорожке и карточка в ленте — два вида одного слайда, и действия
+   * над ним обязаны быть у обоих. У ПЕРВОГО кадра ромба нет вовсе (решение
+   * продукта), так что карточка — его единственная дверь.
+   *
+   * Своё состояние, а не общее с меню дорожки: лента и дорожка — соседи
+   * в дереве, а не вложены друг в друга, и общее состояние пришлось бы
+   * поднимать выше обоих ради нуля новой правды.
+   */
+  const [stripMenu, setStripMenu] = useState<
+    { readonly slideId: string; readonly at: { readonly x: number; readonly y: number } } | undefined
+  >(undefined);
+
   const handleRemoveSlide = useCallback((slideId: string) => dispatch({ type: 'removeSlide', slideId }), []);
 
   /**
@@ -2678,6 +2694,10 @@ export function Editor({
                 onRenameVariable={handleRenameVariable}
                 variableProblemOf={variableProblemOf}
                 onRemove={handleRemoveMark}
+                onRemoveOption={(optionId) => {
+                  if (markData.kind !== 'gate') return;
+                  dispatch({ type: 'removeGateOption', gateId: markData.gate.id, optionId });
+                }}
               />
             ) : panelId === 'mark' ? (
               /*
@@ -3019,6 +3039,7 @@ export function Editor({
             stageWidth={segment.stage.width}
             stageHeight={segment.stage.height}
             onSelectSlide={handleSelectSlide}
+            onCardContextMenu={(slideId, at) => setStripMenu({ slideId, at })}
           />
         ) : null}
         <TrackView
@@ -3138,11 +3159,54 @@ export function Editor({
             optionId,
             goto,
           })}
+          onRemoveOption={(optionId) => dispatch({
+            type: 'removeGateOption', gateId: stopCardGate.id, optionId,
+          })}
           onBranchFromOption={(optionId) => dispatch({
             type: 'branchFromOption', gateId: stopCardGate.id, optionId,
           })}
           onCommitHistory={handleCommitHistory}
           onClose={() => setStopCardClosed(true)}
+        />
+      ) : null}
+
+      {/*
+        МЕНЮ КАРТОЧКИ ЛЕНТЫ. Пункты — те же три, что у ромба на дорожке,
+        и метят они в тот же слайд: правый щелчок по карточке сперва её
+        выделяет (`SlideStrip`), поэтому «Копировать» и «Вырезать» действуют
+        на неё, а не на выбранное раньше.
+
+        Причины отказа берутся тем же `slideCutProblem`, что и у ромба:
+        первый кадр главы вырезать нельзя, он держит её начало.
+      */}
+      {stripMenu ? (
+        <ContextMenu
+          at={stripMenu.at}
+          items={[
+            {
+              id: 'slide-copy',
+              label: 'Копировать слайд',
+              shortcut: 'Ctrl+C',
+              onSelect: () => dispatch({ type: 'copySlide', slideId: stripMenu.slideId }),
+            },
+            {
+              id: 'slide-cut',
+              label: 'Вырезать слайд',
+              shortcut: 'Ctrl+X',
+              disabled: slideCutProblem(currentSegment, stripMenu.slideId) !== undefined,
+              hint: slideCutProblem(currentSegment, stripMenu.slideId),
+              onSelect: () => dispatch({ type: 'cutSlide', slideId: stripMenu.slideId }),
+            },
+            {
+              id: 'slide-remove',
+              label: 'Удалить слайд',
+              separatorBefore: true,
+              disabled: slideCutProblem(currentSegment, stripMenu.slideId) !== undefined,
+              hint: slideCutProblem(currentSegment, stripMenu.slideId),
+              onSelect: () => handleRemoveSlide(stripMenu.slideId),
+            },
+          ]}
+          onClose={() => setStripMenu(undefined)}
         />
       ) : null}
     </div>

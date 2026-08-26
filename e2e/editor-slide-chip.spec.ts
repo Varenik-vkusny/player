@@ -244,3 +244,81 @@ test('карточка слайда: видно, какой слайд сейч�
     ).not.toBe(other.opacity);
   }
 });
+
+/**
+ * КАРТОЧКА ЛЕНТЫ — ВТОРАЯ ДВЕРЬ К СЛАЙДУ, наравне с ромбом на дорожке.
+ *
+ * Заведено 25.08.2026 по слову владельца: «важно, чтобы я мог нажать
+ * на карточку слайда во вкладке „Слайды“ и тоже мог удалить его, нажав
+ * правой кнопкой, а то сейчас я именно на ромбик обязан нажать».
+ *
+ * У ПЕРВОГО кадра главы ромба нет вовсе (решение продукта: он не переход,
+ * а начало), так что карточка — его единственная дверь. Раньше меню там
+ * не открывалось, и автор не мог даже УЗНАТЬ, почему первый кадр
+ * не удаляется.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: снять onContextMenu с карточки (`SlideStrip.tsx`)
+ * или не отрисовывать меню в `Editor.tsx` — оба теста ниже покраснеют.
+ */
+/**
+ * Правый щелчок по карточке ленты — С ПРЕДВАРИТЕЛЬНОЙ ПРОКРУТКОЙ.
+ *
+ * Лента прокручивается, и карточка может стоять за краем. Инструмент
+ * докручивает её сам, ПЛАВНО, и события прокрутки продолжают приходить
+ * ещё несколько сотен миллисекунд — а меню закрывается, когда под ним
+ * что-то прокрутилось (`ContextMenu`, разбор Сессии 55). Замер 25.08.2026:
+ * меню у карточки за краем открывалось и тут же захлопывалось.
+ *
+ * Живому автору это не мешает — он жмёт по той карточке, которую видит,
+ * и никакой прокрутки при этом не происходит. Но прибор обязан дать
+ * прокрутке улечься, иначе он покраснеет на исправном коде.
+ */
+async function rightClickCard(page: Page, slideId: string): Promise<void> {
+  const card = page.getByTestId(`strip-card-${slideId}`);
+  await card.scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  const box = await card.boundingBox();
+  if (!box) throw new Error(`карточки «${slideId}» не видно`);
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, { button: 'right' });
+}
+
+test.describe('меню правой кнопки по карточке ленты', () => {
+  const slideIdsOf = async (page: Page): Promise<string[]> => page.evaluate(() =>
+    (window as unknown as { __project: { segments: { slides: { id: string }[] }[] } })
+      .__project.segments[0]!.slides.map((slide) => slide.id));
+
+  test('слайд удаляется с карточки, не трогая ромб', async ({ page }) => {
+    await openEditor(page);
+
+    const before = await slideIdsOf(page);
+    expect(before.length, 'в главе меньше двух кадров — удалять нечего').toBeGreaterThan(1);
+    const target = before[1]!;
+
+    await rightClickCard(page, target);
+
+    const remove = page.getByRole('menuitem', { name: 'Удалить слайд' });
+    await expect(remove, 'меню по карточке не открылось').toBeVisible();
+    await remove.click();
+
+    const after = await slideIdsOf(page);
+    expect(after, 'кадр не удалился').not.toContain(target);
+    expect(after.length).toBe(before.length - 1);
+  });
+
+  test('у первого кадра меню открывается и НАЗЫВАЕТ причину отказа', async ({ page }) => {
+    await openEditor(page);
+
+    const first = (await slideIdsOf(page))[0]!;
+    // У первого кадра ромба на дорожке нет — проверяем это, иначе тест
+    // охранял бы дверь, которая и так не единственная.
+    await expect(page.getByTestId(`mark-slide-${first}`)).toHaveCount(0);
+
+    await rightClickCard(page, first);
+
+    const remove = page.getByRole('menuitem', { name: /Удалить слайд/ });
+    await expect(remove).toBeVisible();
+    await expect(remove, 'первый кадр предложили удалить').toHaveAttribute('aria-disabled', 'true');
+    await expect(remove, 'причина отказа не названа — автор останется в тупике')
+      .toContainText('держит начало главы');
+  });
+});

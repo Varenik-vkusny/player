@@ -86,6 +86,18 @@ export interface SlideStripCardsProps {
   readonly stageWidth: number;
   readonly stageHeight: number;
   readonly onSelectSlide: (id: string) => void;
+  /**
+   * Правый щелчок по КАРТОЧКЕ ленты.
+   *
+   * Заведено 25.08.2026 по слову владельца: «важно, чтобы я мог нажать
+   * на карточку слайда во вкладке „Слайды“ и тоже мог удалить его, нажав
+   * правой кнопкой, а то сейчас я именно на ромбик обязан нажать».
+   *
+   * Ромб на дорожке и карточка в ленте — два вида одного и того же слайда,
+   * и действия над ним обязаны быть доступны у обоих. У первого кадра
+   * ромба нет вовсе, так что карточка — единственная его дверь.
+   */
+  readonly onCardContextMenu: (id: string, at: { x: number; y: number }) => void;
 }
 
 /** Метрики прокрутки — то, из чего строится полоска положения под лентой. */
@@ -117,6 +129,7 @@ export function SlideStripCards({
   stageWidth,
   stageHeight,
   onSelectSlide,
+  onCardContextMenu,
 }: SlideStripCardsProps): ReactElement {
   const stripRef = useRef<HTMLDivElement>(null);
   const [metrics, setMetrics] = useState<ScrollMetrics>(EMPTY_METRICS);
@@ -201,6 +214,7 @@ export function SlideStripCards({
             words={words}
             theme={theme}
             styles={styles}
+            onContextMenu={onCardContextMenu}
             stageWidth={stageWidth}
             stageHeight={stageHeight}
             isCurrent={slide.id === currentSlideId}
@@ -229,6 +243,8 @@ interface SlideCardProps {
   readonly stageHeight: number;
   readonly isCurrent: boolean;
   readonly onSelect: (id: string) => void;
+  /** Правый щелчок по карточке — см. `SlideStripCardsProps.onCardContextMenu`. */
+  readonly onContextMenu: (id: string, at: { x: number; y: number }) => void;
 }
 
 function SlideCard({
@@ -242,6 +258,7 @@ function SlideCard({
   stageHeight,
   isCurrent,
   onSelect,
+  onContextMenu,
 }: SlideCardProps): ReactElement {
   const hostRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
@@ -333,6 +350,23 @@ function SlideCard({
       className={isCurrent ? 'ed-slide-strip-card ed-slide-strip-card-current' : 'ed-slide-strip-card'}
       data-testid={`strip-card-${slide.id}`}
       onClick={() => onSelect(slide.id)}
+      onContextMenu={(event) => {
+        // Браузерное меню гасим сами — иначе оно накроет наше, как и на сцене.
+        event.preventDefault();
+        /*
+         * ВЫДЕЛЯТЬ НЕЛЬЗЯ, и это не мелочь. Выбор карточки плавно
+         * прокручивает к ней ленту (эффект выше), а меню закрывается,
+         * когда под ним что-то прокрутилось (`ContextMenu`, разбор
+         * Сессии 55). Замер 25.08.2026: у карточки, стоявшей за краем
+         * ленты, меню открывалось и тут же закрывалось само — автор
+         * видел мигание и ничего больше.
+         *
+         * Поэтому пункты меню метят в ЭТУ карточку по id, а не в текущий
+         * слайд. Так и правильнее: правый щелчок спрашивает про то, по чему
+         * нажали, а не про то, что было выбрано раньше.
+         */
+        onContextMenu(slide.id, { x: event.clientX, y: event.clientY });
+      }}
     >
       <span className="ed-slide-strip-scene" ref={hostRef} />
       <span className="ed-slide-strip-cap">{summary}</span>

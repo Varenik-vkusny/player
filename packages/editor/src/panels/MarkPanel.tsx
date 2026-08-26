@@ -26,7 +26,6 @@ import {
   addOption,
   bindOption,
   promptOf,
-  removeOption,
   setAccept,
   setCaseSensitive,
   setCorrect,
@@ -108,6 +107,8 @@ export interface MarkPanelProps {
   variableProblemOf: (name: string) => string | undefined;
   /** Действие `removeMark`/`removeSlide` в редьюсере уже есть — эта кнопка его вызывает. */
   onRemove: () => void;
+  /** Убрать вариант ответа вместе с его веткой — см. `ChoiceOptionsEditorProps`. */
+  onRemoveOption: (optionId: string) => void;
   /**
    * Разрезать часть по этой развилке (действие `splitAtGate`).
    *
@@ -146,6 +147,7 @@ export function MarkPanel({
   onRetargetMark,
   gateInsideTransition = false,
   onUpdateGate,
+  onRemoveOption,
   onSetSlideTransition,
   onSetSlideTransitionDirection,
   onSetSlideTransitionSeconds,
@@ -214,6 +216,7 @@ export function MarkPanel({
             gate={mark.gate}
             elements={elements}
             onUpdate={onUpdateGate}
+            onRemoveOption={onRemoveOption}
             onRenameVariable={onRenameVariable}
             variableProblemOf={variableProblemOf}
           />
@@ -418,6 +421,8 @@ interface GatePanelProps {
   gate: Gate;
   elements: readonly Element[];
   onUpdate: (gate: Gate) => void;
+  /** Убрать вариант ответа вместе с его веткой — см. `ChoiceOptionsEditorProps`. */
+  onRemoveOption: (optionId: string) => void;
   onRenameVariable: (name: string) => void;
   variableProblemOf: (name: string) => string | undefined;
   /** Куда ведёт вариант ответа — см. `ChoiceOptionsEditorProps`. */
@@ -428,6 +433,7 @@ function GatePanel({
   gate,
   elements,
   onUpdate,
+  onRemoveOption,
   onRenameVariable,
   variableProblemOf,
 }: GatePanelProps): ReactElement {
@@ -499,6 +505,7 @@ function GatePanel({
           config={config}
           elements={elements}
           onUpdate={onUpdate}
+          onRemoveOption={onRemoveOption}
         />
       )}
 
@@ -538,6 +545,14 @@ interface ChoiceOptionsEditorProps {
   elements: readonly Element[];
   onUpdate: (gate: Gate) => void;
   /**
+   * Убрать вариант ВМЕСТЕ с его веткой.
+   *
+   * Отдельным колбэком, а не через `onUpdate`: правка уходит за пределы
+   * метки — снимается правило выхода, а за ним и глава, в которую больше
+   * некому вести. Собрать это панелью нельзя, она проекта не видит.
+   */
+  onRemoveOption: (optionId: string) => void;
+  /**
    * Куда ведёт вариант. Считается наверху (`Editor.tsx`) функцией
    * `optionDestination`: ей нужен ПРОЕКТ целиком — правило выхода вправе
    * смотреть на переменную, записанную гейтом другой главы, — а сюда
@@ -558,7 +573,7 @@ interface ChoiceOptionsEditorProps {
 const UNBOUND = '';
 
 function ChoiceOptionsEditor({
-  gate, config, elements, onUpdate,
+  gate, config, elements, onUpdate, onRemoveOption,
 }: ChoiceOptionsEditorProps): ReactElement {
   return (
     <div className="ed-insp-block">
@@ -653,7 +668,7 @@ function ChoiceOptionsEditor({
                   ? 'У остановки с выбором должно остаться не меньше двух вариантов'
                   : 'Удалить этот вариант'
               }
-              onClick={() => onUpdate(removeOption(gate, option.id))}
+              onClick={() => onRemoveOption(option.id)}
             >
               Удалить вариант
             </Button>

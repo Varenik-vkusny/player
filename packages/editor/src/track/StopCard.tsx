@@ -129,6 +129,8 @@ export interface StopCardProps {
   readonly onOptionLabelChange: (optionId: string, text: string) => void;
   readonly onOptionTarget: (optionId: string, goto: string | null) => void;
   readonly onBranchFromOption: (optionId: string) => void;
+  /** Убрать вариант ответа вместе с его веткой (`removeGateOption`). */
+  readonly onRemoveOption: (optionId: string) => void;
       readonly onCommitHistory: () => void;
   readonly onClose: () => void;
 }
@@ -147,6 +149,7 @@ export function StopCard({
   onOptionLabelChange,
   onOptionTarget,
   onBranchFromOption,
+  onRemoveOption,
   onCommitHistory,
   onClose,
 }: StopCardProps): ReactElement {
@@ -373,6 +376,30 @@ export function StopCard({
                     Завести ветку под этот ответ
                   </Button>
                 ) : null}
+
+                {/*
+                  УБРАТЬ ОТВЕТ — ЗДЕСЬ ЖЕ, а не только в панели свойств.
+                  Заведено 25.08.2026 по слову владельца: «надо обеспечить,
+                  чтобы ветки удалялись, если я удаляю вариант ответа,
+                  соответственно чтобы можно было это делать».
+
+                  Уходит вариант, его правило и его ветка — одним шагом
+                  истории (редьюсер, `removeGateOption`). Ветка сносится,
+                  только если в неё больше некому вести.
+
+                  Двух вариантов меньше у выбора не бывает: с одним ответом
+                  выбора нет, и кнопка гаснет, называя причину.
+                */}
+                <Button
+                  data-testid={`stopcard-option-remove-${index}`}
+                  disabled={config.options.length <= 2}
+                  title={config.options.length <= 2
+                    ? 'У метки с выбором должно остаться не меньше двух вариантов'
+                    : 'Убрать этот ответ вместе с его веткой'}
+                  onClick={() => onRemoveOption(option.id)}
+                >
+                  Убрать ответ
+                </Button>
               </div>
             );
           })}
