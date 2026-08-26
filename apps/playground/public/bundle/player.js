@@ -6512,6 +6512,11 @@ var $u = 2, ed = .4, td = class {
 				return;
 			}
 			if (this.#z(r), r >= this.#a.duration - .02) {
+				let e = this.#d[this.#f];
+				if (e !== void 0 && e.at <= this.#a.duration) {
+					this.#G();
+					return;
+				}
 				this.#H();
 				return;
 			}
