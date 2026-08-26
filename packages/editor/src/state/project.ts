@@ -633,6 +633,25 @@ function slideForEdit(segment: Segment, at: TimeRef): { segment: Segment; slideI
   return { segment: next, slideId: born.id };
 }
 
+/**
+ * Можно ли снести эту главу молча, когда в неё перестало вести что-либо.
+ *
+ * КУПЛЕНО ПОТЕРЕЙ РАБОТЫ 26.08.2026. Уборка сирот, заведённая накануне,
+ * сносила ВСЁ недостижимое — и съела «— продолжение» вместе с пятью
+ * элементами рассказа, как только автор увёл ОБА ответа на повтор главы.
+ * Владелец: «я потерял конец изначальной главы, как мне в конец попасть».
+ *
+ * Правило теперь узкое: молча уходит только ветка, которой автор
+ * не касался, — такая, какой её родила развилка. Ни элементов, ни меток,
+ * ни второго кадра. Всё остальное остаётся на доске с пометкой
+ * «зритель не попадёт»: предупредить дешевле, чем стереть работу.
+ */
+function isUntouchedBranch(segment: Segment): boolean {
+  return segment.elements.length === 0
+    && segment.gates.length === 0
+    && segment.slides.length <= 1;
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'select': {
@@ -1119,6 +1138,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         const target = project.segments.find((candidate) => candidate.id === rule.goto);
         if (!target || target.id === project.entry) continue;
         if (reachable.has(target.id)) continue;
+        // Только НЕТРОНУТАЯ ветка: в главе с содержимым лежит работа автора,
+        // и убирать её молча нельзя (см. `isUntouchedBranch`).
+        if (!isUntouchedBranch(target)) continue;
         project = exits.removeSegment(project, target.id);
       }
 
@@ -1553,6 +1575,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       for (const candidate of withFallback.segments) {
         if (candidate.id === withFallback.entry) continue;
         if (reachable.has(candidate.id)) continue;
+        // Только НЕТРОНУТАЯ ветка — иначе уборка стирает работу автора.
+        if (!isUntouchedBranch(candidate)) continue;
         project = exits.removeSegment(project, candidate.id);
       }
       return { ...state, project };

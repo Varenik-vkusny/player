@@ -654,3 +654,67 @@ test.describe('перенаправленный ответ', () => {
     expect(await titlesOf(), 'Ctrl+Z вернул не всё').toEqual(before);
   });
 });
+
+/**
+ * УБОРКА СИРОТ НЕ ТРОГАЕТ ГЛАВУ С СОДЕРЖИМЫМ.
+ *
+ * КУПЛЕНО ПОТЕРЕЙ РАБОТЫ 26.08.2026. Уборка, заведённая накануне, сносила
+ * ВСЁ недостижимое — и съела «— продолжение» вместе с пятью элементами
+ * рассказа, как только автор увёл ОБА ответа на повтор главы. Владелец:
+ * «я потерял конец изначальной главы, как мне в конец попасть».
+ *
+ * Замер до починки: «Моя первая глава(эл.5)» — и всё; продолжения с пятью
+ * элементами не стало.
+ *
+ * Правило теперь узкое: молча уходит только ветка, которой автор
+ * не касался. Глава с содержимым остаётся на доске с пометкой «зритель
+ * не попадёт» — предупредить дешевле, чем стереть работу.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать проверку `isUntouchedBranch` —
+ * продолжение снова исчезнет.
+ */
+test.describe('уборка сирот', () => {
+  test('пустые ветки уходят, а глава с содержимым остаётся', async ({ page }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.locator('[data-testid^="mark-gate-"]').last().click();
+    await page.getByTestId('stopcard-make-question').click();
+
+    const chapters = async (): Promise<{ title: string; elements: number }[]> => page.evaluate(() =>
+      (window as unknown as { __project: { segments: { title: string; elements: unknown[] }[] } })
+        .__project.segments.map((s) => ({ title: s.title, elements: s.elements.length })));
+
+    const before = await chapters();
+    expect(before, 'развилка не собралась — проверять нечего').toHaveLength(4);
+    const tail = before.find((c) => c.title.includes('продолжение'));
+    expect(tail?.elements, 'в продолжении нет содержимого — терять было бы нечего')
+      .toBeGreaterThan(0);
+
+    // Оба ответа — на повтор главы. Обе ветки становятся ничьими,
+    // и продолжение тоже перестаёт быть достижимым.
+    const headId = await page.evaluate(() =>
+      (window as unknown as { __project: { segments: { id: string }[] } }).__project.segments[0]!.id);
+    await page.getByTestId('stopcard-option-goto-0').selectOption(headId);
+    await page.getByTestId('stopcard-option-goto-1').selectOption(headId);
+
+    const after = await chapters();
+    // Пустые ветки ушли...
+    expect(after.map((c) => c.title), 'пустая ветка осталась висеть').not.toContain('Вариант 1');
+    expect(after.map((c) => c.title)).not.toContain('Вариант 2');
+    // ...а работа автора цела.
+    const tailAfter = after.find((c) => c.title.includes('продолжение'));
+    expect(tailAfter, 'уборка стёрла конец рассказа вместе с работой автора').toBeTruthy();
+    expect(tailAfter!.elements, 'продолжение осталось, но опустело').toBe(tail!.elements);
+
+    // И дорога в конец есть: продолжение стоит в списке целей.
+    await expect(
+      page.getByTestId('stopcard-option-goto-0').locator('option', { hasText: 'продолжение' }),
+      'в конец больше не попасть — продолжения нет в списке целей',
+    ).toHaveCount(1);
+  });
+});
