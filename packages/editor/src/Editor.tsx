@@ -1636,7 +1636,11 @@ export function Editor({
   }, []);
 
   const handleAddGate = useCallback(() => {
-    const id = freeId('gate', currentSegment.gates);
+    /* Имя метки свободно по ВСЕМУ проекту: оно же имя переменной, а схема
+       запрещает писать одну переменную в двух главах. Замер 26.08.2026:
+       вопрос на ветке получал «gate-1», уже занятое в основной, и работа
+       переставала сохраняться. */
+    const id = freeId('gate', currentProject.segments.flatMap((part) => part.gates));
     const gate = createGate(id, timeRefAt(segment.words, transport.positionSeconds));
     dispatch({ type: 'addGate', gate });
     dispatch({ type: 'select', id: undefined });

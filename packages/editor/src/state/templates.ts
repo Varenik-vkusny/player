@@ -784,6 +784,11 @@ export function applyTemplate(
   template: SceneTemplate,
   segment: Segment,
   stage: { width: number; height: number },
+  /**
+   * Метки ВСЕХ глав проекта — чтобы имя новой было свободно везде, а не
+   * только в этой главе. См. разбор у `freeId('gate', …)` ниже.
+   */
+  takenGates: readonly { readonly id: string }[] = segment.gates,
 ): Segment {
   const firstSlide = segment.slides[0];
   if (!firstSlide) {
@@ -845,7 +850,21 @@ export function applyTemplate(
     // Верным отмечается ВАРИАНТ, а не элемент: имя варианта больше
     // не совпадает с именем фигуры, и ссылка на фигуру тут была бы битой.
     const correctOptionId = `option-${correctIndex}`;
-    const gateId = freeId('gate', segment.gates);
+    /*
+     * ИМЯ МЕТКИ СВОБОДНО ПО ВСЕМУ ПРОЕКТУ, А НЕ ВНУТРИ ГЛАВЫ.
+     *
+     * Куплено 26.08.2026. Схема запрещает писать одну переменную в двух
+     * главах — второй ответ затёр бы первый, и правило выхода стало бы
+     * неоднозначным. А имя переменной у метки это её же `id` (см.
+     * `createGate`), и бралось оно свободным ТОЛЬКО среди меток своей главы.
+     *
+     * Владелец сделал вопрос на ветке и получил красную полосу:
+     *   Переменная «gate-1» записывается дважды: в сегменте «s-1»
+     *   и в «segment-1».
+     * То есть второй вопрос в объяснении ломал сохранение — а второй вопрос
+     * это ровно то, ради чего заводятся ветки.
+     */
+    const gateId = freeId('gate', takenGates);
     const gate: Gate = {
       id: gateId,
       at: { kind: 'seconds', t: atSeconds },

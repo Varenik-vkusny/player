@@ -20,6 +20,8 @@
  */
 import { expect, test, type Page } from '@playwright/test';
 
+import { loadProject } from '@player/core';
+
 /**
  * Заголовки взяты из `fixtures/projects/exit-branch.json` ДОСЛОВНО, а не из
  * `window.__project`. Источник ожидаемого обязан быть другим, чем источник
@@ -458,5 +460,70 @@ test.describe('Б3: ветку можно завести прямо от вар�
       return hit === node || node.contains(hit) ? 'САМА КНОПКА' : (hit?.className ?? 'null');
     });
     expect(onTop).toBe('САМА КНОПКА');
+  });
+});
+
+/**
+ * ВТОРОЙ ВОПРОС — НА ВЕТКЕ. Весь путь, которым владелец шёл 26.08.2026.
+ *
+ * Он сделал развилку, перешёл на ветку «Вариант 1» и задал вопрос там же.
+ * Получил красную полосу и потерял работу — ДВАЖДЫ, по двум разным
+ * причинам, и обе ломали ровно то, ради чего заводятся ветки:
+ *
+ *   1) Переменная «gate-1» записывается дважды: в сегменте «s-1»
+ *      и в «segment-1». Имя метки бралось свободным ВНУТРИ главы,
+ *      а схема требует уникальности по всему проекту.
+ *   2) segments.4.audio.offset: Смещение отсчитывается от начала ФАЙЛА,
+ *      а у немого сегмента файла нет: ожидался 0, получено 2.5.
+ *      Ветки немые по построению, и разрез двигал им окно.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: вернуть `freeId('gate', currentSegment.gates)`
+ * или безусловный сдвиг окна — проект снова перестанет сохраняться.
+ *
+ * Проверяется НАСТОЯЩЕЙ загрузкой схемой, а не отсутствием полосы:
+ * «полосы нет» зелено и тогда, когда её просто не успели показать.
+ */
+test.describe('второй вопрос на ветке', () => {
+  const askHere = async (page: Page): Promise<void> => {
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.5, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.locator('[data-testid^="mark-gate-"]').last().click();
+    await page.getByTestId('stopcard-make-question').click();
+  };
+
+  test('проект остаётся валидным, а переменные разными', async ({ page }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    await askHere(page);
+    const afterFirst = await page.evaluate(() => (window as unknown as {
+      __project: { segments: { id: string }[] };
+    }).__project.segments.length);
+    expect(afterFirst, 'первая развилка не собралась — дальше проверять нечего').toBe(4);
+
+    // Переходим на ветку и спрашиваем там же.
+    await page.getByRole('button', { name: 'Ветки' }).click();
+    await page.getByTestId('chapter-pick-segment-1').click();
+    await page.getByRole('button', { name: 'Дорожки' }).click();
+    await askHere(page);
+
+    const raw = await page.evaluate(() =>
+      JSON.parse(JSON.stringify((window as unknown as { __project: unknown }).__project)));
+    expect(
+      () => loadProject(raw),
+      'проект со вторым вопросом на ветке не грузится — работа не сохранится',
+    ).not.toThrow();
+
+    const project = loadProject(raw);
+    const variables = project.segments.flatMap((s) => s.gates.map((g) => g.recordAs));
+    expect(variables.length, 'вопросов меньше двух — проверять нечего').toBeGreaterThan(1);
+    expect(new Set(variables).size, 'две метки пишут одну переменную').toBe(variables.length);
+
+    // Имена глав тоже обязаны различаться: иначе в списке «и тогда»
+    // встанут две одинаковые строки, и выбрать нужную нечем.
+    const titles = project.segments.map((s) => s.title);
+    expect(new Set(titles).size, 'в проекте две главы с одинаковым именем').toBe(titles.length);
   });
 });

@@ -750,12 +750,64 @@ describe('имя продолжения свободно от занятых', (
 
     expect(made.tail, 'разрез не дал продолжения — проверять нечего').not.toBeNull();
     expect(made.tail!.title, 'продолжение взяло уже занятое имя').not.toBe(base);
-    expect(made.tail!.title).toBe(`${base} 2`);
+    expect(made.tail!.title).toBe(`${base} (2)`);
   });
 
   it('при свободном имени номер НЕ приписывается', () => {
     const made = splitSegmentAtGate(project().segments[0]!, 'g-fork', project().segments);
     const base = `${project().segments[0]!.title} — продолжение`;
     expect(made.tail?.title).toBe(base);
+  });
+});
+
+/**
+ * РАЗРЕЗ НЕМОЙ ГЛАВЫ НЕ ДВИГАЕТ ОКНО.
+ *
+ * «Аудио физически не режется» (product.md §2з [Р]): файл тот же, двигается
+ * окно. Но у немой главы файла нет вовсе, и схема требует от неё offset
+ * ровно 0 — смещение отсчитывается от начала файла, а начала нет.
+ *
+ * Куплено 26.08.2026. Владелец сделал вопрос на ВЕТКЕ — ветки немые
+ * по построению, — разрез дал продолжению offset 2.5, и работа перестала
+ * сохраняться:
+ *   segments.4.audio.offset: Смещение отсчитывается от начала ФАЙЛА,
+ *   а у немого сегмента файла нет: ожидался 0, получено 2.5.
+ * То есть второй вопрос в объяснении ломал сохранение — а второй вопрос
+ * это ровно то, ради чего заводятся ветки.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: вернуть безусловное `offset + at` — немая глава
+ * снова получит ненулевое смещение.
+ */
+describe('разрез немой главы', () => {
+  /*
+   * Немая глава: дорожки нет, значит нет и расшифровки — все метки
+   * в секундах. Оставить ссылки на слова значило бы получить не тот отказ,
+   * ради которого тест писался («транскрипт пуст» вместо смещения).
+   */
+  function silent(): Segment {
+    const base = project().segments[0]!;
+    const toSeconds = <T extends { at: unknown }>(item: T, t: number): T =>
+      ({ ...item, at: { kind: 'seconds', t } } as T);
+    return {
+      ...base,
+      audio: { offset: 0, duration: 5, words: [] },
+      slides: base.slides.map((slide, index) => toSeconds(slide, index === 0 ? 0 : 1)),
+      gates: base.gates.map((gate) => toSeconds(gate, 2)),
+    };
+  }
+
+  it('у продолжения немой главы смещение остаётся нулевым', () => {
+    const made = splitSegmentAtGate(silent(), 'g-fork', [silent()]);
+    expect(made.tail, 'разрез не дал продолжения — проверять нечего').not.toBeNull();
+    expect(made.tail!.audio.offset, 'немая глава получила смещение, которого у неё быть не может')
+      .toBe(0);
+    // Длительность делится и у немой: время у неё есть, нет только файла.
+    expect(made.tail!.audio.duration).toBeGreaterThan(0);
+    expect(made.tail!.audio.duration).toBeLessThan(5);
+  });
+
+  it('у ЗВУЧАЩЕЙ главы окно по-прежнему сдвигается', () => {
+    const made = splitSegmentAtGate(project().segments[0]!, 'g-fork', project().segments);
+    expect(made.tail!.audio.offset, 'окно звучащей главы перестало двигаться').toBeGreaterThan(0);
   });
 });

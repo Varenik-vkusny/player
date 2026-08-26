@@ -1310,7 +1310,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Размер сцены — из meta проекта, той же величины, которой уже
       // пользуется плеер, а не из состояния вида.
       const stage = { width: state.project.meta.stageWidth, height: state.project.meta.stageHeight };
-      const nextSegment = applyTemplateToSegment(action.template, currentSegment(state), stage);
+      // Метки всех глав: имя новой обязано быть свободно по всему проекту
+      // (схема запрещает писать одну переменную дважды).
+      const allGates = state.project.segments.flatMap((part) => part.gates);
+      const nextSegment = applyTemplateToSegment(
+        action.template, currentSegment(state), stage, allGates,
+      );
       return replaceSegment(state, nextSegment);
     }
 
@@ -1594,7 +1599,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const { project: withSegment, segment: created } =
         exits.addSegment(state1.project, state1.currentSegmentId);
       const titled = exits.renameSegment(
-        withSegment, created.id, branches_title(gate, action.optionId, index),
+        withSegment, created.id,
+        // Имена уже занятых глав: ветка не берёт чужое имя.
+        branches_title(gate, action.optionId, index, withSegment.segments),
       );
       const connected = exits.connect(
         titled,

@@ -326,8 +326,25 @@ function cutInTwo(
       speech: tailSpeech,
       audio: {
         ...segment.audio,
-        // Файл тот же, окно сдвинуто: «аудио физически не режется».
-        offset: segment.audio.offset + at,
+        /*
+         * ОКНО СДВИГАЕТСЯ ТОЛЬКО У ЗВУЧАЩЕЙ ГЛАВЫ.
+         *
+         * «Аудио физически не режется» (product.md §2з [Р]): файл тот же,
+         * двигается окно. Но у НЕМОЙ главы файла нет вовсе, и схема требует
+         * от неё offset ровно 0 — смещение отсчитывается от начала файла,
+         * а начала нет.
+         *
+         * Куплено 26.08.2026: владелец сделал вопрос на ветке — ветки немые
+         * по построению, — разрез дал продолжению offset 2.5, и работа
+         * перестала сохраняться:
+         *   segments.4.audio.offset: Смещение отсчитывается от начала ФАЙЛА,
+         *   а у немого сегмента файла нет: ожидался 0, получено 2.5.
+         * То есть второй вопрос в объяснении ломал сохранение — а второй
+         * вопрос это ровно то, ради чего заводятся ветки.
+         *
+         * Длительность делится и у немой: время у неё есть, нет только файла.
+         */
+        offset: segment.audio.src === undefined ? 0 : segment.audio.offset + at,
         duration: tailSeconds,
         words: tailWords,
       },
@@ -381,13 +398,25 @@ function freeTailTitle(
   segment: Segment,
   taken: readonly { readonly title?: string }[],
 ): string {
-  const base = `${segment.title || segment.id} — продолжение`;
+  return freeTitle(`${segment.title || segment.id} — продолжение`, taken);
+}
+
+/**
+ * Свободное имя главы: `base`, а если занято — «base 2», «base 3»…
+ *
+ * Со второго: первое остаётся без числа — приписка «1» к единственному
+ * выглядела бы как обещание второго.
+ *
+ * Вынесено 26.08.2026, когда тот же класс вылез второй раз. Замер: автор
+ * сделал вопрос на ветке, и в проекте появились ДВЕ главы «Вариант 1» —
+ * одна от первой развилки, другая от второй. В списке «и тогда» они стоят
+ * рядом двумя одинаковыми строками, и различить их нечем.
+ */
+function freeTitle(base: string, taken: readonly { readonly title?: string }[]): string {
   const used = new Set(taken.map((candidate) => candidate.title).filter(Boolean));
   if (!used.has(base)) return base;
-  // Со второго: «… продолжение 2». Первое остаётся без числа — приписка «1»
-  // к единственному продолжению выглядела бы как обещание второго.
   for (let n = 2; ; n += 1) {
-    const candidate = `${base} ${n}`;
+    const candidate = `${base} (${n})`;
     if (!used.has(candidate)) return candidate;
   }
 }
@@ -622,9 +651,19 @@ export function splitSegmentAtGate(
 
   // --- ветки: пустые главы, сходящиеся обратно в продолжение ---
 
-  const branches: Segment[] = gate.config.options.map((option, index) => ({
+  /*
+   * Имена веток копятся ПО ХОДУ: две ветки одной развилки могут иметь
+   * одинаковые подписи ответов, и тогда вторая обязана стать «… 2».
+   * Плюс имена, уже занятые в проекте, — иначе вторая развилка заведёт
+   * второй «Вариант 1», и в списке целей встанут две одинаковых строки.
+   */
+  const branchTitles: { title?: string }[] = [...takenSegmentIds];
+  const branches: Segment[] = gate.config.options.map((option, index) => {
+    const title = branches_title(gate, option.id, index, branchTitles);
+    branchTitles.push({ title });
+    return {
     id: branchIds[index]!,
-    title: branches_title(gate, option.id, index),
+    title,
     description: '',
     /*
      * НЕМАЯ дорожка, а не чужая. Своей озвучки у только что созданной ветки
@@ -655,7 +694,8 @@ export function splitSegmentAtGate(
     // ветку в сторону потом, если захочет; обрыв по умолчанию заставил бы его
     // чинить объяснение после каждой развилки.
     exit: { rules: [], default: tailId },
-  }));
+    };
+  });
 
   return { head, branches, tail };
 }
@@ -784,9 +824,16 @@ export function speechLossWarning(segment: Segment, gate: Gate): string | undefi
  * именования дало бы автору две ветки с разными именами от одного варианта,
  * смотря какой дорогой он к ней пришёл.
  */
-export function branches_title(gate: Gate, optionId: string, index: number): string {
-  if (gate.config.kind !== 'choice') return `Ветка ${index + 1}`;
+export function branches_title(
+  gate: Gate,
+  optionId: string,
+  index: number,
+  /** Уже занятые имена глав: ветка не берёт чужое. По умолчанию — никаких. */
+  taken: readonly { readonly title?: string }[] = [],
+): string {
+  const fallback = `Ветка ${index + 1}`;
+  if (gate.config.kind !== 'choice') return freeTitle(fallback, taken);
   const option = gate.config.options.find((candidate) => candidate.id === optionId);
   const label = option?.label.trim();
-  return label && label.length > 0 ? label : `Ветка ${index + 1}`;
+  return freeTitle(label && label.length > 0 ? label : fallback, taken);
 }
