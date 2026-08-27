@@ -17,6 +17,8 @@ export {
   getBlob,
   putBlob,
   blobIdFor,
+  releaseProjectAssets,
+  resolveProjectAssets,
   type AudioSource,
   type StoredAudio,
   type BlobStore,
@@ -61,6 +63,7 @@ export {
 } from './renderers/registry.js';
 export {
   applyElement,
+  applyFonts,
   applyStyles,
   applyTheme,
   applyFit,
@@ -69,6 +72,7 @@ export {
   planPlacement,
   DEFAULT_STAGE_HEIGHT,
   DEFAULT_STAGE_WIDTH,
+  type AssetUrls,
   type Fit,
   type Placement,
   type SlideStates,

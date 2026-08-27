@@ -20,6 +20,17 @@ import { getElementRenderer } from './renderers/registry.js';
 export const DEFAULT_STAGE_WIDTH = 1920;
 export const DEFAULT_STAGE_HEIGHT = 1080;
 
+/**
+ * Ключ байтов (`assetId` картинки, `Font.assetId` шрифта) → адрес, по которому
+ * их можно показать (`blob:`-адрес из `resolveProjectAssets`).
+ *
+ * Отрисовка синхронная, хранилище байтов — асинхронное (IndexedDB). Карта —
+ * единственный мост между ними: она собирается ДО сборки сцены
+ * (`Player.load`, `packages/player/src/assets.ts`) и передаётся внутрь уже
+ * готовой, поэтому сам рендер ни разу не становится async.
+ */
+export type AssetUrls = ReadonlyMap<string, string>;
+
 export interface StageSize {
   width: number;
   height: number;
@@ -152,7 +163,14 @@ export function applyTheme(host: HTMLElement, theme: Theme): void {
 const SCENE_UID = new WeakMap<HTMLElement, string>();
 let sceneCounter = 0;
 
-function sceneUid(host: HTMLElement): string {
+/**
+ * Метка сцены хоста. Экспортирована для рендерера фигур: наконечник стрелки
+ * — `<marker id="...">` — обязан быть уникален на всей СТРАНИЦЕ (не только
+ * в своём `<svg>`), а страница может держать несколько сцен разом (лента
+ * миниатюр — по одной `ScenePreview` на карточку). Тот же приём, что у
+ * `ensureSheet` ниже, а не второй способ разводить идентификаторы.
+ */
+export function sceneUid(host: HTMLElement): string {
   const known = SCENE_UID.get(host);
   if (known !== undefined) return known;
 
@@ -222,10 +240,59 @@ function ensureSheet(uid: string): HTMLStyleElement {
   return sheet;
 }
 
+/**
+ * Лист стилей вшитых шрифтов проекта. Один на ДОКУМЕНТ, а не на сцену.
+ *
+ * `applyFonts` не получает `host`: `@font-face` — не правило сцены, оно
+ * объявляет имя шрифта браузеру целиком, и `font-family` в `ElementState.style`
+ * ссылается на это имя тем же способом что при обычных, не вшитых
+ * гарнитурах. Разводить его по сценам нечем и незачем — два проекта с разными
+ * файлами под одним `family` уже разошлись бы на уровне данных, а не рендера.
+ *
+ * Тот же приём, что `ensureSheet`: найти по метке или завести один раз
+ * в конец `head`. НЕ второй способ добавлять стили в документ.
+ */
+function ensureFontsSheet(): HTMLStyleElement {
+  const found = document.head.querySelector<HTMLStyleElement>('style[data-project-fonts]');
+  if (found) return found;
+
+  const sheet = document.createElement('style');
+  sheet.dataset['projectFonts'] = '';
+  document.head.appendChild(sheet);
+  return sheet;
+}
+
+/**
+ * Объявляет браузеру вшитые импортом шрифты проекта (`Project.fonts`, v17).
+ *
+ * Байты уже разрешены в адреса (`resolveProjectAssets`) — эта функция
+ * синхронная и только пишет `@font-face`. Шрифт, чей `assetId` не нашёлся
+ * в карте (байтов нет в этом браузере), молча пропускается: `@font-face`
+ * без `src` не сделал бы ничего, кроме шума в консоли.
+ *
+ * **Синтетической жирности нет** (ловушка №1 в constraints.md, перемерено
+ * 27.08.2026): вес, объявленный у `@font-face`, ни на что не влияет,
+ * `font-synthesis` можно не трогать. Здесь объявление простое.
+ */
+export function applyFonts(
+  fonts: readonly { family: string; assetId: string }[],
+  assets: AssetUrls,
+): void {
+  const sheet = ensureFontsSheet();
+  const rules: string[] = [];
+  for (const font of fonts) {
+    const url = assets.get(font.assetId);
+    if (url === undefined) continue;
+    rules.push(`@font-face { font-family: "${font.family}"; src: url(${url}); }`);
+  }
+  sheet.textContent = rules.join('\n');
+}
+
 export function applyElement(
   node: HTMLElement,
   element: Element,
   state: ElementState,
+  assets?: AssetUrls,
 ): void {
   node.className = state.styleId === undefined
     ? `scene-el scene-${element.type}`
@@ -295,7 +362,7 @@ export function applyElement(
   if (!renderer) {
     throw new Error(`Для типа элемента «${element.type}» не зарегистрирован DOM-рендерер`);
   }
-  renderer(node, element, state);
+  renderer(node, element, assets);
 }
 
 /** Куда и в каком порядке ставить один узел сцены. */
@@ -392,6 +459,7 @@ export function renderScene(
   elements: readonly Element[],
   states: SlideStates,
   stage: StageSize = { width: DEFAULT_STAGE_WIDTH, height: DEFAULT_STAGE_HEIGHT },
+  assets?: AssetUrls,
 ): Map<string, HTMLElement> {
   host.textContent = '';
   host.style.position = 'relative';
@@ -408,11 +476,17 @@ export function renderScene(
    */
   const nodes = new Map<string, HTMLElement>();
 
+  // Метка сцены — на КАЖДЫЙ узел, не только на хост: рендерер фигуры
+  // (renderers/registry.ts) получает `node`, а не `host`, и без метки
+  // на узле ему неоткуда взять `uid` для уникального id наконечника стрелки.
+  const uid = sceneUid(host);
+
   // Порядок вставки задан порядком в массиве: рендер детерминирован,
   // и одинаковый слайд всегда даёт одинаковый DOM.
   for (const { element, state, parentId } of planPlacement(elements, states)) {
     const node = document.createElement('div');
-    applyElement(node, element, state);
+    node.dataset['scene'] = uid;
+    applyElement(node, element, state, assets);
 
     // Родитель уже в карте: `planPlacement` ставит его раньше детей.
     const parent = parentId === undefined ? host : nodes.get(parentId);

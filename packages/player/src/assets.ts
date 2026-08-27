@@ -19,6 +19,10 @@
  * ни при каком раскладе, поэтому проект хранит ключ, а не байты.
  */
 
+import type { Font } from '@player/core';
+
+import type { AssetUrls } from './render.js';
+
 const DB_NAME = 'player-assets';
 const DB_VERSION = 2;
 const STORE = 'audio';
@@ -273,4 +277,87 @@ export async function resolveAudioUrl(source: AudioSource): Promise<string> {
 /** Отзывает адрес, выданный `resolveAudioUrl`. Для файла с сервера — ничего. */
 export function releaseAudioUrl(source: AudioSource, url: string): void {
   if (source.kind === 'file') URL.revokeObjectURL(url);
+}
+
+/**
+ * Минимум, который подготовка байтов вправду читает у сегмента.
+ *
+ * Объявлен здесь, а не взят готовым типом сегмента, намеренно: у плеера
+ * сегмент — это собранный ВИД со звуком, словами, слайдами и гейтами,
+ * а этому модулю нужны только ссылки на байты. Зависеть от сборки вида
+ * ради одного поля значило бы связать низ с верхом; структурная типизация
+ * TypeScript и так пропустит сюда любой настоящий сегмент.
+ */
+interface ElementsHolder {
+  // `| undefined` явно: при `exactOptionalPropertyTypes` «поля может не быть»
+  // и «поле может быть undefined» — разные типы, и настоящий элемент второй.
+  readonly elements: readonly { readonly assetId?: string | undefined }[];
+}
+
+/**
+ * Готовит адреса ВСЕХ байтов проекта — картинок элементов и вшитых
+ * шрифтов — одной картой. Зовётся ДО сборки сцены (`Player.load`,
+ * `player.ts:411`): отрисовка синхронная, а хранилище байтов — нет,
+ * значит адреса обязаны быть готовы раньше первого кадра, иначе слайд
+ * моргнёт пустыми местами (ловушка №2 задания).
+ *
+ * Обходит элементы ВСЕХ сегментов проекта, а не только текущего: плеер
+ * греет соседние узлы графа (`#warmExitTargets`), и их картинки тоже обязаны
+ * быть готовы к моменту перехода, а не подгружаться в кадре смены сегмента.
+ *
+ * Ключ картинки и ключ шрифта читаются из РАЗНЫХ хранилищ (`images`
+ * и `fonts`) — оба используют один и тот же приём хэша содержимого
+ * (`blobIdFor`), поэтому по одному только `assetId` нельзя понять, в каком
+ * хранилище искать: это решает СХЕМА (`Element.assetId` — только картинка,
+ * `Font.assetId` — только шрифт), а не строка ключа.
+ *
+ * Ключ, для которого в браузере нет байтов (загружены в другом браузере,
+ * стёрты вместе с данными сайта), просто НЕ попадает в карту — молча,
+ * тем же приёмом, что и остальной рендер: рисующий код (`registry.ts`)
+ * сам решает, что показать при отсутствии адреса, а не эта функция.
+ *
+ * **Принимает сегменты и шрифты, а не проект** — и это не вкусовщина.
+ * Обращение к `project.segments` живёт у плеера в одном месте (`allSegments`
+ * в `preview.ts`, он же дверца), иначе дверца перестаёт быть одной; тест
+ * инвариантов ловит нарушение по имени файла. Заодно этот модуль вообще
+ * перестаёт знать форму проекта: он про байты, а не про модель объяснения.
+ * Зовущий пишет `resolveProjectAssets(allSegments(project), project.fonts)`.
+ */
+export async function resolveProjectAssets(
+  segments: readonly ElementsHolder[],
+  fonts: readonly Font[],
+): Promise<AssetUrls> {
+  const imageIds = new Set<string>();
+  for (const segment of segments) {
+    for (const element of segment.elements) {
+      if (element.assetId !== undefined) imageIds.add(element.assetId);
+    }
+  }
+
+  const map = new Map<string, string>();
+
+  await Promise.all([
+    ...[...imageIds].map(async (id) => {
+      const stored = await getBlob('images', id);
+      if (!stored) return;
+      map.set(id, URL.createObjectURL(new Blob([stored.bytes], { type: stored.type || 'image/png' })));
+    }),
+    ...fonts.map(async (font) => {
+      const stored = await getBlob('fonts', font.assetId);
+      if (!stored) return;
+      map.set(font.assetId, URL.createObjectURL(new Blob([stored.bytes], { type: stored.type || 'font/ttf' })));
+    }),
+  ]);
+
+  return map;
+}
+
+/**
+ * Отзывает все адреса, выданные `resolveProjectAssets`. Пара к ней, тем же
+ * приёмом, что `releaseAudioUrl` у `resolveAudioUrl`: удерживаемый
+ * `blob:`-адрес держит байты в памяти, и без парной отдачи плеер копил бы
+ * их на каждом переходе между сегментами (ловушка задания №6).
+ */
+export function releaseProjectAssets(assets: AssetUrls): void {
+  for (const url of assets.values()) URL.revokeObjectURL(url);
 }

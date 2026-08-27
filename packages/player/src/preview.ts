@@ -16,7 +16,7 @@ import { findSegment as findSegment } from '@player/core';
 import type { AuthorSpan, Element, ElementState, Gate, Project, Slide, Style, Theme, Word } from '@player/core';
 
 import type { AudioSource } from './assets.js';
-import { applyElement, applyFit, type Fit, type StageSize, type Zoom } from './render.js';
+import { applyElement, applyFit, type AssetUrls, type Fit, type StageSize, type Zoom } from './render.js';
 import { SlideEngine } from './slides.js';
 
 /**
@@ -149,10 +149,20 @@ export class ScenePreview {
   #engine: SlideEngine;
   #position = 0;
   #destroyed = false;
+  /**
+   * Адреса байтов проекта (схема v17) — картинки и вшитые шрифты.
+   *
+   * Инвариант №5: редактор показывает то же, что и плеер, поэтому карта
+   * едет здесь же, а не заводится вторым путём для StageView/SlideStrip.
+   * Опциональна: предпросмотром пользуются и скриншотные фикстуры без
+   * единого импортированного байта.
+   */
+  #assets: AssetUrls | undefined;
 
-  constructor(host: HTMLElement, segment: Segment) {
+  constructor(host: HTMLElement, segment: Segment, assets?: AssetUrls) {
     this.#host = host;
     this.#segment = segment;
+    this.#assets = assets;
     this.#engine = this.#build(segment);
   }
 
@@ -206,7 +216,7 @@ export class ScenePreview {
     if (!node) {
       throw new Error(`Элемента «${element.id}» нет на сцене: обновлять нечего`);
     }
-    applyElement(node, element, state);
+    applyElement(node, element, state, this.#assets);
   }
 
   /**
@@ -215,10 +225,18 @@ export class ScenePreview {
    * Нужно после структурной правки: добавления или удаления элемента,
    * правки слайдов, смены озвучки. Для перемещения одного элемента
    * это слишком крупный молоток — есть updateElement.
+   *
+   * `assets` — необязательный: адреса байтов обычно приходят раз при
+   * загрузке проекта и живут дольше отдельной структурной правки. Аргумент
+   * нужен ровно на случай, когда карта разрешилась ПОСЛЕ первой сборки
+   * (байты — асинхронное хранилище, сцена — синхронная, ловушка №2
+   * задания) или автор только что импортировал новую картинку.
+   * Опущен — прежняя карта остаётся в силе.
    */
-  rebuild(segment: Segment): void {
+  rebuild(segment: Segment, assets?: AssetUrls): void {
     this.#assertAlive();
     this.#segment = segment;
+    if (assets !== undefined) this.#assets = assets;
     this.#engine.destroy();
     this.#engine = this.#build(segment);
     this.#engine.renderAt(this.#position);
@@ -250,6 +268,11 @@ export class ScenePreview {
       slides: segment.slides,
       words: segment.words,
       stage: segment.stage,
+      // Разворачивается условно, а не пишется `assets: this.#assets`: при
+      // `exactOptionalPropertyTypes` явный `undefined` в необязательное поле
+      // запрещён. Подставлять пустую карту вместо этого нельзя — «карты нет»
+      // и «карта пуста» разные состояния, и разница ещё пригодится.
+      ...(this.#assets === undefined ? {} : { assets: this.#assets }),
     });
   }
 

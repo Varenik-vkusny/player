@@ -42,7 +42,7 @@ import {
 } from 'react';
 
 import type { Element, ElementState, Slide } from '@player/core';
-import { applyTheme, fitStage, ScenePreview, type Segment, type Zoom } from '@player/player';
+import { applyTheme, fitStage, ScenePreview, type AssetUrls, type Segment, type Zoom } from '@player/player';
 
 import {
   boxToScreen,
@@ -178,6 +178,18 @@ export interface StageViewProps {
   onContextMenu?: (elementId: string | undefined, at: { x: number; y: number }) => void;
   /** Файл, брошенный на сцену. Что с ним делать (кодировать, вставлять) — забота Editor.tsx. */
   onImageDrop?: (file: File) => void;
+  /**
+   * Адреса байтов картинок и шрифтов, уже разрешённые из хранилища.
+   *
+   * Нужны здесь по инварианту №5: рисование одно на плеер и редактор,
+   * значит автор обязан видеть импортированную картинку у себя, а не
+   * пустое место. Разрешает их Editor.tsx один раз на проект — хранилище
+   * асинхронное, а отрисовка сцены синхронная.
+   */
+  // `| undefined` явно: при `exactOptionalPropertyTypes` «свойства нет»
+  // и «свойство равно undefined» — разные типы, а сюда приходит второе
+  // (карта появляется позже первой отрисовки).
+  assets?: AssetUrls | undefined;
   onReady?: (preview: ScenePreview | null) => void;
   /**
    * Левая и средняя группы нижней полосы окна.
@@ -300,6 +312,7 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     onContextMenu,
     onImageDrop,
     onReady,
+    assets,
     stripLeft,
     stripCenter,
   }: StageViewProps,
@@ -324,6 +337,17 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
   /* Подложка листа — см. .ed-scene-backdrop в styles.ts. */
   const backdropRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<ScenePreview | null>(null);
+  /*
+   * Адреса байтов — через ссылку, а не прямо из свойства.
+   *
+   * Сцена собирается один раз в useLayoutEffect без зависимости от адресов:
+   * добавить их в зависимости значило бы пересобирать всю сцену каждый раз,
+   * когда карта пришла из хранилища. А приходит она ПОЗЖЕ первой отрисовки —
+   * хранилище асинхронное. Поэтому сборка читает последнее известное
+   * значение отсюда, а появление адресов обрабатывает отдельный эффект ниже.
+   */
+  const assetsRef = useRef(assets);
+  assetsRef.current = assets;
   const renderedStatesRef = useRef<Readonly<Record<string, ElementState>>>({});
   /*
    * Какими элементы были нарисованы в прошлый раз — ПО ССЫЛКЕ на объект.
@@ -657,7 +681,10 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     const { host, stage } = requireNodes();
     const built = stageSegmentRef.current;
 
-    const preview = new ScenePreview(stage, built);
+    // Адреса байтов идут в ScenePreview третьим доводом, а не применяются
+    // отдельным проходом: рисует один и тот же код, что и у плеера
+    // (инвариант №5), и второй путь подачи картинок разъехался бы с первым.
+    const preview = new ScenePreview(stage, built, assetsRef.current);
     previewRef.current = preview;
     renderedStatesRef.current = built.slides[0]!.states;
     renderedElementsRef.current = elements;
@@ -703,6 +730,20 @@ export const StageView = forwardRef<StageViewHandle, StageViewProps>(function St
     // с выделением, а пересобирать сцену на смену выделения незачем.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [structureKey, requireNodes, onReady]);
+
+  /*
+   * Адреса байтов приходят ПОЗЖЕ первой отрисовки: хранилище асинхронное,
+   * а сцена собирается сразу. Без этого эффекта автор, открывший работу
+   * с импортированной презентацией, видел бы пустые места на месте картинок
+   * до первой структурной правки — и решил бы, что импорт сломался.
+   *
+   * `rebuild` с тем же сегментом, а не полная пересборка: сцена уже стоит,
+   * меняется только карта адресов.
+   */
+  useLayoutEffect(() => {
+    if (assets === undefined) return;
+    previewRef.current?.rebuild(stageSegmentRef.current, assets);
+  }, [assets]);
 
   // Точечное обновление изменившихся элементов текущего слайда.
   //

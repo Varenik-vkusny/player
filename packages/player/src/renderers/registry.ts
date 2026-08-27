@@ -4,12 +4,25 @@
  * Позволяет регистрировать пользовательские и стандартные функции отрисовки
  * элементов сцены без применения hardcoded switch-case.
  */
-import type { Element, ElementState } from '@player/core';
+import type { Element } from '@player/core';
+import type { AssetUrls } from '../render.js';
 
+/**
+ * Третий довод — `assets`, а не `state`. Ни один встроенный рендерер
+ * `state` не читал ни разу (сигнатура принимала его только по форме), а
+ * `assets` нужен ровно двум рендерерам ниже: картинке — адрес байтов
+ * по `assetId`, фигуре с наконечником — не нужен вовсе (краска идёт из
+ * `node.style`, см. рендерер `shape`).
+ *
+ * Тип для `render.ts` импортирован обратно из него же (`../render.js`).
+ * Цикл модулей безопасен: доводы типа стираются на сборке, а на рантайме
+ * `render.ts` вызывает `registry.ts` через `getElementRenderer`, а не
+ * наоборот.
+ */
 export type ElementDOMRenderer = (
   node: HTMLElement,
   element: Element,
-  state: ElementState,
+  assets?: AssetUrls,
 ) => void;
 
 const elementRenderers = new Map<string, ElementDOMRenderer>();
@@ -29,14 +42,134 @@ registerElementRenderer('text', (node, element) => {
   node.textContent = element.content;
 });
 
-registerElementRenderer('image', (node, element) => {
+/**
+ * Картинка (v17 — импорт из Canva кладёт байты в хранилище плеера, а не
+ * адрес в `content`).
+ *
+ * `assetId` есть → адрес берётся ТОЛЬКО из карты `assets`. Ключа в карте нет
+ * (байты не разрешились или их нет в этом браузере) — рисуется пусто,
+ * `content` при этом НЕ подставляется: смешать два источника значило бы
+ * иногда показать чужую картинку — старое значение `content`, оставшееся
+ * от миграции схемы, а не текущие байты.
+ *
+ * `assetId` нет вовсе — прежнее поведение до v17: адрес или `data:` URL
+ * берутся из `content` напрямую. Старые проекты и фикстуры без импорта
+ * этим не задеты.
+ */
+registerElementRenderer('image', (node, element, assets) => {
   node.textContent = '';
-  node.style.backgroundImage = element.content ? `url(${element.content})` : '';
+  const url = element.assetId !== undefined
+    ? assets?.get(element.assetId)
+    : (element.content || undefined);
+  node.style.backgroundImage = url ? `url(${url})` : '';
   node.style.backgroundSize = 'cover';
 });
 
-registerElementRenderer('shape', (node) => {
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Наконечник стрелки — штатный SVG-приём: `<marker>` в `<defs>`, на пути —
+ * `marker-start`/`marker-end` (constraints.md, ловушка №1в).
+ *
+ * `markerUnits="strokeWidth"` обязателен — без него наконечник не растёт
+ * вместе с толщиной линии. Цвет — `context-stroke`, чтобы наконечник
+ * красился тем же, чем сама линия, и продолжал слушаться полосы свойств
+ * (краска едет свойствами состояния, а не зашивается в контур — ловушка №5).
+ * Запасной цвет — САМ цвет обводки элемента, а не буквальный чёрный: пишутся
+ * ДВЕ декларации `fill` подряд, и браузер без `context-stroke` отбросит
+ * вторую как невалидную, оставив первую в силе; браузер с поддержкой
+ * применит вторую, как более позднюю валидную.
+ */
+function buildArrowMarker(id: string, strokeColor: string, orient: string): SVGMarkerElement {
+  const marker = document.createElementNS(SVG_NS, 'marker') as SVGMarkerElement;
+  marker.setAttribute('id', id);
+  marker.setAttribute('markerWidth', '8');
+  marker.setAttribute('markerHeight', '8');
+  marker.setAttribute('refX', '7');
+  marker.setAttribute('refY', '4');
+  marker.setAttribute('orient', orient);
+  marker.setAttribute('markerUnits', 'strokeWidth');
+
+  const head = document.createElementNS(SVG_NS, 'path');
+  head.setAttribute('d', 'M0,0 L8,4 L0,8 Z');
+  const fallback = strokeColor || 'currentColor';
+  head.style.cssText = `fill: ${fallback}; fill: context-stroke;`;
+  marker.appendChild(head);
+  return marker;
+}
+
+/**
+ * Фигура с контуром, взятым импортом из Canva (v17): `element.path` —
+ * SVG-путь и своя система координат (`width`/`height`).
+ *
+ * Без `path` рендерер — пустой узел, как и раньше (произвольная фигура,
+ * которую ещё нечем рисовать).
+ *
+ * **`overflow: visible` у `<svg>` обязателен.** Импорт зажимает единицей
+ * только систему координат контура, а габарит элемента оставляет настоящим:
+ * у горизонтальной линии высота state — НОЛЬ. Обводка рисуется по центру
+ * пути и наполовину выходит за нулевую высоту бокса; без `overflow: visible`
+ * она обрежется, и разделитель пропадёт с экрана целиком, при этом ни один
+ * тест на раскладку этого не покажет (constraints.md, ловушка №2 задания).
+ *
+ * **Краска — из `node.style`, а не из аргумента состояния.** `applyElement`
+ * уже записал `state.style` (в том числе `fill`/`stroke`/`stroke-width`)
+ * инлайном на `node` ДО вызова этого рендерера — читать их оттуда, а не
+ * заводить вторую дверцу к состоянию элемента. Ровно поэтому у
+ * `ElementDOMRenderer` нет доводом `state`.
+ */
+registerElementRenderer('shape', (node, element) => {
   node.textContent = '';
+  const path = element.path;
+  if (!path) return;
+
+  // Приставка сцены — та же, что у `ensureSheet(uid)`: `renderScene`
+  // (render.ts) метит КАЖДЫЙ узел `data-scene` при создании. Без нее две
+  // сцены с фигурами на одной странице (лента миниатюр) свели бы наконечники
+  // к одинаковым id, и браузер взял бы всегда ПЕРВЫЙ найденный.
+  const uid = node.dataset['scene'] ?? element.id;
+
+  const svg = document.createElementNS(SVG_NS, 'svg') as SVGSVGElement;
+  svg.setAttribute('viewBox', `0 0 ${path.width} ${path.height}`);
+  // Контур обязан растянуться по габариту элемента, а не вписаться с полями:
+  // без этого фигура разошлась бы с исходником Canva на любом соотношении
+  // сторон, отличном от контурного.
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.style.width = '100%';
+  svg.style.height = '100%';
+  svg.style.display = 'block';
+  svg.style.overflow = 'visible';
+
+  const svgPath = document.createElementNS(SVG_NS, 'path');
+  svgPath.setAttribute('d', path.d);
+  const style = node.style;
+  const fill = style.getPropertyValue('fill');
+  const stroke = style.getPropertyValue('stroke');
+  const strokeWidth = style.getPropertyValue('stroke-width');
+  // Незаданный fill обязан стать 'none', а не остаться пустым: пустая
+  // строка атрибута `fill` браузер трактует как чёрный по умолчанию,
+  // и контур без заливки превратился бы в кляксу.
+  svgPath.setAttribute('fill', fill || 'none');
+  if (stroke) svgPath.setAttribute('stroke', stroke);
+  if (strokeWidth) svgPath.setAttribute('stroke-width', strokeWidth);
+  svg.appendChild(svgPath);
+
+  if (path.startArrow || path.endArrow) {
+    const defs = document.createElementNS(SVG_NS, 'defs');
+    if (path.startArrow) {
+      const id = `${uid}-${element.id}-arrow-start`;
+      defs.appendChild(buildArrowMarker(id, stroke, 'auto-start-reverse'));
+      svgPath.setAttribute('marker-start', `url(#${id})`);
+    }
+    if (path.endArrow) {
+      const id = `${uid}-${element.id}-arrow-end`;
+      defs.appendChild(buildArrowMarker(id, stroke, 'auto'));
+      svgPath.setAttribute('marker-end', `url(#${id})`);
+    }
+    svg.appendChild(defs);
+  }
+
+  node.appendChild(svg);
 });
 
 /**
