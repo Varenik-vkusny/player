@@ -22,7 +22,7 @@
 | 4 | `docs/research/ai-authoring.md` | замер «насколько ИИ может сам» |
 | 5 | `docs/research/branch-speech.md` | как добывалась речь и чем мерилась |
 | 6 | `docs/planning.md` §14.13, §15 | операции над слайдами, порядок работ |
-| 7 | `docs/session-10-guard-list.md` | остался пункт 35 |
+| 7 | `docs/journal/session-10-guard-list.md` | остался пункт 35 |
 
 ---
 
