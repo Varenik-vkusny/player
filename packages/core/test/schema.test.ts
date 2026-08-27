@@ -604,3 +604,50 @@ describe('схема v9: тема, описание части, приём и д
     expect(Object.keys(parsed.meta.theme)).toHaveLength(10);
   });
 });
+
+describe('схема v17: ключ байтов и контур', () => {
+  /**
+   * Проект с единственным элементом, поля которого задаёт вызывающий.
+   * Тот же приём, что у `grouped()` выше (v11: вложенность в группу):
+   * берём `explanation()` и подменяем ровно то, что нужно тесту, — элемент
+   * и состояние слайда, — а не заводим третий способ собирать проект.
+   */
+  function projectWithElement(element: Record<string, unknown>): any {
+    const project = explanation();
+    const id = element['id'];
+    project.segments[0].elements = [element];
+    project.segments[0].slides[0].states = {
+      [id as string]: { x: 0, y: 0, width: 100, height: 100 },
+    };
+    return project;
+  }
+
+  it('картинка принимает assetId', () => {
+    const p = loadProject(projectWithElement({ id: 'e1', type: 'image', assetId: 'a1' }));
+    expect(p.segments[0]!.elements[0]!.assetId).toBe('a1');
+  });
+
+  it('assetId у ТЕКСТА не проходит: ключ байтов бессмыслен без картинки', () => {
+    expect(() => loadProject(projectWithElement({ id: 'e1', type: 'text', assetId: 'a1' })))
+      .toThrow();
+  });
+
+  it('фигура принимает контур', () => {
+    const p = loadProject(projectWithElement({
+      id: 'e1', type: 'shape',
+      path: { d: 'M 0 0 L 10 10', width: 10, height: 10 },
+    }));
+    expect(p.segments[0]!.elements[0]!.path!.d).toBe('M 0 0 L 10 10');
+  });
+
+  it('контур с нулевой шириной не проходит: делить на неё нечем', () => {
+    expect(() => loadProject(projectWithElement({
+      id: 'e1', type: 'shape',
+      path: { d: 'M 0 0', width: 0, height: 10 },
+    }))).toThrow();
+  });
+
+  it('список шрифтов проекта пуст по умолчанию, а не отсутствует', () => {
+    expect(loadProject(explanation()).fonts).toEqual([]);
+  });
+});
