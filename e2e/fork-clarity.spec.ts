@@ -912,7 +912,7 @@ test.describe('вид метки в конце главы', () => {
     await page.getByRole('menuitem', { name: 'Поставить остановку в конце главы' }).click();
 
     const seen = await page.evaluate(() => {
-      const read = (id: string): { знак: string; подпорка: string; заКраем: number } => {
+      const read = (id: string): { знак: string; подпорка: string; заКраем: number; ширина: number } => {
         const node = document.querySelector('[data-testid="' + id + '"]')!;
         const wall = getComputedStyle(node, '::before');
         const foot = getComputedStyle(node, '::after');
@@ -934,6 +934,7 @@ test.describe('вид метки в конце главы', () => {
           знак: wall.width + ' / ' + wall.height,
           подпорка: foot.width + ' / ' + foot.height,
           заКраем: +(wallRight - laneRect.right).toFixed(1),
+          ширина: +rect.width.toFixed(1),
         };
       };
       const marks = [...document.querySelectorAll('[data-testid^="mark-gate-"]')];
@@ -960,6 +961,16 @@ test.describe('вид метки в конце главы', () => {
     expect(высота, 'стенка не выше самой метки — рядом со столбиком не различить')
       .toBeGreaterThan(18);
     expect(seen.вКонце!.подпорка, 'подпорки нет — признак остался один').not.toBe('auto / auto');
+
+    /*
+     * МЕТКА В КОНЦЕ ШИРЕ ОБЫЧНОЙ, и это отдельное требование, а не следствие.
+     * Владелец 26.08.2026, глядя на первую редакцию: «квадратик сливается
+     * с этой линией в конце, и фиг пойми, на что жать; сделай квадратик
+     * чуть больше или более отличительным». Столбик стоял вплотную к стенке
+     * и читался с ней как один предмет.
+     */
+    expect(seen.вКонце!.ширина, 'метка в конце не шире обычной — снова сольётся со стенкой')
+      .toBeGreaterThan(seen.обычная!.ширина);
 
     // И главное: знак ВНУТРИ полосы. Первая редакция рисовала его за краем,
     // и на экране его не было вовсе при сходящихся числах.
