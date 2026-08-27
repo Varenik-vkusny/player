@@ -182,7 +182,6 @@ test.describe('Б1: после разреза автор знает, что по
  */
 const RIGHT_TITLE = 'Направо';
 const LEFT_TITLE = 'Налево';
-const DEFAULT_TITLE = 'Спрашивает, куда двигаться, и часть вариантов прячет';
 
 /** Открывает панель остановки, щёлкнув по её метке на дорожке. */
 async function selectGate(page: Page, gateId: string): Promise<void> {
@@ -249,35 +248,61 @@ test.describe('Б2: у варианта ответа видно, куда он �
    * и есть нынешняя беда: автор не отличает «ведёт никуда» от «я не туда
    * посмотрел».
    */
-  test('вариант без правила говорит «никуда не ведёт» ВСЛУХ', async ({ page }) => {
+  /**
+   * ТРЕБОВАНИЕ ИЗМЕНИЛОСЬ 26.08.2026, решение владельца.
+   *
+   * Раньше у ответа БЕЗ правила карточка писала «никуда не ведёт». Теперь
+   * такой метки просто нет: если ответы никуда не ведут, это обычный вопрос,
+   * а у него зритель после ответа никуда и не уходит — рассказ идёт дальше
+   * ([Р] product.md §2). Владелец: «если это просто обычный вопрос,
+   * то после ответа зритель никуда уйти не может».
+   *
+   * Утверждение стало прямее: карточка говорит, ЧТО будет, а не чего нет.
+   */
+  test('у обычного вопроса карточка говорит, что рассказ пойдёт дальше', async ({ page }) => {
     const errors = await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    expect(await gotoText(page, 0)).toContain('никуда не ведёт');
-    expect(await gotoText(page, 1)).toContain('никуда не ведёт');
+    await expect(
+      page.getByTestId('stopcard-variable-note'),
+      'не сказано, что рассказ после ответа продолжится',
+    ).toContainText('пойдёт дальше');
+
+    // И выбора «куда» не предлагают: его у обычного вопроса не существует.
+    await expect(page.getByTestId('stopcard-option-goto-0')).toHaveCount(0);
 
     expect(errors).toEqual([]);
   });
 
   /**
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: реализация, смотрящая ТОЛЬКО на правила и потому
-   * объявляющая «никуда не ведёт» там, где у главы есть безусловный выход.
-   * Это была бы прямая ложь: рассказ туда пойдёт.
+   * ТРЕБОВАНИЕ ПЕРЕФОРМУЛИРОВАНО 26.08.2026.
    *
-   * Ровно эта ошибка и делает разрез по времени непонятным — он создаёт
-   * именно безусловное «иначе», и не назвать его значит не назвать
-   * результат разреза.
+   * Прежнее звучало так: у ответа без своего правила карточка обязана
+   * назвать ОБЩИЙ выход главы, а не врать «никуда не ведёт». Ложь была
+   * настоящей: у главы есть безусловное «иначе», и рассказ туда пойдёт.
+   *
+   * Теперь у обычного вопроса карточка не говорит про ответы «куда»
+   * ВООБЩЕ — ни правды, ни лжи: выбора у ответа не существует, рассказ
+   * идёт дальше по своей дорожке, а общий выход главы живёт там, где ему
+   * место, в «Главы» → «Правила выхода». Класс ошибки закрыт построением,
+   * а не проверкой текста.
+   *
+   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: у обычного вопроса снова появились строки
+   * «и тогда» — значит автору опять предлагают выбор, которого нет.
    */
-  test('вариант без своего правила называет общий выход главы', async ({ page }) => {
+  test('обычному вопросу не приписывают выбор, которого у него нет', async ({ page }) => {
     const errors = await openEditor(page, 'conditions');
     await selectGate(page, 'g-count');
 
     for (const index of [0, 1, 2]) {
-      const cell = page.getByTestId(`stopcard-option-goto-${index}`);
-      await expect(cell).toBeVisible();
-      await expect(cell).toContainText(DEFAULT_TITLE);
-      await expect(cell).not.toContainText('никуда не ведёт');
+      await expect(
+        page.getByTestId(`stopcard-option-goto-${index}`),
+        `у обычного вопроса предлагают цель для ответа ${index + 1}`,
+      ).toHaveCount(0);
     }
+    // Положительный контроль: ответы в карточке ЕСТЬ — иначе ноль целей
+    // означал бы «карточки нет вовсе».
+    await expect(page.getByTestId('stopcard-option-label-0')).toBeVisible();
 
     expect(errors).toEqual([]);
   });
@@ -305,78 +330,56 @@ test.describe('Б2: у варианта ответа видно, куда он �
   });
 });
 
-/** Состав глав и правил выхода прямо из состояния редактора. */
-const graphOf = (page: Page) =>
-  page.evaluate(() =>
-    (window as unknown as {
+
+/**
+ * Б3: РАЗВИЛКА ЗАВОДИТ ВЕТКИ, И ОТМЕНА СНИМАЕТ ВСЁ РАЗОМ.
+ *
+ * ОРГАН СМЕНИЛСЯ 26.08.2026. Раньше ветку заводили кнопкой у КАЖДОГО
+ * варианта. Владелец её убрал: «в обоих вариантах эти кнопки не нужны —
+ * если это обычный вопрос, то после ответа зритель никуда уйти не может,
+ * а если развилка, то там и так надо выбрать, что будет по этому ответу».
+ *
+ * Утверждения остались те же, и они несущие: ветка ДЕЙСТВИТЕЛЬНО появляется
+ * в проекте, а не только в правиле; правило ведёт именно в неё; Ctrl+Z
+ * снимает и главу, и правило целиком, а не половину.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: реализация из двух отправок (addSegment, потом
+ * connect) — Ctrl+Z снял бы только правило и оставил висящую главу,
+ * то есть отдал бы автору полусделанное состояние.
+ */
+test.describe('Б3: развилка заводит ветки под ответы', () => {
+  const graphOf = async (page: Page): Promise<{ id: string; title: string; rules: string[] }[]> =>
+    page.evaluate(() => (window as unknown as {
       __project: {
-        segments: {
-          id: string;
-          title: string;
-          exit: { rules: { when: { kind: string; variable?: string; value?: unknown }[]; goto: string }[] };
-        }[];
+        segments: { id: string; title: string; exit: { rules: { goto: string }[] } }[];
       };
-    }).__project.segments.map((s) => ({
-      id: s.id,
-      title: s.title,
-      rules: s.exit.rules.map((r) => ({
-        goto: r.goto,
-        when: r.when.map((c) => `${c.kind}:${c.variable ?? ''}=${String(c.value ?? '')}`),
-      })),
+    }).__project.segments.map((segment) => ({
+      id: segment.id,
+      title: segment.title,
+      rules: segment.exit.rules.map((rule) => rule.goto),
     })));
 
-test.describe('Б3: ветку можно завести прямо от варианта', () => {
-  /**
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: снятая кнопка; кнопка, создающая главу и НЕ
-   * связывающая её (сегодня автор делает это в двух местах, и половина
-   * работы выглядит как целая); кнопка, называющая главу идентификатором
-   * варианта вместо его подписи.
-   *
-   * Проверяется И существование главы, И правило выхода в неё. Проверка
-   * одного существования была бы зелёной у реализации, оставляющей автора
-   * ровно там же, где он был: глава есть, дойти до неё нельзя.
-   */
-  test('после «завести ветку» глава существует И связана', async ({ page }) => {
+  test('после развилки ветки существуют И связаны с ответами', async ({ page }) => {
     const errors = await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    expect(await gotoText(page, 0)).toContain('никуда не ведёт');
-
     const before = await graphOf(page);
-    expect(before).toHaveLength(1);
+    expect(before, 'в фикстуре уже есть ветки — проверять было бы нечего').toHaveLength(1);
 
-    await page.getByTestId('stopcard-option-branch-0').click();
+    await page.getByTestId('gate-split').click();
 
     const after = await graphOf(page);
-    /*
-     * ЧТО ИМЕННО ДЕЛАЕТ КНОПКА — переделано 25.08.2026, решение владельца.
-     *
-     * БЫЛО: заводила ОДНУ главу под этот ответ, а глава при этом оставалась
-     * неразрезанной. То есть зритель отвечал на метке, рассказ шёл до конца
-     * главы и только потом уходил в ветку. Владелец наткнулся на это первым
-     * же вопросом сессии: «я ответил на вопрос, а меня никуда не перекинуло».
-     *
-     * СТАЛО: если глава ещё не разрезана по этой метке — режем. Разрез сам
-     * заводит ветку под КАЖДЫЙ ответ, включая этот, и делает остаток рассказа
-     * продолжением. Заводить сверху ещё одну ветку нельзя: у ответа стало бы
-     * два правила, и второе недостижимо — правила читаются по порядку.
-     *
-     * Отсюда четыре главы: голова, две ветки, продолжение.
-     */
+    // Голова, две ветки, продолжение.
     expect(after).toHaveLength(4);
 
-    const owner = after.find((s) => s.id === 's-explain')!;
-    // По правилу на КАЖДЫЙ ответ, и ветки названы подписями вариантов:
-    // «Гейт» и «Таймер» — слова автора из фикстуры, а не схемы.
-    expect(owner.rules).toHaveLength(2);
-    const created = after.find((s) => s.id === owner.rules[0]!.goto);
-    expect(created?.title).toBe('Гейт');
-    expect(after.find((s) => s.id === owner.rules[1]!.goto)?.title).toBe('Таймер');
-    expect(owner.rules[0]!.when).toEqual(['equals:чем-останавливается=opt-gate']);
-
-    // Остаток рассказа не пропал — он стал отдельной главой.
+    const owner = after.find((segment) => segment.id === 's-explain')!;
+    expect(owner.rules, 'правил не по одному на ответ').toHaveLength(2);
+    // Ветки названы ПОДПИСЯМИ вариантов — словами автора, не ключами схемы.
+    expect(after.find((segment) => segment.id === owner.rules[0])?.title).toBe('Гейт');
+    expect(after.find((segment) => segment.id === owner.rules[1])?.title).toBe('Таймер');
+    // Остаток рассказа не пропал.
     expect(
-      after.some((s) => s.title.endsWith('— продолжение')),
+      after.some((segment) => segment.title.endsWith('— продолжение')),
       'остаток рассказа исчез вместо того, чтобы стать продолжением',
     ).toBe(true);
 
@@ -387,102 +390,25 @@ test.describe('Б3: ветку можно завести прямо от вар�
     expect(errors).toEqual([]);
   });
 
-  /**
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: реализация из ДВУХ отправок (`addSegment`, затем
-   * `connect`) — Ctrl+Z снял бы только правило и оставил висящую главу,
-   * то есть отдал бы автору полусделанное состояние.
-   *
-   * Промежуточная проверка «предыдущий шаг СОСТОЯЛСЯ» стоит здесь не для
-   * красоты: в Сессии 33 e2e «Ctrl+Z убирает вставленное» остался зелёным
-   * при ПОЛНОСТЬЮ отключённой вставке — отменять было нечего, и число
-   * совпало с исходным.
-   */
-  test('Ctrl+Z отменяет и главу, и правило — целиком, а не половину', async ({ page }) => {
+  test('Ctrl+Z отменяет и главы, и правила — целиком, а не половину', async ({ page }) => {
     await openEditor(page, 'inline-explain');
     await selectGate(page, 'g-explain');
 
-    await page.getByTestId('stopcard-option-branch-0').click();
+    await page.getByTestId('gate-split').click();
 
     // Шаг СОСТОЯЛСЯ — без этой проверки тест зелен и при неработающей кнопке.
-    // Четыре главы: голова, две ветки, продолжение (см. тест выше).
     const made = await graphOf(page);
     expect(made).toHaveLength(4);
-    expect(made.find((s) => s.id === 's-explain')!.rules).toHaveLength(2);
+    expect(made.find((segment) => segment.id === 's-explain')!.rules).toHaveLength(2);
 
     await page.keyboard.press('Control+z');
 
     const undone = await graphOf(page);
-    expect(undone).toHaveLength(1);
-    expect(undone[0]!.rules).toEqual([]);
-    expect(await gotoText(page, 0)).toContain('никуда не ведёт');
-  });
-
-  /**
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: кнопка, показанная всегда. Предложить «завести
-   * ветку» там, где ответ уже ведёт в главу, значит предложить завести
-   * ВТОРУЮ на тот же ответ — правило, до которого рассказ никогда не дойдёт.
-   */
-  test('у варианта, который уже ведёт в главу, кнопки нет', async ({ page }) => {
-    await openEditor(page, 'exit-branch');
-    await selectGate(page, 'g-ask');
-
-    await expect(page.getByTestId('stopcard-option-goto-0')).toContainText('Направо');
-    await expect(page.getByTestId('stopcard-option-branch-0')).toHaveCount(0);
-    await expect(page.getByTestId('gate-option-branch-1')).toHaveCount(0);
-  });
-
-  /**
-   * ЧТО ДОЛЖНО СЛОМАТЬСЯ: кнопка, до которой нельзя дотянуться, — раздавленная
-   * потолком высоты или уехавшая за край панели. «Нажимается ли» этого
-   * не докажет: Playwright сам прокручивает вложенный контейнер и честно
-   * нажмёт кнопку внутри 24-пиксельной щели.
-   */
-  test('кнопка «завести ветку» видна и достижима, а не в щели', async ({ page }) => {
-    await openEditor(page, 'inline-explain');
-    await selectGate(page, 'g-explain');
-
-    const box = await boxOf(page, 'stopcard-option-branch-0');
-    expect(box).not.toBeNull();
-    expect(box!.display).not.toBe('none');
-    expect(box!.visibility).toBe('visible');
-    expect(box!.clientHeight).toBeGreaterThan(20);
-    expect(box!.clientWidth).toBeGreaterThan(60);
-
-    // Точка в центре кнопки принадлежит САМОЙ кнопке, а не тому, что её
-    // перекрыло: `elementFromPoint` врёт в обе стороны, поэтому спрашиваем
-    // его после того, как узел прокручен в видимую часть.
-    const onTop = await page.evaluate(() => {
-      const node = document.querySelector<HTMLElement>('[data-testid="stopcard-option-branch-0"]');
-      if (!node) return 'НЕТ УЗЛА';
-      node.scrollIntoView({ block: 'center' });
-      const r = node.getBoundingClientRect();
-      const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
-      return hit === node || node.contains(hit) ? 'САМА КНОПКА' : (hit?.className ?? 'null');
-    });
-    expect(onTop).toBe('САМА КНОПКА');
+    expect(undone, 'Ctrl+Z оставил висящие главы').toHaveLength(1);
+    expect(undone[0]!.rules, 'Ctrl+Z оставил правила без глав').toEqual([]);
   });
 });
 
-/**
- * ВТОРОЙ ВОПРОС — НА ВЕТКЕ. Весь путь, которым владелец шёл 26.08.2026.
- *
- * Он сделал развилку, перешёл на ветку «Вариант 1» и задал вопрос там же.
- * Получил красную полосу и потерял работу — ДВАЖДЫ, по двум разным
- * причинам, и обе ломали ровно то, ради чего заводятся ветки:
- *
- *   1) Переменная «gate-1» записывается дважды: в сегменте «s-1»
- *      и в «segment-1». Имя метки бралось свободным ВНУТРИ главы,
- *      а схема требует уникальности по всему проекту.
- *   2) segments.4.audio.offset: Смещение отсчитывается от начала ФАЙЛА,
- *      а у немого сегмента файла нет: ожидался 0, получено 2.5.
- *      Ветки немые по построению, и разрез двигал им окно.
- *
- * ЧТО ДОЛЖНО СЛОМАТЬСЯ: вернуть `freeId('gate', currentSegment.gates)`
- * или безусловный сдвиг окна — проект снова перестанет сохраняться.
- *
- * Проверяется НАСТОЯЩЕЙ загрузкой схемой, а не отсутствием полосы:
- * «полосы нет» зелено и тогда, когда её просто не успели показать.
- */
 test.describe('второй вопрос на ветке', () => {
   const askHere = async (page: Page): Promise<void> => {
     const lane = await page.getByTestId('marks-lane').boundingBox();

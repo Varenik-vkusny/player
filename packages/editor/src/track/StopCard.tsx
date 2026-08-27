@@ -29,7 +29,7 @@ import type { Gate } from '@player/core';
 import type { OptionDestination } from '../state/conditionText.js';
 import { addOption } from '../state/gates.js';
 import { secondsText } from '../timeText.js';
-import { Button, PlainSelect, StringField } from '../ui/index.js';
+import { Button, PlainSelect, StringField, ValidatedStringField } from '../ui/index.js';
 
 /** «Никуда»: рассказ на этом ответе идёт запасным выходом главы. */
 const NOWHERE = '';
@@ -128,9 +128,26 @@ export interface StopCardProps {
   readonly onPromptChange: (text: string) => void;
   readonly onOptionLabelChange: (optionId: string, text: string) => void;
   readonly onOptionTarget: (optionId: string, goto: string | null) => void;
-  readonly onBranchFromOption: (optionId: string) => void;
   /** Убрать вариант ответа вместе с его веткой (`removeGateOption`). */
   readonly onRemoveOption: (optionId: string) => void;
+  /**
+   * Метка УЖЕ развилка: глава разрезана по ней, и рассказ здесь кончается.
+   *
+   * Признак — метка стоит на конце главы. Владелец 26.08.2026: «когда
+   * нажимаю „сделать развилкой“, глава разрезается, вопрос резко
+   * оказывается в конце этой главы, и там появляются варианты ответа,
+   * где можно выбрать, куда пойдёт зритель».
+   *
+   * От этого зависит ВСЁ содержимое карточки: у обычного вопроса выбирать
+   * ответу некуда — зритель после ответа никуда не уходит, рассказ идёт
+   * дальше. Показывать там «и тогда» и «завести ветку» значит предлагать
+   * несуществующее.
+   */
+  readonly isFork: boolean;
+  /** Имя переменной, в которую ляжет ответ. Задаёт автор. */
+  readonly onRenameVariable: (name: string) => void;
+  /** Почему такое имя переменной принять нельзя (`state/exits.ts`). */
+  readonly variableProblemOf: (name: string) => string | undefined;
   /** Разделить рассказ по этой метке и завести ветки. `undefined` — карточку
       зовут оттуда, где резать нечего. */
   readonly onSplit: (() => void) | undefined;
@@ -154,8 +171,10 @@ export function StopCard({
   onPromptChange,
   onOptionLabelChange,
   onOptionTarget,
-  onBranchFromOption,
   onRemoveOption,
+  isFork,
+  onRenameVariable,
+  variableProblemOf,
   onSplit,
   splitBlockedReason,
   onCommitHistory,
@@ -268,11 +287,34 @@ export function StopCard({
         разреза; я их убрал и заставил вопрос резать всегда. Это и было
         ошибкой — выбор вернулся, но одним понятным органом вместо трёх.
       */}
-      <p className="ed-stopcard-plain" data-testid="stopcard-variable-note">
-        Ответ запомнится в переменной «{gate.recordAs}» — рассказ пойдёт
-        дальше. Условие по ней можно поставить в правилах выхода любой главы.
-      </p>
-      {onSplit !== undefined && (
+      {/*
+        ИМЯ ПЕРЕМЕННОЙ ЗАДАЁТ АВТОР — [Р] `product.md` §4, его же словами:
+        «без имени переменной нельзя сослаться на ответ из будущего вопроса,
+        а значит обычный вопрос теряет смысл». Подтверждено 26.08.2026:
+        «чтобы юзер мог называть переменные в обычных вопросах, чтобы он
+        помнил, что эта переменная значит и с какого она вопроса».
+
+        Здесь, в карточке, а не только в панели свойств: обычный вопрос
+        весь смысл имеет в этом имени, и уводить за ним в другое место
+        значит прятать главное.
+
+        Переименование идёт КАСКАДОМ по правилам выхода (`state/exits.ts`),
+        иначе правило осиротеет и не сработает никогда.
+      */}
+      <ValidatedStringField
+        label="Ответ запомнится как"
+        value={gate.recordAs}
+        problemOf={variableProblemOf}
+        onCommit={onRenameVariable}
+        testId="stopcard-variable"
+      />
+      {!isFork && (
+        <p className="ed-stopcard-plain" data-testid="stopcard-variable-note">
+          Рассказ после ответа пойдёт дальше. Условие по этой переменной
+          можно поставить в правилах выхода любой главы.
+        </p>
+      )}
+      {!isFork && onSplit !== undefined && (
         <>
           <Button
             data-testid="gate-split"
@@ -295,6 +337,22 @@ export function StopCard({
       ) : (
         <>
           {config.options.map((option, index) => {
+            /*
+             * КУДА ВЕДЁТ ОТВЕТ — ВОПРОС ТОЛЬКО У РАЗВИЛКИ.
+             *
+             * Владелец 26.08.2026: «если я создал метку и хочу просто задать
+             * вопрос, то нельзя под каждый вариант завести ветку — этих
+             * кнопок быть не должно, это ещё не развилка. И только когда
+             * нажимаю „сделать развилкой“, глава разрезается… и там
+             * появляются варианты, где можно выбрать, куда пойдёт зритель».
+             *
+             * Он прав по устройству: у обычного вопроса рассказ после ответа
+             * идёт ДАЛЬШЕ по той же дорожке ([Р] product.md §2), уходить
+             * зрителю некуда. Список «и тогда» там предлагал бы выбор,
+             * которого не существует, а «Завести ветку» — заводил бы ветку,
+             * до которой рассказ дойдёт только в конце главы, то есть
+             * не тогда, когда автор думает.
+             */
             const destination = destinationOf(option.id);
             /*
              * Сложное условие одним именем главы не выражается: правил про
@@ -319,7 +377,7 @@ export function StopCard({
                     onCommitHistory();
                   }}
                 />
-                {editable ? (
+                {!isFork ? null : editable ? (
                   <span className="ed-stopcard-goto">
                     <span className="ed-stopcard-goto-label" aria-hidden="true">и тогда</span>
                     <PlainSelect
@@ -371,7 +429,7 @@ export function StopCard({
                   При своём правиле строки нет: главу уже называет сам список,
                   и второе имя рядом было бы повтором.
                 */}
-                {destination.via === 'rule' ? null : (
+                {!isFork || destination.via === 'rule' ? null : (
                   <p className="ed-stopcard-plain" data-testid={`stopcard-option-goto-note-${index}`}>
                     {destination.text}
                   </p>
@@ -399,14 +457,16 @@ export function StopCard({
                   «Пойдёт туда же, как и все остальные» — это не выбор автора
                   для ЭТОГО ответа, а то, что осталось от чужого выбора.
                 */}
-                {destination.via !== 'rule' ? (
-                  <Button
-                    data-testid={`stopcard-option-branch-${index}`}
-                    onClick={() => onBranchFromOption(option.id)}
-                  >
-                    Завести ветку под этот ответ
-                  </Button>
-                ) : null}
+                {/*
+                  КНОПКИ «ЗАВЕСТИ ВЕТКУ» БОЛЬШЕ НЕТ, И ЭТО НЕ ПОТЕРЯ.
+                  Владелец 26.08.2026: «в обоих вариантах эти кнопки
+                  не нужны — если это обычный вопрос, то после ответа
+                  зритель никуда уйти не может, а если развилка, то там
+                  и так надо выбрать, что будет по этому ответу».
+
+                  У развилки ветку заводит сам разрез — по одной на каждый
+                  ответ, — а дальше цель меняется списком «и тогда».
+                */}
 
                 {/*
                   УБРАТЬ ОТВЕТ — ЗДЕСЬ ЖЕ, а не только в панели свойств.

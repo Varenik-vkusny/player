@@ -492,3 +492,66 @@ test.describe('убрать ответ', () => {
     expect(errors).toEqual([]);
   });
 });
+
+/**
+ * ДВЕ КАРТОЧКИ ОДНОЙ МЕТКИ: обычный вопрос и развилка.
+ *
+ * Владелец 26.08.2026: «если я создал метку и хочу просто задать вопрос,
+ * то нельзя под каждый вариант ответа завести ветку — этих кнопок быть
+ * не должно, это ещё не развилка. И только когда нажимаю „сделать
+ * развилкой“, глава разрезается, вопрос резко оказывается в конце этой
+ * главы, и там появляются варианты ответа, где можно выбрать, куда пойдёт
+ * зритель. В обоих вариантах эти кнопки не нужны: если обычный вопрос —
+ * зритель после ответа никуда уйти не может, а если развилка — там и так
+ * надо выбрать, что будет по этому ответу».
+ *
+ * И там же: «чтобы юзер мог называть переменные в обычных вопросах, чтобы
+ * помнил, что эта переменная значит и с какого она вопроса» — это [Р]
+ * product.md §4, его же прежней формулировкой: «без имени переменной нельзя
+ * сослаться на ответ из будущего вопроса, а значит обычный вопрос теряет
+ * смысл».
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: убрать признак `isFork` из карточки — у обычного
+ * вопроса снова появятся «и тогда»; убрать поле имени — переменную нельзя
+ * будет назвать, не уходя в панель свойств.
+ */
+test.describe('карточка вопроса и карточка развилки', () => {
+  const organsOf = async (page: Page): Promise<string[]> => page.evaluate(() =>
+    [...document.querySelectorAll('[data-testid^="stopcard-"], [data-testid="gate-split"]')]
+      .map((n) => n.getAttribute('data-testid')!));
+
+  test('у обычного вопроса нет целей и веток, у развилки — есть цели', async ({ page }) => {
+    await openEditor(page);
+    await addStopAt(page, 0.55);
+    await page.getByTestId('stopcard-make-question').click();
+
+    const asked = await organsOf(page);
+    expect(asked, 'у обычного вопроса предлагают выбрать, куда пойдёт зритель')
+      .not.toContain('stopcard-option-goto-0');
+    expect(asked, 'кнопка «завести ветку» вернулась — она не нужна ни в одном случае')
+      .not.toContain('stopcard-option-branch-0');
+    expect(asked, 'нет кнопки развилки — обычный вопрос не превратить').toContain('gate-split');
+    expect(asked, 'не сказано, что рассказ пойдёт дальше').toContain('stopcard-variable-note');
+    // Положительный контроль: карточка вопроса ЕСТЬ, ответы в ней есть.
+    expect(asked).toContain('stopcard-option-label-0');
+
+    // Имя переменной — прямо здесь, и оно доезжает до проекта каскадом.
+    await page.getByTestId('stopcard-variable').fill('знает-про-гейты');
+    await page.getByTestId('stopcard-variable').blur();
+    await expect
+      .poll(() => page.evaluate(() => (window as unknown as {
+        __project: { segments: { gates: { recordAs: string }[] }[] };
+      }).__project.segments[0]!.gates.at(-1)!.recordAs))
+      .toBe('знает-про-гейты');
+
+    await page.getByTestId('gate-split').click();
+
+    const forked = await organsOf(page);
+    expect(forked, 'у развилки не спрашивают, куда пойдёт зритель')
+      .toContain('stopcard-option-goto-0');
+    expect(forked, 'кнопка развилки осталась там, где развилка уже есть')
+      .not.toContain('gate-split');
+    expect(forked, 'кнопка «завести ветку» вернулась у развилки')
+      .not.toContain('stopcard-option-branch-0');
+  });
+});

@@ -3216,14 +3216,30 @@ export function Editor({
           /* Разрез — ОТДЕЛЬНОЕ нажатие, а не побочный эффект вопроса
              ([Р] product.md §2, поправка владельца 26.08.2026). Та же
              отправка, что у пункта меню по метке. */
+          /*
+           * РАЗВИЛКА ЛИ МЕТКА — ПО ТОМУ, ВЕДУТ ЛИ ЕЁ ОТВЕТЫ КУДА-НИБУДЬ.
+           *
+           * Не по положению на дорожке: метка, поставленная на конец главы,
+           * ещё не развилка — ничего не разрезано, веток нет, и кнопку
+           * «Сделать развилку» у неё прятать нельзя. Замер 26.08.2026: с
+           * признаком «стоит на конце» кнопка исчезала ровно там, где она
+           * и нужна.
+           *
+           * Правило выхода на ответ этой метки и есть развилка по сути:
+           * зритель ответил — рассказ ушёл туда. Так же читаются проекты,
+           * собранные раньше, где метка сидит посреди главы, а её ответы
+           * давно разведены по веткам.
+           */
+          isFork={currentSegment.exit.rules.some((rule) => rule.when.some(
+            (condition) => 'variable' in condition && condition.variable === stopCardGate.recordAs,
+          ))}
+          onRenameVariable={handleRenameVariable}
+          variableProblemOf={variableProblemOf}
           onSplit={() => {
             warnBeforeSplit(stopCardGate.id);
             dispatch({ type: 'splitAtGate', gateId: stopCardGate.id });
           }}
           splitBlockedReason={splitBlockedReason(stopCardGate, segment.words)}
-          onBranchFromOption={(optionId) => dispatch({
-            type: 'branchFromOption', gateId: stopCardGate.id, optionId,
-          })}
           onCommitHistory={handleCommitHistory}
           onClose={() => setStopCardClosed(true)}
         />
