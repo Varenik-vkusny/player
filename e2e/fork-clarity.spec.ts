@@ -806,3 +806,164 @@ test.describe('ответ в плеере', () => {
       .not.toBe('at-gate');
   });
 });
+
+/**
+ * ОСТАНОВКА В КОНЦЕ ГЛАВЫ — ВЫБОРОМ, А НЕ ПОПАДАНИЕМ.
+ *
+ * Слово владельца 26.08.2026: «надо, чтобы точно понимал, что ты поставил
+ * вопрос в конце главы, а не на предпоследней секунде, а то так может
+ * вырезаться глава длиной в секунду… чтобы можно было ВЫБРАТЬ, что вопрос
+ * именно в конце, а не попадать в этот миллиметр».
+ *
+ * Промах мышью в один пиксель — 0.037 с при масштабе ×1 и куда больше
+ * на вписанном. После вопроса глава режется по метке, и остаток длиной
+ * в секунду становится отдельной главой: мусор, которого автор не заказывал.
+ *
+ * Прилипание с порогом сюда не годится: оно молча меняло бы намерение
+ * автора, который мог ставить метку у конца НАРОЧНО. Поэтому прямой выбор.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ: пункт «в конце главы» убрали или он ставит метку
+ * по головке — разница с длиной главы перестанет быть нулевой, и после
+ * вопроса появится глава-обрубок.
+ */
+test.describe('остановка в конце главы', () => {
+  test('встаёт ровно на конец, и обрубка после вопроса не появляется', async ({ page }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    // Нарочно щёлкаем НЕ у края: пункт не должен зависеть от места щелчка,
+    // в этом вся его суть.
+    await page.mouse.click(lane.x + lane.width * 0.3, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку в конце главы' }).click();
+
+    const placed = await page.evaluate(() => {
+      const head = (window as unknown as {
+        __project: {
+          segments: {
+            audio: { duration: number; words: { start: number }[] };
+            gates: { at: { kind: string; t?: number; wordIndex?: number; offset?: number } }[];
+          }[];
+        };
+      }).__project.segments[0]!;
+      const gate = head.gates[0]!;
+      const at = gate.at.kind === 'seconds'
+        ? gate.at.t!
+        : (head.audio.words[gate.at.wordIndex!]?.start ?? -1) + (gate.at.offset ?? 0);
+      return { at, duration: head.audio.duration };
+    });
+    expect(placed.at, 'метка встала не на конец главы').toBeCloseTo(placed.duration, 3);
+
+    await page.getByTestId('stopcard-make-question').click();
+
+    const chapters = await page.evaluate(() =>
+      (window as unknown as { __project: { segments: { title: string; audio: { duration: number } }[] } })
+        .__project.segments.map((s) => ({ title: s.title, duration: s.audio.duration })));
+
+    // Голова, две ветки — и НИКАКОГО продолжения: резать после метки нечего.
+    expect(
+      chapters.some((c) => c.title.includes('продолжение')),
+      'появилась глава-обрубок, хотя метка стояла ровно в конце',
+    ).toBe(false);
+    expect(chapters, 'веток не завелось — проверять нечего').toHaveLength(3);
+
+    // Второй раз пункт гаснет и называет причину: две метки на одной секунде
+    // автор не различит.
+    await page.mouse.click(lane.x + lane.width * 0.3, lane.y + lane.height * 0.75, { button: 'right' });
+    const again = page.getByRole('menuitem', { name: /в конце главы/ });
+    await expect(again).toHaveAttribute('aria-disabled', 'true');
+    await expect(again, 'причина отказа не названа').toContainText('уже стоит остановка');
+  });
+});
+
+/**
+ * МЕТКА В КОНЦЕ ГЛАВЫ ВЫГЛЯДИТ ИНАЧЕ.
+ *
+ * Слово владельца 26.08.2026: «пусть головка вопроса рисуется чуть
+ * по-другому, чтобы было отличительно, что она именно в конце стоит
+ * и сразу чтобы было понятно».
+ *
+ * Отличие не косметическое: после вопроса на такой метке продолжения
+ * не будет — резать после неё нечего. Метка на предпоследней секунде
+ * выглядела так же, а давала главу длиной в секунду.
+ *
+ * ПРИЗНАК ДВОЙНОЙ (стенка и подпорка), как у сироты: один признак
+ * на дальтонизме и мелком масштабе теряется, два вместе нет.
+ *
+ * ЧТО ДОЛЖНО СЛОМАТЬСЯ, И ЭТО ПРОВЕРЕНО ГЛАЗАМИ. Первая редакция рисовала
+ * стенку ЗА краем полосы (`right: -5px`) — в разметке она была, а на экране
+ * её срезало: метка в конце стоит вплотную к краю. Числа при этом сходились.
+ * Поэтому здесь проверяется не только «стенка объявлена», но и «она внутри
+ * полосы»; и первая редакция стенки 2x22 отвергнута как неразличимая рядом
+ * со столбиком остановки — она стала 3x32.
+ */
+test.describe('вид метки в конце главы', () => {
+  test('отличается от обычной, и её знак не срезан краем полосы', async ({ page }) => {
+    await openEditor(page, 'sandbox');
+    await page.getByRole('button', { name: 'Обложка' }).click();
+
+    const lane = await page.getByTestId('marks-lane').boundingBox();
+    if (!lane) throw new Error('полосы меток не видно');
+    await page.mouse.click(lane.x + lane.width * 0.4, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+    await page.waitForTimeout(200);
+    await page.mouse.click(lane.x + lane.width * 0.2, lane.y + lane.height * 0.75, { button: 'right' });
+    await page.getByRole('menuitem', { name: 'Поставить остановку в конце главы' }).click();
+
+    const seen = await page.evaluate(() => {
+      const read = (id: string): { знак: string; подпорка: string; заКраем: number } => {
+        const node = document.querySelector('[data-testid="' + id + '"]')!;
+        const wall = getComputedStyle(node, '::before');
+        const foot = getComputedStyle(node, '::after');
+        const rect = node.getBoundingClientRect();
+        const laneRect = document.querySelector('[data-testid="marks-lane"]')!.getBoundingClientRect();
+        /*
+         * Правый край СТЕНКИ, а не метки. Псевдоэлемент прямоугольником
+         * не спросишь, поэтому считаем: `right` у него отсчитывается
+         * от правого края метки внутрь, отрицательный — наружу.
+         *
+         * Первая редакция теста мерила край САМОЙ МЕТКИ — и оставалась
+         * зелёной, когда стенку унесли за полосу: метка-то не двигалась.
+         * Проверено сломом.
+         */
+        const wallRight = rect.right - Number.parseFloat(wall.right || '0');
+        return {
+          // Разделитель НЕ «x»: в «3px» тоже есть x, и разбор ломался
+          // молча — высота выходила NaN, а тест краснел на исправном коде.
+          знак: wall.width + ' / ' + wall.height,
+          подпорка: foot.width + ' / ' + foot.height,
+          заКраем: +(wallRight - laneRect.right).toFixed(1),
+        };
+      };
+      const marks = [...document.querySelectorAll('[data-testid^="mark-gate-"]')];
+      const atEnd = marks.find((n) => n.className.includes('ed-mark-at-end'));
+      const usual = marks.find((n) => !n.className.includes('ed-mark-at-end'));
+      return {
+        вКонцеЕсть: atEnd !== undefined,
+        обычнаяЕсть: usual !== undefined,
+        вКонце: atEnd ? read(atEnd.getAttribute('data-testid')!) : null,
+        обычная: usual ? read(usual.getAttribute('data-testid')!) : null,
+      };
+    });
+
+    expect(seen.вКонцеЕсть, 'метка в конце не помечена — рисовать иначе нечего').toBe(true);
+    expect(seen.обычнаяЕсть, 'обычной метки нет — сравнивать не с чем').toBe(true);
+
+    // У обычной знака нет вовсе.
+    expect(seen.обычная!.знак, 'обычная метка обзавелась стенкой').toBe('auto / auto');
+
+    // У метки в конце знак есть, и он крупнее столбика остановки (18 px),
+    // иначе рядом с ним не различается.
+    const [ширина, высота] = seen.вКонце!.знак.split(' / ').map((v) => Number.parseFloat(v));
+    expect(ширина, 'стенка тоньше волоса').toBeGreaterThanOrEqual(3);
+    expect(высота, 'стенка не выше самой метки — рядом со столбиком не различить')
+      .toBeGreaterThan(18);
+    expect(seen.вКонце!.подпорка, 'подпорки нет — признак остался один').not.toBe('auto / auto');
+
+    // И главное: знак ВНУТРИ полосы. Первая редакция рисовала его за краем,
+    // и на экране его не было вовсе при сходящихся числах.
+    expect(seen.вКонце!.заКраем, 'стенка вынесена за полосу — на экране её не будет')
+      .toBeLessThanOrEqual(0);
+  });
+});

@@ -1452,6 +1452,11 @@ export function Editor({
       id: gate.id,
       seconds: markSeconds(gate.at, segment.words),
       anchor: anchorStateOf(gate.at),
+      /* Метка ровно в конце главы рисуется иначе: после вопроса на ней
+         не будет продолжения, а метка на предпоследней секунде даст
+         главу-обрубок. Порог тот же, каким метка накрывает секунду. */
+      atChapterEnd:
+        Math.abs(markSeconds(gate.at, segment.words) - segment.duration) <= 0.01,
       // Остановка ни к чему не едет: окна движения у неё нет.
       morphSeconds: 0,
       // Потолка длительности у остановки тоже нет — поле есть только потому,
@@ -1634,6 +1639,37 @@ export function Editor({
   const handleTrackTransitionSecondsLive = useCallback((id: string, transitionSeconds: number) => {
     dispatch({ type: 'setSlideTransitionSeconds', slideId: id, transitionSeconds, commit: false });
   }, []);
+
+  /**
+   * Метка РОВНО в конце главы — отдельным пунктом меню.
+   *
+   * Заведено 26.08.2026 по слову владельца: «надо, чтобы точно понимал,
+   * что ты поставил вопрос в конце главы, а не на предпоследней секунде,
+   * а то так может вырезаться глава длиной в секунду… чтобы можно было
+   * ВЫБРАТЬ, что вопрос именно в конце, а не попадать в этот миллиметр».
+   *
+   * Промах мышью в один пиксель — это 0.037 с при масштабе ×1 и куда больше
+   * на вписанном. После вопроса глава режется по метке, и остаток длиной
+   * в секунду становится отдельной главой: мусор, которого автор не заказывал
+   * и который потом надо искать и убирать.
+   *
+   * Попасть в конец глазом нельзя вовсе — там край полосы. Поэтому не
+   * прилипание с порогом (оно молча меняло бы намерение), а прямой выбор.
+   */
+  const addGateAt = useCallback((seconds: number) => {
+    /* Имя метки свободно по ВСЕМУ проекту: оно же имя переменной, а схема
+       запрещает писать одну переменную в двух главах. */
+    const id = freeId('gate', currentProject.segments.flatMap((part) => part.gates));
+    const gate = createGate(id, timeRefAt(segment.words, seconds));
+    dispatch({ type: 'addGate', gate });
+    dispatch({ type: 'select', id: undefined });
+    setSelectedMark({ kind: 'gate', id: gate.id });
+  }, [currentProject.segments, segment.words]);
+
+  const handleAddGateAtEnd = useCallback(
+    () => addGateAt(segment.duration),
+    [addGateAt, segment.duration],
+  );
 
   const handleAddGate = useCallback(() => {
     /* Имя метки свободно по ВСЕМУ проекту: оно же имя переменной, а схема
@@ -3057,6 +3093,17 @@ export function Editor({
           onMoveMarkEnd={handleCommitHistory}
           slideCount={segment.slides.length}
           onAddGate={handleAddGate}
+          onAddGateAtEnd={handleAddGateAtEnd}
+          gateAtEndProblem={
+            /* Две остановки на одной секунде — это две метки, между которыми
+               автор не различит, какую нажимает. Порог тот же, каким метка
+               накрывает секунду. */
+            currentSegment.gates.some(
+              (gate) => Math.abs(markSeconds(gate.at, segment.words) - segment.duration) <= 0.01,
+            )
+              ? 'В конце главы уже стоит остановка'
+              : undefined
+          }
           onSplitHere={handleSplitHere}
           onSplitAtGate={(gateId) => {
             warnBeforeSplit(gateId);

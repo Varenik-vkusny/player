@@ -160,6 +160,10 @@ export interface TrackViewProps {
   slideCount: number;
   /** Добавляет гейт на текущей позиции. */
   onAddGate: () => void;
+  /** Поставить остановку РОВНО в конце главы — см. пункт «add-gate-end». */
+  onAddGateAtEnd: () => void;
+  /** Почему в конце главы остановку сейчас не поставить. `undefined` — можно. */
+  gateAtEndProblem: string | undefined;
   /**
    * Ставит метку на текущей позиции: глава делится надвое.
    *
@@ -310,6 +314,8 @@ export function TrackView({
   onMoveMarkEnd,
   slideCount,
   onAddGate,
+  onAddGateAtEnd,
+  gateAtEndProblem,
   onSplitHere,
   onSplitAtGate,
   hasOptions,
@@ -690,6 +696,24 @@ export function TrackView({
       { id: 'add-gate', label: 'Поставить остановку здесь', onSelect: onAddGate },
       {
         /*
+         * В КОНЕЦ ГЛАВЫ — ОТДЕЛЬНЫМ ПУНКТОМ, а не прилипанием.
+         *
+         * Слово владельца 26.08.2026: «чтобы можно было выбрать, что вопрос
+         * именно в конце главы, а не попадать в этот миллиметр». Промах
+         * в пиксель — 0.037 с при масштабе ×1, и после вопроса остаток
+         * в секунду становится отдельной главой-мусором.
+         *
+         * Прилипание с порогом молча меняло бы намерение автора: он мог
+         * ставить метку у самого конца НАРОЧНО. Прямой выбор не гадает.
+         */
+        id: 'add-gate-end',
+        label: 'Поставить остановку в конце главы',
+        disabled: gateAtEndProblem !== undefined,
+        hint: gateAtEndProblem,
+        onSelect: onAddGateAtEnd,
+      },
+      {
+        /*
          * «РАЗРЕЗАТЬ», А НЕ «РАЗДЕЛИТЬ» — имя исправлено в Сессии 55.
          *
          * Кнопка называлась «разделить здесь», и автор искал ею развилку,
@@ -735,7 +759,7 @@ export function TrackView({
         : []),
     ];
   }, [
-    menu, splitProblem, onSplitHere, onSplitAtGate, hasOptions, onAddGate, onAddSlideHere, onRemoveSlide,
+    menu, splitProblem, onSplitHere, onSplitAtGate, hasOptions, onAddGate, onAddGateAtEnd, gateAtEndProblem, onAddSlideHere, onRemoveSlide,
     slideRemoveProblem, bubble, bubbleLaneHidden,
     onDuplicateSlide, onCopySlide, onCutSlide, onPasteSlide,
     slideDuplicateProblem, slideCutProblem, slidePasteProblem,
