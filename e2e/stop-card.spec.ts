@@ -90,6 +90,7 @@ test.describe('карточка остановки', () => {
     // «Дальше»). Это и был второй шаг рецепта, который автор не мог сделать:
     // поле «Вид» лежало в невидимой части правой колонки.
     await page.getByTestId('stopcard-make-question').click();
+    await page.getByTestId('gate-split').click();
     await expect(page.getByTestId('stopcard-prompt')).toBeVisible();
 
     await page.getByTestId('stopcard-prompt').fill('Какой из них легче?');
@@ -157,6 +158,7 @@ test.describe('карточка остановки', () => {
 
     await addStopAt(page, 0.55);
     await page.getByTestId('stopcard-make-question').click();
+    await page.getByTestId('gate-split').click();
 
     const currentId = await page.evaluate(
       () => (window as unknown as { __project: { segments: { id: string }[] } }).__project.segments[0]!.id,
@@ -370,22 +372,32 @@ test.describe('карточка остановки', () => {
     await card.getByTestId('stopcard-make-question').click();
 
     /*
-     * ПУТЬ СОКРАЩЁН ДО ОДНОГО НАЖАТИЯ 25.08.2026, решение владельца.
+     * ДВА НАЖАТИЯ, И ОБА В КАРТОЧКЕ. Требование менялось дважды за сутки,
+     * и оба раза — словом владельца:
      *
-     * Здесь стояли ещё два шага: выбрать в списке «Что это за остановка» →
-     * «Развилка», потом нажать «Разделить повествование здесь». Обоих
-     * органов больше нет — метка с вариантами ответа и ЕСТЬ развилка,
-     * и разрез делает то же нажатие, которым задают вопрос.
+     *   25.08.2026: «есть варианты ответа — значит развилка». Список «Что
+     *   это за остановка» и кнопка разреза убраны, вопрос стал резать сам.
      *
-     * Утверждение теста не изменилось: развилка и разрез делаются,
-     * не покидая карточки. Изменилось только, сколько это стоит автору.
+     *   26.08.2026, поправка: «ты можешь поставить остановку, которая
+     *   не разрежет главу, но не можешь поставить вопрос, не разрезав.
+     *   Надо, чтобы можно было ВЫБРАТЬ: разрезать тут главу для развилки
+     *   или задать вопрос, который просто запишет переменную».
+     *
+     * Итог: вопрос ничего не режет, развилка — отдельная кнопка рядом.
+     * Списка «Что это за остановка» по-прежнему нет: вид метки решают
+     * варианты, а не выпадающий список.
      */
-    for (const gone of ['stop-kind', 'fork-hint', 'gate-split']) {
-      await expect(
-        card.getByTestId(gone),
-        `орган «${gone}» вернулся: путь автора снова длиннее одного нажатия`,
-      ).toHaveCount(0);
-    }
+    await expect(
+      card.getByTestId('stop-kind'),
+      'список «Что это за остановка» вернулся: вид метки снова объявляют руками',
+    ).toHaveCount(0);
+    await expect(
+      card.getByTestId('gate-split'),
+      'кнопки развилки нет в карточке — развилку не сделать, не покидая дорожки',
+    ).toBeVisible();
+
+    // Второе нажатие — оно и делает развилку.
+    await card.getByTestId('gate-split').click();
 
     const after = await page.evaluate(() => {
       const project = (window as unknown as {
@@ -435,6 +447,7 @@ test.describe('убрать ответ', () => {
 
     await addStopAt(page, 0.55);
     await page.getByTestId('stopcard-make-question').click();
+    await page.getByTestId('gate-split').click();
     // Третий вариант: у выбора обязаны остаться минимум два, иначе кнопка
     // погашена — и тест проверял бы отказ, а не удаление.
     await page.getByTestId('stopcard-add-option').click();

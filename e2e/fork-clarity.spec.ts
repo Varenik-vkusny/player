@@ -491,6 +491,9 @@ test.describe('второй вопрос на ветке', () => {
     await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
     await page.locator('[data-testid^="mark-gate-"]').last().click();
     await page.getByTestId('stopcard-make-question').click();
+    // Разрез — ОТДЕЛЬНОЕ нажатие с 26.08.2026: вопрос сам главу не режет
+    // ([Р] product.md §2, поправка владельца). Ветки заводит развилка.
+    await page.getByTestId('gate-split').click();
   };
 
   test('проект остаётся валидным, а переменные разными', async ({ page }) => {
@@ -559,6 +562,9 @@ test.describe('вопрос на конце главы', () => {
     await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
     await page.locator('[data-testid^="mark-gate-"]').last().click();
     await page.getByTestId('stopcard-make-question').click();
+    // Разрез — ОТДЕЛЬНОЕ нажатие с 26.08.2026: вопрос сам главу не режет
+    // ([Р] product.md §2, поправка владельца). Ветки заводит развилка.
+    await page.getByTestId('gate-split').click();
 
     // ПРЕДЫДУЩИЙ ШАГ СОСТОЯЛСЯ, и это несущая проверка: метка обязана стоять
     // ровно на конце главы — иначе тест охранял бы совсем другой случай.
@@ -632,6 +638,9 @@ test.describe('перенаправленный ответ', () => {
     await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
     await page.locator('[data-testid^="mark-gate-"]').last().click();
     await page.getByTestId('stopcard-make-question').click();
+    // Разрез — ОТДЕЛЬНОЕ нажатие с 26.08.2026: вопрос сам главу не режет
+    // ([Р] product.md §2, поправка владельца). Ветки заводит развилка.
+    await page.getByTestId('gate-split').click();
 
     const titlesOf = async (): Promise<string[]> => page.evaluate(() =>
       (window as unknown as { __project: { segments: { title: string }[] } })
@@ -684,6 +693,9 @@ test.describe('уборка сирот', () => {
     await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
     await page.locator('[data-testid^="mark-gate-"]').last().click();
     await page.getByTestId('stopcard-make-question').click();
+    // Разрез — ОТДЕЛЬНОЕ нажатие с 26.08.2026: вопрос сам главу не режет
+    // ([Р] product.md §2, поправка владельца). Ветки заводит развилка.
+    await page.getByTestId('gate-split').click();
 
     const chapters = async (): Promise<{ title: string; elements: number }[]> => page.evaluate(() =>
       (window as unknown as { __project: { segments: { title: string; elements: unknown[] }[] } })
@@ -753,6 +765,9 @@ test.describe('ответ в плеере', () => {
     await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
     await page.locator('[data-testid^="mark-gate-"]').last().click();
     await page.getByTestId('stopcard-make-question').click();
+    // Разрез — ОТДЕЛЬНОЕ нажатие с 26.08.2026: вопрос сам главу не режет
+    // ([Р] product.md §2, поправка владельца). Ветки заводит развилка.
+    await page.getByTestId('gate-split').click();
 
     // Метка обязана быть развилкой с «переспросить» — то самое сочетание,
     // на котором плеер зацикливался. Без этой проверки тест охранял бы
@@ -856,6 +871,9 @@ test.describe('остановка в конце главы', () => {
     expect(placed.at, 'метка встала не на конец главы').toBeCloseTo(placed.duration, 3);
 
     await page.getByTestId('stopcard-make-question').click();
+    // Разрез — ОТДЕЛЬНОЕ нажатие с 26.08.2026: вопрос сам главу не режет
+    // ([Р] product.md §2, поправка владельца). Ветки заводит развилка.
+    await page.getByTestId('gate-split').click();
 
     const chapters = await page.evaluate(() =>
       (window as unknown as { __project: { segments: { title: string; audio: { duration: number } }[] } })
@@ -951,4 +969,36 @@ test.describe('вид метки в конце главы', () => {
     // И НАЖИМАЕТСЯ: в центре фигуры лежит она сама, а не сосед.
     expect(seen.вКонце!.центрСвой, 'в центре фигуры чужой узел — нажать по ней нельзя').toBe(true);
   });
+});
+
+/**
+ * ВОПРОС САМ ГЛАВУ НЕ РЕЖЕТ — [Р] product.md §2, поправка владельца
+ * 26.08.2026: «надо, чтобы можно было ВЫБРАТЬ: разрезать тут главу
+ * для развилки или задать вопрос, который просто запишет переменную,
+ * которую потом можно использовать».
+ *
+ * Утром 26.08.2026 я сделал наоборот, и вопрос резал главу всегда.
+ */
+test('вопрос записывает переменную и не трогает главу; развилка — отдельным нажатием', async ({ page }) => {
+  await openEditor(page, 'sandbox');
+  await page.getByRole('button', { name: 'Обложка' }).click();
+
+  const chapters = async (): Promise<number> => page.evaluate(() =>
+    (window as unknown as { __project: { segments: unknown[] } }).__project.segments.length);
+  const before = await chapters();
+
+  const lane = (await page.getByTestId('marks-lane').boundingBox())!;
+  await page.mouse.click(lane.x + lane.width * 0.4, lane.y + lane.height * 0.75, { button: 'right' });
+  await page.getByRole('menuitem', { name: 'Поставить остановку здесь' }).click();
+  await page.locator('[data-testid^="mark-gate-"]').last().click();
+  await page.getByTestId('stopcard-make-question').click();
+
+  expect(await chapters(), 'вопрос разрезал главу сам — автора не спросили').toBe(before);
+  await expect(
+    page.getByTestId('stopcard-variable-note'),
+    'не сказано, что ответ ложится в переменную',
+  ).toContainText('переменной');
+
+  await page.getByTestId('gate-split').click();
+  expect(await chapters(), 'развилка не собралась').toBeGreaterThan(before);
 });

@@ -78,7 +78,7 @@ import { extractBlockedReason } from './state/extractBranch.js';
 import { createGate, gateInsideTransition } from './state/gates.js';
 import { activeGroupOf, type GroupChildBox, reflowGroup } from './state/groupElements.js';
 import { optionDestination } from './state/conditionText.js';
-import { speechLossWarning, splitAtTimeNotice } from './state/split.js';
+import { speechLossWarning, splitAtTimeNotice, splitBlockedReason } from './state/split.js';
 import { createImageElement, encodeImageFile } from './state/image.js';
 import { libraryItem } from './state/library.js';
 import { freeId, pasteProblemAt, segmentSlide, soleSelectedId, splitHereProblem, type MarkKind } from './state/project.js';
@@ -3213,6 +3213,14 @@ export function Editor({
           onRemoveOption={(optionId) => dispatch({
             type: 'removeGateOption', gateId: stopCardGate.id, optionId,
           })}
+          /* Разрез — ОТДЕЛЬНОЕ нажатие, а не побочный эффект вопроса
+             ([Р] product.md §2, поправка владельца 26.08.2026). Та же
+             отправка, что у пункта меню по метке. */
+          onSplit={() => {
+            warnBeforeSplit(stopCardGate.id);
+            dispatch({ type: 'splitAtGate', gateId: stopCardGate.id });
+          }}
+          splitBlockedReason={splitBlockedReason(stopCardGate, segment.words)}
           onBranchFromOption={(optionId) => dispatch({
             type: 'branchFromOption', gateId: stopCardGate.id, optionId,
           })}
