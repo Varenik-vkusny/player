@@ -5,7 +5,7 @@
 Решения владельца получены 21.08.2026, в тексте помечены **[В]**.
 
 Замеры натуры — `docs/research/2026-08-19-anatomy-canva-capcut.md`.
-Ход работы и находки — `docs/research/2026-08-21-journal-track-zone.md`.
+Ход работы и находки — `docs/journal/2026-08-21-journal-track-zone.md`.
 
 ---
 

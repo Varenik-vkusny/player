@@ -12,7 +12,7 @@
  * [contenteditable] ниже: это не про внешний вид, а про то же самое
  * исключение из user-select: none, что и у .ed-words-body и полей инспектора,
  * и действует оно только пока StageView сам включил contenteditable на время
- * правки текста (см. «Правка текста на холсте» в docs/superpowers/specs).
+ * правки текста (см. «Правка текста на холсте» в docs/specs).
  */
 export const EDITOR_STYLES = `
 /* Роли хрома редактора (--ui-*). На .ed-root, а не на :root: EDITOR_STYLES

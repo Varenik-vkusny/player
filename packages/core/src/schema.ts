@@ -387,7 +387,7 @@ export const ElementSchema = z.object({
    * `'group'` того же сегмента и без циклов.
    *
    * Решение владельца 08.08.2026: координаты ребёнка отсчитываются
-   * ОТ ГРУППЫ, как у Canva. → docs/session-28-plan.md §3
+   * ОТ ГРУППЫ, как у Canva. → docs/plans/session-28-plan.md §3
    */
   parentId: z.string().optional(),
   /**
@@ -507,7 +507,7 @@ export const ElementStateSchema = z.object({
    * юнит-тест на состояние был бы зелёным.
    *
    * Поэтому поля пока ТОЛЬКО в схеме: рендер и морфинг их не применяют.
-   * → docs/session-28-plan.md §4а
+   * → docs/plans/session-28-plan.md §4а
    */
   flipX: z.boolean().default(false),
   flipY: z.boolean().default(false),

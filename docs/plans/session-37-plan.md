@@ -1,8 +1,8 @@
 # План Сессии 37: видео играет
 
 Дата: 2026-08-12
-Решение: [ADR-028](adr/ADR-028-video-follows-audio.md)
-Измерения: [`docs/research/2026-08-12-video-sync.md`](research/2026-08-12-video-sync.md)
+Решение: [ADR-028](../adr/ADR-028-video-follows-audio.md)
+Измерения: [`docs/research/2026-08-12-video-sync.md`](../research/2026-08-12-video-sync.md)
 
 ---
 

@@ -246,6 +246,6 @@ registerElementRenderer('video', (node, element) => {
  *
  * Вложенности в `renderScene` пока НЕТ: дерево строится не здесь, и до
  * рекурсивного рендера группа рисуется как пустой бокс. Это названо вслух
- * в docs/session-28-plan.md §7, пункты 3–5.
+ * в docs/plans/session-28-plan.md §7, пункты 3–5.
  */
 registerElementRenderer('group', () => {});

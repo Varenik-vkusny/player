@@ -773,7 +773,7 @@ interface ProjectV10 {
  * заставляет сборку сказать «сохранено в версии 11, понимаю 10»
  * и остановиться.
  *
- * → docs/session-28-plan.md, реестр отличий строки 5, 6, 8
+ * → docs/plans/session-28-plan.md, реестр отличий строки 5, 6, 8
  */
 const migrateV10toV11: Migration = (input) => {
   const v10 = input as ProjectV10;

@@ -1,7 +1,7 @@
 # Анатомия с натуры: Канва и видеоредактор
 
 **Дата проверки: 2026-08-19.** Сессия 52, Шаг 0 плана
-`docs/superpowers/plans/2026-08-19-editor-front-rebuild.md`.
+`docs/plans/2026-08-19-editor-front-rebuild.md`.
 
 ## Как снято
 

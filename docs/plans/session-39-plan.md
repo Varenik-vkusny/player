@@ -1,8 +1,8 @@
 # План Сессии 39 — Стили
 
-Дата: 2026-08-14. Предмет: [`design/styles.md`](design/styles.md).
-Решение о месте ссылки: [ADR-029](adr/ADR-029-styles.md).
-Журнал находок: [`session-39-journal.md`](session-39-journal.md).
+Дата: 2026-08-14. Предмет: [`design/styles.md`](../design/styles.md).
+Решение о месте ссылки: [ADR-029](../adr/ADR-029-styles.md).
+Журнал находок: [`session-39-journal.md`](../journal/session-39-journal.md).
 
 **Что сможет автор:** сохранить вид элемента под именем, применить
 к остальным, поменять стиль один раз — и весь урок поменяется; собрать

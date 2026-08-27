@@ -27,7 +27,7 @@
 | 3 | `docs/planning.md` §14.13 | **это предмет сессии** |
 | 4 | `docs/planning.md` §16 | порядок работ; Сессии 16 и 17 помечены сделанными |
 | 5 | `docs/adr/ADR-015-slides-and-segments.md` | слайд — снимок состояний, а не страница |
-| 6 | `docs/session-17-journal.md` | 26 находок прошлой сессии, из них грабли ниже |
+| 6 | `docs/journal/session-17-journal.md` | 26 находок прошлой сессии, из них грабли ниже |
 | 7 | `packages/editor/src/state/slides.ts` | вся работа со слайдами уже здесь |
 
 ---

@@ -19,7 +19,7 @@
 и без testing-library), Playwright. Оформление живёт одной шаблонной
 строкой `EDITOR_STYLES` в `packages/editor/src/styles.ts`.
 
-**Спецификация:** [`docs/superpowers/specs/2026-08-17-editor-ui-system-design.md`](../specs/2026-08-17-editor-ui-system-design.md)
+**Спецификация:** [`docs/specs/2026-08-17-editor-ui-system-design.md`](../specs/2026-08-17-editor-ui-system-design.md)
 
 ---
 
@@ -78,7 +78,7 @@
 ## Задача 1: панель метки не имеет права сжиматься в ноль
 
 > ✅ **СДЕЛАНА и ПРИНЯТА 17.08.2026.** Панель развёрнута с 24 px до полных
-> 1427. Приёмка — `docs/session-44-journal.md` §4.
+> 1427. Приёмка — `docs/journal/session-44-journal.md` §4.
 >
 > ⚠️ **Код тестов ниже НЕ повторять дословно — в нём было три дефекта,**
 > и настоящий спек лежит в `e2e/editor-side-column.spec.ts`:

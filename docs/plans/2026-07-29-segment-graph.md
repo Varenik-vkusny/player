@@ -12,7 +12,7 @@
 
 **Стек:** TypeScript, Zod, anime.js, Vitest, Playwright, pnpm-воркспейс.
 
-Спецификация: [`docs/superpowers/specs/2026-07-29-segment-graph-design.md`](../specs/2026-07-29-segment-graph-design.md)
+Спецификация: [`docs/specs/2026-07-29-segment-graph-design.md`](../specs/2026-07-29-segment-graph-design.md)
 
 ## Общие ограничения
 
