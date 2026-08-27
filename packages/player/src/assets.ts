@@ -20,7 +20,7 @@
  */
 
 const DB_NAME = 'player-assets';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = 'audio';
 
 /** Что лежит в хранилище под одним ключом. */
@@ -35,6 +35,20 @@ export interface StoredAudio {
   /** Когда добавлен, мс эпохи. */
   readonly addedAt: number;
 }
+
+/** Что лежит под одним ключом в хранилище картинок или шрифтов. */
+export interface StoredBlob {
+  /** Имя файла, как его назвал автор (или как оно было в pptx). */
+  readonly name: string;
+  /** MIME-тип. Пустая строка, если источник его не дал. */
+  readonly type: string;
+  readonly bytes: ArrayBuffer;
+  /** Когда добавлен, мс эпохи. */
+  readonly addedAt: number;
+}
+
+/** Хранилище картинок и хранилище шрифтов — два отдельных `objectStore`. */
+export type BlobStore = 'images' | 'fonts';
 
 /**
  * Откуда берётся звук сегмента.
@@ -62,6 +76,11 @@ function openDb(): Promise<IDBDatabase> {
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      // v2: хранилища картинок и шрифтов для импорта из Canva. Только
+      // добавление — `audio` не пересоздаётся и не трогается, в нём лежит
+      // озвучка автора.
+      if (!db.objectStoreNames.contains('images')) db.createObjectStore('images');
+      if (!db.objectStoreNames.contains('fonts')) db.createObjectStore('fonts');
     };
     request.onsuccess = () => { resolve(request.result); };
     request.onerror = () => {
@@ -87,9 +106,32 @@ function openDb(): Promise<IDBDatabase> {
  * рабочими, потому что ключ здесь только выдаётся, но не разбирается.
  */
 export async function audioIdFor(bytes: ArrayBuffer): Promise<string> {
+  return `aud-${await hexDigestOf(bytes)}`;
+}
+
+/**
+ * Хэш содержимого в шестнадцатеричном виде, без префикса хранилища.
+ *
+ * Общая для `audioIdFor` и `blobIdFor`: префикс у каждой функции свой
+ * (`aud-` против `blb-`), а сам хэш — один и тот же приём. Если бы
+ * каждая функция считала SHA-256 заново, они могли бы разъехаться молча;
+ * так расхождение исключено на уровне кода, а не соглашением.
+ */
+async function hexDigestOf(bytes: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-  return `aud-${hex}`;
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Ключ картинки или шрифта — SHA-256 содержимого, тем же приёмом, что
+ * у озвучки (`audioIdFor`).
+ *
+ * Свой префикс `blb-` — НЕ `aud-`: одни и те же байты, положенные как
+ * звук и как картинка, обязаны получить разные ключи, иначе хранилища
+ * незаметно перепутались бы через общий ключ.
+ */
+export async function blobIdFor(bytes: ArrayBuffer): Promise<string> {
+  return `blb-${await hexDigestOf(bytes)}`;
 }
 
 /**
@@ -135,6 +177,54 @@ export async function getAudio(fileId: string): Promise<StoredAudio | null> {
       };
       request.onerror = () => {
         reject(request.error ?? new Error(`Не удалось прочитать озвучку ${fileId}`));
+      };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Кладёт байты картинки или шрифта под ключом их содержимого и возвращает
+ * этот ключ. Тот же приём, что `putAudio`: ключ выдаётся здесь, не приходит
+ * снаружи, повторная загрузка того же содержимого — бесплатна.
+ */
+export async function putBlob(
+  store: BlobStore,
+  blob: Omit<StoredBlob, 'addedAt'>,
+): Promise<string> {
+  const id = await blobIdFor(blob.bytes);
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put({ ...blob, addedAt: Date.now() }, id);
+      tx.oncomplete = () => { resolve(); };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error(`Не удалось сохранить в хранилище ${store}`));
+      };
+      tx.onabort = () => {
+        // Переполнение квоты приходит именно сюда — как и у `putAudio`.
+        reject(tx.error ?? new Error(`Запись в хранилище ${store} отменена браузером`));
+      };
+    });
+  } finally {
+    db.close();
+  }
+  return id;
+}
+
+/** Достаёт картинку или шрифт по ключу. `null`, если такой записи нет. */
+export async function getBlob(store: BlobStore, id: string): Promise<StoredBlob | null> {
+  const db = await openDb();
+  try {
+    return await new Promise<StoredBlob | null>((resolve, reject) => {
+      const request = db.transaction(store, 'readonly').objectStore(store).get(id);
+      request.onsuccess = () => {
+        resolve((request.result as StoredBlob | undefined) ?? null);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error(`Не удалось прочитать ${id} из хранилища ${store}`));
       };
     });
   } finally {

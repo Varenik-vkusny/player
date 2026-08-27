@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { audioIdFor } from '../src/assets.js';
+import { audioIdFor, blobIdFor } from '../src/assets.js';
 
 const bytesOf = (text: string): ArrayBuffer => new TextEncoder().encode(text).buffer as ArrayBuffer;
 
@@ -45,5 +45,26 @@ describe('audioIdFor', () => {
     expect(await audioIdFor(slice.buffer as ArrayBuffer)).toBe(
       await audioIdFor(standalone.buffer as ArrayBuffer),
     );
+  });
+});
+
+describe('blobIdFor', () => {
+  it('одинаковые байты дают ОДИН ключ: картинка не ляжет дважды', async () => {
+    const a = new TextEncoder().encode('одна картинка').buffer as ArrayBuffer;
+    const b = new TextEncoder().encode('одна картинка').buffer as ArrayBuffer;
+    expect(await blobIdFor(a)).toBe(await blobIdFor(b));
+  });
+
+  it('разное содержимое даёт разные ключи', async () => {
+    const a = new TextEncoder().encode('первая').buffer as ArrayBuffer;
+    const b = new TextEncoder().encode('вторая').buffer as ArrayBuffer;
+    expect(await blobIdFor(a)).not.toBe(await blobIdFor(b));
+  });
+
+  it('ключ картинки и ключ озвучки на ОДНИХ байтах не совпадают', async () => {
+    // Иначе одно содержимое, положенное как звук и как картинка, дало бы
+    // один ключ на два разных хранилища — и путаницу, которую не видно.
+    const bytes = new TextEncoder().encode('одно и то же').buffer as ArrayBuffer;
+    expect(await blobIdFor(bytes)).not.toBe(await audioIdFor(bytes));
   });
 });

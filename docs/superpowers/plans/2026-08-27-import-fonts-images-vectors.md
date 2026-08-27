@@ -546,7 +546,10 @@ it('пресетная линия становится контуром из у�
   expect(el.path).toEqual({ d: 'M 0 0 L 671 348', width: 671, height: 348 });
   const style = project.segments[0]!.slides[0]!.states['p1-e0']!.style;
   expect(style['stroke']).toBe('#000000');
-  expect(style['stroke-width']).toBe('4px');
+  // БЕЗ единиц: в SVG это пользовательские единицы контура, и фикстура
+  // `vectors.json` уже написана так же. Две формы записи одного и того же
+  // разъехались бы молча.
+  expect(style['stroke-width']).toBe('4');
   // Рамки быть не должно: раньше линия приезжала прямоугольником с border,
   // и это ровно тот дефект, который здесь чинится.
   expect(style['border']).toBeUndefined();
