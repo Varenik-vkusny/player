@@ -33,6 +33,7 @@ const project = (segments: Segment[]): Project => ({
   meta: { title: 'т', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
   entry: segments[0]!.id,
   styles: [],
+  fonts: [],
   segments,
 });
 
@@ -179,6 +180,7 @@ describe('сколько частей осталось', () => {
     meta: { title: '', stageWidth: 1920, stageHeight: 1080 , theme: ThemeSchema.parse({}) },
     entry: 'a',
     styles: [],
+    fonts: [],
     segments: ['a', 'b', 'c'].map((id, index, all) => ({
       id,
       title: '',

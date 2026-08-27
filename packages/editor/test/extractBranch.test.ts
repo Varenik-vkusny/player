@@ -47,6 +47,7 @@ function projectOf(segments: readonly Segment[], entry: string): Project {
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry,
     styles: [],
+    fonts: [],
     segments: [...segments],
   };
 }

@@ -93,6 +93,7 @@ function projectWithGate(gate: Gate, elements: readonly Element[] = []): Project
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'seg-1',
     styles: [],
+    fonts: [],
     segments: [
       {
         authorSpans: [],

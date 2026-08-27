@@ -58,6 +58,7 @@ function projectWithGate(): Project {
     meta: { title: 'Копия куска', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 's-1',
     styles: [],
+    fonts: [],
     segments: [
       {
         authorSpans: [],
@@ -131,6 +132,7 @@ function projectWithSpeech(): Project {
     meta: { title: 'Копия с озвучкой', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 's-1',
     styles: [],
+    fonts: [],
     segments: [{
       authorSpans: [],
       id: 's-1',

@@ -54,6 +54,7 @@ function project(): Project {
     meta: { title: 'Разрез', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry: 'whole',
     styles: [],
+    fonts: [],
     segments: [{
       id: 'whole',
       title: 'Цельное повествование',

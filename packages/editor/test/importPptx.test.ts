@@ -136,7 +136,9 @@ describe('импорт: оформление', () => {
     ]));
     const style = project.segments[0]!.slides[0]!.states['p1-e0']!.style;
 
-    expect(style['font-family']).toBe('Barlow Condensed Bold');
+    // С запасным `sans-serif`, см. «импорт: шрифты» ниже — совпадение
+    // с тем, как САМА Canva рисует кириллицу без своего Barlow Condensed.
+    expect(style['font-family']).toBe('"Barlow Condensed Bold", sans-serif');
     expect(style['font-size']).toBe('158.787px');
     expect(style['color']).toBe('#1D1F20');
     expect(style['font-weight']).toBe('bold');
@@ -267,29 +269,226 @@ describe('импорт: что срезается', () => {
     expect(report.picturesWithoutBytes).toBe(1);
   });
 
-  it('линия приезжает рамкой по габариту, и это СЧИТАЕТСЯ', () => {
-    // Рисовать отрезок нам нечем: в схеме прямоугольник. Отбросить линию
-    // значило бы молча убрать стрелку со схемы автора, оставить молча —
-    // показать прямоугольник, которого он не рисовал. Поэтому оставляем
-    // и говорим числом.
-    //
-    // Слом: перестать считать `shapeType === 'line'` — краснеет здесь,
-    // и автор снова остаётся без объяснения.
-    const { project, report } = projectFromPptx(deckOf([
-      {
-        type: 'shape', shapeType: 'line', x: 259, y: 412, width: 671, height: 348,
-        shapeStyle: { strokeColor: '#000000', strokeWidth: 4 },
-      },
-    ]));
-
-    expect(report.linesAsFrames).toBe(1);
-    expect(project.segments[0]!.slides[0]!.states['p1-e0']!.style['border'])
-      .toBe('4px solid #000000');
-  });
-
   it('пустая презентация — отказ, а не пустой проект', () => {
     expect(() => projectFromPptx({ width: 1920, height: 1080, slides: [] }))
       .toThrow(/нет ни одной страницы/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Задача 3: шрифты, картинки, контуры фигур.
+// ---------------------------------------------------------------------------
+
+describe('импорт: картинки получают ключ байтов', () => {
+  it('картинка получает ключ байтов по своему пути', () => {
+    const { project } = projectFromPptx(
+      deckOf([{ type: 'picture', x: 0, y: 0, width: 10, height: 10,
+                imagePath: 'ppt/media/image1.png' }]),
+      { assetIdByPath: new Map([['ppt/media/image1.png', 'ключ-1']]) },
+    );
+    const el = project.segments[0]!.elements.find((e) => e.type === 'image')!;
+    expect(el.assetId).toBe('ключ-1');
+  });
+
+  it('десять элементов на один файл дают ОДИН ключ на всех', () => {
+    const один = { type: 'picture', x: 0, y: 0, width: 10, height: 10,
+                   imagePath: 'ppt/media/image1.png' } as const;
+    const { project } = projectFromPptx(deckOf([один, один, один]),
+      { assetIdByPath: new Map([['ppt/media/image1.png', 'ключ-1']]) });
+    const ключи = project.segments[0]!.elements
+      .filter((e) => e.type === 'image').map((e) => e.assetId);
+    expect(ключи).toEqual(['ключ-1', 'ключ-1', 'ключ-1']);
+  });
+
+  it('картинка БЕЗ байтов приезжает без ключа и попадает в отчёт', () => {
+    const { project, report } = projectFromPptx(
+      deckOf([{ type: 'picture', x: 0, y: 0, width: 10, height: 10,
+                imagePath: 'ppt/media/нет.png' }]), {});
+    expect(project.segments[0]!.elements[0]!.assetId).toBeUndefined();
+    expect(report.picturesWithoutBytes).toBe(1);
+  });
+});
+
+describe('импорт: контуры фигур', () => {
+  it('произвольная фигура приезжает контуром в своей системе координат', () => {
+    const { project } = projectFromPptx(deckOf([{
+      type: 'shape', shapeType: 'custom', x: 0, y: 0, width: 100, height: 2,
+      pathData: 'M 0 0 L 21844000 0 L 21844000 12700 L 0 12700 Z',
+      pathWidth: 21844000, pathHeight: 12700,
+      shapeStyle: { fillColor: '#B7B7BA' },
+    }]));
+    const el = project.segments[0]!.elements[0]!;
+    expect(el.path).toEqual({
+      d: 'M 0 0 L 21844000 0 L 21844000 12700 L 0 12700 Z',
+      width: 21844000, height: 12700,
+    });
+  });
+
+  it('краска фигуры едет СВОЙСТВАМИ, чтобы автор мог её сменить', () => {
+    const { project } = projectFromPptx(deckOf([{
+      type: 'shape', shapeType: 'custom', x: 0, y: 0, width: 10, height: 10,
+      pathData: 'M 0 0 L 10 10', pathWidth: 10, pathHeight: 10,
+      shapeStyle: { fillColor: '#B7B7BA' },
+    }]));
+    const style = project.segments[0]!.slides[0]!.states['p1-e0']!.style;
+    expect(style['fill']).toBe('#B7B7BA');
+  });
+
+  it('пресетная линия становится контуром из угла в угол', () => {
+    const { project } = projectFromPptx(deckOf([{
+      type: 'shape', shapeType: 'line', x: 0, y: 0, width: 671, height: 348,
+      shapeStyle: { strokeColor: '#000000', strokeWidth: 4 },
+    }]));
+    const el = project.segments[0]!.elements[0]!;
+    expect(el.path).toEqual({ d: 'M 0 0 L 671 348', width: 671, height: 348 });
+    const style = project.segments[0]!.slides[0]!.states['p1-e0']!.style;
+    expect(style['stroke']).toBe('#000000');
+    // БЕЗ единиц: так уже записано в fixtures/projects/vectors.json
+    // (`"stroke-width": "4"`), и задание («4px») с этим разошлось —
+    // сведено к форме фикстуры, иначе два места молча заспорили бы
+    // об одном и том же числе.
+    expect(style['stroke-width']).toBe('4');
+    // Рамки быть не должно: раньше линия приезжала прямоугольником с border,
+    // и это ровно тот дефект, который здесь чинится.
+    expect(style['border']).toBeUndefined();
+  });
+
+  it('отражённая линия идёт из ДРУГОГО угла', () => {
+    const { project } = projectFromPptx(deckOf([{
+      type: 'shape', shapeType: 'line', x: 0, y: 0, width: 100, height: 50,
+      flipHorizontal: true,
+      shapeStyle: { strokeColor: '#000000', strokeWidth: 2 },
+    }]));
+    expect(project.segments[0]!.elements[0]!.path!.d).toBe('M 100 0 L 0 50');
+  });
+
+  it('линия НЕ отбрасывается правилом «ничего не рисует»', () => {
+    // У линии нет заливки. Правило drawsSomething смотрит и на обводку,
+    // но проверить надо: молча пропавшая стрелка — худший исход.
+    const { report } = projectFromPptx(deckOf([{
+      type: 'shape', shapeType: 'line', x: 0, y: 0, width: 10, height: 10,
+      shapeStyle: { strokeColor: '#000000', strokeWidth: 1 },
+    }]));
+    expect(report.droppedInvisible).toBe(0);
+    expect(report.vectors).toBe(1);
+  });
+
+  describe('вырожденные габариты не роняют импорт', () => {
+    // Найдено прогоном контроллера 27.08.2026: горизонтальный/вертикальный
+    // разделитель — обычный слайд, не крайний случай, а схема требует
+    // строго положительных `path.width`/`path.height` (это система
+    // координат `viewBox`, не размер элемента). Без зажима любая из трёх
+    // фигур ниже роняла бы ВЕСЬ импорт `ProjectLoadError`.
+
+    it('горизонтальная линия (height 0): viewBox зажат, строка пути — нет', () => {
+      const { project } = projectFromPptx(deckOf([{
+        type: 'shape', shapeType: 'line', x: 0, y: 0, width: 500, height: 0,
+        shapeStyle: { strokeColor: '#000000', strokeWidth: 2 },
+      }]));
+      const el = project.segments[0]!.elements[0]!;
+      // `L 500 0`, а НЕ `L 500 1`: зажим единицей — только для viewBox,
+      // строка пути считается по настоящему (нулевому) габариту.
+      expect(el.path).toEqual({ d: 'M 0 0 L 500 0', width: 500, height: 1 });
+    });
+
+    it('вертикальная линия (width 0): viewBox зажат, строка пути — нет', () => {
+      const { project } = projectFromPptx(deckOf([{
+        type: 'shape', shapeType: 'line', x: 0, y: 0, width: 0, height: 300,
+        shapeStyle: { strokeColor: '#000000', strokeWidth: 2 },
+      }]));
+      const el = project.segments[0]!.elements[0]!;
+      expect(el.path).toEqual({ d: 'M 0 0 L 0 300', width: 1, height: 300 });
+    });
+
+    it('произвольная фигура с нулевой стороной (pathHeight 0)', () => {
+      const { project } = projectFromPptx(deckOf([{
+        type: 'shape', shapeType: 'custom', x: 0, y: 0, width: 100, height: 0.001,
+        pathData: 'M 0 0 L 21844000 0 L 21844000 0 L 0 0 Z',
+        pathWidth: 21844000, pathHeight: 0,
+        shapeStyle: { fillColor: '#B7B7BA' },
+      }]));
+      const el = project.segments[0]!.elements[0]!;
+      // `pathData` переносится КАК ЕСТЬ (не пересчитывается) — зажимается
+      // только система координат контура.
+      expect(el.path).toEqual({
+        d: 'M 0 0 L 21844000 0 L 21844000 0 L 0 0 Z',
+        width: 21844000, height: 1,
+      });
+    });
+  });
+
+  describe('наконечники стрелок', () => {
+    // Сырой XML владельца: <a:tailEnd type="triangle".../>,
+    // <a:headEnd type="none"/> — стрелка НА КОНЦЕ линии, без наконечника
+    // у начала. Библиотека отдаёт это `connectorStartArrow`/`connectorEndArrow`.
+    // Рисование — задача 4, здесь только данные.
+
+    it('наконечник на конце переносится, «none» у начала — не кладётся вовсе', () => {
+      const { project } = projectFromPptx(deckOf([{
+        type: 'shape', shapeType: 'line', x: 0, y: 0, width: 671, height: 348,
+        shapeStyle: {
+          strokeColor: '#000000', strokeWidth: 4,
+          connectorStartArrow: 'none', connectorEndArrow: 'triangle',
+        },
+      }]));
+      const el = project.segments[0]!.elements[0]!;
+      expect(el.path!.endArrow).toBe('triangle');
+      expect(el.path!.startArrow).toBeUndefined();
+    });
+
+    it('наконечники на обоих концах переносятся оба', () => {
+      const { project } = projectFromPptx(deckOf([{
+        type: 'shape', shapeType: 'line', x: 0, y: 0, width: 100, height: 50,
+        shapeStyle: {
+          strokeColor: '#000000', strokeWidth: 2,
+          connectorStartArrow: 'triangle', connectorEndArrow: 'triangle',
+        },
+      }]));
+      const el = project.segments[0]!.elements[0]!;
+      expect(el.path!.startArrow).toBe('triangle');
+      expect(el.path!.endArrow).toBe('triangle');
+    });
+
+    it('без наконечников ни одно поле не заводится', () => {
+      // Слом: заводить `startArrow`/`endArrow` со значением `'none'`
+      // вместо пропуска поля — краснеет здесь (`toEqual` ловит лишний ключ).
+      const { project } = projectFromPptx(deckOf([{
+        type: 'shape', shapeType: 'line', x: 0, y: 0, width: 671, height: 348,
+        shapeStyle: {
+          strokeColor: '#000000', strokeWidth: 4,
+          connectorStartArrow: 'none', connectorEndArrow: 'none',
+        },
+      }]));
+      const el = project.segments[0]!.elements[0]!;
+      expect(el.path).toEqual({ d: 'M 0 0 L 671 348', width: 671, height: 348 });
+    });
+  });
+});
+
+describe('импорт: шрифты', () => {
+  it('шрифты проекта приезжают списком', () => {
+    const { project } = projectFromPptx(deckOf([text()]), {
+      fonts: [{ family: 'Barlow Condensed', assetId: 'ш-1' }],
+    });
+    expect(project.fonts).toEqual([{ family: 'Barlow Condensed', assetId: 'ш-1' }]);
+  });
+
+  it('font-family несёт и имя, и запасной sans-serif', () => {
+    // Измерено контроллером в живой Canva 27.08.2026: у её собственного
+    // Barlow Condensed кириллицы нет, и кириллический текст Canva сама
+    // рисует ЗАПАСНЫМ шрифтом (`АГЕНТСТВО`: вшитым 607.23 = запасным
+    // 607.23). Совпасть с Canva можно только упав в ТОТ ЖЕ запасной —
+    // значит имя не может ехать голым: без явного `sans-serif` браузер
+    // взял бы засечковый Times, и слайд выглядел бы чужим.
+    //
+    // Слом: убрать `, sans-serif` из `textProps` — краснеет здесь.
+    const { project } = projectFromPptx(deckOf([
+      text({ textStyle: { fontFamily: 'Barlow Condensed' } }),
+    ]));
+    const family = project.segments[0]!.slides[0]!.states['p1-e0']!.style['font-family'];
+
+    expect(family).toContain('Barlow Condensed');
+    expect(family).toContain('sans-serif');
   });
 });
 
@@ -327,7 +526,7 @@ describe('импорт: настоящая библиотека на насто�
     expect(first.width).toBe(1887);
     expect(first.height).toBe(43);
     expect(first.style['color']).toBe('#416180');
-    expect(first.style['font-family']).toBe('Barlow Condensed');
+    expect(first.style['font-family']).toBe('"Barlow Condensed", sans-serif');
     expect(first.style['font-size']).toBe('24px');
 
     //   <a:off x="4438877" y="2320820"/> → 466.03, 243.65
@@ -348,6 +547,42 @@ describe('импорт: настоящая библиотека на насто�
 
     // Фон настоящей страницы: srgbClr val="F2F2F3" в сыром XML.
     expect(states['p1-bg']!.style['background']).toBe('#F2F2F3');
+  }, 60_000);
+
+  it('вшитые шрифты несут ожидаемые имена и размеры байтов', async () => {
+    // Единственное место, где ловится переименование поля в библиотеке
+    // (`embeddedFonts`, `name`, `rawFontData`) для шрифтов — так же, как
+    // тест выше ловит его для координат и стилей текста.
+    const { PptxHandler } = await import('pptx-viewer-core');
+    const bytes = readFileSync(IMPORT_DIR + 'canva-page-text.pptx');
+    const handler = new PptxHandler();
+    const deck = await handler.load(
+      bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    );
+    const fonts = deck.embeddedFonts ?? [];
+
+    expect(fonts).toHaveLength(2);
+    const byName = (name: string) => fonts.find((f: { name: string }) => f.name === name)!;
+    expect(byName('Barlow Condensed').rawFontData).toHaveLength(96_736);
+    expect(byName('Barlow Condensed Bold').rawFontData).toHaveLength(103_912);
+  }, 60_000);
+
+  it('картинки canva-page-notes.pptx несут путь ppt/media/image1.png', async () => {
+    // Ловит переименование поля `imagePath` в библиотеке: переходник читает
+    // его по имени (`pptx.ts`), а `openPptx.ts` — тем же именем, поэтому
+    // расхождение молчало бы до сборки карты байтов в браузере.
+    const deck = await readDeck('canva-page-notes.pptx');
+    const paths: string[] = [];
+    for (const slide of deck.slides) {
+      for (const el of slide.elements) {
+        if (el.type === 'picture' || el.type === 'image') paths.push(el.imagePath ?? '');
+      }
+    }
+
+    // На фикстуре 10 элементов ссылаются на один и тот же файл картинки —
+    // измерено контроллером, см. constraints.md.
+    expect(paths).toHaveLength(10);
+    expect(paths.every((p) => p === 'ppt/media/image1.png')).toBe(true);
   }, 60_000);
 
   it('страница Canva ровно 1920 × 1080 — сцена один в один', async () => {

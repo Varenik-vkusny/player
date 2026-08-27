@@ -214,6 +214,7 @@ describe('branchTree', () => {
       meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
       entry: 's-first',
       styles: [],
+      fonts: [],
       segments: [first, second, third],
     };
 

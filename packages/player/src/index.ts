@@ -14,8 +14,13 @@ export {
   putAudio,
   releaseAudioUrl,
   resolveAudioUrl,
+  getBlob,
+  putBlob,
+  blobIdFor,
   type AudioSource,
   type StoredAudio,
+  type BlobStore,
+  type StoredBlob,
 } from './assets.js';
 export {
   AudioClock,

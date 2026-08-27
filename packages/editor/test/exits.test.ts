@@ -80,6 +80,7 @@ function project(segments: readonly Segment[], entry = 'seg-1'): Project {
     meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
     entry,
     styles: [],
+    fonts: [],
     segments: [...segments],
   };
 }
