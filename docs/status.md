@@ -19,7 +19,7 @@
 > | схема **v11**, миграций 10 | схема **v17**, миграций 16 (`1`→`17`) | `packages/core/src/schema.ts:28`, `packages/core/src/migrations.ts:1017-1032` |
 > | справа от холста — колонка «Объект» со свойствами выделенного | колонка убрана целиком (решение владельца, Сессия 55): на окне 1440 px холсту отдано 1001 px вместо 575 | `packages/editor/src/chrome/layoutStore.ts:2-4`, [`journal/2026-08-24-session55-sdacha.md`](journal/2026-08-24-session55-sdacha.md) |
 > | панель каталога **350 px** (снята с прототипа `design/shell.css`) | панель каталога **361 px** (снята с живой Канвы, замер 20.08.2026) | `packages/editor/src/chrome/layoutStore.ts:44-46` |
-> | полоса свойств над холстом **56 px** | **48 px** — подписи полей у себя скрыты `clip-path`, запас оказался не нужен | `packages/editor/src/styles.ts:880-885` |
+> | полоса свойств над холстом **56 px** | **48 px** — подписи полей у себя скрыты `clip-path`, запас оказался не нужен | `packages/editor/src/styles/` |
 > | типы элементов: текст, картинка, фигура | + **группа** и **видео** | `packages/core/src/schema.ts:314` |
 > | ветвления читались только текстом внутри панели сегмента | отдельное окно — карта веток (ADR-033) | `packages/editor/src/BranchesWindow.tsx:103` |
 > | презентацию нельзя было ввезти в проект | импорт `.pptx` целиком: свои шрифты, картинки, контуры фигур со стрелками | `packages/editor/src/import/openPptx.ts:148`, [`journal/session-58-journal.md`](journal/session-58-journal.md) |
