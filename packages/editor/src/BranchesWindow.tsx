@@ -33,7 +33,7 @@ import {
   type BranchesClient,
   type MainMessage,
 } from './state/secondWindow.js';
-import { EDITOR_STYLES } from './styles.js';
+import { EDITOR_STYLES } from './styles/index.js';
 import { BranchesView } from './track/BranchesView.js';
 
 const STYLE_ID = 'player-editor-styles';
