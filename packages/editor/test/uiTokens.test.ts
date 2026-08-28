@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { EDITOR_STYLES } from '../src/styles.js';
+import { EDITOR_STYLES } from '../src/styles/index.js';
 
 /**
  * Блок ролей — первый `.ed-root { ... }` в EDITOR_STYLES (docs/design/ui-tokens.md

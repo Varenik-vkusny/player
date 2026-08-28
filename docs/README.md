@@ -31,7 +31,7 @@
 | Какие дефекты известны? | [known-bugs.md](known-bugs.md) | действует |
 | Как принимают работу руками? | [proverka-rukami.md](proverka-rukami.md) | действует |
 | Кто что делает и что проверяется всегда? | [session-protocol.md](session-protocol.md) | действует |
-| Задание следующей сессии | [`../prompts/`](../prompts/) — свежий `SESSION-N-PROMPT.md` | действует |
+| Задание следующей сессии | [`prompts/`](prompts/) — свежий `SESSION-N-PROMPT.md` | действует |
 
 **Если читать только один документ — [research/spikes.md](research/spikes.md).**
 Там не только числа, но и три случая, когда измерение выдавало правдоподобные
@@ -124,7 +124,7 @@
 | [journal/session-10-guard-list.md](journal/session-10-guard-list.md) | 02.08.2026 | 35 пунктов владельца со статусом на тот день |
 
 Свежее состояние — не здесь, а в `journal/` (последний журнал),
-[debt.md](debt.md) и [`../prompts/`](../prompts/).
+[debt.md](debt.md) и [`prompts/`](prompts/).
 
 ---
 

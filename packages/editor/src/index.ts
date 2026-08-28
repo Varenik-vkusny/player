@@ -15,7 +15,7 @@ import type { Project } from '@player/core';
 import type { ScenePreview } from '@player/player';
 
 import { Editor, type EditorProps } from './Editor.js';
-import { EDITOR_STYLES } from './styles.js';
+import { EDITOR_STYLES } from './styles/index.js';
 
 const STYLE_ID = 'player-editor-styles';
 
