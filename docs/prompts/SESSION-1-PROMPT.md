@@ -49,14 +49,14 @@ CLAUDE.md                законы и команды
 
 | ADR | Решение |
 |---|---|
-| [001](../docs/adr/ADR-001-stack.md) | Node 22, TypeScript strict, pnpm workspaces, Vite, Vitest, Playwright |
-| [002](../docs/adr/ADR-002-time-and-animation.md) | Часы — `AudioContext`, не `<audio>`. Движок — **anime.js 4.5.0**, не GSAP |
-| [003](../docs/adr/ADR-003-render.md) | Рендер в DOM, одна функция на плеер и редактор |
-| [004](../docs/adr/ADR-004-project-format.md) | JSON + Zod, схема — единственный источник истины, миграции с версии 1 |
-| [005](../docs/adr/ADR-005-gates.md) | Гейт: логическое время записывается явно, звук глушится симметричной рампой |
-| [006](../docs/adr/ADR-006-testing.md) | Четыре уровня тестов, одна команда `pnpm check` |
-| [007](../docs/adr/ADR-007-scene-scaling.md) | Логическая сцена 1920×1080 + `transform: scale()` |
-| [008](../docs/adr/ADR-008-timeref.md) | `TimeRef` — размеченное объединение: секунды либо ссылка на слово с якорем |
+| [001](../adr/ADR-001-stack.md) | Node 22, TypeScript strict, pnpm workspaces, Vite, Vitest, Playwright |
+| [002](../adr/ADR-002-time-and-animation.md) | Часы — `AudioContext`, не `<audio>`. Движок — **anime.js 4.5.0**, не GSAP |
+| [003](../adr/ADR-003-render.md) | Рендер в DOM, одна функция на плеер и редактор |
+| [004](../adr/ADR-004-project-format.md) | JSON + Zod, схема — единственный источник истины, миграции с версии 1 |
+| [005](../adr/ADR-005-gates.md) | Гейт: логическое время записывается явно, звук глушится симметричной рампой |
+| [006](../adr/ADR-006-testing.md) | Четыре уровня тестов, одна команда `pnpm check` |
+| [007](../adr/ADR-007-scene-scaling.md) | Логическая сцена 1920×1080 + `transform: scale()` |
+| [008](../adr/ADR-008-timeref.md) | `TimeRef` — размеченное объединение: секунды либо ссылка на слово с якорем |
 
 **Два решения, которые легко нарушить по незнанию:**
 
@@ -132,7 +132,7 @@ JSON-файла руками.
    `spikes/lib/audio-clock.mjs`, оба доводятся до продакшен-качества с тестами.
 2. `apps/playground` — страница, которая грузит фикстуру и показывает плеер.
 3. Сборка плеера в один ESM-бандл + тест, что он открывается в голом HTML.
-4. Скриншотные и поведенческие тесты по [ADR-006](../docs/adr/ADR-006-testing.md).
+4. Скриншотные и поведенческие тесты по [ADR-006](../adr/ADR-006-testing.md).
 5. Вписать реальные команды сборки и e2e в `CLAUDE.md` (там сейчас `TODO`).
 
 ### Критерии приёмки

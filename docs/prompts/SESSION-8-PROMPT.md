@@ -117,17 +117,17 @@
 
 ## Что читать до кода
 
-1. **[`docs/product.md`](../docs/product.md)** — продуктовые решения.
+1. **[`docs/product.md`](../product.md)** — продуктовые решения.
    [Р] решено, [О] открыто, [П] позже. **[Р] не переоткрывается без ADR.**
    Раздел про гейты содержит свежий [О] про два типа.
-2. **[`docs/adr/ADR-015`](../docs/adr/ADR-015-slides-and-segments.md)** — модель
+2. **[`docs/adr/ADR-015`](../adr/ADR-015-slides-and-segments.md)** — модель
    слайдов и частей, почему гейт не ветвит.
-3. **[`docs/adr/ADR-016`](../docs/adr/ADR-016-morph.md)** — морфинг.
-4. **[`docs/adr/ADR-017`](../docs/adr/ADR-017-clock-interface.md)** — часы.
-5. [`docs/status.md`](../docs/status.md) — что зелено, что нет, что измерено.
-6. [`docs/planning.md`](../docs/planning.md) §12 и §13 — долги.
+3. **[`docs/adr/ADR-016`](../adr/ADR-016-morph.md)** — морфинг.
+4. **[`docs/adr/ADR-017`](../adr/ADR-017-clock-interface.md)** — часы.
+5. [`docs/status.md`](../status.md) — что зелено, что нет, что измерено.
+6. [`docs/planning.md`](../planning.md) §12 и §13 — долги.
    §12.8–12.10 — про развилки, написано после разбора с владельцем.
-7. [`docs/known-bugs.md`](../docs/known-bugs.md) — включая заметку про
+7. [`docs/known-bugs.md`](../known-bugs.md) — включая заметку про
    инструменты: она сэкономит тебе час.
 8. `CLAUDE.md` — законы и команды.
 

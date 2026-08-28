@@ -100,7 +100,7 @@ prompts            задания сессий, свежее — последн�
 вливается в `main`. Ветки прошлых сессий не удалены намеренно: это след
 работы, и все они уже в `main`.
 
-У сессии есть задание (`prompts/SESSION-N-PROMPT.md`), журнал находок
+У сессии есть задание (`docs/prompts/SESSION-N-PROMPT.md`), журнал находок
 (`docs/journal/`) и, если работа крупная, план (`docs/plans/`).
 Порядок описан в [`docs/session-protocol.md`](docs/session-protocol.md).
 

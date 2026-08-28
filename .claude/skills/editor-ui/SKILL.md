@@ -15,8 +15,15 @@ import { Button, Icon, Section } from '../ui/index.js';
 Расширение `.js` в импорте обязательно и не опечатка: у пакета ESM-резолюция,
 и `'../ui/index'` не соберётся.
 
-Оформление всего хрома лежит **одной шаблонной строкой** `EDITOR_STYLES`
-в `packages/editor/src/styles.ts`.
+Оформление всего хрома собирается в строку `EDITOR_STYLES` из частей
+в `packages/editor/src/styles/` (разрезано 28.08.2026; до этого лежало
+одним файлом на 5847 строк). Части — по областям: `tokens`, `chrome`,
+`stage`, `propbar`, `controls`, `catalog`, `canvas`, `slides`, `branches`,
+`chapter`, `track`, `fields`, `marks`, `panels`.
+
+**Порядок склейки в `styles/index.ts` — НЕСУЩИЙ.** Тот же селектор раньше
+базовых правил проигрывает, позже — выигрывает; перестановка меняет экран,
+не вызвав ни одной ошибки. Стережёт `styles-parts.test.ts`.
 
 Где что лежит (проверено на себе — без этого абзаца первый вопрос был
 «а панели-то где»):
@@ -27,7 +34,7 @@ import { Button, Icon, Section } from '../ui/index.js';
 | `packages/editor/src/panels/` | панели колонок: `ElementList`, `SlidePanel`, `SegmentPanel`, `MarkPanel`, `Inspector`, `StylesPanel`, `ThemePanel` |
 | `packages/editor/src/track/` | нижняя зона: дорожка, метки, ветки |
 | `packages/editor/src/Editor.tsx` | каркас окна, который всё это расставляет |
-| `packages/editor/src/styles.ts` | всё оформление, одной строкой |
+| `packages/editor/src/styles/` | всё оформление, 14 частей по областям; склейка в `index.ts` |
 | `packages/editor/test/uiChrome.test.ts`, `uiTokens.test.ts` | охрана |
 
 Из `panels/` и `track/` путь до библиотеки — `'../ui/index.js'`,
@@ -159,12 +166,12 @@ import { Button, Icon, Section } from '../ui/index.js';
 
 ### Роли, которыми пользуются вместо сырых значений
 
-Все объявлены в блоке `.ed-root` в `styles.ts`, их 45. Ступени, которые
+Все объявлены в блоке `.ed-root` в `styles/tokens.ts`. Ступени, которые
 нужны чаще всего:
 
 - кегли: `--ui-type-xs|s|m|l|xl` (база — `m`);
 - межстрочных ролей НЕТ. `--ui-lh-tight|normal|loose` были обещаны здесь
-  и не заведены ни разу: `grep -o -- "--ui-[a-z0-9-]*:" packages/editor/src/styles.ts`
+  и не заведены ни разу: `grep -ho -- "--ui-[a-z0-9-]*:" packages/editor/src/styles/*.ts`
   не даёт ни одной. Пиши `line-height` числом, как соседние правила.
   Соблазн написать по этому списку стоил Сессии 51 одной правки: неизвестный
   токен **проваливается МОЛЧА** — объявление отбрасывается целиком, ни ошибки,
@@ -176,7 +183,7 @@ import { Button, Icon, Section } from '../ui/index.js';
 - линии: `--ui-line`, `--ui-line-strong`, `--ui-line-disabled`;
 - фокус: `--ui-focus`, `--ui-focus-ring`.
 
-Точный список — `grep -o -- "--ui-[a-z-]*:" packages/editor/src/styles.ts | sort -u`.
+Точный список — `grep -ho -- "--ui-[a-z-]*:" packages/editor/src/styles/*.ts | sort -u`.
 Не помни его, а посмотри: он растёт.
 
 ---
@@ -191,7 +198,7 @@ import { Button, Icon, Section } from '../ui/index.js';
 
 1. написать компонент в `packages/editor/src/ui/Имя.tsx`;
 2. дописать экспорт в `ui/index.ts`;
-3. оформление — в `styles.ts`, только ролями `--ui-*`;
+3. оформление — в подходящую часть `styles/`, только ролями `--ui-*`;
 4. заменить **все** нынешние места разом, а не одно «для примера»:
    недоделанная замена оставляет два способа делать одно и то же,
    и это хуже, чем один плохой;
@@ -252,9 +259,11 @@ import { Button, Icon, Section } from '../ui/index.js';
 
 ## 5. Помнить всегда
 
-**`styles.ts` — ОДНА шаблонная строка, и обратных кавычек внутри неё нет
-ни одной, даже в комментариях CSS.** Одна такая кавычка обрывает строку
-и роняет весь бандл редактора.
+**Каждая часть в `styles/` — ОДНА шаблонная строка, и обратных кавычек
+внутри неё нет ни одной, даже в комментариях CSS.** Одна такая кавычка
+обрывает строку и роняет весь бандл редактора. Стережёт
+`stylesTemplate.test.ts`: он обходит КАТАЛОГ, поэтому новая часть попадает
+под охрану сама, без правки теста.
 
 **Скриншотные эталоны смотрят глазами.** Playwright, не найдя эталона,
 пишет `actual` прямо в папку эталонов и роняет тест; перезапуск не глядя

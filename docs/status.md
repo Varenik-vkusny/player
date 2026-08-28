@@ -9,7 +9,7 @@
 >   [`session-58-journal.md`](journal/session-58-journal.md).
 > - [`docs/architecture.md`](architecture.md) — как всё устроено сейчас.
 > - [`docs/debt.md`](debt.md) — долги и открытое решение владельца.
-> - `../prompts/` — задание следующей сессии, самый поздний `SESSION-N-PROMPT.md`.
+> - `prompts/` — задание следующей сессии, самый поздний `SESSION-N-PROMPT.md`.
 >
 > **Что изменилось после Сессии 30** (только крупное, проверено по коду
 > 28.08.2026 — Сессия 59):
