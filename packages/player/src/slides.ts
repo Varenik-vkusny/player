@@ -31,7 +31,10 @@ import {
   type MorphTimeline,
   type Phase,
 } from './morph.js';
-import { applyElement, applyStyles, applyTheme, renderScene, type SlideStates, type StageSize } from './render.js';
+import {
+  applyElement, applyStyles, applyTheme, renderScene,
+  type AssetUrls, type SlideStates, type StageSize,
+} from './render.js';
 
 export interface SlideEngineOptions {
   host: HTMLElement;
@@ -49,6 +52,14 @@ export interface SlideEngineOptions {
   slides: readonly Slide[];
   words: readonly Word[];
   stage: StageSize;
+  /**
+   * Адреса байтов проекта — картинок и вшитых шрифтов (схема v17).
+   *
+   * Опционален: старый вызывающий код (юниты, фикстуры без импорта) не
+   * обязан знать про хранилище байтов вовсе. Готовится ДО сборки сцены
+   * (`resolveProjectAssets`) — здесь только принимается и передаётся дальше.
+   */
+  assets?: AssetUrls;
 }
 
 /** Слайд с уже разрешёнными секундами: считаем один раз, а не каждый кадр. */
@@ -88,6 +99,7 @@ export class SlideEngine {
   readonly #elements: readonly Element[];
   readonly #stage: StageSize;
   readonly #scheduled: readonly Scheduled[];
+  readonly #assets: AssetUrls | undefined;
 
   #nodes: Map<string, HTMLElement>;
   #phase: Phase | null = null;
@@ -103,6 +115,7 @@ export class SlideEngine {
     applyStyles(options.host, options.styles);
     this.#elements = options.elements;
     this.#stage = options.stage;
+    this.#assets = options.assets;
 
     // Секунды считаются один раз на построении. Разрешать `TimeRef` каждый
     // кадр значило бы искать слово в транскрипте шестьдесят раз в секунду
@@ -343,11 +356,11 @@ export class SlideEngine {
       for (const element of this.#elements) {
         const node = this.#nodes.get(element.id);
         const state = states[element.id];
-        if (node && state) applyElement(node, element, state);
+        if (node && state) applyElement(node, element, state, this.#assets);
       }
       return;
     }
-    this.#nodes = renderScene(this.#host, this.#elements, states, this.#stage);
+    this.#nodes = renderScene(this.#host, this.#elements, states, this.#stage, this.#assets);
   }
 
   destroy(): void {

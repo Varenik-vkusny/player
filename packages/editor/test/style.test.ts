@@ -329,6 +329,7 @@ describe('интеграция со схемой: результат подст�
       meta: { title: 'Стиль: тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
       entry: 'seg-1',
       styles: [],
+      fonts: [],
       segments: [
         {
           authorSpans: [],

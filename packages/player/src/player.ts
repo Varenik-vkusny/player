@@ -17,8 +17,9 @@ import {
 import {
   applyOwnership, bubbleElementOf, clearOwnership, ownerAt, type ViewerState,
 } from './bubble.js';
+import { releaseProjectAssets, resolveProjectAssets } from './assets.js';
 import { AudioClocks, type Clock, type ClockSource, type EditorClock } from './clock.js';
-import { applyFit } from './render.js';
+import { applyFit, applyFonts, type AssetUrls } from './render.js';
 import { allSegments, entrySegmentOf, segmentOf, type Segment } from './preview.js';
 import { answersToClear, openableGates } from './repeat.js';
 import { SlideEngine } from './slides.js';
@@ -244,6 +245,15 @@ export class Player {
   #standSeek = false;
 
   /**
+   * Адреса байтов проекта — картинок и вшитых шрифтов (схема v17).
+   *
+   * Разрешается ЦЕЛИКОМ в `load()`, до сборки первой сцены: отрисовка
+   * синхронная, хранилище байтов — нет, и без этого слайд моргнул бы
+   * пустыми местами (ловушка №2 задания). Пуста, пока `load()` не отработал.
+   */
+  #assets: AssetUrls = new Map();
+
+  /**
    * Часы передаются четвёртым аргументом со значением по умолчанию.
    *
    * Умолчание оставлено осознанно и ровно ради инварианта №9: встраивание
@@ -418,6 +428,14 @@ export class Player {
 
     this.#clock = await this.#clocks.clockFor(this.#segment.source);
 
+    // Байты обязаны быть готовы ДО #mountSegment: renderScene внутри него
+    // синхронный, а хранилище байтов — нет (ловушка №2 задания). Шрифты
+    // объявляются той же картой сразу следом, до первого кадра сцены.
+    // Через `allSegments`, а не по `project.segments` руками: дверца к модели
+    // объяснения одна, и охраняется тестом инвариантов.
+    this.#assets = await resolveProjectAssets(allSegments(this.#project), this.#project.fonts);
+    applyFonts(this.#project.fonts, this.#assets);
+
     this.#mountSegment();
     this.#setState('ready');
   }
@@ -440,6 +458,7 @@ export class Player {
       slides: this.#segment.slides,
       words: this.#segment.words,
       stage: this.#segment.stage,
+      assets: this.#assets,
     });
     // Пометки кликабельных вариантов жили на элементах прошлой сцены,
     // а её больше нет: движок слайдов очищает контейнер.
@@ -1155,6 +1174,10 @@ export class Player {
     this.#clock?.stop();
     this.#slides?.destroy();
     void this.#clocks.close();
+    // Пара к resolveProjectAssets в load() — тем же приёмом, что releaseAudioUrl
+    // у резолва озвучки. Без отдачи каждый переход между узлами графа копил бы
+    // blob:-адреса: утечка настоящая, а не теоретическая (ловушка №6 задания).
+    releaseProjectAssets(this.#assets);
     this.#stage.remove();
     this.#setState('idle');
   }

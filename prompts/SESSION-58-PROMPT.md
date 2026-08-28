@@ -8,7 +8,7 @@
 
 ## Что прочитать первым делом
 
-1. [`docs/research/2026-08-26-session57-sdacha.md`](../docs/research/2026-08-26-session57-sdacha.md)
+1. [`docs/journal/2026-08-26-session57-sdacha.md`](../docs/journal/2026-08-26-session57-sdacha.md)
    — сдача владельцу: тринадцать дефектов с замерами, шесть моих
    собственных ошибок, срезанное вслух. Пятнадцать минут.
 2. [`docs/product.md`](../docs/product.md), **§4в** — решения 25–26.08.2026.

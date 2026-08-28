@@ -773,7 +773,7 @@ interface ProjectV10 {
  * заставляет сборку сказать «сохранено в версии 11, понимаю 10»
  * и остановиться.
  *
- * → docs/session-28-plan.md, реестр отличий строки 5, 6, 8
+ * → docs/plans/session-28-plan.md, реестр отличий строки 5, 6, 8
  */
 const migrateV10toV11: Migration = (input) => {
   const v10 = input as ProjectV10;
@@ -937,6 +937,22 @@ const migrateV15toV16: Migration = (input) => ({
 });
 
 /**
+ * v16 → v17: у элемента появились ключ байтов картинки (`assetId`) и контур
+ * фигуры (`path`), у проекта — список вшитых шрифтов (`fonts`).
+ *
+ * Все три поля НЕОБЯЗАТЕЛЬНЫ, поэтому старому проекту дописывать нечего:
+ * у него их просто нет, и это законное состояние — «картинка без ключа
+ * байтов», «фигура без контура», «проект без вшитых шрифтов» это ровно
+ * то, чем такой проект и был. Список шрифтов проставит умолчание схемы
+ * (`.default([])`); проставлять его здесь вручную значило бы завести
+ * второе описание умолчания, которое разъехалось бы с первым молча.
+ */
+const migrateV16toV17: Migration = (input) => ({
+  ...(input as Record<string, unknown>),
+  schemaVersion: 17,
+});
+
+/**
  * v14 → v15: связь ответа с элементом сцены становится ПОЛЕМ.
  *
  * До этой версии её не было вовсе: плеер считал кнопкой тот элемент, чей
@@ -1013,6 +1029,7 @@ export const MIGRATIONS: Readonly<Record<number, Migration>> = Object.freeze({
   13: migrateV13toV14,
   14: migrateV14toV15,
   15: migrateV15toV16,
+  16: migrateV16toV17,
 });
 
 export class SchemaVersionError extends Error {

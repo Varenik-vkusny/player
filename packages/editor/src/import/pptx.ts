@@ -69,6 +69,14 @@ export interface PptxShapeStyle {
   readonly fillColor?: string;
   readonly strokeColor?: string;
   readonly strokeWidth?: number;
+  /**
+   * Наконечники стрелок соединителя, как их отдаёт библиотека:
+   * `'none'` | `'triangle'` | … Ширина/длина наконечника (`…ArrowWidth`,
+   * `…ArrowLength`) сюда намеренно не входят — их пока никто не рисует
+   * (задача 4), а поле, которое никто не читает, — это долг.
+   */
+  readonly connectorStartArrow?: string;
+  readonly connectorEndArrow?: string;
 }
 
 export interface PptxElement {
@@ -86,6 +94,13 @@ export interface PptxElement {
   readonly shapeType?: string;
   readonly shapeStyle?: PptxShapeStyle;
   readonly children?: readonly PptxElement[];
+  /** Путь картинки внутри презентации (например `ppt/media/image1.png`). */
+  readonly imagePath?: string;
+  /** Контур произвольной фигуры (`shapeType === 'custom'`), строка SVG-пути. */
+  readonly pathData?: string;
+  /** Система координат `pathData`, EMU. Обязана идти парой с `pathData`. */
+  readonly pathWidth?: number;
+  readonly pathHeight?: number;
 }
 
 export interface PptxSlide {
@@ -105,6 +120,15 @@ export interface ImportOptions {
   readonly title?: string;
   /** Сколько секунд отводить странице. По умолчанию — заготовка. */
   readonly secondsPerSlide?: number;
+  /**
+   * Путь картинки внутри презентации → ключ её байтов в хранилище плеера.
+   *
+   * Байты достаёт `openPptx.ts` (мост к библиотеке); сюда приходит уже
+   * готовая карта — переходник в хранилище не ходит (ADR-031).
+   */
+  readonly assetIdByPath?: ReadonlyMap<string, string>;
+  /** Шрифты, уже уложенные в хранилище плеера, тем же приёмом. */
+  readonly fonts?: readonly { readonly family: string; readonly assetId: string }[];
 }
 
 /** Что импорт срезал и почему — чтобы сказать автору, а не умолчать. */
@@ -113,17 +137,22 @@ export interface ImportReport {
   readonly elements: number;
   /** Служебные фигуры, которые ничего не рисуют. */
   readonly droppedInvisible: number;
-  /** Картинки, приехавшие пустыми рамками: байты режутся, см. ADR-031. */
-  readonly picturesWithoutBytes: number;
   /**
-   * Линии и соединители, приехавшие рамкой по своему габариту.
-   *
-   * Рисовать линию нам нечем: в схеме есть прямоугольник, а не отрезок.
-   * Отбросить их значило бы молча убрать стрелки со схемы автора, поэтому
-   * они остаются на своём месте и своего размера — но выглядят прямоугольником,
-   * и об этом надо сказать, а не дать автору гадать.
+   * Картинки, для которых байты достать НЕ удалось: приезжают пустой рамкой
+   * без `assetId`. Раньше это было ЛЮБОЙ картинкой (байты не доставались
+   * вовсе); теперь картинка — это отказ по конкретному пути, а не правило.
    */
-  readonly linesAsFrames: number;
+  readonly picturesWithoutBytes: number;
+  /** Картинки, получившие ключ байтов в хранилище плеера. */
+  readonly picturesWithBytes: number;
+  /** Шрифтов, переданных доводом и уложенных в `project.fonts`. */
+  readonly fonts: number;
+  /**
+   * Фигур, приехавших контуром (`path`), а не прямоугольником со своим
+   * оформлением. Считает и произвольные фигуры Canva, и пресетные линии —
+   * контур для линии строится отдельно, из габарита и признаков отражения.
+   */
+  readonly vectors: number;
   /** Страниц, с которых приехал текст заметок. */
   readonly pagesWithNotes: number;
 }
@@ -178,7 +207,15 @@ function textProps(style: PptxTextStyle | undefined): Record<string, string | nu
   const props: Record<string, string | number> = {};
   if (style === undefined) return props;
 
-  if (style.fontFamily) props['font-family'] = style.fontFamily;
+  // Запасной `sans-serif` — не украшение, а совпадение с Canva. Измерено
+  // контроллером 27.08.2026 в живой Canva: её собственный `Barlow
+  // Condensed` кириллицы не несёт, и кириллический текст она сама рисует
+  // ЗАПАСНЫМ шрифтом (`АГЕНТСТВО`: вшитым 607.23 = запасным 607.23,
+  // латиница расходится: 492.61 против 667.09 — прибор различает шрифты).
+  // Без явного запасного браузер взял бы засечковый Times, и слайд
+  // выглядел бы чужим — единственный способ совпасть с Canva это упасть
+  // в ТОТ ЖЕ запасной, а не в свой.
+  if (style.fontFamily) props['font-family'] = `"${style.fontFamily}", sans-serif`;
   // Кегль библиотека отдаёт в ПИКСЕЛЯХ, согласованно с координатами
   // (18 pt приезжают как 24). Проверено спайком: 119.09 pt → 158.7866 px.
   if (style.fontSize !== undefined) props['font-size'] = `${round(style.fontSize)}px`;
@@ -203,6 +240,109 @@ function shapeProps(style: PptxShapeStyle | undefined): Record<string, string | 
   return props;
 }
 
+/**
+ * Краска контура — свойствами стиля, а не внутри самого контура.
+ *
+ * Так автор может перекрасить фигуру полосой свойств, как любой другой
+ * элемент (ловушка №5, `constraints.md`). `stroke-width` — БЕЗ единиц:
+ * `fixtures/projects/vectors.json` уже хранит его так (`"4"`, не `"4px"`),
+ * и два способа записать одно и то же разъехались бы молча.
+ */
+function vectorProps(style: PptxShapeStyle | undefined): Record<string, string | number> {
+  const props: Record<string, string | number> = {};
+  if (style === undefined) return props;
+
+  props['fill'] = paints(style.fillColor) ? style.fillColor : 'none';
+  if (paints(style.strokeColor) && (style.strokeWidth ?? 0) > 0) {
+    props['stroke'] = style.strokeColor;
+    props['stroke-width'] = `${round(style.strokeWidth ?? 1)}`;
+  }
+  return props;
+}
+
+/**
+ * Контур фигуры, если он у неё есть.
+ *
+ * Два независимых источника, а не один общий разбор:
+ *
+ * - произвольная фигура (`shapeType === 'custom'`) отдаёт `pathData` готовой
+ *   строкой SVG и свою систему координат `pathWidth`/`pathHeight` (EMU) —
+ *   переносится как есть, без пересчёта;
+ * - пресетная линия (`shapeType === 'line'`) контура НЕ ОТДАЁТ вовсе,
+ *   только габарит и признаки отражения (измерено, `constraints.md`).
+ *   Контур строится из угла в угол ПО ГАБАРИТУ элемента (`width`/`height`
+ *   в пикселях сцены, те же, что у состояния слайда), направление — по
+ *   таблице отражений из брифа задачи 3.
+ *
+ * Фигуры без того и другого (пресеты вроде `rect`, `roundRect`) контура
+ * не получают — для них остаётся прежнее поведение: прямоугольник со своим
+ * `background`/`border`.
+ */
+function shapePath(source: PptxElement): { d: string; width: number; height: number } | undefined {
+  if (
+    source.shapeType === 'custom'
+    && source.pathData !== undefined
+    && source.pathWidth !== undefined
+    && source.pathHeight !== undefined
+  ) {
+    return {
+      d: source.pathData,
+      // Зажато снизу единицей — см. комментарий у линии ниже. Вырожденная
+      // (нулевая) сторона — законный габарит контура (тонкий разделитель),
+      // а не ошибка данных; схема же требует строго положительных чисел.
+      width: Math.max(source.pathWidth, 1),
+      height: Math.max(source.pathHeight, 1),
+    };
+  }
+
+  if (source.shapeType === 'line') {
+    const w = round(source.width);
+    const h = round(source.height);
+    const flipH = source.flipHorizontal ?? false;
+    const flipV = source.flipVertical ?? false;
+
+    // Строка пути — по НЕзажатым числам: горизонтальная линия (height 0)
+    // обязана остаться горизонтальной (`L 500 0`), а не «утолщиться»
+    // до `L 500 1` только потому, что viewBox не может быть нулевым.
+    const d = flipH && flipV ? `M ${w} ${h} L 0 0`
+      : flipH ? `M ${w} 0 L 0 ${h}`
+        : flipV ? `M 0 ${h} L ${w} 0`
+          : `M 0 0 L ${w} ${h}`;
+
+    // Система координат (`viewBox`) — ЗАЖАТА снизу единицей: схема требует
+    // строго положительных `width`/`height` (делит на них для масштаба),
+    // а горизонтальный/вертикальный разделитель — обычный слайд, не
+    // крайний случай. Найдено прогоном контроллера 27.08.2026: без зажима
+    // `projectFromPptx` бросал `ProjectLoadError` на первой же линии
+    // с нулевой стороной. Сам элемент своего габарита НЕ меняет —
+    // зажимается только объект контура, не `states[id].width/height`.
+    return { d, width: Math.max(w, 1), height: Math.max(h, 1) };
+  }
+
+  return undefined;
+}
+
+/**
+ * Наконечники стрелок соединителя — свойствами контура, а не рисованием:
+ * задача 3 только доносит данные, рисует задача 4.
+ *
+ * `'none'` не кладётся вовсе: отсутствие наконечника выражается
+ * отсутствием поля, тем же приёмом, что у отсутствующего текста заметок
+ * (`speech`) — иначе у одного смысла было бы два состояния.
+ */
+function arrowProps(style: PptxShapeStyle | undefined): { startArrow?: string; endArrow?: string } {
+  const props: { startArrow?: string; endArrow?: string } = {};
+  if (style === undefined) return props;
+
+  if (style.connectorStartArrow !== undefined && style.connectorStartArrow !== 'none') {
+    props.startArrow = style.connectorStartArrow;
+  }
+  if (style.connectorEndArrow !== undefined && style.connectorEndArrow !== 'none') {
+    props.endArrow = style.connectorEndArrow;
+  }
+  return props;
+}
+
 /** Три знака после запятой: дальше идёт шум разбора, а не геометрия. */
 function round(value: number): number {
   return Math.round(value * 1000) / 1000;
@@ -219,7 +359,14 @@ function walk(
   sources: readonly PptxElement[],
   page: number,
   parentId: string | undefined,
-  counter: { next: number; dropped: number; pictures: number; lines: number },
+  assetIdByPath: ReadonlyMap<string, string> | undefined,
+  counter: {
+    next: number;
+    dropped: number;
+    picturesWithBytes: number;
+    picturesWithoutBytes: number;
+    vectors: number;
+  },
   elements: ElementInput[],
   states: Record<string, StateInput>,
 ): void {
@@ -232,8 +379,20 @@ function walk(
       counter.dropped += 1;
       continue;
     }
-    if (type === 'image') counter.pictures += 1;
-    if (source.shapeType === 'line' || source.type === 'connector') counter.lines += 1;
+
+    const assetId = type === 'image' && source.imagePath !== undefined
+      ? assetIdByPath?.get(source.imagePath)
+      : undefined;
+    if (type === 'image') {
+      if (assetId !== undefined) counter.picturesWithBytes += 1;
+      else counter.picturesWithoutBytes += 1;
+    }
+
+    const basePath = type === 'shape' ? shapePath(source) : undefined;
+    const path = basePath === undefined
+      ? undefined
+      : { ...basePath, ...arrowProps(source.shapeStyle) };
+    if (path !== undefined) counter.vectors += 1;
 
     const id = `p${page}-e${counter.next}`;
     counter.next += 1;
@@ -243,6 +402,8 @@ function walk(
       type,
       content: type === 'text' ? (source.text ?? '') : '',
       ...(parentId === undefined ? {} : { parentId }),
+      ...(assetId === undefined ? {} : { assetId }),
+      ...(path === undefined ? {} : { path }),
     });
 
     states[id] = {
@@ -258,11 +419,15 @@ function walk(
       visible: true,
       flipX: source.flipHorizontal ?? false,
       flipY: source.flipVertical ?? false,
-      style: type === 'text' ? textProps(source.textStyle) : shapeProps(source.shapeStyle),
+      style: type === 'text'
+        ? textProps(source.textStyle)
+        : path !== undefined
+          ? vectorProps(source.shapeStyle)
+          : shapeProps(source.shapeStyle),
     };
 
     if (hasChildren) {
-      walk(source.children ?? [], page, id, counter, elements, states);
+      walk(source.children ?? [], page, id, assetIdByPath, counter, elements, states);
     }
   }
 }
@@ -286,7 +451,13 @@ export function projectFromPptx(deck: PptxDeck, options: ImportOptions = {}): Im
   }
 
   const secondsPerSlide = options.secondsPerSlide ?? IMPORT_SLIDE_SECONDS;
-  const counter = { next: 0, dropped: 0, pictures: 0, lines: 0 };
+  const counter = {
+    next: 0,
+    dropped: 0,
+    picturesWithBytes: 0,
+    picturesWithoutBytes: 0,
+    vectors: 0,
+  };
   const elements: ElementInput[] = [];
   const slides: SlideInput[] = [];
   const speeches: string[] = [];
@@ -325,7 +496,7 @@ export function projectFromPptx(deck: PptxDeck, options: ImportOptions = {}): Im
       };
     }
 
-    walk(page.elements, page1, undefined, counter, elements, states);
+    walk(page.elements, page1, undefined, options.assetIdByPath, counter, elements, states);
 
     slides.push({
       id: `sl-${index + 1}`,
@@ -374,6 +545,11 @@ export function projectFromPptx(deck: PptxDeck, options: ImportOptions = {}): Im
     entry: segment.id,
     styles: [],
     segments: [segment],
+    // Уложены хранилищем плеера (`openPptx.ts`), сюда приходят готовым
+    // списком — переходник не ходит в IndexedDB (ADR-031). Умолчание
+    // схемы — пустой список, поэтому без шрифтов поле просто не добавится
+    // ничего лишнего.
+    fonts: options.fonts !== undefined ? [...options.fonts] : [],
   };
 
   // Через настоящий разбор, а не приведением типа. Умолчания проставляет
@@ -388,8 +564,10 @@ export function projectFromPptx(deck: PptxDeck, options: ImportOptions = {}): Im
       slides: deck.slides.length,
       elements: elements.length,
       droppedInvisible: counter.dropped,
-      picturesWithoutBytes: counter.pictures,
-      linesAsFrames: counter.lines,
+      picturesWithoutBytes: counter.picturesWithoutBytes,
+      picturesWithBytes: counter.picturesWithBytes,
+      fonts: options.fonts?.length ?? 0,
+      vectors: counter.vectors,
       pagesWithNotes: speeches.length,
     },
   };

@@ -25,7 +25,7 @@
  */
 import { z } from 'zod';
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 /**
  * Длительность перехода по умолчанию, секунды.
@@ -357,6 +357,19 @@ export const StyleSchema = z.object({
   props: StyleProps.default({}),
 });
 
+/**
+ * Шрифт, вшитый в проект импортом. Появился в v17. → `ProjectSchema.fonts`
+ *
+ * `family` — CSS-имя, которым текст ссылается на шрифт (`font-family`
+ * в `ElementState.style`), ровно как отдаёт исходный файл. `assetId` — ключ
+ * байтов самого файла шрифта в хранилище плеера, тем же путём, что
+ * и `Element.assetId` у картинки чуть ниже.
+ */
+export const FontSchema = z.object({
+  family: z.string().min(1),
+  assetId: z.string().min(1),
+});
+
 export const ElementSchema = z.object({
   id: Id,
   type: z.enum(ELEMENT_TYPES),
@@ -374,7 +387,7 @@ export const ElementSchema = z.object({
    * `'group'` того же сегмента и без циклов.
    *
    * Решение владельца 08.08.2026: координаты ребёнка отсчитываются
-   * ОТ ГРУППЫ, как у Canva. → docs/session-28-plan.md §3
+   * ОТ ГРУППЫ, как у Canva. → docs/plans/session-28-plan.md §3
    */
   parentId: z.string().optional(),
   /**
@@ -386,7 +399,73 @@ export const ElementSchema = z.object({
    * поэтому оно и не выразимо.
    */
   locked: z.boolean().default(false),
-});
+  /**
+   * Ключ байтов картинки в хранилище плеера (`packages/player/src/assets.ts`).
+   * Появился в v17.
+   *
+   * Тот же довод, что у `audio.fileId` рядом (см. ниже): сама картинка
+   * в проект не попадает — JSON проекта живёт в `localStorage` с потолком
+   * 5 242 869 символов, а картинка это десятки-сотни килобайт. Байты живут
+   * в IndexedDB, элемент хранит только ключ.
+   *
+   * Допустим только у `type === 'image'` — правило выражено `.superRefine()`
+   * ниже, а не комментарием: ключ байтов картинки у текста или фигуры
+   * бессмыслен, и молчаливое принятие спрятало бы опечатку типа.
+   */
+  assetId: z.string().min(1).optional(),
+  /**
+   * Контур фигуры, взятый из Canva импортом: строка SVG-пути (`d`) и система
+   * координат, в которой она задана. Появился в v17.
+   *
+   * `width`/`height` ОБЯЗАНЫ быть положительными: они дают `viewBox`,
+   * которым контур масштабируется до размера состояния слайда (`width`
+   * и `height` там же), а делить на ноль нечем.
+   *
+   * Краска (`fill`, `stroke`, `stroke-width`) сюда НЕ входит намеренно —
+   * она едет в `ElementState.style`, как у любого элемента. Зашить цвет
+   * в контур значило бы отнять у автора возможность перекрасить фигуру
+   * полосой свойств так же, как остальные элементы.
+   *
+   * Допустим только у `type === 'shape'` — та же проверка `.superRefine()`,
+   * что у `assetId`.
+   */
+  path: z.object({
+    d: z.string().min(1),
+    width: z.number().positive(),
+    height: z.number().positive(),
+    /**
+     * Наконечники стрелок на концах контура. Появились в рамках v17
+     * (расширение поля, не бамп: v17 не выходила за пределы этой ветки —
+     * решение контроллера, Сессия 58, круг правок 1).
+     *
+     * `start` — у начала `d` (первая точка `M`), `end` — у конца (последняя
+     * точка). Значения — как отдаёт библиотека (`'triangle'` и т.п.).
+     * `'none'` НЕ кладётся вовсе: отсутствие наконечника выражается
+     * отсутствием поля, тем же приёмом, что у отсутствующего текста.
+     * Рисование — задача 4; здесь только данные.
+     */
+    startArrow: z.string().min(1).optional(),
+    endArrow: z.string().min(1).optional(),
+  }).optional(),
+})
+  .superRefine((element, ctx) => {
+    if (element.assetId !== undefined && element.type !== 'image') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['assetId'],
+        message: `Ключ байтов «assetId» допустим только у картинки, а элемент «${element.id}» `
+          + `имеет тип «${element.type}»`,
+      });
+    }
+    if (element.path !== undefined && element.type !== 'shape') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['path'],
+        message: `Контур «path» допустим только у фигуры, а элемент «${element.id}» `
+          + `имеет тип «${element.type}»`,
+      });
+    }
+  });
 
 /**
  * Состояние элемента на конкретном слайде: ГДЕ он и КАК выглядит.
@@ -428,7 +507,7 @@ export const ElementStateSchema = z.object({
    * юнит-тест на состояние был бы зелёным.
    *
    * Поэтому поля пока ТОЛЬКО в схеме: рендер и морфинг их не применяют.
-   * → docs/session-28-plan.md §4а
+   * → docs/plans/session-28-plan.md §4а
    */
   flipX: z.boolean().default(false),
   flipY: z.boolean().default(false),
@@ -1103,6 +1182,23 @@ export const ProjectSchema = z
      * → docs/adr/ADR-029-styles.md §6
      */
     styles: z.array(StyleSchema).default([]),
+    /**
+     * Шрифты, вшитые в проект импортом. Появились в v17.
+     *
+     * Список, а не карта: `family` не обязано быть уникальным. Canva отдаёт
+     * то же семейство обычным и жирным начертанием РАЗНЫМИ файлами
+     * (`Barlow Condensed` и `Barlow Condensed Bold` — см. constraints.md),
+     * и оба обязаны попасть в проект как отдельные записи.
+     *
+     * `assetId` ведёт в то же хранилище плеера, что и `Element.assetId`
+     * у картинки: сами байты шрифта в JSON проекта не попадают — те же
+     * доводы про потолок `localStorage`.
+     *
+     * Умолчание — пустой список, и это ровно сегодняшнее поведение: проект
+     * без вшитых шрифтов идёт системными и `--scene-font*` из темы, как шёл
+     * всегда.
+     */
+    fonts: z.array(FontSchema).default([]),
   })
   .superRefine((project, ctx) => {
     const { segments, entry } = project;
@@ -1581,6 +1677,7 @@ export type Segment = z.infer<typeof SegmentSchema>;
 export type Theme = z.infer<typeof ThemeSchema>;
 export type ChapterBadge = z.infer<typeof ChapterBadgeSchema>;
 export type Style = z.infer<typeof StyleSchema>;
+export type Font = z.infer<typeof FontSchema>;
 export type Project = z.infer<typeof ProjectSchema>;
 
 /**

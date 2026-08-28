@@ -31,7 +31,16 @@ import type {
   TransitionDirection, Word,
 } from '@player/core';
 import { findSegment } from '@player/core';
-import { morphSecondsFor, segmentOf, type ScenePreview } from '@player/player';
+import {
+  allSegments,
+  applyFonts,
+  morphSecondsFor,
+  releaseProjectAssets,
+  resolveProjectAssets,
+  segmentOf,
+  type AssetUrls,
+  type ScenePreview,
+} from '@player/player';
 
 import { keyToIntent, type KeyContext, type KeyIntent } from './keyboard.js';
 import { CATALOG_CATEGORIES, PANEL_TITLES, type PanelId } from './chrome/catalog.js';
@@ -187,6 +196,45 @@ export function Editor({
 }: EditorProps): ReactElement {
   const [state, dispatch] = useReducer(historyReducer, project, initialHistoryState);
   const currentProject = state.history.present;
+
+  /**
+   * Байты картинок и вшитых шрифтов, разрешённые в адреса.
+   *
+   * Инвариант №5 требует, чтобы автор видел ТО ЖЕ, что зритель: рисование
+   * одно на плеер и редактор. Значит импортированная картинка обязана
+   * появиться и здесь, а не только в предпросмотре.
+   *
+   * Зависимость — элементы и шрифты, а НЕ весь проект: карта пересчитывалась
+   * бы на каждое нажатие клавиши, а вместе с ней заново выдавались бы
+   * `blob:`-адреса. Пересчитывать надо, когда изменился состав байтов.
+   */
+  const assetKey = useMemo(
+    () => JSON.stringify([
+      allSegments(currentProject).flatMap((s) => s.elements.map((e) => e.assetId ?? '')),
+      currentProject.fonts,
+    ]),
+    [currentProject],
+  );
+  const [assets, setAssets] = useState<AssetUrls | undefined>(undefined);
+  useEffect(() => {
+    let живо = true;
+    let выданное: AssetUrls | undefined;
+    void resolveProjectAssets(allSegments(currentProject), currentProject.fonts)
+      .then((карта) => {
+        // Работа могла смениться, пока хранилище отвечало: тогда адреса
+        // отдаём сразу, иначе они утекут — их уже никто не покажет.
+        if (!живо) { releaseProjectAssets(карта); return; }
+        выданное = карта;
+        applyFonts(currentProject.fonts, карта);
+        setAssets(карта);
+      });
+    return () => {
+      живо = false;
+      if (выданное) releaseProjectAssets(выданное);
+    };
+    // assetKey и есть содержательная зависимость: см. пояснение выше.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assetKey]);
 
   /**
    * Что пошло не так со слотом работы: не удалось записать или не удалось
@@ -2019,8 +2067,9 @@ export function Editor({
    * Отдельная кнопка, а не второе расширение у той же: открытие проекта
    * и импорт презентации — разные действия с разной ценой. Открытие
    * возвращает работу как была, импорт СОБИРАЕТ новую из чужого формата
-   * и часть данных при этом теряет (картинки приезжают рамками, ADR-031).
-   * Спрятать это за общей кнопкой значило бы сделать потерю незаметной.
+   * и часть данных при этом может потерять (картинка, чьи байты не достались,
+   * приезжает рамкой, ADR-031). Спрятать это за общей кнопкой значило бы
+   * сделать потерю незаметной.
    */
   const handleImportPptx = useCallback(
     async (file: File): Promise<void> => {
@@ -2037,8 +2086,9 @@ export function Editor({
         // рамки вместо картинок и решит, что импорт сломался.
         setWorkError(
           `Импортировано страниц: ${report.slides}, элементов: ${report.elements}. `
-          + `Картинок без содержимого: ${report.picturesWithoutBytes}, `
-          + `линий, приехавших рамкой: ${report.linesAsFrames}.`,
+          + `Картинок с содержимым: ${report.picturesWithBytes}, без содержимого: `
+          + `${report.picturesWithoutBytes}. Шрифтов: ${report.fonts}, `
+          + `векторных фигур: ${report.vectors}.`,
         );
       } catch (error: unknown) {
         setWorkError(`Не удалось импортировать ${file.name}: ${String(error)}`);
@@ -2843,6 +2893,7 @@ export function Editor({
         <StageView
           ref={stageRef}
           segment={segment}
+          assets={assets}
           currentSlide={currentSlide}
           selectedIds={state.selectedIds}
           onSelect={handleStageSelect}

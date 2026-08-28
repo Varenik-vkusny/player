@@ -19,8 +19,12 @@
  * ни при каком раскладе, поэтому проект хранит ключ, а не байты.
  */
 
+import type { Font } from '@player/core';
+
+import type { AssetUrls } from './render.js';
+
 const DB_NAME = 'player-assets';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE = 'audio';
 
 /** Что лежит в хранилище под одним ключом. */
@@ -35,6 +39,20 @@ export interface StoredAudio {
   /** Когда добавлен, мс эпохи. */
   readonly addedAt: number;
 }
+
+/** Что лежит под одним ключом в хранилище картинок или шрифтов. */
+export interface StoredBlob {
+  /** Имя файла, как его назвал автор (или как оно было в pptx). */
+  readonly name: string;
+  /** MIME-тип. Пустая строка, если источник его не дал. */
+  readonly type: string;
+  readonly bytes: ArrayBuffer;
+  /** Когда добавлен, мс эпохи. */
+  readonly addedAt: number;
+}
+
+/** Хранилище картинок и хранилище шрифтов — два отдельных `objectStore`. */
+export type BlobStore = 'images' | 'fonts';
 
 /**
  * Откуда берётся звук сегмента.
@@ -62,6 +80,11 @@ function openDb(): Promise<IDBDatabase> {
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+      // v2: хранилища картинок и шрифтов для импорта из Canva. Только
+      // добавление — `audio` не пересоздаётся и не трогается, в нём лежит
+      // озвучка автора.
+      if (!db.objectStoreNames.contains('images')) db.createObjectStore('images');
+      if (!db.objectStoreNames.contains('fonts')) db.createObjectStore('fonts');
     };
     request.onsuccess = () => { resolve(request.result); };
     request.onerror = () => {
@@ -87,9 +110,32 @@ function openDb(): Promise<IDBDatabase> {
  * рабочими, потому что ключ здесь только выдаётся, но не разбирается.
  */
 export async function audioIdFor(bytes: ArrayBuffer): Promise<string> {
+  return `aud-${await hexDigestOf(bytes)}`;
+}
+
+/**
+ * Хэш содержимого в шестнадцатеричном виде, без префикса хранилища.
+ *
+ * Общая для `audioIdFor` и `blobIdFor`: префикс у каждой функции свой
+ * (`aud-` против `blb-`), а сам хэш — один и тот же приём. Если бы
+ * каждая функция считала SHA-256 заново, они могли бы разъехаться молча;
+ * так расхождение исключено на уровне кода, а не соглашением.
+ */
+async function hexDigestOf(bytes: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', bytes);
-  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-  return `aud-${hex}`;
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Ключ картинки или шрифта — SHA-256 содержимого, тем же приёмом, что
+ * у озвучки (`audioIdFor`).
+ *
+ * Свой префикс `blb-` — НЕ `aud-`: одни и те же байты, положенные как
+ * звук и как картинка, обязаны получить разные ключи, иначе хранилища
+ * незаметно перепутались бы через общий ключ.
+ */
+export async function blobIdFor(bytes: ArrayBuffer): Promise<string> {
+  return `blb-${await hexDigestOf(bytes)}`;
 }
 
 /**
@@ -143,6 +189,54 @@ export async function getAudio(fileId: string): Promise<StoredAudio | null> {
 }
 
 /**
+ * Кладёт байты картинки или шрифта под ключом их содержимого и возвращает
+ * этот ключ. Тот же приём, что `putAudio`: ключ выдаётся здесь, не приходит
+ * снаружи, повторная загрузка того же содержимого — бесплатна.
+ */
+export async function putBlob(
+  store: BlobStore,
+  blob: Omit<StoredBlob, 'addedAt'>,
+): Promise<string> {
+  const id = await blobIdFor(blob.bytes);
+  const db = await openDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(store, 'readwrite');
+      tx.objectStore(store).put({ ...blob, addedAt: Date.now() }, id);
+      tx.oncomplete = () => { resolve(); };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error(`Не удалось сохранить в хранилище ${store}`));
+      };
+      tx.onabort = () => {
+        // Переполнение квоты приходит именно сюда — как и у `putAudio`.
+        reject(tx.error ?? new Error(`Запись в хранилище ${store} отменена браузером`));
+      };
+    });
+  } finally {
+    db.close();
+  }
+  return id;
+}
+
+/** Достаёт картинку или шрифт по ключу. `null`, если такой записи нет. */
+export async function getBlob(store: BlobStore, id: string): Promise<StoredBlob | null> {
+  const db = await openDb();
+  try {
+    return await new Promise<StoredBlob | null>((resolve, reject) => {
+      const request = db.transaction(store, 'readonly').objectStore(store).get(id);
+      request.onsuccess = () => {
+        resolve((request.result as StoredBlob | undefined) ?? null);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error(`Не удалось прочитать ${id} из хранилища ${store}`));
+      };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
  * Превращает источник в адрес, по которому браузер может забрать звук.
  *
  * Это узкий слой, через который проходят ВСЕ обращения к озвучке — тот же
@@ -183,4 +277,87 @@ export async function resolveAudioUrl(source: AudioSource): Promise<string> {
 /** Отзывает адрес, выданный `resolveAudioUrl`. Для файла с сервера — ничего. */
 export function releaseAudioUrl(source: AudioSource, url: string): void {
   if (source.kind === 'file') URL.revokeObjectURL(url);
+}
+
+/**
+ * Минимум, который подготовка байтов вправду читает у сегмента.
+ *
+ * Объявлен здесь, а не взят готовым типом сегмента, намеренно: у плеера
+ * сегмент — это собранный ВИД со звуком, словами, слайдами и гейтами,
+ * а этому модулю нужны только ссылки на байты. Зависеть от сборки вида
+ * ради одного поля значило бы связать низ с верхом; структурная типизация
+ * TypeScript и так пропустит сюда любой настоящий сегмент.
+ */
+interface ElementsHolder {
+  // `| undefined` явно: при `exactOptionalPropertyTypes` «поля может не быть»
+  // и «поле может быть undefined» — разные типы, и настоящий элемент второй.
+  readonly elements: readonly { readonly assetId?: string | undefined }[];
+}
+
+/**
+ * Готовит адреса ВСЕХ байтов проекта — картинок элементов и вшитых
+ * шрифтов — одной картой. Зовётся ДО сборки сцены (`Player.load`,
+ * `player.ts:411`): отрисовка синхронная, а хранилище байтов — нет,
+ * значит адреса обязаны быть готовы раньше первого кадра, иначе слайд
+ * моргнёт пустыми местами (ловушка №2 задания).
+ *
+ * Обходит элементы ВСЕХ сегментов проекта, а не только текущего: плеер
+ * греет соседние узлы графа (`#warmExitTargets`), и их картинки тоже обязаны
+ * быть готовы к моменту перехода, а не подгружаться в кадре смены сегмента.
+ *
+ * Ключ картинки и ключ шрифта читаются из РАЗНЫХ хранилищ (`images`
+ * и `fonts`) — оба используют один и тот же приём хэша содержимого
+ * (`blobIdFor`), поэтому по одному только `assetId` нельзя понять, в каком
+ * хранилище искать: это решает СХЕМА (`Element.assetId` — только картинка,
+ * `Font.assetId` — только шрифт), а не строка ключа.
+ *
+ * Ключ, для которого в браузере нет байтов (загружены в другом браузере,
+ * стёрты вместе с данными сайта), просто НЕ попадает в карту — молча,
+ * тем же приёмом, что и остальной рендер: рисующий код (`registry.ts`)
+ * сам решает, что показать при отсутствии адреса, а не эта функция.
+ *
+ * **Принимает сегменты и шрифты, а не проект** — и это не вкусовщина.
+ * Обращение к `project.segments` живёт у плеера в одном месте (`allSegments`
+ * в `preview.ts`, он же дверца), иначе дверца перестаёт быть одной; тест
+ * инвариантов ловит нарушение по имени файла. Заодно этот модуль вообще
+ * перестаёт знать форму проекта: он про байты, а не про модель объяснения.
+ * Зовущий пишет `resolveProjectAssets(allSegments(project), project.fonts)`.
+ */
+export async function resolveProjectAssets(
+  segments: readonly ElementsHolder[],
+  fonts: readonly Font[],
+): Promise<AssetUrls> {
+  const imageIds = new Set<string>();
+  for (const segment of segments) {
+    for (const element of segment.elements) {
+      if (element.assetId !== undefined) imageIds.add(element.assetId);
+    }
+  }
+
+  const map = new Map<string, string>();
+
+  await Promise.all([
+    ...[...imageIds].map(async (id) => {
+      const stored = await getBlob('images', id);
+      if (!stored) return;
+      map.set(id, URL.createObjectURL(new Blob([stored.bytes], { type: stored.type || 'image/png' })));
+    }),
+    ...fonts.map(async (font) => {
+      const stored = await getBlob('fonts', font.assetId);
+      if (!stored) return;
+      map.set(font.assetId, URL.createObjectURL(new Blob([stored.bytes], { type: stored.type || 'font/ttf' })));
+    }),
+  ]);
+
+  return map;
+}
+
+/**
+ * Отзывает все адреса, выданные `resolveProjectAssets`. Пара к ней, тем же
+ * приёмом, что `releaseAudioUrl` у `resolveAudioUrl`: удерживаемый
+ * `blob:`-адрес держит байты в памяти, и без парной отдачи плеер копил бы
+ * их на каждом переходе между сегментами (ловушка задания №6).
+ */
+export function releaseProjectAssets(assets: AssetUrls): void {
+  for (const url of assets.values()) URL.revokeObjectURL(url);
 }

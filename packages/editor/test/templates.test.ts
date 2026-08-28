@@ -39,6 +39,7 @@ function projectAround(segment: Segment): Project {
     meta: { title: 'Тест шаблона', stageWidth: STAGE.width, stageHeight: STAGE.height, theme: ThemeSchema.parse({}) },
     entry: segment.id,
     styles: [],
+    fonts: [],
     segments: [segment],
   };
 }
@@ -236,6 +237,7 @@ describe('шаблон «вопрос»: варианты действитель
         meta: { title: 'Тест', stageWidth: 1920, stageHeight: 1080, theme: ThemeSchema.parse({}) },
         entry: 'n1',
         styles: [],
+        fonts: [],
         segments: [
           { ...segment, id: 'n1', audio },
           {

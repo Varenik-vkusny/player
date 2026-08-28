@@ -28,7 +28,7 @@
 | # | Что | Зачем |
 |---|---|---|
 | 1 | **`docs/research/canva-model.md` §7 — реестр отличий** | 16 строк со статусами. Это линейка «сколько ещё до Канвы» |
-| 2 | `docs/session-27-journal.md` §§3, 6г, 6д, 6е, 6о | четыре способа ошибиться, каждый пойман в С27 |
+| 2 | `docs/journal/session-27-journal.md` §§3, 6г, 6д, 6е, 6о | четыре способа ошибиться, каждый пойман в С27 |
 | 3 | `CLAUDE.md` | законы, команды, грабли |
 | 4 | **Карта точек расширения (ниже, §«Куда дописывать»)** | чтобы не читать пакеты целиком |
 
@@ -354,7 +354,7 @@ e2e, тянущие за `[data-grip="se"]`. Заменять работающи
 ## Что появилось в Сессии 27
 
 `docs/research/canva-model.md` (натура + реестр отличий на 16 строк),
-`docs/session-27-journal.md`, схема v10, `migrateV9toV10`,
+`docs/journal/session-27-journal.md`, схема v10, `migrateV9toV10`,
 `ELEMENT_TYPES`, `TRANSITION_DIRECTIONS`, `DIRECTED_TRANSITIONS`,
 `DEFAULT_TRANSITION_DIRECTION`, `TransitionDirection`,
 `transitionDirection` у слайда с `superRefine`, рендерер `'video'`,
