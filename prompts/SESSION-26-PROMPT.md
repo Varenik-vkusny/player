@@ -25,7 +25,7 @@
 | 2 | **`design/index.html` — двойным щелчком** | спецификация каркаса; смотреть глазами |
 | 3 | `CLAUDE.md` | законы, команды, грабли |
 | 4 | **`docs/journal/session-25-journal.md` §§4.1, 8, 10** | как рассуждение дало неверный ответ, как светлый хром сломал инвариант №5, как тест оказался декоративным |
-| 5 | `docs/plans/2026-08-06-frame.md` | план каркаса, срезы 2 и 3 |
+| 5 | `docs/docs/plans/2026-08-06-frame.md` | план каркаса, срезы 2 и 3 |
 | 6 | `packages/editor/src/track/tiers.ts` | готовая модель ступеней — вход в срез 2 |
 
 ---
@@ -207,7 +207,7 @@ Test Files  43 passed (43)
   сломом.
 - **Роль `--ui-surface-canvas`** и подписанная с обеих сторон связь
   между `styles.ts` и `preview.html`.
-- **`docs/journal/session-25-journal.md`**, **`docs/plans/2026-08-06-frame.md`**.
+- **`docs/journal/session-25-journal.md`**, **`docs/docs/plans/2026-08-06-frame.md`**.
 
 ---
 
